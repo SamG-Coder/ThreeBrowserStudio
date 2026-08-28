@@ -112,6 +112,17 @@ npm test
 npm run launch
 ```
 
+After that one-time runtime setup, the easiest Windows launch is to double-click
+[`Launch ThreeBrowser Studio.cmd`](./Launch%20ThreeBrowser%20Studio.cmd) in the
+repository folder. It always starts from the correct folder, checks for Node 24,
+runs the locked `npm ci` install only when required packages are missing, and
+keeps the console open if setup or launch fails. A project folder can be dragged
+onto the launcher to open it explicitly.
+
+For a terminal launch, use the shorter alias `npm start`. `npm run launch`
+continues to work unchanged, and either command accepts a project path after
+`--`, for example `npm start -- projects/my-project`.
+
 By default Studio finds the sibling checkout at
 `..\ThreeBrowser\ThreeBrowserRuntime`. For another location, set
 `THREEBROWSER_RUNTIME_ROOT` to the absolute `ThreeBrowserRuntime` directory, or
