@@ -73,10 +73,14 @@ class ObsWebSocketClient {
   }
 
   async identify(timeoutMilliseconds = 8_000) {
-    return Promise.race([
-      this.#identified,
-      delay(timeoutMilliseconds).then(() => { throw new Error('OBS WebSocket identification timed out.'); }),
-    ]);
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('OBS WebSocket identification timed out.')), timeoutMilliseconds);
+      timeout.unref?.();
+      this.#identified.then(
+        value => { clearTimeout(timeout); resolve(value); },
+        error => { clearTimeout(timeout); reject(error); },
+      );
+    });
   }
 
   request(requestType, requestData = {}, timeoutMilliseconds = 10_000) {
@@ -192,9 +196,9 @@ async function ensureProfile(client, outputDirectory) {
     ['Output', 'Mode', 'Simple'],
     ['Output', 'FilenameFormatting', 'ThreeBrowser-Rainy-Window-%CCYY-%MM-%DD-%hh-%mm-%ss'],
     ['SimpleOutput', 'FilePath', outputDirectory],
-    ['SimpleOutput', 'RecFormat2', 'hybrid_mp4'],
+    ['SimpleOutput', 'RecFormat2', 'mkv'],
     ['SimpleOutput', 'RecQuality', 'Small'],
-    ['SimpleOutput', 'RecEncoder', 'nvenc'],
+    ['SimpleOutput', 'RecEncoder', 'x264'],
     ['SimpleOutput', 'RecTracks', '1'],
   ];
   for (const [parameterCategory, parameterName, parameterValue] of profileParameters) {
@@ -203,9 +207,9 @@ async function ensureProfile(client, outputDirectory) {
   await client.request('SetRecordDirectory', { recordDirectory: outputDirectory });
   await client.request('SetVideoSettings', {
     baseWidth: 2560,
-    baseHeight: 1370,
+    baseHeight: 1440,
     outputWidth: 1920,
-    outputHeight: 1028,
+    outputHeight: 1080,
     fpsNumerator: 60,
     fpsDenominator: 1,
   });
@@ -248,7 +252,7 @@ async function ensureScene(client, windowName) {
     sceneItemId,
     sceneItemTransform: {
       positionX: 0,
-      positionY: 0,
+      positionY: 35,
       alignment: 5,
       scaleX: 1.0007812976837158,
       scaleY: 1.0007305145263672,
@@ -303,7 +307,7 @@ async function setup({ outputDirectory, windowName }) {
       input: INPUT_NAME,
       sceneItemId,
       recordDirectory: directory.recordDirectory,
-      video: { width: 1920, height: 1028, fps: 60 },
+      video: { width: 1920, height: 1080, fps: 60 },
       audioMuted: true,
       sourceActive: true,
       previewBytes: Buffer.byteLength(preview.imageData, 'utf8'),
@@ -319,7 +323,12 @@ async function start() {
     const current = await client.request('GetRecordStatus');
     if (current.outputActive) throw new Error('OBS is already recording.');
     await client.request('StartRecord');
-    const status = await client.request('GetRecordStatus');
+    let status = { outputActive: false };
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      status = await client.request('GetRecordStatus');
+      if (status.outputActive) break;
+      await delay(100);
+    }
     if (!status.outputActive) throw new Error('OBS did not enter recording state.');
     return { success: true, recording: true, outputTimecode: status.outputTimecode };
   } finally {

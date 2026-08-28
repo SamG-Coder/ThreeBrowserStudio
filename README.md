@@ -158,11 +158,25 @@ all graphs/references/animations/budgets, captures opening/middle/closing frames
 and atomically saves the project. The adaptation and CC BY 4.0 attribution are
 recorded in [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md).
 
+To show MCP authoring rather than cutting straight to the completed artwork,
+the live runner can prepare a blank authored camera and then assemble the same
+scene in visible dependency-safe stages:
+
+```powershell
+node scripts/run-blender-rainy-window-live.mjs prepare rainy-window-live-take
+node scripts/run-blender-rainy-window-live.mjs build rainy-window-live-take
+```
+
+The native viewport stays open while the frame, joinery, exterior, panes,
+shader graphs, and three rain layers arrive as atomic WebGPU scene swaps. The
+runner validates and saves the result, then starts the full 28-second Action.
+
 On Windows, a local OBS 32 installation can be prepared for an isolated silent
 showcase capture with `npm run obs:setup`. The guarded recorder in
 `scripts/record-threebrowser.ps1` binds the exact native ThreeBrowser process,
 requires its window to remain maximized, and deletes the partial take if that
-window closes, is replaced, or stops being maximized.
+window closes, is replaced, or stops being maximized. Pass `-SkipPlay` while a
+live runner owns the final Action start.
 
 ## Connect Codex or ChatGPT desktop
 

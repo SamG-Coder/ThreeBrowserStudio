@@ -33,7 +33,8 @@
     "tutorial:blender": "node scripts/run-blender-fundamentals.mjs",
     "tutorial:blender:modeling": "node scripts/run-blender-modeling-reference.mjs",
     "tutorial:blender:shading": "node scripts/run-blender-shading-reference.mjs",
-    "tutorial:blender:rainy-window": "node scripts/run-blender-rainy-window.mjs"
+    "tutorial:blender:rainy-window": "node scripts/run-blender-rainy-window.mjs",
+    "tutorial:blender:rainy-window:live": "node scripts/run-blender-rainy-window-live.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",

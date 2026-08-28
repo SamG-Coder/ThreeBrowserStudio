@@ -1,9 +1,12 @@
+#requires -Version 7.4
+
 param(
   [Parameter(Mandatory = $true)]
   [int]$TargetPid,
   [ValidateRange(5, 180)]
   [int]$DurationSeconds = 28,
-  [string]$OutputDirectory = 'C:\example Videos'
+  [string]$OutputDirectory = 'C:\example Videos',
+  [switch]$SkipPlay
 )
 
 $ErrorActionPreference = 'Stop'
@@ -70,7 +73,9 @@ try {
   $started = Invoke-NodeJson @($obsScript, 'start')
   if (-not $started.recording) { throw 'OBS did not start recording.' }
   $recordStarted = $true
-  [void](Invoke-NodeJson @($studioCall, 'three_studio_play', $playParams))
+  if (-not $SkipPlay) {
+    [void](Invoke-NodeJson @($studioCall, 'three_studio_play', $playParams))
+  }
 
   $stopwatch = [Diagnostics.Stopwatch]::StartNew()
   while ($stopwatch.Elapsed.TotalSeconds -lt $DurationSeconds) {
@@ -87,6 +92,9 @@ try {
       break
     }
   }
+} catch {
+  $cancelled = $true
+  $cancelReason = "Recording pipeline failed: $($_.Exception.Message)"
 } finally {
   if ($recordStarted) {
     $stopped = Invoke-NodeJson @($obsScript, 'stop')
@@ -95,6 +103,7 @@ try {
 }
 
 if (-not $outputPath -or -not (Test-Path -LiteralPath $outputPath -PathType Leaf)) {
+  if ($cancelled -and $cancelReason) { throw $cancelReason }
   throw 'OBS stopped without producing a recording file.'
 }
 

@@ -14,6 +14,10 @@ import {
   buildRainyWindowWoodGraph,
   summarizeRainyWindowOperations,
 } from '../src/tutorials/blender-rainy-window.mjs';
+import {
+  buildRainyWindowLiveStages,
+  summarizeRainyWindowLiveStages,
+} from '../src/tutorials/blender-rainy-window-live.mjs';
 
 test('Rainy Window translates two complex Blender shader flows without unsupported nodes', () => {
   for (const graph of [buildRainyWindowWoodGraph(), buildRainyWindowGlassGraph()]) {
@@ -67,4 +71,35 @@ test('Rainy Window has a validated 28-second camera and rain Action', () => {
   assert.equal(animation.valid, true, JSON.stringify(animation.diagnostics));
   assert.equal(animation.action.duration, 28);
   assert.equal(animation.action.tracks.length, 5);
+});
+
+test('Rainy Window live plan remains valid while it visibly assembles the final scene', () => {
+  const stages = buildRainyWindowLiveStages();
+  let document = createProjectDocument({ projectId: 'project/blender-rainy-window-live' });
+  const oneShot = applyOperations(
+    createProjectDocument({ projectId: 'project/blender-rainy-window-live' }),
+    buildRainyWindowOperations(),
+  ).document;
+  for (const stage of stages) {
+    assert.ok(stage.operations.length > 0, `${stage.id} must contain operations`);
+    document = applyOperations(document, stage.operations).document;
+    const validation = validateProjectDocument(document);
+    assert.equal(validation.valid, true, `${stage.id}: ${JSON.stringify(validation.diagnostics)}`);
+  }
+
+  const scene = document.scenes['scene/main'];
+  assert.equal(scene.settings.activeCameraId, 'entity/rainy-window/camera');
+  assert.equal(document.resources.materials['material/rainy-window/wood'].graphId, 'graph/rainy-window/aged-wood');
+  assert.equal(document.resources.materials['material/rainy-window/glass'].graphId, 'graph/rainy-window/rain-glass');
+  assert.equal(scene.entities['entity/rainy-window/showcase'].components.animation.actionId, BLENDER_RAINY_WINDOW_ACTION_ID);
+  assert.equal(Object.keys(scene.entities).length, 86);
+  assert.deepEqual(scene.rootEntityIds, oneShot.scenes['scene/main'].rootEntityIds);
+  for (const [id, entity] of Object.entries(scene.entities)) {
+    assert.deepEqual(entity.children, oneShot.scenes['scene/main'].entities[id].children, `${id} child order changed`);
+  }
+
+  const summary = summarizeRainyWindowLiveStages(stages);
+  assert.equal(summary.stages, 11);
+  assert.equal(summary.visibleStages, 9);
+  assert.equal(stages.at(-1).id, 'animation');
 });
