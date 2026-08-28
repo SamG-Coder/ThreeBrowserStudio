@@ -144,6 +144,26 @@ The runner never overwrites an existing project. Pass a new managed directory
 name for another clean translation, for example
 `npm run tutorial:blender -- blender-fundamentals-2`.
 
+For the more involved procedural-shading showcase, recreate Simon Thommes'
+Blender Studio **Rainy Window** tutorial as an aged four-pane window with two
+live TSL shader graphs, 48 raised rain details, a storm exterior, WebGPU
+lighting/shadows, and a 28-second Action:
+
+```powershell
+npm run tutorial:blender:rainy-window
+```
+
+The runner dry-runs the 113-operation changeset, compiles the scene, validates
+all graphs/references/animations/budgets, captures opening/middle/closing frames,
+and atomically saves the project. The adaptation and CC BY 4.0 attribution are
+recorded in [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md).
+
+On Windows, a local OBS 32 installation can be prepared for an isolated silent
+showcase capture with `npm run obs:setup`. The guarded recorder in
+`scripts/record-threebrowser.ps1` binds the exact native ThreeBrowser process,
+requires its window to remain maximized, and deletes the partial take if that
+window closes, is replaced, or stops being maximized.
+
 ## Connect Codex or ChatGPT desktop
 
 Studio is a local STDIO MCP server. Start the native window first, then add the

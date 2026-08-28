@@ -43,6 +43,13 @@ Three.js/WebGPU resources. Geometry, values, stable IDs, staging, and graph
 layout were adapted for ThreeBrowser Studio. No lesson prose, screenshots,
 videos, downloadable models, or `.blend` project files are included.
 
+The showcase in `src/tutorials/blender-rainy-window.mjs` adapts
+[“Rainy Window (Chapter 6+)”](https://studio.blender.org/training/procedural-shading/5f5263c76a8a7b3ac5015588/)
+by Simon Thommes, copyright Blender Foundation, CC BY 4.0. The procedural
+graphs, geometry, values, staging, lighting, and animation were independently
+re-expressed for ThreeBrowser Studio; no `.blend` file or tutorial media is
+included.
+
 “Blender” is used descriptively to identify compatibility targets. This project
 is not affiliated with or endorsed by the Blender Foundation.
 

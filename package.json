@@ -28,9 +28,12 @@
     "mcp": "node src/mcp/server.mjs",
     "call": "node scripts/studio-call.mjs",
     "launch": "node scripts/launch.mjs",
+    "obs:setup": "node scripts/obs-showcase.mjs setup",
+    "obs:status": "node scripts/obs-showcase.mjs status",
     "tutorial:blender": "node scripts/run-blender-fundamentals.mjs",
     "tutorial:blender:modeling": "node scripts/run-blender-modeling-reference.mjs",
-    "tutorial:blender:shading": "node scripts/run-blender-shading-reference.mjs"
+    "tutorial:blender:shading": "node scripts/run-blender-shading-reference.mjs",
+    "tutorial:blender:rainy-window": "node scripts/run-blender-rainy-window.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",
