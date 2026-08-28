@@ -1,0 +1,291 @@
+{
+  "entities": {
+    "entity/starter-stage/ambient-light": {
+      "children": [],
+      "components": {
+        "light": {
+          "color": [0.52, 0.61, 0.78],
+          "intensity": 0.42
+        }
+      },
+      "id": "entity/starter-stage/ambient-light",
+      "kind": "ambientLight",
+      "metadata": {},
+      "name": "Sky Fill",
+      "parentId": null,
+      "scriptIds": [],
+      "tags": ["lighting", "starter"],
+      "transform": {
+        "position": [0, 0, 0],
+        "rotation": [0, 0, 0],
+        "scale": [1, 1, 1]
+      },
+      "visible": true
+    },
+    "entity/starter-stage/beacon": {
+      "children": [],
+      "components": {
+        "mesh": {
+          "castShadow": true,
+          "geometryId": "geometry/starter-stage/beacon-box",
+          "materialIds": ["material/starter-stage/beacon"],
+          "receiveShadow": true
+        }
+      },
+      "id": "entity/starter-stage/beacon",
+      "kind": "mesh",
+      "metadata": {},
+      "name": "Sunset Beacon",
+      "parentId": "entity/starter-stage/composition",
+      "scriptIds": [],
+      "tags": ["primitive", "starter"],
+      "transform": {
+        "position": [3.15, 1.1, -0.35],
+        "rotation": [0, -0.28, 0],
+        "scale": [1, 1, 1]
+      },
+      "visible": true
+    },
+    "entity/starter-stage/camera": {
+      "children": [],
+      "components": {
+        "camera": {
+          "far": 120,
+          "fov": 43,
+          "near": 0.05
+        }
+      },
+      "id": "entity/starter-stage/camera",
+      "kind": "perspectiveCamera",
+      "metadata": {},
+      "name": "Beauty Camera",
+      "parentId": null,
+      "scriptIds": [],
+      "tags": ["camera", "starter"],
+      "transform": {
+        "position": [8.5, 5.6, 10.5],
+        "rotation": [-0.34, 0.67, 0],
+        "scale": [1, 1, 1]
+      },
+      "visible": true
+    },
+    "entity/starter-stage/composition": {
+      "children": [
+        "entity/starter-stage/plinth",
+        "entity/starter-stage/hero-knot",
+        "entity/starter-stage/orb",
+        "entity/starter-stage/beacon"
+      ],
+      "components": {},
+      "id": "entity/starter-stage/composition",
+      "kind": "group",
+      "metadata": {},
+      "name": "Starter Composition",
+      "parentId": "entity/starter-stage/world",
+      "scriptIds": [],
+      "tags": ["composition", "starter"],
+      "transform": {
+        "position": [0, 0, 0],
+        "rotation": [0, 0, 0],
+        "scale": [1, 1, 1]
+      },
+      "visible": true
+    },
+    "entity/starter-stage/ground": {
+      "children": [],
+      "components": {
+        "mesh": {
+          "castShadow": false,
+          "geometryId": "geometry/starter-stage/ground-plane",
+          "materialIds": ["material/starter-stage/ground"],
+          "receiveShadow": true
+        }
+      },
+      "id": "entity/starter-stage/ground",
+      "kind": "mesh",
+      "metadata": {},
+      "name": "Ground",
+      "parentId": "entity/starter-stage/world",
+      "scriptIds": [],
+      "tags": ["environment", "starter"],
+      "transform": {
+        "position": [0, -0.02, 0],
+        "rotation": [-1.5707963267948966, 0, 0],
+        "scale": [1, 1, 1]
+      },
+      "visible": true
+    },
+    "entity/starter-stage/hero-knot": {
+      "children": [],
+      "components": {
+        "mesh": {
+          "castShadow": true,
+          "geometryId": "geometry/starter-stage/hero-torus-knot",
+          "materialIds": ["material/starter-stage/hero"],
+          "receiveShadow": true
+        }
+      },
+      "id": "entity/starter-stage/hero-knot",
+      "kind": "mesh",
+      "metadata": {},
+      "name": "Verdant Knot",
+      "parentId": "entity/starter-stage/composition",
+      "scriptIds": [],
+      "tags": ["hero", "primitive", "starter"],
+      "transform": {
+        "position": [0, 2.15, 0],
+        "rotation": [0.28, 0.18, -0.12],
+        "scale": [1, 1, 1]
+      },
+      "visible": true
+    },
+    "entity/starter-stage/orb": {
+      "children": [],
+      "components": {
+        "mesh": {
+          "castShadow": true,
+          "geometryId": "geometry/starter-stage/orb-sphere",
+          "materialIds": ["material/starter-stage/orb"],
+          "receiveShadow": true
+        }
+      },
+      "id": "entity/starter-stage/orb",
+      "kind": "mesh",
+      "metadata": {},
+      "name": "Golden Orb",
+      "parentId": "entity/starter-stage/composition",
+      "scriptIds": [],
+      "tags": ["primitive", "starter"],
+      "transform": {
+        "position": [-3, 0.72, 0.45],
+        "rotation": [0, 0, 0],
+        "scale": [1, 1, 1]
+      },
+      "visible": true
+    },
+    "entity/starter-stage/plinth": {
+      "children": [],
+      "components": {
+        "mesh": {
+          "castShadow": true,
+          "geometryId": "geometry/starter-stage/plinth-cylinder",
+          "materialIds": ["material/starter-stage/plinth"],
+          "receiveShadow": true
+        }
+      },
+      "id": "entity/starter-stage/plinth",
+      "kind": "mesh",
+      "metadata": {},
+      "name": "Stone Plinth",
+      "parentId": "entity/starter-stage/composition",
+      "scriptIds": [],
+      "tags": ["primitive", "starter"],
+      "transform": {
+        "position": [0, 0.25, 0],
+        "rotation": [0, 0, 0],
+        "scale": [1, 1, 1]
+      },
+      "visible": true
+    },
+    "entity/starter-stage/sun": {
+      "children": [],
+      "components": {
+        "light": {
+          "castShadow": true,
+          "color": [1, 0.73, 0.46],
+          "intensity": 4.2,
+          "shadowBias": -0.0002,
+          "shadowCamera": {
+            "bottom": -10,
+            "far": 40,
+            "left": -10,
+            "near": 0.1,
+            "right": 10,
+            "top": 10
+          },
+          "shadowMapSize": 2048,
+          "shadowNormalBias": 0.025,
+          "targetId": "entity/starter-stage/sun-target"
+        }
+      },
+      "id": "entity/starter-stage/sun",
+      "kind": "directionalLight",
+      "metadata": {},
+      "name": "Warm Key Light",
+      "parentId": null,
+      "scriptIds": [],
+      "tags": ["lighting", "starter"],
+      "transform": {
+        "position": [6, 11, 7],
+        "rotation": [0, 0, 0],
+        "scale": [1, 1, 1]
+      },
+      "visible": true
+    },
+    "entity/starter-stage/sun-target": {
+      "children": [],
+      "components": {},
+      "id": "entity/starter-stage/sun-target",
+      "kind": "empty",
+      "metadata": {},
+      "name": "Key Light Target",
+      "parentId": "entity/starter-stage/world",
+      "scriptIds": [],
+      "tags": ["lighting", "starter"],
+      "transform": {
+        "position": [0, 1.2, 0],
+        "rotation": [0, 0, 0],
+        "scale": [1, 1, 1]
+      },
+      "visible": true
+    },
+    "entity/starter-stage/world": {
+      "children": [
+        "entity/starter-stage/ground",
+        "entity/starter-stage/composition",
+        "entity/starter-stage/sun-target"
+      ],
+      "components": {},
+      "id": "entity/starter-stage/world",
+      "kind": "group",
+      "metadata": {},
+      "name": "World",
+      "parentId": null,
+      "scriptIds": [],
+      "tags": ["environment", "starter"],
+      "transform": {
+        "position": [0, 0, 0],
+        "rotation": [0, 0, 0],
+        "scale": [1, 1, 1]
+      },
+      "visible": true
+    }
+  },
+  "id": "scene/starter-stage",
+  "metadata": {
+    "description": "A compact WebGPU lighting and shadow starter stage."
+  },
+  "name": "Starter Stage",
+  "rootEntityIds": [
+    "entity/starter-stage/world",
+    "entity/starter-stage/camera",
+    "entity/starter-stage/sun",
+    "entity/starter-stage/ambient-light"
+  ],
+  "scriptIds": [],
+  "settings": {
+    "activeCameraId": "entity/starter-stage/camera",
+    "background": {
+      "color": [0.012, 0.021, 0.038],
+      "colorSpace": "linear-srgb",
+      "mode": "color"
+    },
+    "environment": null,
+    "fog": {
+      "color": [0.012, 0.021, 0.038],
+      "far": 46,
+      "mode": "linear",
+      "near": 20
+    }
+  }
+}

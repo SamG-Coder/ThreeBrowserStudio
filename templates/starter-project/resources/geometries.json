@@ -1,0 +1,72 @@
+{
+  "geometry/starter-stage/beacon-box": {
+    "id": "geometry/starter-stage/beacon-box",
+    "kind": "geometry",
+    "metadata": {},
+    "name": "Beacon Box",
+    "recipe": {
+      "depth": 1.15,
+      "depthSegments": 1,
+      "height": 2.2,
+      "heightSegments": 1,
+      "kind": "box",
+      "width": 1.15,
+      "widthSegments": 1
+    }
+  },
+  "geometry/starter-stage/ground-plane": {
+    "id": "geometry/starter-stage/ground-plane",
+    "kind": "geometry",
+    "metadata": {},
+    "name": "Ground Plane",
+    "recipe": {
+      "height": 24,
+      "heightSegments": 1,
+      "kind": "plane",
+      "width": 30,
+      "widthSegments": 1
+    }
+  },
+  "geometry/starter-stage/hero-torus-knot": {
+    "id": "geometry/starter-stage/hero-torus-knot",
+    "kind": "geometry",
+    "metadata": {},
+    "name": "Hero Torus Knot",
+    "recipe": {
+      "kind": "torusKnot",
+      "p": 2,
+      "q": 3,
+      "radialSegments": 16,
+      "radius": 1.35,
+      "tube": 0.38,
+      "tubularSegments": 128
+    }
+  },
+  "geometry/starter-stage/orb-sphere": {
+    "id": "geometry/starter-stage/orb-sphere",
+    "kind": "geometry",
+    "metadata": {},
+    "name": "Orb Sphere",
+    "recipe": {
+      "heightSegments": 24,
+      "kind": "sphere",
+      "radius": 0.7,
+      "widthSegments": 48
+    }
+  },
+  "geometry/starter-stage/plinth-cylinder": {
+    "id": "geometry/starter-stage/plinth-cylinder",
+    "kind": "geometry",
+    "metadata": {},
+    "name": "Plinth Cylinder",
+    "recipe": {
+      "height": 0.5,
+      "heightSegments": 1,
+      "kind": "cylinder",
+      "openEnded": false,
+      "radialSegments": 64,
+      "radiusBottom": 2.55,
+      "radiusTop": 2.4
+    }
+  }
+}

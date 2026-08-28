@@ -1,0 +1,201 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://threebrowser.studio/schemas/graphs.schema.json",
+  "title": "ThreeBrowser Studio graph v1",
+  "oneOf": [
+    { "$ref": "#/$defs/shaderGraph" },
+    { "$ref": "#/$defs/textureGraph" },
+    { "$ref": "#/$defs/blueprintGraph" }
+  ],
+  "$defs": {
+    "stableId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,127}$"
+    },
+    "portRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodeId", "port"],
+      "properties": {
+        "nodeId": { "$ref": "#/$defs/stableId" },
+        "port": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z_][A-Za-z0-9_ .-]{0,63}$" }
+      }
+    },
+    "textureOutputRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodeId", "port", "colorSpace"],
+      "properties": {
+        "nodeId": { "$ref": "#/$defs/stableId" },
+        "port": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z_][A-Za-z0-9_ .-]{0,63}$" },
+        "colorSpace": { "enum": ["srgb", "none"] }
+      }
+    },
+    "nodeLayout": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "position": {
+          "type": "array",
+          "prefixItems": [
+            { "type": "number", "minimum": -1000000, "maximum": 1000000 },
+            { "type": "number", "minimum": -1000000, "maximum": 1000000 }
+          ],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "dimensions": {
+          "type": "array",
+          "prefixItems": [
+            { "type": "number", "minimum": 0, "maximum": 8192 },
+            { "type": "number", "minimum": 0, "maximum": 8192 }
+          ],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "width": { "type": "number", "minimum": 0, "maximum": 8192 },
+        "label": { "type": "string", "maxLength": 256 },
+        "parentFrameId": { "$ref": "#/$defs/stableId" },
+        "collapsed": { "type": "boolean" },
+        "color": {
+          "type": "array",
+          "prefixItems": [
+            { "type": "number", "minimum": 0, "maximum": 1 },
+            { "type": "number", "minimum": 0, "maximum": 1 },
+            { "type": "number", "minimum": 0, "maximum": 1 }
+          ],
+          "items": false,
+          "minItems": 3,
+          "maxItems": 3
+        }
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "params"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "type": { "type": "string", "minLength": 1, "maxLength": 96 },
+        "params": { "type": "object", "maxProperties": 64 },
+        "inputs": {
+          "type": "object",
+          "maxProperties": 64,
+          "description": "Unlinked typed socket values. Linked sockets are represented by graph edges."
+        },
+        "layout": { "$ref": "#/$defs/nodeLayout" }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "$ref": "#/$defs/portRef" },
+        "to": { "$ref": "#/$defs/portRef" }
+      }
+    },
+    "baseProperties": {
+      "formatVersion": { "const": 1 },
+      "id": { "$ref": "#/$defs/stableId" },
+      "nodes": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/node" } },
+      "edges": { "type": "array", "maxItems": 1024, "items": { "$ref": "#/$defs/edge" } }
+    },
+    "shaderGraph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["formatVersion", "id", "domain", "nodes", "edges", "outputs"],
+      "properties": {
+        "formatVersion": { "const": 1 },
+        "id": { "$ref": "#/$defs/stableId" },
+        "domain": { "const": "shader" },
+        "nodes": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/node" } },
+        "edges": { "type": "array", "maxItems": 1024, "items": { "$ref": "#/$defs/edge" } },
+        "outputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "surface": { "$ref": "#/$defs/portRef" },
+            "baseColor": { "$ref": "#/$defs/portRef" },
+            "roughness": { "$ref": "#/$defs/portRef" },
+            "metalness": { "$ref": "#/$defs/portRef" },
+            "normal": { "$ref": "#/$defs/portRef" },
+            "emissive": { "$ref": "#/$defs/portRef" },
+            "opacity": { "$ref": "#/$defs/portRef" },
+            "alphaTest": { "$ref": "#/$defs/portRef" },
+            "positionOffset": { "$ref": "#/$defs/portRef" }
+          }
+        }
+      }
+    },
+    "textureSettings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seed", "resolution", "wrapS", "wrapT", "minFilter", "magFilter", "mode"],
+      "properties": {
+        "seed": { "type": "integer", "minimum": 0, "maximum": 2147483647 },
+        "resolution": {
+          "type": "array",
+          "prefixItems": [
+            { "type": "integer", "minimum": 1, "maximum": 4096 },
+            { "type": "integer", "minimum": 1, "maximum": 4096 }
+          ],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "wrapS": { "enum": ["clamp", "repeat", "mirror"] },
+        "wrapT": { "enum": ["clamp", "repeat", "mirror"] },
+        "minFilter": { "enum": ["nearest", "linear", "nearestMipmapNearest", "nearestMipmapLinear", "linearMipmapNearest", "linearMipmapLinear"] },
+        "magFilter": { "enum": ["nearest", "linear"] },
+        "mode": { "enum": ["interactive", "bake"] }
+      }
+    },
+    "textureGraph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["formatVersion", "id", "domain", "nodes", "edges", "outputs", "settings"],
+      "properties": {
+        "formatVersion": { "const": 1 },
+        "id": { "$ref": "#/$defs/stableId" },
+        "domain": { "const": "texture" },
+        "nodes": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/node" } },
+        "edges": { "type": "array", "maxItems": 1024, "items": { "$ref": "#/$defs/edge" } },
+        "outputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "albedo": { "$ref": "#/$defs/textureOutputRef" },
+            "emissive": { "$ref": "#/$defs/textureOutputRef" },
+            "normal": { "$ref": "#/$defs/textureOutputRef" },
+            "roughness": { "$ref": "#/$defs/textureOutputRef" },
+            "metalness": { "$ref": "#/$defs/textureOutputRef" },
+            "height": { "$ref": "#/$defs/textureOutputRef" },
+            "mask": { "$ref": "#/$defs/textureOutputRef" },
+            "data": { "$ref": "#/$defs/textureOutputRef" }
+          }
+        },
+        "settings": { "$ref": "#/$defs/textureSettings" }
+      }
+    },
+    "blueprintGraph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["formatVersion", "id", "domain", "nodes", "edges", "outputs"],
+      "properties": {
+        "formatVersion": { "const": 1 },
+        "id": { "$ref": "#/$defs/stableId" },
+        "domain": { "const": "blueprint" },
+        "nodes": { "type": "array", "maxItems": 256, "items": { "$ref": "#/$defs/node" } },
+        "edges": { "type": "array", "maxItems": 1024, "items": { "$ref": "#/$defs/edge" } },
+        "outputs": { "type": "object", "additionalProperties": false, "maxProperties": 0 }
+      }
+    }
+  }
+}

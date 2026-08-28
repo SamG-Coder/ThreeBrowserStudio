@@ -1,0 +1,9 @@
+[mcp_servers.threebrowser-studio]
+command = "node"
+args = [
+  "C:\\path\\to\\ThreeBrowserStudio\\src\\mcp\\server.mjs",
+]
+cwd = "C:\\path\\to\\ThreeBrowserStudio"
+startup_timeout_sec = 10
+tool_timeout_sec = 120
+default_tools_approval_mode = "writes"

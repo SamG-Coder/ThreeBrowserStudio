@@ -1,0 +1,41 @@
+{
+  "name": "threebrowser-studio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "LLM-first Three.js WebGPU scene and animation authoring runtime with a persistent native viewport and typed MCP editing",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SamG-Coder/ThreeBrowserStudio.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SamG-Coder/ThreeBrowserStudio/issues"
+  },
+  "homepage": "https://github.com/SamG-Coder/ThreeBrowserStudio#readme",
+  "keywords": [
+    "threejs",
+    "webgpu",
+    "mcp",
+    "llm",
+    "shader-graph"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "mcp": "node src/mcp/server.mjs",
+    "call": "node scripts/studio-call.mjs",
+    "launch": "node scripts/launch.mjs",
+    "tutorial:blender": "node scripts/run-blender-fundamentals.mjs",
+    "tutorial:blender:modeling": "node scripts/run-blender-modeling-reference.mjs",
+    "tutorial:blender:shading": "node scripts/run-blender-shading-reference.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.0.0",
+    "acorn": "8.15.0",
+    "acorn-walk": "8.3.4",
+    "zod": "4.2.1"
+  }
+}

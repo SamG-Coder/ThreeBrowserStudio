@@ -1,0 +1,30 @@
+node_modules/
+
+# Secrets and machine-local configuration
+.env
+.env.*
+!.env.example
+.npmrc
+*.pem
+*.key
+*.pfx
+*.p12
+.studio-local.json
+.studio-session.json
+.studio/
+
+# Generated projects and evidence
+projects/
+artifacts/
+coverage/
+dist/
+build/
+*.tgz
+*.log
+*.tmp
+
+# Editor and operating-system metadata
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

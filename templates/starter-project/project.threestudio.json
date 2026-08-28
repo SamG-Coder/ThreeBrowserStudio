@@ -1,0 +1,75 @@
+{
+  "activeSceneId": "scene/starter-stage",
+  "documentHash": "ff31694847737414dd276de46f7c8cb42ea1e64fe03c2f994a62dcc1be835794",
+  "exportSettings": {},
+  "formatVersion": 1,
+  "kind": "ThreeStudioProjectManifest",
+  "metadata": {
+    "createdAt": "2026-08-28T00:00:00.000Z",
+    "description": "Lean WebGPU starter stage with a lit primitive composition and soft shadows.",
+    "updatedAt": "2026-08-28T00:00:00.000Z"
+  },
+  "name": "Starter Project",
+  "projectId": "project/starter-project",
+  "protocolVersion": "three-studio/1",
+  "resourceIndex": {
+    "animations": {
+      "count": 0,
+      "hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "path": "resources/animations.json"
+    },
+    "assets": {
+      "count": 0,
+      "hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "path": "resources/assets.json"
+    },
+    "audio": {
+      "count": 0,
+      "hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "path": "resources/audio.json"
+    },
+    "geometries": {
+      "count": 5,
+      "hash": "fa73aefcbd6f7a5f0db2de768384f6b842f99259fe79b672b7cce18aea6430b0",
+      "path": "resources/geometries.json"
+    },
+    "graphs": {
+      "count": 0,
+      "hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "path": "resources/graphs.json"
+    },
+    "materials": {
+      "count": 5,
+      "hash": "7e0051ab2aba51fad46232f61f67a3e79f9e0a30fee85dd1dde86a204ba9a804",
+      "path": "resources/materials.json"
+    },
+    "prefabs": {
+      "count": 0,
+      "hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "path": "resources/prefabs.json"
+    },
+    "textures": {
+      "count": 0,
+      "hash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "path": "resources/textures.json"
+    }
+  },
+  "revision": 0,
+  "savedRevision": 0,
+  "sceneIndex": [
+    {
+      "hash": "9d165f097410de171d5f524b3b580b026311225fad2fc7f976af19e2a4c2af1b",
+      "id": "scene/starter-stage",
+      "path": "scenes/scene_2Fstarter-stage.scene.json"
+    }
+  ],
+  "sceneOrder": ["scene/starter-stage"],
+  "scriptTrustPolicy": "agent-safe",
+  "scripts": {},
+  "settings": {
+    "angleUnit": "radian",
+    "lengthUnit": "metre",
+    "timeUnit": "second",
+    "workingColorSpace": "linear-srgb"
+  }
+}

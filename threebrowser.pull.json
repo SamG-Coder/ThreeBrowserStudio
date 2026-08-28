@@ -1,0 +1,32 @@
+{
+  "format": 2,
+  "projectId": "threebrowser-studio",
+  "virtualURL": "https://threebrowser-studio.runtime.threebrowser.local/",
+  "source": "https://threebrowser-studio.runtime.threebrowser.local/",
+  "entry": "site-entry.mjs",
+  "requiresWebGPU": true,
+  "displayName": "ThreeBrowser Studio",
+  "files": [
+    {
+      "url": "https://threebrowser-studio.runtime.threebrowser.local/site-entry.mjs",
+      "path": "site-entry.mjs",
+      "type": "module",
+      "bytes": 0
+    }
+  ],
+  "compatibility": {
+    "threeImportable": true,
+    "bundledThree": false,
+    "threeMode": "importable",
+    "rendererCandidates": ["webgpu"],
+    "canvasOnly": true,
+    "uiMode": "canvas-only",
+    "htmlOverlay": false,
+    "domRequired": false,
+    "notes": [
+      "Standalone LLM-first Studio; ThreeBrowser Runtime supplies native WebGPU and Three.js.",
+      "The persistent native viewport is controlled through the local authenticated MCP bridge.",
+      "No general HTML/CSS editor UI is required."
+    ]
+  }
+}

@@ -1,0 +1,161 @@
+import * as THREE from "three/webgpu";
+import * as TSL from "three/tsl";
+import { createBootstrapScene } from "./bootstrap-scene.mjs";
+import { createFrameCapture } from "./frame-capture.mjs";
+import { updateCameraAspect } from "./camera-projection.mjs";
+import { createReviewControls } from "./review-controls.mjs";
+import { startStudioApplication } from "../runtime/studio-application.mjs";
+
+document.title = "ThreeBrowser Studio — waiting for project";
+
+async function main() {
+  const renderer = new THREE.WebGPURenderer({
+    antialias: true,
+    powerPreference: "high-performance",
+    trackTimestamp: true,
+  });
+  renderer.setPixelRatio(Math.max(1, Number(globalThis.devicePixelRatio || 1)));
+  renderer.setSize(Math.max(1, innerWidth), Math.max(1, innerHeight));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.setClearColor(0x0d1118, 1);
+  renderer.domElement.style.position = "fixed";
+  renderer.domElement.style.inset = "0";
+  renderer.domElement.style.width = "100%";
+  renderer.domElement.style.height = "100%";
+  renderer.domElement.style.touchAction = "none";
+  document.body.appendChild(renderer.domElement);
+  await renderer.init();
+
+  if (!renderer.backend?.isWebGPUBackend) {
+    throw new Error("Studio could not initialize the native WebGPU backend.");
+  }
+  renderer.backend.device?.addEventListener?.("uncapturederror", event => {
+    console.error("[ThreeBrowser Studio WebGPU]", event.error?.message || event.error || event);
+  });
+
+  const scene = new THREE.Scene();
+  scene.name = "ThreeBrowser Studio live stage";
+  scene.background = new THREE.Color(0x0d1118);
+  scene.fog = new THREE.FogExp2(0x0d1118, 0.018);
+  scene.userData.renderer = renderer;
+
+  const camera = new THREE.PerspectiveCamera(
+    46,
+    Math.max(1, innerWidth) / Math.max(1, innerHeight),
+    0.05,
+    2000,
+  );
+  camera.name = "Studio review camera";
+  camera.position.set(8.5, 6.2, 10.5);
+  camera.lookAt(0, 1.8, 0);
+
+  const controls = createReviewControls(camera, renderer.domElement, {
+    target: new THREE.Vector3(0, 1.8, 0),
+    minDistance: 1.2,
+    maxDistance: 800,
+  });
+
+  const bootstrap = createBootstrapScene();
+  scene.add(bootstrap.root);
+  let renderCamera = camera;
+  const capture = createFrameCapture({ renderer, scene, getCamera: () => renderCamera });
+  const started = performance.now() * 0.001;
+  let application = null;
+
+  function resize() {
+    const width = Math.max(1, innerWidth);
+    const height = Math.max(1, innerHeight);
+    updateCameraAspect(renderCamera, width / height);
+    renderer.setSize(width, height);
+  }
+
+  let disposed = false;
+  async function dispose() {
+    if (disposed) return;
+    disposed = true;
+    renderer.setAnimationLoop(null);
+    globalThis.removeEventListener("resize", resize);
+    await application?.dispose();
+    capture.dispose();
+    controls.dispose();
+    bootstrap.dispose();
+    scene.clear();
+    renderer.dispose();
+  }
+
+  const viewportApi = Object.freeze({
+    renderer,
+    scene,
+    camera,
+    controls,
+    get renderCamera() {
+      return renderCamera;
+    },
+    setRenderCamera(nextCamera) {
+      renderCamera = nextCamera ?? camera;
+      resize();
+    },
+    capture: capture.capture,
+    async focusBounds(bounds) {
+      const centre = new THREE.Vector3();
+      const size = new THREE.Vector3();
+      bounds.getCenter(centre);
+      bounds.getSize(size);
+      const radius = Math.max(0.5, size.length() * 0.5);
+      controls.target.copy(centre);
+      camera.position.copy(centre).add(new THREE.Vector3(1, 0.72, 1.2).normalize().multiplyScalar(radius * 2.6));
+      camera.near = Math.max(0.01, radius / 1000);
+      camera.far = Math.max(200, radius * 40);
+      camera.updateProjectionMatrix();
+      controls.syncFromCamera();
+      renderCamera = camera;
+    },
+    setTitle({ project = "waiting for project", scene: sceneName = "", revision = 0, dirty = false } = {}) {
+      document.title = `ThreeBrowser Studio — ${project}${sceneName ? ` / ${sceneName}` : ""} — r${revision}${dirty ? " *" : ""}`;
+    },
+    dispose,
+  });
+  globalThis.__THREE_STUDIO_VIEWPORT__ = viewportApi;
+
+  try {
+    application = await startStudioApplication({
+      THREE,
+      TSL,
+      viewport: viewportApi,
+      bootstrap,
+    });
+  } catch (error) {
+    await dispose();
+    throw error;
+  }
+  globalThis.__THREE_STUDIO_APPLICATION__ = application;
+
+  globalThis.addEventListener("resize", resize);
+  globalThis.addEventListener("beforeunload", () => { void dispose(); }, { once: true });
+  resize();
+  let previousFrame = performance.now() * 0.001;
+  renderer.setAnimationLoop(() => {
+    if (disposed) return;
+    const now = performance.now() * 0.001;
+    const elapsed = now - started;
+    const delta = Math.min(0.1, Math.max(0, now - previousFrame));
+    previousFrame = now;
+    if (bootstrap.root.parent) bootstrap.update(elapsed);
+    application?.update(delta);
+    if (renderCamera === camera) controls.update(delta);
+    renderer.setRenderTarget(null);
+    renderer.setMRT(null);
+    renderer.render(scene, renderCamera);
+  });
+
+  console.log("[ThreeBrowser Studio] persistent WebGPU viewport ready");
+}
+
+main().catch(error => {
+  console.error("[ThreeBrowser Studio]", error);
+  throw error;
+});

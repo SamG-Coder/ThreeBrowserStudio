@@ -1,0 +1,996 @@
+import { lstat, readFile, readdir, rm, stat } from 'node:fs/promises';
+import path from 'node:path';
+import {
+  AtomicProjectStore,
+  AuthoringKernel,
+  ProjectIndex,
+  PROTOCOL_VERSION,
+  StudioError,
+  atomicWriteJson,
+  contentHash,
+  createProjectDocument,
+  supportedOperationTypes,
+  validateProjectDocument,
+} from '../core/index.mjs';
+import {
+  createLiveBridgeServer,
+  createSessionCredentials,
+  createSessionMarker,
+  defaultSessionMarkerPath,
+  readSessionMarker,
+  secureSessionMarkerDirectory,
+  writeSessionMarker,
+} from '../bridge/index.mjs';
+import {
+  BLENDER_SHADER_NODE_INVENTORY_SUMMARY,
+  queryBlenderShaderNodeInventory,
+  queryGraphCatalog,
+  validateGraph,
+} from '../graphs/index.mjs';
+import { BLENDER_CATALOG_SUMMARY, queryBlenderCatalog } from '../blender/index.mjs';
+import { TOOL_SCHEMAS } from '../mcp/tool-schemas.mjs';
+import { compileSceneDocument } from './scene-compiler.mjs';
+import { validateAnimationResource } from './animation-runtime.mjs';
+import { frameCameraToBounds } from '../viewport/camera-projection.mjs';
+
+const RESOURCE_OPERATIONS = Object.freeze({
+  'geometry.put': ['geometries', 'put'],
+  'geometry.delete': ['geometries', 'delete'],
+  'material.put': ['materials', 'put'],
+  'material.delete': ['materials', 'delete'],
+  'texture.put': ['textures', 'put'],
+  'texture.delete': ['textures', 'delete'],
+  'graph.put': ['graphs', 'put'],
+  'graph.patch': ['graphs', 'patch'],
+  'graph.delete': ['graphs', 'delete'],
+  'animation.put': ['animations', 'put'],
+  'animation.delete': ['animations', 'delete'],
+  'prefab.put': ['prefabs', 'put'],
+  'prefab.delete': ['prefabs', 'delete'],
+});
+
+const DIRECT_CORE_OPERATIONS = new Set([
+  'scene.create', 'scene.patch', 'scene.delete', 'scene.setActive',
+  'scene.settings.patch', 'scene.setActiveCamera',
+  'entity.create', 'entity.patch', 'entity.duplicate', 'entity.reparent', 'entity.delete',
+  'resource.create', 'resource.patch', 'resource.delete',
+]);
+
+function isRecord(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function required(value, label) {
+  if (value === undefined || value === null || value === '') throw new StudioError('invalid_operation', `${label} is required.`);
+  return value;
+}
+
+function without(value, keys) {
+  return Object.fromEntries(Object.entries(value).filter(([key]) => !keys.includes(key)));
+}
+
+function pathIsInside(root, candidate) {
+  const relative = path.relative(root, candidate);
+  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+}
+
+function parseToolParams(method, params) {
+  const schema = TOOL_SCHEMAS[method];
+  if (!schema) throw new StudioError('method_not_found', `Unknown Studio method ${method}.`);
+  const parsed = schema.safeParse(params);
+  if (!parsed.success) {
+    throw new StudioError('invalid_request', `Invalid ${method} request.`, {
+      diagnostics: parsed.error.issues.map(issue => ({
+        code: issue.code,
+        path: issue.path.join('.'),
+        message: issue.message,
+      })),
+    });
+  }
+  return parsed.data;
+}
+
+function resourceOperation(operation, document) {
+  const [resourceType, action] = RESOURCE_OPERATIONS[operation.op];
+  const data = operation.data ?? {};
+  const resourceId = required(operation.targetId ?? data.resourceId ?? data.id ?? data.resource?.id, `${operation.op}.targetId`);
+  if (action === 'delete') return { type: 'resource.delete', resourceType, resourceId };
+  if (action === 'patch') return {
+    type: 'resource.patch',
+    resourceType,
+    resourceId,
+    patch: data.patch ?? without(data, ['resourceId']),
+  };
+  const source = data.resource ?? data.value ?? data;
+  const resource = { ...source, id: resourceId };
+  if (resourceType === 'graphs' && resource.graph) {
+    const result = validateGraph(resource.graph);
+    if (!result.valid) throw new StudioError('graph_validation_failed', `Graph ${resourceId} is invalid.`, { diagnostics: result.diagnostics });
+    resource.graph = result.graph;
+  }
+  if (document.resources?.[resourceType]?.[resourceId]) {
+    return { type: 'resource.patch', resourceType, resourceId, patch: without(resource, ['id']) };
+  }
+  return { type: 'resource.create', resourceType, resource, ...(operation.alias ? { alias: operation.alias } : {}) };
+}
+
+export function translateToolOperation(operation, document) {
+  const data = operation.data ?? {};
+  if (DIRECT_CORE_OPERATIONS.has(operation.op)) {
+    const direct = structuredClone(operation);
+    if ((direct.op === 'resource.create' && direct.resourceType === 'graphs' && direct.resource?.graph)
+      || (direct.op === 'resource.patch' && direct.resourceType === 'graphs' && direct.patch?.graph)) {
+      const holder = direct.op === 'resource.create' ? direct.resource : direct.patch;
+      const result = validateGraph(holder.graph);
+      if (!result.valid) throw new StudioError('graph_validation_failed', 'Graph resource is invalid.', { diagnostics: result.diagnostics });
+      holder.graph = result.graph;
+    }
+    return direct;
+  }
+  if (RESOURCE_OPERATIONS[operation.op]) return resourceOperation(operation, document);
+  switch (operation.op) {
+    case 'scene.create': {
+      const source = data.scene ?? data;
+      return {
+        type: 'scene.create',
+        scene: { ...source, id: source.id ?? required(operation.targetId, 'scene.create.targetId') },
+        ...(data.index === undefined ? {} : { index: data.index }),
+        ...(operation.alias ? { alias: operation.alias } : {}),
+      };
+    }
+    case 'scene.patch': return {
+      type: 'scene.patch',
+      sceneId: required(operation.targetId ?? data.sceneId, 'scene.patch.targetId'),
+      patch: data.patch ?? without(data, ['sceneId']),
+    };
+    case 'scene.delete': return {
+      type: 'scene.delete',
+      sceneId: required(operation.targetId ?? data.sceneId, 'scene.delete.targetId'),
+      ...(operation.expectedHash || data.expectedSceneHash ? { expectedSceneHash: operation.expectedHash ?? data.expectedSceneHash } : {}),
+    };
+    case 'scene.active.set': return {
+      type: 'scene.setActive',
+      sceneId: required(operation.targetId ?? data.sceneId, 'scene.active.set.targetId'),
+    };
+    case 'scene.activeCamera.set': return {
+      type: 'scene.setActiveCamera',
+      sceneId: data.sceneId ?? document.activeSceneId,
+      cameraId: operation.targetId ?? data.cameraId ?? null,
+    };
+    case 'entity.create': {
+      const source = data.entity ?? without(data, ['sceneId', 'index']);
+      return {
+        type: 'entity.create',
+        sceneId: data.sceneId ?? document.activeSceneId,
+        entity: { ...source, id: source.id ?? required(operation.targetId, 'entity.create.targetId') },
+        ...(data.index === undefined ? {} : { index: data.index }),
+        ...(operation.alias ? { alias: operation.alias } : {}),
+      };
+    }
+    case 'entity.patch': return {
+      type: 'entity.patch',
+      entityId: required(operation.targetId ?? data.entityId, 'entity.patch.targetId'),
+      patch: data.patch ?? without(data, ['entityId']),
+    };
+    case 'entity.duplicate': return {
+      type: 'entity.duplicate',
+      entityId: required(operation.targetId ?? data.entityId, 'entity.duplicate.targetId'),
+      ...without(data, ['entityId']),
+      ...(operation.alias ? { alias: operation.alias } : {}),
+    };
+    case 'entity.reparent': return {
+      type: 'entity.reparent',
+      entityId: required(operation.targetId ?? data.entityId, 'entity.reparent.targetId'),
+      parentId: data.parentId ?? null,
+      ...(data.index === undefined ? {} : { index: data.index }),
+    };
+    case 'entity.delete': return {
+      type: 'entity.delete',
+      entityId: required(operation.targetId ?? data.entityId, 'entity.delete.targetId'),
+      recursive: data.recursive === true,
+      ...(operation.expectedHash || data.expectedSubtreeHash ? { expectedSubtreeHash: operation.expectedHash ?? data.expectedSubtreeHash } : {}),
+    };
+    default:
+      throw new StudioError('operation_not_implemented', `${operation.op} is not in the lean v1 authoring slice yet.`, { operation: operation.op });
+  }
+}
+
+function compactEntity(entity, include, { index, compiled, THREE } = {}) {
+  const output = { id: entity.id, name: entity.name, kind: entity.kind, parentId: entity.parentId, visible: entity.visible };
+  if (include.has('tree')) {
+    output.children = [...entity.children];
+    output.subtreeHash = index?.subtreeHash(entity.id);
+  }
+  if (include.has('transform')) output.transform = entity.transform;
+  if (include.has('components')) output.components = entity.components;
+  if (include.has('references')) output.referencesTo = index?.getReferencesTo(entity.id) ?? [];
+  if (include.has('bounds')) {
+    const object = compiled?.objects?.get(entity.id);
+    if (object) {
+      const bounds = new THREE.Box3().setFromObject(object);
+      if (!bounds.isEmpty()) output.bounds = { min: bounds.min.toArray(), max: bounds.max.toArray() };
+    }
+  }
+  if (entity.tags.length) output.tags = entity.tags;
+  return output;
+}
+
+async function pathExists(filePath) {
+  try {
+    await stat(filePath);
+    return true;
+  } catch (error) {
+    if (error.code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
+export class StudioApplication {
+  #THREE;
+  #TSL;
+  #viewport;
+  #bootstrap;
+  #kernel = null;
+  #projectRoot = null;
+  #compiled = null;
+  #prepared = null;
+  #unsubscribe = null;
+  #bridge = null;
+  #credentials;
+  #markerPath;
+  #localStatePath;
+  #heartbeat = null;
+  #markerTail = Promise.resolve();
+  #markerPublished = false;
+  #exclusiveTail = Promise.resolve();
+  #latestEvidence = null;
+  #idempotency = new Map();
+  #mode = 'author';
+  #play = { paused: false, tick: 0, elapsed: 0, latestInput: null };
+  #disposed = false;
+  #viewHash = null;
+
+  constructor({ THREE, TSL, viewport, bootstrap, markerPath, credentials } = {}) {
+    this.#THREE = THREE;
+    this.#TSL = TSL;
+    this.#viewport = viewport;
+    this.#bootstrap = bootstrap;
+    this.#credentials = credentials ?? createSessionCredentials();
+    const studioRoot = process.env.THREE_STUDIO_ROOT ?? process.cwd();
+    this.studioRoot = path.resolve(studioRoot);
+    this.projectsRoot = path.join(this.studioRoot, 'projects');
+    this.#markerPath = path.resolve(markerPath ?? process.env.THREE_STUDIO_SESSION_MARKER ?? defaultSessionMarkerPath());
+    this.#localStatePath = path.join(path.dirname(this.#markerPath), 'studio-state.json');
+  }
+
+  get sessionId() { return this.#credentials.sessionId; }
+  get markerPath() { return this.#markerPath; }
+  get kernel() { return this.#kernel; }
+
+  async start({ projectPath = process.env.THREE_STUDIO_PROJECT } = {}) {
+    await secureSessionMarkerDirectory(path.dirname(this.#markerPath));
+    let rememberedProject = null;
+    if (!projectPath) {
+      try {
+        const state = JSON.parse(await readFile(this.#localStatePath, 'utf8'));
+        if (typeof state.lastProjectPath === 'string' && state.lastProjectPath.length <= 1024) rememberedProject = state.lastProjectPath;
+      } catch (error) {
+        if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) console.warn('[ThreeBrowser Studio state]', error.message);
+      }
+      if (rememberedProject && !(await pathExists(path.join(rememberedProject, 'project.threestudio.json')))) rememberedProject = null;
+    }
+    const initial = path.resolve(projectPath ?? rememberedProject ?? path.join(this.projectsRoot, 'live'));
+    await this.#openOrCreate(initial, { create: true, name: 'Live Studio Project', template: 'starter' });
+    this.#bridge = await createLiveBridgeServer({
+      credentials: this.#credentials,
+      dispatch: (method, params, context) => this.dispatch(method, params, context),
+      onError: error => console.error('[ThreeBrowser Studio bridge]', error.message),
+    });
+    await this.#writeMarker(true, { required: true });
+    this.#heartbeat = setInterval(() => {
+      void this.#writeMarker(true);
+      void this.#writeView();
+    }, 5_000);
+    this.#heartbeat.unref?.();
+    console.log(`[ThreeBrowser Studio] live control: ${this.#credentials.pipePath}`);
+    console.log(`[ThreeBrowser Studio] MCP marker: ${this.#markerPath}`);
+    return this;
+  }
+
+  #aspect() {
+    const canvas = this.#viewport.renderer.domElement;
+    return Math.max(1, canvas.width || innerWidth) / Math.max(1, canvas.height || innerHeight);
+  }
+
+  async #compile(document) {
+    const compiled = compileSceneDocument({ THREE: this.#THREE, TSL: this.#TSL, project: document, aspect: this.#aspect() });
+    const errors = compiled.diagnostics.filter(item => item.severity === 'error');
+    if (errors.length) {
+      compiled.dispose();
+      throw new StudioError('runtime_compile_failed', 'The candidate scene did not compile.', { diagnostics: errors });
+    }
+    if (typeof this.#viewport.renderer.compileAsync === 'function' && compiled.activeCamera) {
+      const stagingScene = new this.#THREE.Scene();
+      stagingScene.add(compiled.root);
+      try {
+        await this.#viewport.renderer.compileAsync(stagingScene, compiled.activeCamera);
+      } catch (error) {
+        compiled.dispose();
+        throw new StudioError('runtime_pipeline_failed', 'WebGPU pipeline preparation failed.', {
+          diagnostics: [{ severity: 'error', code: 'runtime_pipeline_failed', message: error.message }],
+        });
+      } finally {
+        compiled.root.removeFromParent();
+      }
+    }
+    return compiled;
+  }
+
+  async #prepare(document, context = {}) {
+    const candidate = await this.#compile(document);
+    if (context.dryRun === true) {
+      candidate.dispose();
+      return;
+    }
+    this.#prepared?.dispose();
+    this.#prepared = candidate;
+  }
+
+  async #swapPrepared({ immediate = false } = {}) {
+    const next = this.#prepared;
+    if (!next) return;
+    this.#prepared = null;
+    if (!immediate) await new Promise(resolve => (globalThis.requestAnimationFrame ?? (callback => setTimeout(callback, 0)))(resolve));
+    this.#bootstrap?.dispose();
+    this.#bootstrap = null;
+    this.#viewport.scene.add(next.root);
+    this.#viewport.scene.background = next.background;
+    this.#viewport.scene.fog = next.fog;
+    this.#viewport.setRenderCamera(next.activeCamera ?? this.#viewport.camera);
+    const previous = this.#compiled;
+    this.#compiled = next;
+    if (this.#mode !== 'play') {
+      for (const action of next.animationRuntime?.actions.values() ?? []) {
+        next.animationRuntime.pause(action.id);
+      }
+    }
+    previous?.dispose();
+    const document = this.#kernel.document;
+    const scene = document.scenes[document.activeSceneId];
+    this.#viewport.setTitle({ project: document.name, scene: scene?.name, revision: document.revision, dirty: this.#kernel.dirty });
+    if (this.#bridge) await this.#writeMarker(true);
+  }
+
+  #viewSnapshot() {
+    if (!this.#kernel) return null;
+    const reviewCamera = this.#viewport.camera;
+    return {
+      kind: 'ThreeStudioView',
+      version: 1,
+      projectId: this.#kernel.projectId,
+      reviewCamera: {
+        position: reviewCamera.position.toArray(),
+        quaternion: reviewCamera.quaternion.toArray(),
+        target: this.#viewport.controls.target.toArray(),
+      },
+      renderCameraId: this.#viewport.renderCamera?.userData?.studioEntityId ?? 'review-camera',
+      latestEvidence: this.#latestEvidence,
+    };
+  }
+
+  async #writeView() {
+    const view = this.#viewSnapshot();
+    if (!view || !this.#kernel?.store) return;
+    const hash = contentHash(view);
+    if (hash === this.#viewHash) return;
+    await this.#kernel.store.writeView(view);
+    this.#viewHash = hash;
+  }
+
+  #restoreView(view) {
+    if (!isRecord(view) || view.kind !== 'ThreeStudioView' || view.projectId !== this.#kernel.projectId) return;
+    const cameraState = view.reviewCamera;
+    const finiteArray = (value, length) => Array.isArray(value) && value.length === length && value.every(Number.isFinite);
+    if (isRecord(cameraState)
+        && finiteArray(cameraState.position, 3)
+        && finiteArray(cameraState.quaternion, 4)
+        && finiteArray(cameraState.target, 3)) {
+      this.#viewport.camera.position.fromArray(cameraState.position);
+      this.#viewport.camera.quaternion.fromArray(cameraState.quaternion);
+      this.#viewport.controls.target.fromArray(cameraState.target);
+      this.#viewport.camera.updateMatrixWorld(true);
+      this.#viewport.controls.syncFromCamera();
+    }
+    const authoredCamera = view.renderCameraId === 'review-camera'
+      ? this.#viewport.camera
+      : this.#compiled?.objects.get(view.renderCameraId);
+    if (authoredCamera?.isCamera) this.#viewport.setRenderCamera(authoredCamera);
+    if (isRecord(view.latestEvidence)) this.#latestEvidence = view.latestEvidence;
+    this.#viewHash = contentHash(view);
+  }
+
+  async #attachKernel(kernel, projectRoot) {
+    const candidate = await this.#compile(kernel.document);
+    const view = await kernel.store?.readView().catch(() => ({})) ?? {};
+    await this.#writeView().catch(error => console.warn('[ThreeBrowser Studio view]', error.message));
+    const previousUnsubscribe = this.#unsubscribe;
+    previousUnsubscribe?.();
+    this.#prepared?.dispose();
+    this.#prepared = candidate;
+    this.#kernel = kernel;
+    this.#projectRoot = projectRoot;
+    this.#unsubscribe = kernel.subscribe(async () => this.#swapPrepared());
+    await this.#swapPrepared({ immediate: true });
+    this.#restoreView(view);
+    await atomicWriteJson(this.#localStatePath, {
+      kind: 'ThreeStudioLocalState',
+      version: 1,
+      lastProjectPath: this.#projectRoot,
+    }).catch(error => console.warn('[ThreeBrowser Studio state]', error.message));
+  }
+
+  async #openOrCreate(projectRoot, { create = false, name = 'Untitled Project', template = null, mustBeNew = false } = {}) {
+    const root = path.resolve(projectRoot);
+    const manifest = path.join(root, 'project.threestudio.json');
+    let kernel;
+    if (await pathExists(manifest)) {
+      if (mustBeNew) throw new StudioError('project_exists', `A Studio project already exists at ${root}.`);
+      ({ kernel } = await AuthoringKernel.open(root, { prepare: (document, context) => this.#prepare(document, context) }));
+    } else {
+      if (!create) throw new StudioError('project_not_found', `No Studio project exists at ${root}.`);
+      if (mustBeNew && await pathExists(root)) {
+        if ((await lstat(root)).isSymbolicLink()) throw new StudioError('project_symlink', 'Project destinations cannot be symbolic links.', { path: root });
+        const entries = await readdir(root);
+        if (entries.length > 0) {
+          throw new StudioError('project_destination_not_empty', 'A new project requires an empty destination inside the managed projects directory.', { path: root });
+        }
+      }
+      const store = new AtomicProjectStore(root);
+      const projectId = `project/${path.basename(root).toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'untitled'}`;
+      let created;
+      if (template === 'starter') {
+        const templateStore = new AtomicProjectStore(path.join(this.studioRoot, 'templates', 'starter-project'));
+        const loaded = await templateStore.load();
+        created = createProjectDocument({ ...loaded.document, projectId, name, revision: 0, savedRevision: 0 });
+      } else created = createProjectDocument({ projectId, name });
+      const saved = await store.save(created);
+      kernel = new AuthoringKernel(saved.document, { store, prepare: (document, context) => this.#prepare(document, context) });
+    }
+    await this.#attachKernel(kernel, root);
+    return kernel.status();
+  }
+
+  #managedProjectPath(requestedPath) {
+    const resolved = path.isAbsolute(requestedPath)
+      ? path.resolve(requestedPath)
+      : path.resolve(this.projectsRoot, requestedPath);
+    if (!pathIsInside(this.projectsRoot, resolved)) {
+      throw new StudioError('project_path_forbidden', 'MCP project paths must remain inside the managed projects directory.', {
+        projectsRoot: this.projectsRoot,
+      });
+    }
+    return resolved;
+  }
+
+  #assertSession(params) {
+    if (params.sessionId !== undefined && params.sessionId !== this.sessionId) throw new StudioError('session_mismatch', 'Request targets another Studio session.');
+  }
+
+  #assertTarget(params, { requireActiveScene = false } = {}) {
+    if (params.projectId !== undefined && params.projectId !== this.#kernel.projectId) {
+      throw new StudioError('project_mismatch', `Active project is ${this.#kernel.projectId}.`);
+    }
+    if (params.sceneId !== undefined) {
+      if (!this.#kernel.document.scenes[params.sceneId]) throw new StudioError('scene_not_found', `Scene ${params.sceneId} does not exist.`);
+      if (requireActiveScene && params.sceneId !== this.#kernel.document.activeSceneId) {
+        throw new StudioError('scene_not_active', 'The lean renderer only captures the active compiled scene.');
+      }
+    }
+  }
+
+  #assertNotAborted(signal) {
+    if (signal?.aborted) throw signal.reason ?? new StudioError('cancelled', 'Studio request was cancelled before execution.');
+  }
+
+  #exclusive(work) {
+    const result = this.#exclusiveTail.then(work, work);
+    this.#exclusiveTail = result.catch(() => {});
+    return result;
+  }
+
+  status() {
+    const status = this.#kernel.status();
+    return {
+      success: true,
+      protocolVersion: PROTOCOL_VERSION,
+      sessionId: this.sessionId,
+      pid: process.pid,
+      projectPath: this.#projectRoot,
+      ...status,
+      sceneId: status.activeSceneId,
+      mode: this.#mode,
+      play: {
+        ...this.#play,
+        simulation: 'animation-only',
+        actions: this.#compiled?.animationStates() ?? [],
+      },
+      viewport: {
+        ready: true,
+        renderer: 'webgpu',
+        cameraId: this.#viewport.renderCamera?.userData?.studioEntityId ?? 'review-camera',
+      },
+      capabilities: {
+        webgpu: this.#viewport.renderer.backend?.isWebGPUBackend === true,
+        shadows: this.#viewport.renderer.shadowMap.enabled === true,
+        rtx: Boolean(this.#viewport.renderer.userData?.rtx),
+        liveSceneCompilation: true,
+        behaviorRuntime: false,
+        graphCompilation: Boolean(this.#TSL),
+        graphRuntime: this.#TSL ? 'three-tsl-webgpu' : null,
+        proceduralTextureBake: true,
+        graphValidation: true,
+        blenderShaderNodes: BLENDER_SHADER_NODE_INVENTORY_SUMMARY,
+        blenderCatalog: true,
+        blenderCatalogSummary: BLENDER_CATALOG_SUMMARY,
+        animationRuntime: Boolean(this.#compiled?.animationRuntime),
+        animationActions: this.#compiled?.animationActions ?? [],
+        jobs: false,
+        graphDomains: ['shader', 'texture', 'blueprint'],
+        entityKinds: [
+          'scene', 'group', 'empty', 'gameObject', 'mesh', 'instancedMesh',
+          'perspectiveCamera', 'orthographicCamera', 'directionalLight',
+          'pointLight', 'spotLight', 'ambientLight', 'areaLight', 'hemisphereLight',
+        ],
+        geometryRecipes: ['box', 'plane', 'sphere', 'capsule', 'circle', 'cone', 'cylinder', 'torus', 'torusKnot', 'lathe', 'tube', 'shape', 'extrude', 'explicit', 'indexedMesh'],
+        materialRecipes: ['basic', 'standard', 'physical', 'toon'],
+        modifierRuntime: ['array', 'mirror'],
+        constraintRuntime: ['lookAt', 'trackTo', 'copyLocation', 'copyRotation', 'copyScale', 'limitLocation'],
+        animationProperties: ['transform.position', 'transform.rotation', 'transform.scale', 'visible'],
+        animationInterpolation: ['constant', 'linear', 'smooth', 'bezier'],
+        animationLoops: ['once', 'repeat', 'pingpong'],
+        renderers: ['webgpu'],
+        renderPasses: ['beauty'],
+        validationChecks: ['schemas', 'references', 'hierarchy', 'graphs', 'animations', 'budgets'],
+        projectActions: ['list', 'create', 'open', 'save'],
+        historyActions: ['list', 'inspect', 'undo', 'redo'],
+        playSimulation: 'animation-only',
+        maxShadowLights: 16,
+        maxOperations: 128,
+        implementedOperations: supportedOperationTypes(),
+      },
+      latestEvidence: this.#latestEvidence,
+    };
+  }
+
+  async dispatch(method, rawParams = {}, context = {}) {
+    const params = parseToolParams(method, rawParams);
+    this.#assertSession(params);
+    this.#assertNotAborted(context.signal);
+    const exclusive = work => this.#exclusive(() => {
+      this.#assertNotAborted(context.signal);
+      return work();
+    });
+    switch (method) {
+      case 'three_studio_status': return this.status();
+      case 'three_studio_project': return params.action === 'list'
+        ? this.#project(params)
+        : this.#idempotent(params, () => exclusive(() => this.#project(params)));
+      case 'three_studio_inspect': return this.#inspect(params);
+      case 'three_studio_apply': return exclusive(() => this.#apply(params));
+      case 'three_studio_validate': return this.#validate(params);
+      case 'three_studio_render': return exclusive(() => this.#render(params));
+      case 'three_studio_history': return ['undo', 'redo'].includes(params.action)
+        ? exclusive(() => this.#history(params))
+        : this.#history(params);
+      case 'three_studio_play': return params.action === 'query'
+        ? this.#playTool(params)
+        : this.#idempotent(params, () => exclusive(() => this.#playTool(params)));
+      case 'three_studio_job': throw new StudioError('job_not_implemented', 'File-producing jobs are not enabled in the lean authoring slice yet.');
+      default: throw new StudioError('method_not_found', `Unknown Studio method ${method}.`);
+    }
+  }
+
+  async #idempotent(params, work) {
+    const key = required(params.idempotencyKey, 'idempotencyKey');
+    const fingerprint = contentHash(params);
+    const existing = this.#idempotency.get(key);
+    if (existing) {
+      if (existing.fingerprint !== fingerprint) throw new StudioError('idempotency_conflict', `Idempotency key ${key} was used for another request.`);
+      return structuredClone(await existing.promise);
+    }
+    const promise = Promise.resolve().then(work);
+    this.#idempotency.set(key, { fingerprint, promise });
+    if (this.#idempotency.size > 1_000) this.#idempotency.delete(this.#idempotency.keys().next().value);
+    try {
+      return structuredClone(await promise);
+    } catch (error) {
+      this.#idempotency.delete(key);
+      throw error;
+    }
+  }
+
+  async #project(params) {
+    if (params.action === 'list') {
+      const entries = await readdir(this.projectsRoot, { withFileTypes: true }).catch(error => error.code === 'ENOENT' ? [] : Promise.reject(error));
+      const candidates = entries.filter(entry => entry.isDirectory());
+      const projects = (await Promise.all(candidates.map(async entry => {
+        const projectPath = path.join(this.projectsRoot, entry.name);
+        return await pathExists(path.join(projectPath, 'project.threestudio.json'))
+          ? { name: entry.name, path: projectPath }
+          : null;
+      }))).filter(Boolean);
+      return {
+        success: true,
+        projects,
+      };
+    }
+    if (params.action === 'create' && params.template && params.template !== 'starter') {
+      throw new StudioError('template_not_found', `Unknown project template ${params.template}.`);
+    }
+    if (params.action === 'create') return {
+      success: true,
+      ...(await this.#openOrCreate(this.#managedProjectPath(params.path), {
+        create: true,
+        mustBeNew: true,
+        name: params.name,
+        template: params.template === 'starter' ? 'starter' : null,
+      })),
+    };
+    if (params.action === 'open') {
+      const requestedPath = params.path
+        ? this.#managedProjectPath(params.path)
+        : (params.projectId === this.#kernel.projectId ? this.#projectRoot : this.#managedProjectPath(params.projectId.split('/').at(-1)));
+      return { success: true, ...(await this.#openOrCreate(requestedPath, { create: false })) };
+    }
+    if (params.projectId !== this.#kernel.projectId) throw new StudioError('project_mismatch', `Active project is ${this.#kernel.projectId}.`);
+    if (params.baseRevision !== this.#kernel.revision) throw new StudioError('revision_conflict', `Base revision ${params.baseRevision} does not match ${this.#kernel.revision}.`);
+    if (params.action === 'save' || params.action === 'checkpoint') {
+      const result = await this.#kernel.save();
+      this.#viewport.setTitle({ project: this.#kernel.document.name, scene: this.#kernel.document.scenes[this.#kernel.document.activeSceneId]?.name, revision: this.#kernel.revision, dirty: false });
+      await this.#writeMarker(true);
+      return result;
+    }
+    throw new StudioError('project_action_not_implemented', `Project action ${params.action} is not enabled yet.`);
+  }
+
+  #inspect(params) {
+    this.#assertTarget(params);
+    const document = this.#kernel.document;
+    const scene = document.scenes[params.sceneId ?? document.activeSceneId];
+    if (!scene) throw new StudioError('scene_not_found', `Scene ${params.sceneId} does not exist.`);
+    if (params.query === 'changedSinceRevision') return { success: true, revision: document.revision, ...this.#kernel.changedSince(params.sinceRevision ?? document.revision) };
+    if (params.query === 'graphCatalog') return {
+      success: true,
+      revision: document.revision,
+      catalog: queryGraphCatalog(params.selector?.kind ?? 'shader', { search: params.selector?.name, limit: params.limit }),
+      ...((params.selector?.kind ?? 'shader') === 'shader' ? {
+        blenderInventory: queryBlenderShaderNodeInventory({
+          search: params.selector?.name,
+          status: params.selector?.status,
+          limit: params.limit,
+        }),
+      } : {}),
+    };
+    if (params.query === 'blenderCatalog') return {
+      success: true,
+      revision: document.revision,
+      summary: BLENDER_CATALOG_SUMMARY,
+      catalog: queryBlenderCatalog({
+        domain: params.selector?.kind,
+        search: params.selector?.name,
+        status: params.selector?.status,
+        limit: params.limit,
+      }),
+    };
+    if (params.query === 'latestEvidence') return { success: true, revision: document.revision, evidence: this.#latestEvidence };
+    if (params.query === 'playState') return {
+      success: true,
+      revision: document.revision,
+      mode: this.#mode,
+      simulation: 'animation-only',
+      ...this.#play,
+      timeline: scene.settings.timeline,
+      actions: this.#compiled?.animationStates() ?? [],
+    };
+    if (params.query === 'unresolvedResources') {
+      const diagnostics = validateProjectDocument(document).diagnostics.filter(item => item.code === 'missing_resource');
+      return { success: diagnostics.length === 0, revision: document.revision, diagnostics };
+    }
+    if (params.query === 'unusedResources') {
+      const index = new ProjectIndex(document);
+      const resources = [...index.resources.keys()].filter(id => index.getReferencesTo(id).length === 0).sort();
+      return { success: true, revision: document.revision, resources };
+    }
+    if (!['sceneDigest', 'selector'].includes(params.query)) {
+      throw new StudioError('inspect_query_not_implemented', `Inspect query ${params.query} is not enabled in the lean runtime yet.`);
+    }
+    const include = new Set(params.include ?? ['summary']);
+    const index = new ProjectIndex(document);
+    let entities = Object.values(scene.entities);
+    const selector = params.selector ?? {};
+    if (selector.ids) entities = entities.filter(entity => selector.ids.includes(entity.id));
+    if (selector.name) entities = entities.filter(entity => entity.name.toLowerCase().includes(selector.name.toLowerCase()));
+    if (selector.kind) entities = entities.filter(entity => entity.kind === selector.kind);
+    if (selector.tag) entities = entities.filter(entity => entity.tags.includes(selector.tag));
+    const offset = Math.max(0, Number.parseInt(params.cursor ?? '0', 10) || 0);
+    const limit = Math.min(200, params.limit ?? 50);
+    const page = entities.sort((a, b) => a.id.localeCompare(b.id)).slice(offset, offset + limit);
+    return {
+      success: true,
+      revision: document.revision,
+      projectId: document.projectId,
+      scene: {
+        id: scene.id,
+        name: scene.name,
+        activeCameraId: scene.settings.activeCameraId,
+        entityCount: Object.keys(scene.entities).length,
+        selectedEntityCount: entities.length,
+        sceneHash: contentHash(scene),
+      },
+      entities: page.map(entity => compactEntity(entity, include, {
+        index,
+        compiled: this.#compiled,
+        THREE: this.#THREE,
+      })),
+      resources: include.has('summary') ? Object.fromEntries(Object.entries(document.resources).map(([type, table]) => [type, Object.keys(table).length])) : undefined,
+      nextCursor: offset + page.length < entities.length ? String(offset + page.length) : null,
+    };
+  }
+
+  async #apply(params) {
+    this.#assertTarget(params);
+    const document = this.#kernel.document;
+    const operations = params.operations.map(operation => translateToolOperation(operation, document));
+    const response = await this.#kernel.apply({
+      protocolVersion: params.protocolVersion,
+      projectId: params.projectId,
+      label: params.label,
+      baseRevision: params.baseRevision,
+      idempotencyKey: params.idempotencyKey,
+      dryRun: params.dryRun ?? false,
+      operations,
+    });
+    return { ...response, sessionId: this.sessionId, projectId: this.#kernel.projectId, evidenceRequested: params.evidence === true };
+  }
+
+  #validate(params) {
+    this.#assertTarget(params);
+    if (params.scope !== 'project' || params.strictness !== 'interactive') {
+      throw new StudioError('validation_mode_not_implemented', 'The lean runtime validates the active project interactively.');
+    }
+    const document = this.#kernel.document;
+    const result = validateProjectDocument(document);
+    const graphDiagnostics = [];
+    const requestedChecks = params.checks ?? ['schemas', 'references', 'hierarchy', 'graphs', 'animations', 'budgets'];
+    if (requestedChecks.includes('graphs')) {
+      for (const resource of Object.values(document.resources.graphs)) {
+        if (!resource.graph) continue;
+        const validation = validateGraph(resource.graph);
+        graphDiagnostics.push(...validation.diagnostics.map(item => ({ ...item, resourceId: resource.id })));
+      }
+    }
+    const animationDiagnostics = [];
+    if (requestedChecks.includes('animations')) {
+      const targetIds = new Set(Object.values(document.scenes).flatMap(scene => Object.keys(scene.entities)));
+      for (const resource of Object.values(document.resources.animations)) {
+        const validation = validateAnimationResource(resource, { knownTargetIds: targetIds });
+        animationDiagnostics.push(...validation.diagnostics.map(item => ({ ...item, resourceId: resource.id })));
+      }
+    }
+    const diagnostics = [...result.diagnostics, ...graphDiagnostics, ...animationDiagnostics];
+    return {
+      success: diagnostics.every(item => item.severity !== 'error'),
+      revision: document.revision,
+      projectId: document.projectId,
+      scope: 'project',
+      strictness: params.strictness,
+      requestedChecks,
+      executedChecks: ['schemas', 'references', 'hierarchy', 'graphs', 'animations', 'budgets'],
+      diagnostics,
+      budgets: result.budgets,
+    };
+  }
+
+  async #render(params) {
+    this.#assertTarget(params, { requireActiveScene: true });
+    if (params.renderer && params.renderer !== 'webgpu') {
+      throw new StudioError('renderer_not_available', `${params.renderer} evidence is not enabled; authored WebGPU remains active.`);
+    }
+    const previousAnimationTime = this.#compiled?.animationTime;
+    if (params.timelineFrame !== undefined) {
+      const scene = this.#kernel.document.scenes[this.#kernel.document.activeSceneId];
+      const timeline = scene.settings.timeline;
+      const seconds = (params.timelineFrame - timeline.frameStart) / timeline.framesPerSecond;
+      this.#compiled?.setAnimationTime(seconds);
+    }
+    try {
+      let captureCamera = this.#viewport.renderCamera;
+      if (params.cameraId) {
+        captureCamera = this.#compiled?.objects.get(params.cameraId);
+        if (!captureCamera?.isCamera) throw new StudioError('camera_not_found', `${params.cameraId} is not a compiled camera.`);
+      }
+      if (params.frame) {
+        const bounds = new this.#THREE.Box3();
+        if (params.frame.bounds) {
+          bounds.min.fromArray(params.frame.bounds.min);
+          bounds.max.fromArray(params.frame.bounds.max);
+        } else {
+          for (const id of params.frame.targetIds ?? []) {
+            const object = this.#compiled?.objects.get(id);
+            if (object) bounds.expandByObject(object);
+          }
+        }
+        if (bounds.isEmpty()) throw new StudioError('frame_bounds_empty', 'The requested evidence frame has no compiled bounds.');
+        captureCamera = frameCameraToBounds(this.#THREE, captureCamera, bounds, {
+          aspect: params.width / params.height,
+        });
+      }
+      const evidence = [];
+      for (const pass of params.passes ?? ['beauty']) {
+        if (pass !== 'beauty') throw new StudioError('render_pass_not_implemented', `Render pass ${pass} is not enabled yet.`);
+        evidence.push(await this.#viewport.capture(undefined, {
+          width: params.width,
+          height: params.height,
+          pass,
+          camera: captureCamera,
+        }));
+      }
+      this.#latestEvidence = {
+        revision: this.#kernel.revision,
+        createdAt: new Date().toISOString(),
+        ...(params.timelineFrame === undefined ? {} : { timelineFrame: params.timelineFrame }),
+        items: evidence,
+      };
+      return {
+        success: true,
+        revision: this.#kernel.revision,
+        projectId: this.#kernel.projectId,
+        cameraId: params.cameraId ?? captureCamera?.userData?.studioEntityId ?? 'review-camera',
+        renderer: 'webgpu',
+        ...(params.timelineFrame === undefined ? {} : { timelineFrame: params.timelineFrame }),
+        evidence,
+      };
+    } finally {
+      if (params.timelineFrame !== undefined && previousAnimationTime !== undefined) {
+        this.#compiled?.setAnimationTime(previousAnimationTime);
+      }
+    }
+  }
+
+  #history(params) {
+    this.#assertTarget(params);
+    if (params.action === 'list') return { success: true, revision: this.#kernel.revision, entries: this.#kernel.history({ limit: params.limit }) };
+    if (params.action === 'undo' || params.action === 'redo') {
+      return this.#kernel[params.action]({
+        protocolVersion: params.protocolVersion,
+        projectId: params.projectId,
+        label: params.label,
+        baseRevision: params.baseRevision,
+        idempotencyKey: params.idempotencyKey,
+        ...(params.transactionId ? { transactionId: params.transactionId } : {}),
+      });
+    }
+    if (params.action === 'inspect') {
+      const entry = this.#kernel.history({ limit: 200, includeOperations: true }).find(item => item.transactionId === params.transactionId);
+      return { success: Boolean(entry), revision: this.#kernel.revision, entry: entry ?? null };
+    }
+    throw new StudioError('history_action_not_implemented', `History action ${params.action} is not enabled yet.`);
+  }
+
+  #playTool(params) {
+    this.#assertTarget(params);
+    const scene = this.#kernel.document.scenes[this.#kernel.document.activeSceneId];
+    const timeline = scene.settings.timeline;
+    const animationState = () => ({
+      timeline,
+      actions: this.#compiled?.animationStates() ?? [],
+    });
+    if (params.action === 'query') return {
+      success: true,
+      mode: this.#mode,
+      simulation: 'animation-only',
+      ...this.#play,
+      ...animationState(),
+    };
+    if (params.baseRevision !== this.#kernel.revision) throw new StudioError('revision_conflict', `Base revision ${params.baseRevision} does not match ${this.#kernel.revision}.`);
+    if (params.action === 'enter') {
+      this.#mode = 'play';
+      this.#play = { paused: false, tick: 0, elapsed: 0, latestInput: null };
+      this.#compiled?.setAnimationTime(0);
+      for (const action of this.#compiled?.animationRuntime?.actions.values() ?? []) {
+        if (action.autoplay) this.#compiled.animationRuntime.play(action.id, { restart: true });
+        else this.#compiled.animationRuntime.pause(action.id);
+      }
+    }
+    else if (params.action === 'stop') {
+      this.#mode = 'author';
+      this.#play = { paused: false, tick: 0, elapsed: 0, latestInput: null };
+      const authoredTime = (timeline.currentFrame - timeline.frameStart) / timeline.framesPerSecond;
+      this.#compiled?.setAnimationTime(authoredTime);
+      for (const action of this.#compiled?.animationRuntime?.actions.values() ?? []) {
+        this.#compiled.animationRuntime.pause(action.id);
+      }
+    }
+    else if (params.action === 'pause') this.#play.paused = true;
+    else if (params.action === 'resume') this.#play.paused = false;
+    else if (params.action === 'step') {
+      const delta = params.ticks / 60;
+      this.#play.tick += params.ticks;
+      this.#play.elapsed += delta;
+      this.#compiled?.advanceAnimation(delta);
+    }
+    else if (params.action === 'seek') {
+      this.#play.elapsed = (params.frame - timeline.frameStart) / timeline.framesPerSecond;
+      this.#play.tick = Math.round(this.#play.elapsed * 60);
+      this.#compiled?.setAnimationTime(this.#play.elapsed);
+    }
+    else if (params.action === 'inject') this.#play.latestInput = { action: params.inputAction, input: params.input };
+    return {
+      success: true,
+      mode: this.#mode,
+      simulation: 'animation-only',
+      ...this.#play,
+      ...animationState(),
+      revision: this.#kernel.revision,
+      warnings: [{ code: 'behavior_runtime_not_enabled', message: 'Play state is isolated, but scripts and blueprints are not executing yet.' }],
+    };
+  }
+
+  update(deltaSeconds) {
+    if (this.#disposed || this.#mode !== 'play' || this.#play.paused) return;
+    if (!Number.isFinite(deltaSeconds) || deltaSeconds <= 0) return;
+    this.#play.elapsed += deltaSeconds;
+    this.#play.tick = Math.round(this.#play.elapsed * 60);
+    this.#compiled?.advanceAnimation(deltaSeconds);
+  }
+
+  #writeMarker(viewportReady, { required = false } = {}) {
+    const marker = createSessionMarker({
+      credentials: this.#credentials,
+      projectPath: this.#projectRoot,
+      projectId: this.#kernel?.projectId ?? null,
+      revision: this.#kernel?.revision ?? 0,
+      viewportReady,
+    });
+    const write = this.#markerTail.then(async () => {
+      await writeSessionMarker(this.#markerPath, marker);
+      this.#markerPublished = true;
+    });
+    this.#markerTail = write.catch(error => {
+      console.error('[ThreeBrowser Studio marker]', error.message);
+    });
+    return required ? write : this.#markerTail;
+  }
+
+  async dispose() {
+    if (this.#disposed) return;
+    this.#disposed = true;
+    clearInterval(this.#heartbeat);
+    this.#unsubscribe?.();
+    await this.#writeView().catch(() => {});
+    await this.#bridge?.close();
+    await this.#exclusiveTail.catch(() => {});
+    await this.#markerTail;
+    if (this.#markerPublished) {
+      const owned = await readSessionMarker(this.#markerPath, { maxAgeMs: Infinity })
+        .then(marker => marker.sessionId === this.sessionId)
+        .catch(() => false);
+      if (owned) await rm(this.#markerPath, { force: true }).catch(() => {});
+    }
+    this.#prepared?.dispose();
+    this.#compiled?.dispose();
+    this.#prepared = null;
+    this.#compiled = null;
+  }
+}
+
+export async function startStudioApplication(options) {
+  const application = new StudioApplication(options);
+  try {
+    await application.start();
+    return application;
+  } catch (error) {
+    await application.dispose().catch(() => {});
+    throw error;
+  }
+}

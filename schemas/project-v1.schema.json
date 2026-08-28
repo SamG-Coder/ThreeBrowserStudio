@@ -1,0 +1,221 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://threebrowser.local/schemas/project-v1.schema.json",
+  "title": "ThreeBrowser Studio normalized project document v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "protocolVersion",
+    "formatVersion",
+    "projectId",
+    "name",
+    "revision",
+    "savedRevision",
+    "activeSceneId",
+    "sceneOrder",
+    "scenes",
+    "resources",
+    "scripts",
+    "scriptTrustPolicy",
+    "settings",
+    "exportSettings",
+    "metadata"
+  ],
+  "properties": {
+    "kind": { "const": "ThreeStudioProject" },
+    "protocolVersion": { "const": "three-studio/1" },
+    "formatVersion": { "const": 1 },
+    "projectId": { "$ref": "#/$defs/stableId" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "revision": { "type": "integer", "minimum": 0 },
+    "savedRevision": { "type": "integer", "minimum": 0 },
+    "activeSceneId": {
+      "oneOf": [
+        { "$ref": "#/$defs/stableId" },
+        { "type": "null" }
+      ]
+    },
+    "sceneOrder": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/stableId" }
+    },
+    "scenes": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/scene" }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["geometries", "materials", "textures", "graphs", "animations", "prefabs", "audio", "assets"],
+      "properties": {
+        "geometries": { "$ref": "#/$defs/resourceTable" },
+        "materials": { "$ref": "#/$defs/resourceTable" },
+        "textures": { "$ref": "#/$defs/resourceTable" },
+        "graphs": { "$ref": "#/$defs/resourceTable" },
+        "animations": { "$ref": "#/$defs/resourceTable" },
+        "prefabs": { "$ref": "#/$defs/resourceTable" },
+        "audio": { "$ref": "#/$defs/resourceTable" },
+        "assets": { "$ref": "#/$defs/resourceTable" }
+      }
+    },
+    "scripts": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/script" }
+    },
+    "scriptTrustPolicy": { "enum": ["agent-safe", "trusted-project"] },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lengthUnit", "angleUnit", "timeUnit", "workingColorSpace"],
+      "properties": {
+        "lengthUnit": { "const": "metre" },
+        "angleUnit": { "const": "radian" },
+        "timeUnit": { "const": "second" },
+        "workingColorSpace": { "type": "string", "minLength": 1 }
+      }
+    },
+    "exportSettings": { "type": "object" },
+    "metadata": { "type": "object" }
+  },
+  "$defs": {
+    "stableId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?(?:/[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?)*$"
+    },
+    "vector3": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": { "type": "number" }
+    },
+    "transform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["position", "rotation", "scale"],
+      "properties": {
+        "position": { "$ref": "#/$defs/vector3" },
+        "rotation": { "$ref": "#/$defs/vector3" },
+        "scale": { "$ref": "#/$defs/vector3" }
+      }
+    },
+    "entity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "name", "parentId", "children", "visible", "transform", "components", "tags", "scriptIds", "metadata"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "kind": {
+          "enum": [
+            "scene", "group", "mesh", "instancedMesh", "perspectiveCamera",
+            "orthographicCamera", "directionalLight", "pointLight", "spotLight",
+            "ambientLight", "areaLight", "hemisphereLight", "sprite", "line", "points", "audioSource", "empty",
+            "gameObject"
+          ]
+        },
+        "name": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "parentId": {
+          "oneOf": [
+            { "$ref": "#/$defs/stableId" },
+            { "type": "null" }
+          ]
+        },
+        "children": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/stableId" }
+        },
+        "visible": { "type": "boolean" },
+        "transform": { "$ref": "#/$defs/transform" },
+        "components": { "type": "object" },
+        "tags": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string" }
+        },
+        "scriptIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/stableId" }
+        },
+        "metadata": { "type": "object" }
+      }
+    },
+    "scene": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "rootEntityIds", "entities", "settings", "scriptIds", "metadata"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "rootEntityIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/stableId" }
+        },
+        "entities": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/entity" }
+        },
+        "settings": {
+          "type": "object",
+          "required": ["background", "environment", "fog", "activeCameraId"],
+          "properties": {
+            "activeCameraId": {
+              "oneOf": [
+                { "$ref": "#/$defs/stableId" },
+                { "type": "null" }
+              ]
+            }
+          }
+        },
+        "scriptIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/stableId" }
+        },
+        "metadata": { "type": "object" }
+      }
+    },
+    "resource": {
+      "type": "object",
+      "required": ["id", "kind", "name", "metadata"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "kind": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "metadata": { "type": "object" }
+      }
+    },
+    "resourceTable": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/resource" }
+    },
+    "script": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "path", "trustLevel", "hash", "exposedFunctions", "metadata"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "name": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "trustLevel": { "enum": ["agent-safe", "trusted-project"] },
+        "hash": {
+          "oneOf": [
+            { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            { "type": "null" }
+          ]
+        },
+        "exposedFunctions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string" }
+        },
+        "metadata": { "type": "object" }
+      }
+    }
+  }
+}

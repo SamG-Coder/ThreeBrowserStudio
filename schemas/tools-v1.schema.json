@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://threebrowser.local/schemas/tools-v1.schema.json",
+  "title": "ThreeBrowser Studio MCP tool inputs",
+  "description": "Protocol three-studio/1. Every declared object rejects unknown properties. Domain payloads are JSON and receive a second strict validation in the authoring kernel.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocolVersion", "tools"],
+  "properties": {
+    "protocolVersion": { "const": "three-studio/1" },
+    "tools": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "three_studio_status", "three_studio_inspect", "three_studio_apply",
+        "three_studio_validate", "three_studio_render", "three_studio_history",
+        "three_studio_job", "three_studio_project", "three_studio_play"
+      ],
+      "properties": {
+        "three_studio_status": { "$ref": "#/$defs/status" },
+        "three_studio_inspect": { "$ref": "#/$defs/inspect" },
+        "three_studio_apply": { "$ref": "#/$defs/apply" },
+        "three_studio_validate": { "$ref": "#/$defs/validate" },
+        "three_studio_render": { "$ref": "#/$defs/render" },
+        "three_studio_history": { "$ref": "#/$defs/history" },
+        "three_studio_job": { "$ref": "#/$defs/job" },
+        "three_studio_project": { "$ref": "#/$defs/project" },
+        "three_studio_play": { "$ref": "#/$defs/play" }
+      }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?(?:/[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?)*$" },
+    "reference": { "oneOf": [{ "$ref": "#/$defs/id" }, { "type": "string", "pattern": "^\\$[a-z][a-z0-9_-]{0,63}$" }] },
+    "revision": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "protocolVersion": { "const": "three-studio/1" },
+    "sessionId": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "idempotencyKey": { "type": "string", "minLength": 8, "maxLength": 160, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" },
+    "label": { "type": "string", "minLength": 1, "maxLength": 240 },
+    "status": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "protocolVersion": { "$ref": "#/$defs/protocolVersion" }, "sessionId": { "$ref": "#/$defs/sessionId" } }
+    },
+    "selector": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "ids": { "type": "array", "minItems": 1, "maxItems": 200, "items": { "$ref": "#/$defs/id" } },
+        "name": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "kind": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "tag": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "status": {
+          "enum": [
+            "implemented", "partial", "planned", "bake-required", "not-applicable",
+            "live-tsl", "layout-only", "catalogued", "migration-required"
+          ]
+        }
+      }
+    },
+    "vec3": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "number", "minimum": -1000000000, "maximum": 1000000000 } },
+    "bounds3": {
+      "type": "object", "additionalProperties": false, "required": ["min", "max"],
+      "properties": { "min": { "$ref": "#/$defs/vec3" }, "max": { "$ref": "#/$defs/vec3" } }
+    },
+    "inspect": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "protocolVersion": { "$ref": "#/$defs/protocolVersion" }, "sessionId": { "$ref": "#/$defs/sessionId" },
+        "projectId": { "$ref": "#/$defs/id" }, "sceneId": { "$ref": "#/$defs/id" },
+        "query": { "enum": ["selector", "sceneDigest", "changedSinceRevision", "unresolvedResources", "unusedResources", "graphCatalog", "playState", "latestEvidence", "blenderCatalog"] },
+        "selector": { "$ref": "#/$defs/selector" },
+        "include": { "type": "array", "maxItems": 6, "items": { "enum": ["summary", "tree", "transform", "components", "bounds", "references"] } },
+        "sinceRevision": { "$ref": "#/$defs/revision" }, "cursor": { "type": "string", "maxLength": 1024 },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 200 }
+      }
+    },
+    "operation": {
+      "type": "object", "additionalProperties": false, "required": ["op"],
+      "properties": {
+        "op": { "enum": [
+          "scene.create", "scene.patch", "scene.delete", "scene.setActive", "scene.settings.patch", "scene.setActiveCamera",
+          "entity.create", "entity.patch", "entity.duplicate", "entity.reparent", "entity.delete",
+          "resource.create", "resource.patch", "resource.delete"
+        ] },
+        "sceneId": { "$ref": "#/$defs/reference" }, "entityId": { "$ref": "#/$defs/reference" }, "cameraId": { "oneOf": [{ "$ref": "#/$defs/reference" }, { "type": "null" }] },
+        "resourceId": { "$ref": "#/$defs/reference" },
+        "parentId": { "oneOf": [{ "$ref": "#/$defs/reference" }, { "type": "null" }] }, "newId": { "$ref": "#/$defs/reference" },
+        "alias": { "type": "string", "pattern": "^\\$[a-z][a-z0-9_-]{0,63}$" },
+        "expectedSceneHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }, "expectedSubtreeHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "index": { "type": "integer", "minimum": 0, "maximum": 20000 }, "deep": { "type": "boolean" }, "recursive": { "type": "boolean" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "resourceType": { "enum": ["geometries", "materials", "textures", "graphs", "animations", "prefabs", "audio", "assets", "geometry", "material", "texture", "graph", "animation", "prefab", "asset"] },
+        "scene": { "type": "object" }, "entity": { "type": "object" }, "resource": { "type": "object" }, "patch": { "type": "object" },
+        "idMap": { "type": "object", "additionalProperties": { "$ref": "#/$defs/reference" } }
+      }
+    },
+    "apply": {
+      "type": "object", "additionalProperties": false,
+      "required": ["protocolVersion", "sessionId", "projectId", "baseRevision", "idempotencyKey", "label", "operations"],
+      "properties": {
+        "protocolVersion": { "$ref": "#/$defs/protocolVersion" }, "sessionId": { "$ref": "#/$defs/sessionId" }, "projectId": { "$ref": "#/$defs/id" },
+        "baseRevision": { "$ref": "#/$defs/revision" }, "idempotencyKey": { "$ref": "#/$defs/idempotencyKey" }, "label": { "$ref": "#/$defs/label" },
+        "dryRun": { "type": "boolean" },
+        "operations": { "type": "array", "minItems": 1, "maxItems": 128, "items": { "$ref": "#/$defs/operation" } }
+      }
+    },
+    "validate": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "protocolVersion": { "$ref": "#/$defs/protocolVersion" }, "sessionId": { "$ref": "#/$defs/sessionId" }, "projectId": { "$ref": "#/$defs/id" },
+        "scope": { "const": "project" }, "strictness": { "const": "interactive" },
+        "checks": { "type": "array", "maxItems": 6, "uniqueItems": true, "items": { "enum": ["schemas", "references", "hierarchy", "graphs", "animations", "budgets"] } }
+      }
+    },
+    "render": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "protocolVersion": { "$ref": "#/$defs/protocolVersion" }, "sessionId": { "$ref": "#/$defs/sessionId" }, "projectId": { "$ref": "#/$defs/id" }, "cameraId": { "$ref": "#/$defs/id" },
+        "frame": { "type": "object", "additionalProperties": false, "anyOf": [{ "required": ["targetIds"] }, { "required": ["bounds"] }], "properties": { "targetIds": { "type": "array", "minItems": 1, "maxItems": 100, "items": { "$ref": "#/$defs/id" } }, "bounds": { "$ref": "#/$defs/bounds3" } } },
+        "timelineFrame": { "type": "integer", "minimum": -1000000, "maximum": 1000000 },
+        "width": { "type": "integer", "minimum": 16, "maximum": 1920 }, "height": { "type": "integer", "minimum": 16, "maximum": 1080 },
+        "passes": { "type": "array", "minItems": 1, "maxItems": 1, "items": { "const": "beauty" } },
+        "renderer": { "const": "webgpu" }
+      }
+    },
+    "history": {
+      "type": "object", "additionalProperties": false, "required": ["action"],
+      "properties": {
+        "protocolVersion": { "$ref": "#/$defs/protocolVersion" }, "sessionId": { "$ref": "#/$defs/sessionId" }, "projectId": { "$ref": "#/$defs/id" },
+        "action": { "enum": ["list", "inspect", "undo", "redo"] }, "transactionId": { "$ref": "#/$defs/id" },
+        "baseRevision": { "$ref": "#/$defs/revision" }, "limit": { "type": "integer", "minimum": 1, "maximum": 200 },
+        "idempotencyKey": { "$ref": "#/$defs/idempotencyKey" }, "label": { "$ref": "#/$defs/label" }
+      },
+      "allOf": [
+        { "if": { "properties": { "action": { "const": "inspect" } } }, "then": { "required": ["transactionId"] } },
+        { "if": { "properties": { "action": { "enum": ["undo", "redo"] } } }, "then": { "required": ["sessionId", "projectId", "baseRevision", "idempotencyKey", "label"] } }
+      ]
+    },
+    "job": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "protocolVersion": { "$ref": "#/$defs/protocolVersion" }, "sessionId": { "$ref": "#/$defs/sessionId" }
+      }
+    },
+    "project": {
+      "type": "object", "additionalProperties": false, "required": ["action"],
+      "properties": {
+        "protocolVersion": { "$ref": "#/$defs/protocolVersion" }, "sessionId": { "$ref": "#/$defs/sessionId" },
+        "action": { "enum": ["list", "create", "open", "save"] }, "projectId": { "$ref": "#/$defs/id" },
+        "path": { "type": "string", "minLength": 1, "maxLength": 1024 }, "name": { "type": "string", "minLength": 1, "maxLength": 160 }, "template": { "const": "starter" },
+        "baseRevision": { "$ref": "#/$defs/revision" }, "idempotencyKey": { "$ref": "#/$defs/idempotencyKey" }, "label": { "$ref": "#/$defs/label" }
+      },
+      "allOf": [
+        { "if": { "properties": { "action": { "const": "create" } } }, "then": { "required": ["sessionId", "idempotencyKey", "label", "path"] } },
+        { "if": { "properties": { "action": { "const": "open" } } }, "then": { "required": ["sessionId", "idempotencyKey", "label"], "anyOf": [{ "required": ["path"] }, { "required": ["projectId"] }] } },
+        { "if": { "properties": { "action": { "const": "save" } } }, "then": { "required": ["sessionId", "projectId", "baseRevision", "idempotencyKey", "label"] } }
+      ]
+    },
+    "play": {
+      "type": "object", "additionalProperties": false, "required": ["action"],
+      "properties": {
+        "protocolVersion": { "$ref": "#/$defs/protocolVersion" }, "sessionId": { "$ref": "#/$defs/sessionId" }, "projectId": { "$ref": "#/$defs/id" },
+        "action": { "enum": ["enter", "stop", "pause", "resume", "step", "seek", "inject", "query"] }, "baseRevision": { "$ref": "#/$defs/revision" },
+        "idempotencyKey": { "$ref": "#/$defs/idempotencyKey" }, "label": { "$ref": "#/$defs/label" }, "ticks": { "type": "integer", "minimum": 1, "maximum": 10000 }, "frame": { "type": "integer", "minimum": -1000000, "maximum": 1000000 },
+        "inputAction": { "type": "string", "minLength": 1, "maxLength": 160 }, "input": { "type": "object" }
+      },
+      "allOf": [
+        { "if": { "properties": { "action": { "enum": ["enter", "stop", "pause", "resume", "step", "seek", "inject"] } } }, "then": { "required": ["sessionId", "projectId", "baseRevision", "idempotencyKey", "label"] } },
+        { "if": { "properties": { "action": { "const": "inject" } } }, "then": { "required": ["inputAction"] } },
+        { "if": { "properties": { "action": { "const": "seek" } } }, "then": { "required": ["frame"] } }
+      ]
+    }
+  }
+}

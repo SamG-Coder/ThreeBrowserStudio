@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://threebrowser.local/schemas/project-manifest-v1.schema.json",
+  "title": "ThreeBrowser Studio on-disk project manifest v1",
+  "description": "Strict contract for project.threestudio.json. Scene and resource payloads live in the content-hashed files referenced by this manifest; this is not the normalized in-memory project schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "protocolVersion",
+    "formatVersion",
+    "projectId",
+    "name",
+    "revision",
+    "savedRevision",
+    "activeSceneId",
+    "sceneOrder",
+    "sceneIndex",
+    "resourceIndex",
+    "scripts",
+    "scriptTrustPolicy",
+    "settings",
+    "exportSettings",
+    "metadata",
+    "documentHash"
+  ],
+  "properties": {
+    "kind": { "const": "ThreeStudioProjectManifest" },
+    "protocolVersion": { "const": "three-studio/1" },
+    "formatVersion": { "const": 1 },
+    "projectId": { "$ref": "#/$defs/stableId" },
+    "name": { "type": "string", "minLength": 1, "maxLength": 160 },
+    "revision": { "$ref": "#/$defs/revision" },
+    "savedRevision": { "$ref": "#/$defs/revision" },
+    "activeSceneId": {
+      "oneOf": [
+        { "$ref": "#/$defs/stableId" },
+        { "type": "null" }
+      ]
+    },
+    "sceneOrder": {
+      "type": "array",
+      "maxItems": 20000,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/stableId" }
+    },
+    "sceneIndex": {
+      "type": "array",
+      "maxItems": 20000,
+      "items": { "$ref": "#/$defs/sceneIndexEntry" }
+    },
+    "resourceIndex": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["geometries", "materials", "textures", "graphs", "animations", "prefabs", "audio", "assets"],
+      "properties": {
+        "geometries": { "$ref": "#/$defs/resourceIndexEntry" },
+        "materials": { "$ref": "#/$defs/resourceIndexEntry" },
+        "textures": { "$ref": "#/$defs/resourceIndexEntry" },
+        "graphs": { "$ref": "#/$defs/resourceIndexEntry" },
+        "animations": { "$ref": "#/$defs/resourceIndexEntry" },
+        "prefabs": { "$ref": "#/$defs/resourceIndexEntry" },
+        "audio": { "$ref": "#/$defs/resourceIndexEntry" },
+        "assets": { "$ref": "#/$defs/resourceIndexEntry" }
+      }
+    },
+    "scripts": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/stableId" },
+      "additionalProperties": { "$ref": "#/$defs/script" }
+    },
+    "scriptTrustPolicy": { "enum": ["agent-safe", "trusted-project"] },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lengthUnit", "angleUnit", "timeUnit", "workingColorSpace"],
+      "properties": {
+        "lengthUnit": { "const": "metre" },
+        "angleUnit": { "const": "radian" },
+        "timeUnit": { "const": "second" },
+        "workingColorSpace": { "type": "string", "minLength": 1, "maxLength": 80 }
+      }
+    },
+    "exportSettings": { "type": "object" },
+    "metadata": { "type": "object" },
+    "documentHash": { "$ref": "#/$defs/hash" }
+  },
+  "$defs": {
+    "stableId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?(?:/[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?)*$"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._%/-]+$"
+    },
+    "sceneIndexEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "path", "hash"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "path": {
+          "allOf": [
+            { "$ref": "#/$defs/relativePath" },
+            { "pattern": "^scenes/[A-Za-z0-9._-]+(?:\\.[a-f0-9]{64})?\\.scene\\.json$" }
+          ]
+        },
+        "hash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "resourceIndexEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "hash", "count"],
+      "properties": {
+        "path": {
+          "allOf": [
+            { "$ref": "#/$defs/relativePath" },
+            { "pattern": "^resources/(?:geometries|materials|textures|graphs|animations|prefabs|audio|assets)(?:\\.[a-f0-9]{64})?\\.json$" }
+          ]
+        },
+        "hash": { "$ref": "#/$defs/hash" },
+        "count": { "type": "integer", "minimum": 0, "maximum": 20000 }
+      }
+    },
+    "script": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "path", "trustLevel", "hash", "exposedFunctions", "metadata"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "path": { "$ref": "#/$defs/relativePath" },
+        "trustLevel": { "enum": ["agent-safe", "trusted-project"] },
+        "hash": {
+          "oneOf": [
+            { "$ref": "#/$defs/hash" },
+            { "type": "null" }
+          ]
+        },
+        "exposedFunctions": {
+          "type": "array",
+          "maxItems": 200,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 160 }
+        },
+        "metadata": { "type": "object" }
+      }
+    }
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "material/starter-stage/beacon": {
+    "id": "material/starter-stage/beacon",
+    "kind": "material",
+    "materialKind": "physical",
+    "metadata": {},
+    "name": "Sunset Coral",
+    "parameters": {
+      "baseColor": [0.62, 0.075, 0.035],
+      "clearcoat": 0.24,
+      "clearcoatRoughness": 0.42,
+      "metalness": 0.02,
+      "roughness": 0.48
+    }
+  },
+  "material/starter-stage/ground": {
+    "id": "material/starter-stage/ground",
+    "kind": "material",
+    "materialKind": "standard",
+    "metadata": {},
+    "name": "Midnight Ground",
+    "parameters": {
+      "baseColor": [0.028, 0.043, 0.062],
+      "metalness": 0.02,
+      "roughness": 0.93
+    }
+  },
+  "material/starter-stage/hero": {
+    "id": "material/starter-stage/hero",
+    "kind": "material",
+    "materialKind": "physical",
+    "metadata": {},
+    "name": "Verdant Glaze",
+    "parameters": {
+      "baseColor": [0.018, 0.34, 0.24],
+      "clearcoat": 0.68,
+      "clearcoatRoughness": 0.22,
+      "metalness": 0.08,
+      "roughness": 0.31
+    }
+  },
+  "material/starter-stage/orb": {
+    "id": "material/starter-stage/orb",
+    "kind": "material",
+    "materialKind": "physical",
+    "metadata": {},
+    "name": "Warm Gold",
+    "parameters": {
+      "baseColor": [0.58, 0.29, 0.045],
+      "clearcoat": 0.35,
+      "clearcoatRoughness": 0.3,
+      "metalness": 0.52,
+      "roughness": 0.29
+    }
+  },
+  "material/starter-stage/plinth": {
+    "id": "material/starter-stage/plinth",
+    "kind": "material",
+    "materialKind": "standard",
+    "metadata": {},
+    "name": "Warm Stone",
+    "parameters": {
+      "baseColor": [0.19, 0.145, 0.1],
+      "metalness": 0.01,
+      "roughness": 0.76
+    }
+  }
+}
