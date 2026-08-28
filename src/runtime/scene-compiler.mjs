@@ -159,6 +159,12 @@ function instantiateEntity(THREE, entity, context) {
     studioEntityId: entity.id,
     studioKind: entity.kind,
     tags: [...(entity.tags ?? [])],
+    ...(['perspectiveCamera', 'orthographicCamera'].includes(entity.kind)
+      && Number.isFinite(entity.components?.camera?.presentationAspect)
+      && entity.components.camera.presentationAspect >= 0.1
+      && entity.components.camera.presentationAspect <= 10
+      ? { studioPresentationAspect: entity.components.camera.presentationAspect }
+      : {}),
   };
   applyTransform(object, entity.transform);
   if (entity.kind === 'hemisphereLight' && object.position?.lengthSq?.() < 1e-12) {

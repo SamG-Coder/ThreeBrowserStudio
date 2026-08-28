@@ -125,6 +125,56 @@ function addSeed(TSL, coordinate, seed) {
   return coordinate.add(TSL.vec3(...offset));
 }
 
+function blenderNoiseChannel(TSL, coordinate, {
+  mode,
+  octaves,
+  lacunarity,
+  roughness,
+  offset,
+  gain,
+  normalize,
+}) {
+  if (mode === 'FBM') {
+    // Keep the original FBM lowering byte-for-byte equivalent so existing
+    // authored materials retain their appearance.
+    return TSL.mx_fractal_noise_float(coordinate, octaves, lacunarity, roughness)
+      .mul(0.5).add(0.5);
+  }
+
+  if (mode === 'RIDGED_MULTIFRACTAL') {
+    let sampleCoordinate = coordinate;
+    let amplitude = TSL.float(1);
+    let amplitudeTotal = TSL.float(0);
+    let result = TSL.float(0);
+    let weight = TSL.float(1);
+    for (let octave = 0; octave < octaves; octave += 1) {
+      let ridge = TSL.float(1).sub(TSL.abs(TSL.mx_noise_float(sampleCoordinate)));
+      ridge = ridge.mul(ridge).mul(weight);
+      result = result.add(ridge.mul(amplitude));
+      amplitudeTotal = amplitudeTotal.add(amplitude);
+      weight = ridge.mul(gain).saturate();
+      sampleCoordinate = sampleCoordinate.mul(lacunarity);
+      amplitude = amplitude.mul(roughness);
+    }
+    return normalize ? result.div(TSL.max(amplitudeTotal, 1e-7)) : result;
+  }
+
+  if (mode === 'HETERO_TERRAIN') {
+    let sampleCoordinate = coordinate;
+    let value = TSL.mx_noise_float(sampleCoordinate).mul(0.5).add(0.5).add(offset);
+    let amplitude = roughness;
+    for (let octave = 1; octave < octaves; octave += 1) {
+      sampleCoordinate = sampleCoordinate.mul(lacunarity);
+      const signal = TSL.mx_noise_float(sampleCoordinate).mul(0.5).add(0.5).add(offset);
+      value = value.add(signal.mul(amplitude).mul(value).mul(gain));
+      amplitude = amplitude.mul(roughness);
+    }
+    return value;
+  }
+
+  fail('shader_node_mode_unsupported', `Noise Texture mode ${mode} is catalogued for interchange but not compiled live yet.`, { mode });
+}
+
 function component(value, name, fallback) {
   return value?.[name] ?? fallback;
 }
@@ -662,7 +712,14 @@ function compileNodeFactory({ TSL, graph, parameters, textureResolver }) {
       return vectorMath(TSL, p.operation ?? 'ADD', input.get(node, 'vector', [0, 0, 0], 'vec3'), input.get(node, 'vectorB', [0, 0, 0], 'vec3'), input.get(node, 'vectorC', [0, 0, 0], 'vec3'), input.get(node, 'scale', 1));
     }
     if (type === 'blender.noiseTexture') {
-      if (!['FBM'].includes(String(p.noiseType ?? 'FBM').toUpperCase())) fail('shader_node_mode_unsupported', `Noise Texture mode ${p.noiseType} is catalogued for interchange but not compiled live yet.`);
+      const noiseType = String(p.noiseType ?? 'FBM').toUpperCase();
+      if (!['FBM', 'RIDGED_MULTIFRACTAL', 'HETERO_TERRAIN'].includes(noiseType)) {
+        fail(
+          'shader_node_mode_unsupported',
+          `Noise Texture mode ${p.noiseType} is catalogued for interchange but not compiled live yet.`,
+          { mode: noiseType },
+        );
+      }
       if (String(p.dimensions ?? '3D').toUpperCase() === '4D') fail('shader_node_mode_unsupported', 'Live TSL Noise Texture does not yet implement Blender 4D noise.');
       let coordinate = input.get(node, ['vector', 'w'], [0, 0, 0], 'vec3');
       if (String(p.dimensions).toUpperCase() === '1D') coordinate = TSL.vec3(input.get(node, 'w', 0), 0, 0);
@@ -671,14 +728,25 @@ function compileNodeFactory({ TSL, graph, parameters, textureResolver }) {
       const octaves = Math.max(1, Math.min(8, Math.round(finite(input.static(node, 'detail', 2), 2))));
       const lacunarity = input.get(node, 'lacunarity', 2);
       const roughness = input.get(node, 'roughness', 0.5);
+      const offset = input.get(node, 'offset', 0);
+      const gain = input.get(node, 'gain', 1);
       const distortion = input.get(node, 'distortion', 0);
       const distortedCoordinate = coordinate.add(TSL.mx_noise_vec3(coordinate).mul(distortion));
-      let factor = TSL.mx_fractal_noise_float(distortedCoordinate, octaves, lacunarity, roughness).mul(0.5).add(0.5);
+      const channelOptions = {
+        mode: noiseType,
+        octaves,
+        lacunarity,
+        roughness,
+        offset,
+        gain,
+        normalize: p.normalize !== false,
+      };
+      let factor = blenderNoiseChannel(TSL, distortedCoordinate, channelOptions);
       if (p.normalize !== false) factor = factor.saturate();
       const color = TSL.vec3(
         factor,
-        TSL.mx_fractal_noise_float(distortedCoordinate.add(19.17), octaves, lacunarity, roughness).mul(0.5).add(0.5),
-        TSL.mx_fractal_noise_float(distortedCoordinate.add(47.53), octaves, lacunarity, roughness).mul(0.5).add(0.5),
+        blenderNoiseChannel(TSL, distortedCoordinate.add(19.17), channelOptions),
+        blenderNoiseChannel(TSL, distortedCoordinate.add(47.53), channelOptions),
       ).saturate();
       return { factor, color };
     }

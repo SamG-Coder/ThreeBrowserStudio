@@ -4,7 +4,7 @@ import path from 'node:path';
 import { RpcError, safeError } from '../bridge/protocol.mjs';
 import { STUDIO_TOOL_NAMES, TOOL_SCHEMAS } from './tool-schemas.mjs';
 
-const INITIAL_SERVER_INSTRUCTIONS = `ThreeBrowser Studio is an LLM-first Three.js WebGPU editor. Start with three_studio_status; its reported capabilities and schemas are authoritative. Use stable IDs. Query graphCatalog before authoring Blender RNA shader graphs. Supported nodes compile through TSL/WebGPU; unsupported nodes fail candidate compilation. Play evaluates Action animation only. Jobs, scripts, layout generators, diagnostic passes, export, RTX, and behavior simulation are unavailable.`;
+const INITIAL_SERVER_INSTRUCTIONS = `Studio is an LLM-first WebGPU editor. Start with three_studio_status; its capabilities and schemas are authoritative. Use stable IDs. camera.frame persists exact-aspect shots. layout.pattern supports live linear, grid, and radial instancing. geometry.edit performs bounded indexed-mesh edits. Query graphCatalog. Play evaluates Action animation only. RTX lighting is capability-gated. Jobs, scripts, other layout generators, diagnostic passes, export, and behavior simulation are unavailable.`;
 
 export const SERVER_INSTRUCTIONS = `${INITIAL_SERVER_INSTRUCTIONS.padEnd(512, ' ')}Inspect only bounded context. Mutate with exact stable IDs, the latest baseRevision, a unique idempotencyKey, and one coherent label. Dry-run risky or large changes. Never claim gameplay works while behaviorRuntime is false. Save verified milestones. Never edit project JSON, history, recovery, or session-marker files directly, and never enable trusted-project mode. Units are metres, radians, and seconds.`;
 
@@ -21,7 +21,7 @@ export const TOOL_DEFINITIONS = Object.freeze({
   },
   three_studio_apply: {
     title: 'Apply Three Studio Changeset',
-    description: 'Apply one labelled atomic changeset against an exact base revision. The schema exposes only the 14 implemented scene, entity, and resource operations. Supports up to 128 strict operations, idempotency, guarded deletes, aliases, and dry-run.',
+    description: 'Apply one labelled atomic changeset against an exact base revision. The schema exposes only the 18 implemented scene, RTX-lighting, entity, persistent-camera, layout-pattern, indexed-geometry, and resource operations. Supports up to 128 strict operations, idempotency, guarded deletes, aliases, and dry-run.',
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   },
   three_studio_validate: {
@@ -31,7 +31,7 @@ export const TOOL_DEFINITIONS = Object.freeze({
   },
   three_studio_render: {
     title: 'Render Three Studio Evidence',
-    description: 'Optionally scrub to an exact animation frame, frame exact entities or bounds, or use a named compiled camera, then write offscreen WebGPU beauty evidence without changing canonical authoring state or the visible camera.',
+    description: 'Optionally scrub to an exact animation frame, frame exact entities or bounds, or use a named compiled camera, then write WebGPU beauty evidence without changing canonical authoring state or the visible camera. A committed scene RTX request augments lighting only when status reports it active.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   },
   three_studio_history: {

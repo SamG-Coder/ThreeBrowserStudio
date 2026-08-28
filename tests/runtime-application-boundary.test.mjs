@@ -426,6 +426,16 @@ test('a project switch compile failure preserves the active project and live sce
   const status = application.status();
   assert.equal(status.projectId, 'project/active');
   assert.equal(status.projectPath, path.join(studioRoot, 'projects', 'active'));
+  assert.equal(status.capabilities.layoutGenerators, true);
+  assert.deepEqual(status.capabilities.layoutPatterns, ['linear', 'grid', 'radial']);
+  assert.equal(status.capabilities.modifierRuntime.includes('pattern'), true);
+  assert.equal(status.capabilities.implementedOperations.includes('layout.pattern'), true);
+  assert.equal(status.capabilities.geometryEditing, true);
+  assert.deepEqual(status.capabilities.geometryEditCommands, [
+    'move', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
+  ]);
+  assert.equal(status.capabilities.maxGeometryEditCommands, 64);
+  assert.equal(status.capabilities.implementedOperations.includes('geometry.edit'), true);
   assert.deepEqual(viewport.scene.children, [liveRoot]);
   assert.equal(liveRoot.parent, viewport.scene);
 });

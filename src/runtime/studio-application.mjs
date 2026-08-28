@@ -35,6 +35,7 @@ import { TOOL_SCHEMAS } from '../mcp/tool-schemas.mjs';
 import { compileSceneDocument } from './scene-compiler.mjs';
 import { validateAnimationResource } from './animation-runtime.mjs';
 import { frameCameraToBounds } from '../viewport/camera-projection.mjs';
+import { describeEffectiveCamera } from '../viewport/camera-evidence.mjs';
 
 const RESOURCE_OPERATIONS = Object.freeze({
   'geometry.put': ['geometries', 'put'],
@@ -54,8 +55,9 @@ const RESOURCE_OPERATIONS = Object.freeze({
 
 const DIRECT_CORE_OPERATIONS = new Set([
   'scene.create', 'scene.patch', 'scene.delete', 'scene.setActive',
-  'scene.settings.patch', 'scene.setActiveCamera',
+  'scene.settings.patch', 'scene.rtx.patch', 'scene.setActiveCamera',
   'entity.create', 'entity.patch', 'entity.duplicate', 'entity.reparent', 'entity.delete',
+  'camera.frame', 'layout.pattern', 'geometry.edit',
   'resource.create', 'resource.patch', 'resource.delete',
 ]);
 
@@ -75,6 +77,24 @@ function without(value, keys) {
 function pathIsInside(root, candidate) {
   const relative = path.relative(root, candidate);
   return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+}
+
+function authoredCameraEvidenceOptions(document, camera, sourceCameraId) {
+  if (!sourceCameraId || sourceCameraId === 'review-camera') {
+    return { sourceCameraId: sourceCameraId ?? 'review-camera', framingMode: 'review' };
+  }
+  let framing;
+  try {
+    framing = new ProjectIndex(document).getEntity(sourceCameraId).entity.components?.camera?.framing;
+  } catch {
+    framing = undefined;
+  }
+  return {
+    sourceCameraId,
+    framingMode: framing ? 'authored-frame' : 'authored',
+    ...(Array.isArray(framing?.targetIds) ? { targetIds: framing.targetIds } : {}),
+    ...(framing?.bounds ? { targetBounds: framing.bounds } : {}),
+  };
 }
 
 function parseToolParams(method, params) {
@@ -123,6 +143,14 @@ export function translateToolOperation(operation, document) {
   const data = operation.data ?? {};
   if (DIRECT_CORE_OPERATIONS.has(operation.op)) {
     const direct = structuredClone(operation);
+    if (direct.op === 'camera.frame') {
+      const target = direct.target;
+      direct.bounds = target?.bounds;
+      direct.targetIds = target?.targetIds;
+      delete direct.target;
+      if (direct.bounds === undefined) delete direct.bounds;
+      if (direct.targetIds === undefined) delete direct.targetIds;
+    }
     if (direct.op.startsWith('resource.')) direct.resourceType = normalizeResourceType(direct.resourceType);
     if (direct.op === 'resource.create' && direct.resourceType === 'graphs') {
       direct.resource = createResourceDocument('graphs', direct.resource);
@@ -197,6 +225,39 @@ export function translateToolOperation(operation, document) {
     default:
       throw new StudioError('operation_not_implemented', `${operation.op} is not in the lean v1 authoring slice yet.`, { operation: operation.op });
   }
+}
+
+export function materializeCameraFrameOperation(operation, { compiled, THREE } = {}) {
+  if (operation?.op !== 'camera.frame' && operation?.type !== 'camera.frame') return operation;
+  if (operation.bounds !== undefined) return operation;
+  if (!Array.isArray(operation.targetIds) || operation.targetIds.length === 0) {
+    throw new StudioError('invalid_camera_frame_targets', 'camera.frame requires targetIds or explicit bounds.');
+  }
+  if (!compiled || !THREE?.Box3) {
+    throw new StudioError('camera_frame_runtime_unavailable', 'camera.frame target bounds require the active compiled scene.');
+  }
+  compiled.root?.updateWorldMatrix?.(true, true);
+  const bounds = new THREE.Box3();
+  for (const targetId of operation.targetIds) {
+    const object = compiled.objects?.get?.(targetId);
+    if (!object) {
+      throw new StudioError(
+        'camera_frame_target_not_compiled',
+        `camera.frame target ${targetId} is not present in the active compiled revision; use explicit bounds for entities created in this transaction.`,
+        { targetId },
+      );
+    }
+    bounds.expandByObject(object, true);
+  }
+  if (bounds.isEmpty()) {
+    throw new StudioError('camera_frame_bounds_empty', 'camera.frame targetIds produced no renderable bounds.', {
+      targetIds: structuredClone(operation.targetIds),
+    });
+  }
+  return {
+    ...operation,
+    bounds: { min: bounds.min.toArray(), max: bounds.max.toArray() },
+  };
 }
 
 function compactEntity(entity, include, { index, compiled, THREE } = {}) {
@@ -372,9 +433,16 @@ export class StudioApplication {
         next.animationRuntime.pause(action.id);
       }
     }
-    previous?.dispose();
     const document = this.#kernel.document;
     const scene = document.scenes[document.activeSceneId];
+    if (typeof this.#viewport.configureRtx === 'function') {
+      next.root.updateWorldMatrix?.(true, true);
+      void Promise.resolve(this.#viewport.configureRtx({
+        root: next.root,
+        settings: scene?.settings?.rtx ?? {},
+      })).catch(error => console.warn('[ThreeBrowser Studio RTX]', error.message));
+    }
+    previous?.dispose();
     this.#viewport.setTitle({ project: document.name, scene: scene?.name, revision: document.revision, dirty: this.#kernel.dirty });
     if (this.#bridge) await this.#writeMarker(true);
   }
@@ -518,6 +586,24 @@ export class StudioApplication {
 
   status() {
     const status = this.#kernel.status();
+    const canvas = this.#viewport.renderer.domElement;
+    const cameraId = this.#viewport.renderCamera?.userData?.studioEntityId ?? 'review-camera';
+    const width = Math.max(1, Number(canvas?.clientWidth || canvas?.width || 1));
+    const height = Math.max(1, Number(canvas?.clientHeight || canvas?.height || 1));
+    const effectiveCamera = describeEffectiveCamera(
+      this.#viewport.renderCamera,
+      authoredCameraEvidenceOptions(this.#kernel.document, this.#viewport.renderCamera, cameraId),
+    );
+    const rtx = this.#viewport.getRtxStatus?.() ?? {
+      supported: false,
+      requested: false,
+      configured: false,
+      building: false,
+      active: false,
+      stale: false,
+      failed: false,
+      reason: 'native ray-query controller is unavailable',
+    };
     return {
       success: true,
       protocolVersion: PROTOCOL_VERSION,
@@ -535,12 +621,21 @@ export class StudioApplication {
       viewport: {
         ready: true,
         renderer: 'webgpu',
-        cameraId: this.#viewport.renderCamera?.userData?.studioEntityId ?? 'review-camera',
+        cameraId,
+        width,
+        height,
+        aspect: width / height,
+        effectiveCamera,
+        rtx,
       },
+      rtx,
       capabilities: {
         webgpu: this.#viewport.renderer.backend?.isWebGPUBackend === true,
         shadows: this.#viewport.renderer.shadowMap.enabled === true,
-        rtx: Boolean(this.#viewport.renderer.userData?.rtx),
+        rtx: rtx.supported === true,
+        rtxLighting: rtx.supported === true,
+        rtxShadows: rtx.supported === true,
+        rtxAmbientOcclusion: rtx.supported === true,
         liveSceneCompilation: true,
         behaviorRuntime: false,
         graphCompilation: Boolean(this.#TSL),
@@ -560,8 +655,15 @@ export class StudioApplication {
           'pointLight', 'spotLight', 'ambientLight', 'areaLight', 'hemisphereLight',
         ],
         geometryRecipes: ['box', 'plane', 'sphere', 'capsule', 'circle', 'cone', 'cylinder', 'torus', 'torusKnot', 'lathe', 'tube', 'shape', 'extrude', 'explicit', 'indexedMesh'],
+        geometryEditing: true,
+        geometryEditCommands: ['move', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate'],
+        maxGeometryEditCommands: 64,
         materialRecipes: ['basic', 'standard', 'physical', 'toon'],
-        modifierRuntime: ['array', 'mirror'],
+        modifierRuntime: ['array', 'mirror', 'pattern'],
+        layoutGenerators: true,
+        layoutPatterns: ['linear', 'grid', 'radial'],
+        cameraFraming: true,
+        persistentCameraShots: true,
         constraintRuntime: ['lookAt', 'trackTo', 'copyLocation', 'copyRotation', 'copyScale', 'limitLocation'],
         animationProperties: ['transform.position', 'transform.rotation', 'transform.scale', 'visible'],
         animationInterpolation: ['constant', 'linear', 'smooth', 'bezier'],
@@ -758,7 +860,10 @@ export class StudioApplication {
   async #apply(params) {
     this.#assertTarget(params);
     const document = this.#kernel.document;
-    const operations = params.operations.map(operation => translateToolOperation(operation, document));
+    const operations = params.operations.map(operation => materializeCameraFrameOperation(
+      translateToolOperation(operation, document),
+      { compiled: this.#compiled, THREE: this.#THREE },
+    ));
     const response = await this.#kernel.apply({
       protocolVersion: params.protocolVersion,
       projectId: params.projectId,
@@ -823,6 +928,8 @@ export class StudioApplication {
     }
     try {
       let captureCamera = this.#viewport.renderCamera;
+      let evidenceTargetIds;
+      let evidenceTargetBounds;
       if (params.cameraId) {
         captureCamera = this.#compiled?.objects.get(params.cameraId);
         if (!captureCamera?.isCamera) throw new StudioError('camera_not_found', `${params.cameraId} is not a compiled camera.`);
@@ -839,6 +946,8 @@ export class StudioApplication {
           }
         }
         if (bounds.isEmpty()) throw new StudioError('frame_bounds_empty', 'The requested evidence frame has no compiled bounds.');
+        evidenceTargetIds = params.frame.targetIds;
+        evidenceTargetBounds = { min: bounds.min.toArray(), max: bounds.max.toArray() };
         captureCamera = frameCameraToBounds(this.#THREE, captureCamera, bounds, {
           aspect: params.width / params.height,
         });
@@ -853,18 +962,32 @@ export class StudioApplication {
           camera: captureCamera,
         }));
       }
+      const sourceCameraId = params.cameraId ?? captureCamera?.userData?.studioEntityId ?? 'review-camera';
+      const cameraEvidence = describeEffectiveCamera(captureCamera, params.frame
+        ? {
+            sourceCameraId,
+            framingMode: 'bounds',
+            ...(evidenceTargetIds ? { targetIds: evidenceTargetIds } : {}),
+            targetBounds: evidenceTargetBounds,
+          }
+        : authoredCameraEvidenceOptions(this.#kernel.document, captureCamera, sourceCameraId));
+      const rtx = this.#viewport.getRtxStatus?.() ?? null;
       this.#latestEvidence = {
         revision: this.#kernel.revision,
         createdAt: new Date().toISOString(),
         ...(params.timelineFrame === undefined ? {} : { timelineFrame: params.timelineFrame }),
+        camera: cameraEvidence,
+        ...(rtx ? { rtx } : {}),
         items: evidence,
       };
       return {
         success: true,
         revision: this.#kernel.revision,
         projectId: this.#kernel.projectId,
-        cameraId: params.cameraId ?? captureCamera?.userData?.studioEntityId ?? 'review-camera',
+        cameraId: sourceCameraId,
+        camera: cameraEvidence,
         renderer: 'webgpu',
+        ...(rtx ? { rtx } : {}),
         ...(params.timelineFrame === undefined ? {} : { timelineFrame: params.timelineFrame }),
         evidence,
       };

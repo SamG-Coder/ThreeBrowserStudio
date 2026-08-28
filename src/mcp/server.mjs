@@ -47,25 +47,79 @@ export async function resolveLiveConnectionOptions({ argv = [], env = process.en
   };
 }
 
-export async function runThreeStudioMcp({ argv = process.argv.slice(2), env = process.env, stderr = process.stderr } = {}) {
-  const connection = await resolveLiveConnectionOptions({ argv, env });
-  const client = new LiveBridgeClient(connection);
-  try {
-    await client.connect();
-    const ping = await client.ping({ timeoutMs: 5_000 });
-    if (connection.sessionId !== undefined || connection.pid !== undefined) {
-      assertLiveSessionIdentity(connection, ping);
-    }
-  } catch (error) {
-    await client.close().catch(() => {});
-    throw error;
-  }
+function isRetryableLiveDisconnect(error) {
+  const code = error?.code;
+  return code === 'connection_closed' || code === 'timeout' || code === 'session_mismatch';
+}
 
+export function createLiveMcpDispatch({
+  argv = [],
+  env = process.env,
+  resolveConnection = resolveLiveConnectionOptions,
+  clientFactory = (connection) => new LiveBridgeClient(connection),
+  assertIdentity = assertLiveSessionIdentity,
+} = {}) {
+  let client;
+  let connecting;
+
+  const resetClient = async () => {
+    const current = client;
+    client = undefined;
+    connecting = undefined;
+    if (current) await current.close().catch(() => {});
+  };
+
+  const ensureClient = async () => {
+    if (client) return client;
+    if (connecting) return connecting;
+    connecting = (async () => {
+      const connection = await resolveConnection({ argv, env });
+      const next = clientFactory(connection);
+      try {
+        await next.connect();
+        const ping = await next.ping({ timeoutMs: 5_000 });
+        if (connection.sessionId !== undefined || connection.pid !== undefined) {
+          assertIdentity(connection, ping);
+        }
+        client = next;
+        return next;
+      } catch (error) {
+        await next.close().catch(() => {});
+        throw error;
+      }
+    })().finally(() => {
+      connecting = undefined;
+    });
+    try {
+      return await connecting;
+    } catch (error) {
+      await resetClient();
+      throw error;
+    }
+  };
+
+  const dispatch = async (method, params = {}, context = {}) => {
+    try {
+      const live = await ensureClient();
+      return await live.request(method, params, { signal: context.signal });
+    } catch (error) {
+      if (!isRetryableLiveDisconnect(error)) throw error;
+      await resetClient();
+      const live = await ensureClient();
+      return live.request(method, params, { signal: context.signal });
+    }
+  };
+
+  return { dispatch, ensureClient, close: resetClient };
+}
+
+export async function runThreeStudioMcp({ argv = process.argv.slice(2), env = process.env, stderr = process.stderr } = {}) {
+  const live = createLiveMcpDispatch({ argv, env });
   const transport = new StdioServerTransport(process.stdin, process.stdout, {
     maxBufferSize: MAX_MESSAGE_BYTES,
   });
   const handle = serveStdio(
-    () => createThreeStudioMcpServer({ dispatch: client }),
+    () => createThreeStudioMcpServer({ dispatch: live.dispatch }),
     {
       transport,
       onerror(error) {
@@ -73,12 +127,15 @@ export async function runThreeStudioMcp({ argv = process.argv.slice(2), env = pr
       },
     },
   );
+  live.ensureClient().catch((error) => {
+    stderr.write(`[three-studio MCP] waiting for native viewport: ${error.message}\n`);
+  });
 
   const close = async () => {
     await handle.close();
-    await client.close();
+    await live.close();
   };
-  return { client, handle, close };
+  return { handle, close };
 }
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;

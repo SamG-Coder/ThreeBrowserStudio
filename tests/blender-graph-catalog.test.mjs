@@ -53,6 +53,11 @@ test('Blender RNA identifiers are executable aliases with socket/default metadat
   assert.equal(noise.inputs.scale.default, 5);
   assert.equal(noise.inputs.detail.max, 15);
   assert.equal(noise.params.dimensions.default, '3D');
+  assert.deepEqual(noise.params.noiseType.values, [
+    'FBM', 'MULTIFRACTAL', 'HYBRID_MULTIFRACTAL', 'RIDGED_MULTIFRACTAL', 'HETERO_TERRAIN',
+  ]);
+  assert.equal(noise.params.seed.default, 0);
+  assert.equal(noise.params.seed.max, 2147483647);
   assert.deepEqual(noise.outputs.factor, {
     type: 'float',
     blenderName: 'Fac',

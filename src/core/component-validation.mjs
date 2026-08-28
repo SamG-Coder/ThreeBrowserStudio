@@ -1,7 +1,8 @@
 import { isStableId } from './ids.mjs';
+import { normalizeLayoutPattern } from './layout-patterns.mjs';
 import { isPlainRecord } from './util.mjs';
 
-export const RUNTIME_MODIFIER_TYPES = Object.freeze(['array', 'mirror']);
+export const RUNTIME_MODIFIER_TYPES = Object.freeze(['array', 'mirror', 'pattern']);
 export const RUNTIME_CONSTRAINT_TYPES = Object.freeze([
   'lookAt', 'trackTo', 'copyLocation', 'copyRotation', 'copyScale', 'limitLocation',
 ]);
@@ -45,6 +46,18 @@ function validateModifier(modifier, index, path, diagnostics, ids) {
   }
   if (modifier.type === 'mirror' && !['x', 'y', 'z'].includes(modifier.axis ?? 'x')) {
     diagnostic(diagnostics, 'invalid_mirror_axis', `${at}.axis`, 'Mirror axis must be x, y, or z');
+  }
+  if (modifier.type === 'pattern') {
+    try {
+      normalizeLayoutPattern(modifier, { modifier: true });
+    } catch (error) {
+      diagnostic(
+        diagnostics,
+        error.code ?? 'invalid_layout_pattern',
+        at,
+        error.message,
+      );
+    }
   }
 }
 

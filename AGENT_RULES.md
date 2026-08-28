@@ -11,15 +11,19 @@ authority. In the current lean slice:
   ID/name/kind/tag selection, tree, transforms, components, compiled bounds,
   incoming references, resource-usage checks, changes, graph catalog, Play
   counters, and latest evidence metadata;
-- apply supports only the declared scene, entity, and resource operations;
+- apply supports the declared scene/entity/resource operations plus persistent
+  `camera.frame`, bounded `layout.pattern`, indexed `geometry.edit`, and
+  canonical `scene.rtx.patch`;
 - validation is whole-project, interactive document/reference/hierarchy/graph
   validation with budgets;
-- rendering is offscreen WebGPU beauty capture only;
+- rendering is WebGPU beauty capture through the same effective camera and
+  presentation aspect as the live viewport; native ray-query lighting augments
+  it only while the explicit RTX status is active;
 - Play changes and reports transient counters/input state but executes no game
   behaviour; and
-- jobs, asset import, script authoring/execution, layout
-  generators, diagnostic render passes, export, and RTX rendering are not
-  available.
+- jobs, asset import, script authoring/execution, layout modes beyond the live
+  linear/grid/radial patterns, diagnostic render passes, export, and behavior
+  simulation are not available.
 
 Do not attempt a reserved pipeline because it appears in the design document.
 Use it only after both status and the current tool schema expose it.
@@ -43,8 +47,8 @@ Use it only after both status and the current tool schema expose it.
 - World units are metres. Rotation values are radians. Time is seconds.
 - Use meaningful stable IDs such as `market/stall-03`, not runtime UUIDs.
 - Never write using fuzzy name/tag selectors.
-- Use high-level layout operations only when status reports them implemented;
-  otherwise apply a coherent batch of explicit transforms atomically.
+- Prefer `layout.pattern` for bounded linear, grid, and radial repetition when
+  status reports it implemented; use explicit transforms for other layouts.
 - Use deterministic seeds and preserve generator IDs when work may be revised.
 - Keep transforms finite and scales non-zero.
 - Inspect compiled bounds before dependent placement, and frame captures from
@@ -104,15 +108,18 @@ operations.
 
 - Treat the visible native viewport as shared progress with the user; inspect
   the returned offscreen capture as the actual render evidence.
-- Frame the subject deliberately before an evidence capture.
+- Use `camera.frame` when a shot must persist, including its target bounds and
+  presentation aspect; transient render framing remains evidence-only.
 - Current evidence is beauty-only. Use semantic scene inspection and deliberate
   framing to resolve ambiguity; request diagnostic passes only if the render
   schema later exposes them.
 - Keep the authored WebGPU material path active; once graph compilation and RTX
   exist, RTX augments lighting/reflections rather than replacing shaders.
-- While `rtx` is false, do not request or claim RTX evidence. If RTX becomes
-  available, distinguish supported, configured, active, stale, and failed
-  states.
+- `capabilities.rtx` means adapter support, not activation. Use
+  `scene.rtx.patch` for the master lighting request and independent shadow/AO
+  controls; claim RTX evidence only when the returned status is `active`, and
+  always distinguish supported, requested, configured, building, active,
+  stale, and failed states.
 - Never claim a visual result without inspecting a capture from the committed
   revision.
 
@@ -138,7 +145,7 @@ operations.
 - Keep interactive texture graphs at or below 2048 unless a bake job is
   explicitly justified.
 - Dry-run large explicit batches and inspect the budgets returned by current
-  validation. Generated layouts and RTX budgets remain capability-gated.
+  validation. Generated layouts and RTX remain bounded and capability-gated.
 
 ## Files and assets
 

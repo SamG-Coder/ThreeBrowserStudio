@@ -1,5 +1,9 @@
 import * as THREE from "three/webgpu";
-import { cloneCameraForCapture } from "./camera-projection.mjs";
+import {
+  cameraPresentationAspect,
+  cloneCameraForCapture,
+  fitPresentationViewport,
+} from "./camera-projection.mjs";
 import { unpadWebGpuReadbackRows } from "./readback-layout.mjs";
 import { createStudioEvidenceTarget, withStudioOutputTarget } from "./render-state.mjs";
 
@@ -17,20 +21,36 @@ export function createFrameCapture({ renderer, scene, camera, getCamera, renderF
     if (!sourceCamera) throw new Error("Studio capture has no active camera.");
     const captureWidth = Math.max(16, Math.min(1920, Math.trunc(Number(width) || 1280)));
     const captureHeight = Math.max(16, Math.min(1080, Math.trunc(Number(height) || 720)));
-    const activeCamera = cloneCameraForCapture(sourceCamera, captureWidth / captureHeight);
+    const presentationAspect = cameraPresentationAspect(sourceCamera, captureWidth / captureHeight);
+    const content = fitPresentationViewport(captureWidth, captureHeight, presentationAspect);
+    const activeCamera = cloneCameraForCapture(sourceCamera, presentationAspect);
     if (!target) {
-      target = createStudioEvidenceTarget(THREE, captureWidth, captureHeight);
+      target = createStudioEvidenceTarget(THREE, content.width, content.height);
     } else {
-      target.setSize(captureWidth, captureHeight);
+      target.setSize(content.width, content.height);
     }
 
     const excludedVisibility = excludedObjects.map(object => [object, object?.visible]);
     try {
       for (const [object] of excludedVisibility) if (object) object.visible = false;
-      await prepareScene?.({ camera: activeCamera, width: captureWidth, height: captureHeight, target, pass });
+      await prepareScene?.({
+        camera: activeCamera,
+        width: content.width,
+        height: content.height,
+        outputWidth: captureWidth,
+        outputHeight: captureHeight,
+        target,
+        pass,
+      });
       await withStudioOutputTarget(renderer, target, async () => {
         renderer.clear(true, true, true);
-        if (renderFrame) await renderFrame({ target, pass, width: captureWidth, height: captureHeight });
+        if (renderFrame) await renderFrame({
+          target,
+          pass,
+          width: content.width,
+          height: content.height,
+          camera: activeCamera,
+        });
         else renderer.render(scene, activeCamera);
       });
     } finally {
@@ -42,18 +62,20 @@ export function createFrameCapture({ renderer, scene, camera, getCamera, renderF
       target,
       0,
       0,
-      captureWidth,
-      captureHeight,
+      content.width,
+      content.height,
     );
-    const packedPixels = unpadWebGpuReadbackRows(pixels, captureWidth, captureHeight);
+    const packedPixels = unpadWebGpuReadbackRows(pixels, content.width, content.height);
     const canvas = document.createElement("canvas");
     canvas.width = captureWidth;
     canvas.height = captureHeight;
     const context = canvas.getContext("2d");
+    context.fillStyle = "#0d1118";
+    context.fillRect(0, 0, captureWidth, captureHeight);
     context.putImageData(
-      new ImageData(new Uint8ClampedArray(packedPixels), captureWidth, captureHeight),
-      0,
-      0,
+      new ImageData(new Uint8ClampedArray(packedPixels), content.width, content.height),
+      content.x,
+      content.y,
     );
     const [{ mkdir, writeFile }, path] = await Promise.all([
       import("node:fs/promises"),
@@ -74,6 +96,13 @@ export function createFrameCapture({ renderer, scene, camera, getCamera, renderF
       width: captureWidth,
       height: captureHeight,
       pass,
+      presentationAspect,
+      contentViewport: {
+        x: content.x,
+        y: content.y,
+        width: content.width,
+        height: content.height,
+      },
     });
   }
 

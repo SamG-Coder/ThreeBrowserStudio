@@ -51,6 +51,7 @@ const selectorSchema = z.object({
   status: z.enum([
     'implemented', 'partial', 'planned', 'bake-required', 'not-applicable',
     'live-tsl', 'layout-only', 'catalogued', 'migration-required',
+    'live-runtime', 'live-geometry',
   ]).optional(),
 }).strict();
 
@@ -75,8 +76,9 @@ export const inspectSchema = z.object({
 
 export const OPERATION_TYPES = Object.freeze([
   'scene.create', 'scene.patch', 'scene.delete', 'scene.setActive',
-  'scene.settings.patch', 'scene.setActiveCamera',
+  'scene.settings.patch', 'scene.rtx.patch', 'scene.setActiveCamera',
   'entity.create', 'entity.patch', 'entity.duplicate', 'entity.reparent', 'entity.delete',
+  'camera.frame', 'layout.pattern', 'geometry.edit',
   'resource.create', 'resource.patch', 'resource.delete',
 ]);
 
@@ -88,6 +90,146 @@ const resourceType = z.enum([
   'geometries', 'materials', 'textures', 'graphs', 'animations', 'prefabs', 'audio', 'assets',
   'geometry', 'material', 'texture', 'graph', 'animation', 'prefab', 'asset',
 ]);
+export const rtxPatchSchema = z.object({
+  enabled: z.boolean().optional(),
+  lighting: z.boolean().optional(),
+  shadows: z.boolean().optional(),
+  ambientOcclusion: z.boolean().optional(),
+  directionalSampleCount: z.number().int().min(1).max(64).optional(),
+  aoSampleCount: z.number().int().min(1).max(64).optional(),
+  directionalAngularRadius: z.number().finite().min(0).lt(Math.PI / 2).optional(),
+  shadowStrength: z.number().finite().min(0).max(1).optional(),
+  aoStrength: z.number().finite().min(0).max(1).optional(),
+  aoRadius: z.number().finite().gt(0).max(10_000).optional(),
+  maxDistance: z.number().finite().gt(0).max(1_000_000).optional(),
+  rayBias: z.number().finite().gt(0).max(10_000).optional(),
+}).strict().refine(value => Object.keys(value).length > 0, {
+  message: 'scene.rtx.patch requires at least one setting.',
+});
+const layoutCount = z.number().int().min(1).max(8192);
+const layoutGridCounts = z.tuple([layoutCount, layoutCount, layoutCount]);
+const layoutPatternUnion = z.discriminatedUnion('mode', [
+  z.object({
+    id: identifier,
+    mode: z.literal('linear'),
+    count: layoutCount,
+    offset: vec3,
+  }).strict(),
+  z.object({
+    id: identifier,
+    mode: z.literal('grid'),
+    counts: layoutGridCounts,
+    spacing: vec3,
+  }).strict(),
+  z.object({
+    id: identifier,
+    mode: z.literal('radial'),
+    count: layoutCount,
+    axis: z.enum(['x', 'y', 'z']),
+    center: vec3,
+    radius: z.number().finite().min(0).max(1_000_000_000),
+    startAngle: finite,
+    arc: finite,
+    closed: z.boolean(),
+    orientation: z.enum(['keep', 'radial', 'tangent']),
+  }).strict(),
+]);
+export const layoutPatternSchema = layoutPatternUnion.superRefine((pattern, context) => {
+  if (pattern.mode !== 'grid') return;
+  const product = pattern.counts[0] * pattern.counts[1] * pattern.counts[2];
+  if (!Number.isSafeInteger(product) || product > 8192) {
+    context.addIssue({
+      code: 'custom',
+      path: ['counts'],
+      message: 'Grid count product must not exceed 8192.',
+    });
+  }
+});
+
+export const GEOMETRY_EDIT_COMMAND_TYPES = Object.freeze([
+  'move', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
+]);
+export const MAX_GEOMETRY_EDIT_COMMANDS = 64;
+export const MAX_GEOMETRY_EDIT_VERTEX_SELECTION = 20_000;
+
+const geometryFinite = z.number().finite().min(-1_000_000).max(1_000_000);
+const geometryVec3 = z.tuple([geometryFinite, geometryFinite, geometryFinite]);
+const geometryAxis = geometryVec3.refine(
+  axis => axis.some(component => component !== 0),
+  { message: 'axis must not be zero.' },
+);
+const geometryVertexIndices = z.array(
+  z.number().int().min(0).max(999_999),
+).min(1).max(MAX_GEOMETRY_EDIT_VERTEX_SELECTION).refine(
+  indices => new Set(indices).size === indices.length,
+  { message: 'vertexIndices cannot contain duplicates.' },
+);
+const geometryScale = z.union([geometryFinite, geometryVec3]);
+const geometryMoveEdit = z.object({
+  type: z.literal('move'),
+  vertexIndices: geometryVertexIndices,
+  offset: geometryVec3,
+}).strict();
+const geometryScaleEdit = z.object({
+  type: z.literal('scale'),
+  vertexIndices: geometryVertexIndices,
+  scale: geometryScale,
+  pivot: geometryVec3.optional(),
+}).strict();
+const geometryEulerRotateEdit = z.object({
+  type: z.literal('rotate'),
+  vertexIndices: geometryVertexIndices,
+  rotation: geometryVec3,
+  pivot: geometryVec3.optional(),
+}).strict();
+const geometryAxisRotateEdit = z.object({
+  type: z.literal('rotate'),
+  vertexIndices: geometryVertexIndices,
+  axis: geometryAxis,
+  angle: geometryFinite,
+  pivot: geometryVec3.optional(),
+}).strict();
+const geometrySmoothEdit = z.object({
+  type: z.literal('smooth'),
+  vertexIndices: geometryVertexIndices.optional(),
+  iterations: z.number().int().min(1).max(100).optional(),
+  factor: z.number().finite().min(0).max(1).optional(),
+  preserveBoundary: z.boolean().optional(),
+}).strict();
+const geometryRecalculateNormalsEdit = z.object({
+  type: z.literal('recalculateNormals'),
+}).strict();
+const geometryWeldEdit = z.object({
+  type: z.literal('weld'),
+  tolerance: z.number().finite().min(1e-9).max(1_000_000).optional(),
+}).strict();
+const geometryTriangulateEdit = z.object({
+  type: z.literal('triangulate'),
+}).strict();
+
+export const geometryEditCommandSchema = z.union([
+  geometryMoveEdit,
+  geometryScaleEdit,
+  geometryEulerRotateEdit,
+  geometryAxisRotateEdit,
+  geometrySmoothEdit,
+  geometryRecalculateNormalsEdit,
+  geometryWeldEdit,
+  geometryTriangulateEdit,
+]);
+export const geometryEditsSchema = z.array(geometryEditCommandSchema)
+  .min(1)
+  .max(MAX_GEOMETRY_EDIT_COMMANDS);
+
+export const cameraFrameTargetSchema = z.union([
+  z.object({ targetIds: z.array(identifier).min(1).max(100) }).strict(),
+  z.object({ bounds: bounds3 }).strict(),
+]);
+const cameraDirection = vec3.refine(
+  direction => direction.some(component => component !== 0),
+  { message: 'direction must not be zero.' },
+);
+
 const operation = (name, fields) => z.object({ op: z.literal(name), ...fields }).strict();
 
 const directOperations = [
@@ -96,6 +238,7 @@ const directOperations = [
   operation('scene.delete', { sceneId: reference, expectedSceneHash: hash.optional() }),
   operation('scene.setActive', { sceneId: reference }),
   operation('scene.settings.patch', { sceneId: reference, patch: jsonObjectSchema }),
+  operation('scene.rtx.patch', { sceneId: reference, patch: rtxPatchSchema }),
   operation('scene.setActiveCamera', { sceneId: reference, cameraId: reference.nullable() }),
   operation('entity.create', { sceneId: reference, entity: jsonObjectSchema, alias: alias.optional(), index: insertionIndex.optional() }),
   operation('entity.patch', { entityId: reference, patch: jsonObjectSchema }),
@@ -115,6 +258,16 @@ const directOperations = [
     recursive: z.boolean().optional().default(false),
     expectedSubtreeHash: hash.optional(),
   }),
+  operation('camera.frame', {
+    cameraId: reference,
+    target: cameraFrameTargetSchema,
+    aspect: z.number().finite().min(0.1).max(10),
+    padding: z.number().finite().min(1).max(10).optional().default(1.15),
+    direction: cameraDirection.optional().default([0, -0.2, -1]),
+    lockPreviewAspect: z.boolean().optional().default(true),
+  }),
+  operation('layout.pattern', { entityId: reference, pattern: layoutPatternSchema }),
+  operation('geometry.edit', { resourceId: reference, edits: geometryEditsSchema }),
   operation('resource.create', { resourceType, resource: jsonObjectSchema, alias: alias.optional() }),
   operation('resource.patch', { resourceType, resourceId: reference, patch: jsonObjectSchema }),
   operation('resource.delete', { resourceType, resourceId: reference }),

@@ -1,10 +1,15 @@
 export {
+  GEOMETRY_EDIT_COMMAND_TYPES,
   INSPECT_SLICES,
   JOB_KINDS,
+  MAX_GEOMETRY_EDIT_COMMANDS,
+  MAX_GEOMETRY_EDIT_VERTEX_SELECTION,
   OPERATION_TYPES,
   STUDIO_TOOL_NAMES,
   TOOL_SCHEMAS,
   applySchema,
+  geometryEditCommandSchema,
+  geometryEditsSchema,
   historySchema,
   inspectSchema,
   jobSchema,
@@ -25,4 +30,4 @@ export {
   toMcpToolError,
   toMcpToolResult,
 } from './tools.mjs';
-export { resolveLiveConnectionOptions, runThreeStudioMcp } from './server.mjs';
+export { createLiveMcpDispatch, resolveLiveConnectionOptions, runThreeStudioMcp } from './server.mjs';

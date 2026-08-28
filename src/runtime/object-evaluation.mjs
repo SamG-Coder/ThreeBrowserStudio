@@ -1,4 +1,5 @@
 import { RUNTIME_CONSTRAINT_TYPES, RUNTIME_MODIFIER_TYPES } from '../core/component-validation.mjs';
+import { MAX_LAYOUT_PATTERN_INSTANCES, normalizeLayoutPattern } from '../core/layout-patterns.mjs';
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
@@ -23,6 +24,65 @@ function transformMatrix(THREE, transform = {}) {
 function multiply(left, right) {
   if (typeof left.clone === 'function') return left.clone().multiply(right);
   return left;
+}
+
+function patternTransformMatrix(THREE, position, axis, angle) {
+  const translation = new THREE.Matrix4().makeTranslation(...position);
+  if (angle === null) return translation;
+  const rotation = new THREE.Matrix4();
+  if (axis === 'x') rotation.makeRotationX(angle);
+  else if (axis === 'y') rotation.makeRotationY(angle);
+  else rotation.makeRotationZ(angle);
+  return multiply(translation, rotation);
+}
+
+function patternAngle(pattern, index) {
+  if (pattern.count <= 1) return pattern.startAngle;
+  const denominator = pattern.closed ? pattern.count : pattern.count - 1;
+  return pattern.startAngle + pattern.arc * index / denominator;
+}
+
+function radialPosition(pattern, angle) {
+  const cosine = Math.cos(angle) * pattern.radius;
+  const sine = Math.sin(angle) * pattern.radius;
+  const [x, y, z] = pattern.center;
+  if (pattern.axis === 'x') return [x, y + cosine, z + sine];
+  if (pattern.axis === 'y') return [x + cosine, y, z - sine];
+  return [x + cosine, y + sine, z];
+}
+
+function patternMatrices(THREE, authoredPattern) {
+  const pattern = normalizeLayoutPattern(authoredPattern, { modifier: true });
+  if (pattern.mode === 'linear') {
+    return Array.from({ length: pattern.count }, (_, index) => patternTransformMatrix(
+      THREE,
+      pattern.offset.map(value => value * index),
+      'x',
+      null,
+    ));
+  }
+  if (pattern.mode === 'grid') {
+    const matrices = [];
+    for (let z = 0; z < pattern.counts[2]; z += 1) {
+      for (let y = 0; y < pattern.counts[1]; y += 1) {
+        for (let x = 0; x < pattern.counts[0]; x += 1) {
+          matrices.push(patternTransformMatrix(THREE, [
+            x * pattern.spacing[0],
+            y * pattern.spacing[1],
+            z * pattern.spacing[2],
+          ], 'x', null));
+        }
+      }
+    }
+    return matrices;
+  }
+  return Array.from({ length: pattern.count }, (_, index) => {
+    const angle = patternAngle(pattern, index);
+    const orientationAngle = pattern.orientation === 'keep'
+      ? null
+      : angle + (pattern.orientation === 'tangent' ? Math.PI * 0.5 : 0);
+    return patternTransformMatrix(THREE, radialPosition(pattern, angle), pattern.axis, orientationAngle);
+  });
 }
 
 /**
@@ -65,6 +125,35 @@ export function evaluateInstanceStack(THREE, entity, diagnostics = []) {
       const scale = axis === 'x' ? [-1, 1, 1] : axis === 'y' ? [1, -1, 1] : [1, 1, -1];
       const mirrored = new THREE.Matrix4().makeScale(...scale);
       matrices = matrices.flatMap(base => [base, multiply(base, mirrored)]).slice(0, 8192);
+    } else if (modifier.type === 'pattern') {
+      let generated;
+      try {
+        generated = patternMatrices(THREE, modifier);
+      } catch (error) {
+        diagnostics.push(warning(
+          error.code ?? 'runtime_layout_pattern_invalid',
+          entity.id,
+          `Pattern ${modifier.id} could not be evaluated: ${error.message}`,
+        ));
+        continue;
+      }
+      const requested = matrices.length * generated.length;
+      const expanded = [];
+      for (const base of matrices) {
+        for (const instance of generated) {
+          if (expanded.length >= MAX_LAYOUT_PATTERN_INSTANCES) break;
+          expanded.push(multiply(base, instance));
+        }
+        if (expanded.length >= MAX_LAYOUT_PATTERN_INSTANCES) break;
+      }
+      if (requested > MAX_LAYOUT_PATTERN_INSTANCES) {
+        diagnostics.push(warning(
+          'runtime_instance_budget_truncated',
+          entity.id,
+          `Pattern ${modifier.id} requested ${requested} instances; runtime kept ${MAX_LAYOUT_PATTERN_INSTANCES}.`,
+        ));
+      }
+      matrices = expanded;
     }
   }
   return matrices;

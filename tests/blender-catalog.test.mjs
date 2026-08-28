@@ -68,6 +68,25 @@ test('Blender catalog queries filter, search, sort, and enforce result bounds', 
   assert.throws(() => queryBlenderCatalog({ status: 'unknown' }), /Unknown Blender compatibility status/);
 });
 
+test('Blender modifiers domain exposes the pinned modifier inventory through inspect catalog queries', () => {
+  const all = queryBlenderCatalog({ domain: 'modifiers', limit: 200 });
+  assert.equal(all.matched, 1);
+  assert.equal(all.entries[0].id, 'blender/modifiers');
+  assert.equal(all.modifierInventorySummary.total, 83);
+  assert.equal(all.modifierInventory.returned, 83);
+
+  const bevel = queryBlenderCatalog({ domain: 'modifiers', search: 'BevelModifier' });
+  assert.equal(bevel.matched, 1);
+  assert.equal(bevel.modifierInventory.matched, 1);
+  assert.equal(bevel.modifierInventory.entries[0].operatorType, 'BEVEL');
+
+  const live = queryBlenderCatalog({ domain: 'modifiers', status: 'live-runtime' });
+  assert.deepEqual(
+    live.modifierInventory.entries.map((entry) => entry.operatorType),
+    ['ARRAY', 'MIRROR'],
+  );
+});
+
 test('Blender catalog summary is complete, stable, and internally consistent', () => {
   assert.equal(summarizeBlenderCatalog(), BLENDER_CATALOG_SUMMARY);
   assert.equal(

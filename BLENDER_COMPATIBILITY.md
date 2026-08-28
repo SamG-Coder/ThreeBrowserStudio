@@ -5,18 +5,24 @@ copying Blender's panel UI or pretending Three.js is Cycles. The editor remains
 LLM-first: every mutation names exact stable IDs, every batch is atomic, and no
 operation depends on selection, mode, mouse position, or the active editor.
 
-The machine-readable source of truth is
-[`src/blender/catalog.mjs`](./src/blender/catalog.mjs). It covers 37 domains and
-labels each one `implemented`, `partial`, `planned`, `bake-required`, or
-`not-applicable`. Query it live with:
+The machine-readable domain source of truth is
+[`src/blender/catalog.mjs`](./src/blender/catalog.mjs). The pinned Blender 5.2
+modifier inventory lives beside it in
+[`src/blender/modifier-inventory.mjs`](./src/blender/modifier-inventory.mjs).
+The domain catalog labels capabilities `implemented`, `partial`, `planned`,
+`bake-required`, or `not-applicable`. Query it live with:
 
 ```json
 {
   "query": "blenderCatalog",
   "selector": { "kind": "modifiers" },
-  "limit": 8
+  "limit": 200
 }
 ```
+
+For the `modifiers` domain, `catalog.modifierInventory` contains the matching
+modifier rows and `catalog.modifierInventorySummary` contains exact counts.
+Use `selector.name` to search labels, RNA classes, or operator type identifiers.
 
 ## Architectural translation
 
@@ -82,7 +88,37 @@ top-to-bottom. Studio preserves that model in canonical data and currently
 executes bounded Array and single-axis Mirror stacks as deterministic instance
 matrices. Unsupported modifier kinds remain visible and produce a
 `runtime_modifier_bake_required` warning instead of being ignored. See
-[Blender's modifier stack](https://docs.blender.org/manual/en/latest/modeling/modifiers/introduction.html).
+[Blender's modifier stack](https://docs.blender.org/manual/en/5.2/modeling/modifiers/introduction.html).
+
+### Blender 5.2 modifier inventory
+
+The inventory is pinned to Blender 5.2 LTS's official
+[`Object Modifier Type Items`](https://docs.blender.org/api/5.2/bpy_types_enum_items/object_modifier_type_items.html)
+enum and the direct [`bpy.types.Modifier`](https://docs.blender.org/api/5.2/bpy.types.Modifier.html)
+RNA subclasses, cross-checked against the release branch's
+[`properties_data_modifier.py`](https://projects.blender.org/blender/blender/src/branch/blender-v5.2-release/scripts/startup/bl_ui/properties_data_modifier.py)
+Add Modifier menus. That is the exhaustive built-in object-modifier type surface:
+83 types split into 17 Modify, 30 Generate, 26 Deform, and 10 Simulate entries.
+Blender's API calls the final section “Physics”; Studio uses the modifier
+manual's “Simulate” category name. Asset-library Geometry Nodes modifiers are
+instances of `bpy.types.NodesModifier`/`NODES`, not additional RNA types.
+
+Every row includes its full `bpy.types.*` RNA identifier, the
+`bpy.ops.object.modifier_add` operator plus exact `type` enum identifier, a
+concise purpose, and one deliberately conservative execution status:
+
+| Status | Count | Meaning |
+|---|---:|---|
+| `live-runtime` | 2 | Executes non-destructively in the current modifier stack runtime: `ARRAY`, `MIRROR` |
+| `live-geometry` | 0 | Reserved for exact live geometry-resource implementations; none are claimed today |
+| `bake-required` | 44 | Bake evaluated mesh/curve/volume data in Blender before import |
+| `planned` | 11 | Geometry Nodes plus the ten solver/physics stack types are catalogued but not executed |
+| `not-applicable` | 26 | Grease Pencil modifiers require a stroke/layer object model Studio does not have |
+
+This inventory is discovery and compatibility metadata, not a claim that all
+83 types execute. Array and Mirror are the only current live modifier types.
+The full list remains queryable even when a type is unsupported, so MCP clients
+can choose a bake workflow without guessing or silently degrading the scene.
 
 Constraint stacks use the same rule. `lookAt`/`trackTo`, copy location,
 rotation or scale, and limit location execute as derived transforms. More
@@ -188,7 +224,7 @@ The catalog represents the rest of Blender instead of claiming it works:
 
 - true Collection membership and View Layers;
 - topology-aware Edit/Sculpt/Paint modes, UV authoring and armatures;
-- the complete modifier and constraint sets;
+- live evaluation of the complete modifier and constraint sets;
 - shader/texture/Geometry Nodes compilation and Blender-specific nodes;
 - drivers, NLA layers, shape keys, rigging and motion paths;
 - rigid body, cloth, fluid, particles and simulation caches;

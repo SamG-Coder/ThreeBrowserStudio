@@ -7,6 +7,7 @@ export {
   isCompiledSurface,
 } from './shader-graph-compiler.mjs';
 export { applyConstraintStacks, evaluateInstanceStack } from './object-evaluation.mjs';
+export * from './rtx-scene-collector.mjs';
 export * from './animation-runtime.mjs';
 export * from './procedural-texture-compiler.mjs';
 export { StudioApplication, startStudioApplication, translateToolOperation } from './studio-application.mjs';

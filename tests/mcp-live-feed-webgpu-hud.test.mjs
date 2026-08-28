@@ -307,7 +307,7 @@ test('wheel scrolling is virtualized, pointer-bounded, and redraws without affec
   assert.equal(hud.scrollIndex, afterInside);
 });
 
-test('exact shortcut, resize, and disposal update GPU presentation state safely', () => {
+test('exact shortcut, cached resize, and disposal update GPU presentation state safely', () => {
   const { eventTarget, timers, telemetry, hud } = fixture({ width: 800, height: 600, pixelRatio: 1 });
   telemetry.begin('three_studio_status', {});
   assert.equal(timers.active, 1);
@@ -328,11 +328,13 @@ test('exact shortcut, resize, and disposal update GPU presentation state safely'
   assert.equal(hud.visible, true);
   assert.equal(timers.active, 1);
   const beforeResize = hud.drawRevision;
+  const beforeWidth = hud.canvas.width;
+  const beforeHeight = hud.canvas.height;
   hud.resize(1600, 900, 2.5);
   assert.equal(hud.panelBounds.pixelRatio, 3);
-  assert.equal(hud.canvas.width, Math.round(hud.panelBounds.width * 3));
-  assert.equal(hud.canvas.height, Math.round(hud.panelBounds.height * 3));
-  assert.equal(hud.drawRevision, beforeResize + 1);
+  assert.equal(hud.canvas.width, beforeWidth);
+  assert.equal(hud.canvas.height, beforeHeight);
+  assert.equal(hud.drawRevision, beforeResize);
 
   hud.dispose();
   hud.dispose();

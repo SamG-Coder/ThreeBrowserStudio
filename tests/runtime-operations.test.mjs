@@ -15,6 +15,45 @@ test('runtime forwards strict core-shaped MCP operations without weakening them'
   assert.notEqual(translated, operation);
 });
 
+test('runtime forwards layout.pattern as a direct canonical core operation', () => {
+  const project = createProjectDocument({ projectId: 'project/test' });
+  const operation = {
+    op: 'layout.pattern',
+    entityId: 'entity/source',
+    pattern: {
+      id: 'modifier/radial',
+      mode: 'radial',
+      count: 8,
+      axis: 'y',
+      center: [0, 0, 0],
+      radius: 4,
+      startAngle: 0,
+      arc: Math.PI * 2,
+      closed: true,
+      orientation: 'radial',
+    },
+  };
+  const translated = translateToolOperation(operation, project);
+  assert.deepEqual(translated, operation);
+  assert.notEqual(translated, operation);
+});
+
+test('runtime forwards geometry.edit with its ordered typed commands unchanged', () => {
+  const project = createProjectDocument({ projectId: 'project/test' });
+  const operation = {
+    op: 'geometry.edit',
+    resourceId: 'geometry/editable',
+    edits: [
+      { type: 'move', vertexIndices: [0, 2], offset: [1, 0, 0] },
+      { type: 'recalculateNormals' },
+    ],
+  };
+  const translated = translateToolOperation(operation, project);
+  assert.deepEqual(translated, operation);
+  assert.notEqual(translated, operation);
+  assert.notEqual(translated.edits, operation.edits);
+});
+
 test('runtime rejects reserved pipelines instead of silently accepting them', () => {
   const project = createProjectDocument({ projectId: 'project/test' });
   assert.throws(

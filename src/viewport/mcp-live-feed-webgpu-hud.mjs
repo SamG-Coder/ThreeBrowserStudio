@@ -155,6 +155,7 @@ export function createMcpLiveFeedWebGpuHud({
   let timer = null;
   let drawRevision = 0;
   let scrollIndex = 0;
+  let layoutCached = false;
 
   const timeNow = () => {
     try {
@@ -265,12 +266,14 @@ export function createMcpLiveFeedWebGpuHud({
 
   const resize = (nextWidth, nextHeight, nextPixelRatio = backingRatio) => {
     if (disposed) return;
-    const followedTail = scrollIndex >= Math.max(0, latest.length - capacity);
     const safeWidth = Math.max(1, Math.round(finite(nextWidth, viewportWidth)));
     const safeHeight = Math.max(1, Math.round(finite(nextHeight, viewportHeight)));
-    const safeRatio = clamp(Math.max(3, finite(nextPixelRatio, backingRatio)), 3, 3);
     viewportWidth = safeWidth;
     viewportHeight = safeHeight;
+    if (layoutCached) return;
+
+    const followedTail = scrollIndex >= Math.max(0, latest.length - capacity);
+    const safeRatio = clamp(Math.max(3, finite(nextPixelRatio, backingRatio)), 3, 3);
     backingRatio = safeRatio;
     const availableWidth = Math.max(120, viewportWidth - (PANEL_MARGIN * 2));
     const availableHeight = Math.max(90, viewportHeight - (PANEL_MARGIN * 2));
@@ -283,6 +286,7 @@ export function createMcpLiveFeedWebGpuHud({
       : clamp(scrollIndex, 0, Math.max(0, latest.length - capacity));
     canvas.width = Math.max(1, Math.round(panelWidth * backingRatio));
     canvas.height = Math.max(1, Math.round(panelHeight * backingRatio));
+    layoutCached = true;
     draw();
   };
 

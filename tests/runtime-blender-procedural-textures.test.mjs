@@ -47,6 +47,7 @@ const TRACE_TSL = Object.freeze({
   select: trace('select'),
   lessThan: trace('lessThan'),
   mx_cell_noise_float: trace('mx_cell_noise_float'),
+  mx_noise_float: trace('mx_noise_float'),
   mx_noise_vec3: trace('mx_noise_vec3'),
   mx_fractal_noise_float: trace('mx_fractal_noise_float'),
 });
@@ -174,6 +175,59 @@ test('Noise Texture distortion perturbs coordinates without replacing the fracta
   assert.ok(countOperations(compilation.outputs.roughness, 'mx_noise_vec3') > 0);
   assert.ok(countOperations(compilation.outputs.roughness, 'mx_fractal_noise_float') > 0);
   assert.equal(countOperations(compilation.outputs.roughness, 'mx_noise_float'), 0);
+});
+
+test('Noise Texture compiles deterministic ridged and hetero terrain channels for castle weathering', () => {
+  for (const noiseType of ['RIDGED_MULTIFRACTAL', 'HETERO_TERRAIN']) {
+    const graph = singleNodeGraph('ShaderNodeTexNoise', {
+      dimensions: '3D',
+      noiseType,
+      normalize: true,
+      seed: 1729,
+    });
+    graph.nodes[0].inputs = {
+      scale: 2.4,
+      detail: 4,
+      roughness: 0.62,
+      lacunarity: 2.15,
+      offset: 0.18,
+      gain: 0.9,
+      distortion: 0.12,
+    };
+
+    const validation = validateGraph(graph);
+    assert.equal(validation.valid, true, JSON.stringify(validation.errors));
+    const first = compileShaderGraph({ TSL: TRACE_TSL, graph });
+    const repeated = compileShaderGraph({ TSL: TRACE_TSL, graph });
+    assert.deepEqual(first.outputs.roughness, repeated.outputs.roughness, noiseType);
+    assert.ok(countOperations(first.outputs.roughness, 'mx_noise_float') >= 4, noiseType);
+    assert.equal(countOperations(first.outputs.roughness, 'mx_fractal_noise_float'), 0, noiseType);
+
+    const otherSeed = structuredClone(graph);
+    otherSeed.nodes[0].params.seed = 1730;
+    const changed = compileShaderGraph({ TSL: TRACE_TSL, graph: otherSeed });
+    assert.notDeepEqual(first.outputs.roughness, changed.outputs.roughness, `${noiseType} seed`);
+  }
+});
+
+test('Noise Texture still rejects catalogued multifractal modes without live lowering', () => {
+  for (const noiseType of ['MULTIFRACTAL', 'HYBRID_MULTIFRACTAL']) {
+    assert.throws(
+      () => compileShaderGraph({
+        TSL: TRACE_TSL,
+        graph: singleNodeGraph('ShaderNodeTexNoise', {
+          dimensions: '3D',
+          noiseType,
+          normalize: true,
+          seed: 9,
+        }),
+      }),
+      error => error instanceof ShaderGraphCompileError
+        && error.code === 'shader_node_mode_unsupported'
+        && error.details.nodeId === 'texture'
+        && error.details.mode === noiseType,
+    );
+  }
 });
 
 test('numeric NodeReroute lowers as a live pass-through and closure-like types remain rejected', () => {

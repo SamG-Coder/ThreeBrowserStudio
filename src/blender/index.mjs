@@ -6,3 +6,14 @@ export {
   queryBlenderCatalog,
   summarizeBlenderCatalog,
 } from './catalog.mjs';
+
+export {
+  BLENDER_MODIFIER_CATEGORIES,
+  BLENDER_MODIFIER_EXECUTION_STATUSES,
+  BLENDER_MODIFIER_INVENTORY,
+  BLENDER_MODIFIER_INVENTORY_SUMMARY,
+  BLENDER_MODIFIER_INVENTORY_VERSION,
+  BLENDER_MODIFIER_SOURCES,
+  queryBlenderModifierInventory,
+  summarizeBlenderModifierInventory,
+} from './modifier-inventory.mjs';

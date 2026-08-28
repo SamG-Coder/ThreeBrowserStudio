@@ -269,6 +269,40 @@ test('ordered array and mirror modifiers lower to deterministic instance matrice
   assert.deepEqual(compiled.diagnostics, []);
 });
 
+test('a mesh with a live layout pattern compiles directly to InstancedMesh', () => {
+  const project = createProjectDocument({
+    projectId: 'project/layout-pattern',
+    resources: {
+      geometries: [{ id: 'geometry/box', recipe: { kind: 'box' } }],
+      materials: [{ id: 'material/a' }],
+    },
+    scenes: [{
+      id: 'scene/main',
+      entities: [entity('entity/subject', 'mesh', { components: {
+        mesh: { geometryId: 'geometry/box', materialId: 'material/a' },
+        modifiers: [{
+          id: 'modifier/grid', type: 'pattern', mode: 'grid',
+          counts: [2, 3, 1], spacing: [2, 4, 6],
+        }],
+      } })],
+    }],
+  });
+
+  const compiled = compileSceneDocument({ THREE: fakeThree(), TSL: fakeTsl(), project });
+  const subject = compiled.objects.get('entity/subject');
+  assert.equal(subject.isInstancedMesh, true);
+  assert.equal(subject.count, 6);
+  assert.deepEqual(subject.matrices.map(matrix => matrix.values), [
+    ['identity', 'translation', 0, 0, 0],
+    ['identity', 'translation', 2, 0, 0],
+    ['identity', 'translation', 0, 4, 0],
+    ['identity', 'translation', 2, 4, 0],
+    ['identity', 'translation', 0, 8, 0],
+    ['identity', 'translation', 2, 8, 0],
+  ]);
+  assert.deepEqual(compiled.diagnostics, []);
+});
+
 test('look-at and copy-location constraints evaluate in authored order', () => {
   const project = createProjectDocument({
     projectId: 'project/constraints',

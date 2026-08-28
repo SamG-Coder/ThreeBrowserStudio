@@ -99,8 +99,9 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
   assert.deepEqual(INSPECT_SLICES, ['summary', 'tree', 'transform', 'components', 'bounds', 'references']);
   assert.deepEqual(OPERATION_TYPES, [
     'scene.create', 'scene.patch', 'scene.delete', 'scene.setActive',
-    'scene.settings.patch', 'scene.setActiveCamera',
+    'scene.settings.patch', 'scene.rtx.patch', 'scene.setActiveCamera',
     'entity.create', 'entity.patch', 'entity.duplicate', 'entity.reparent', 'entity.delete',
+    'camera.frame', 'layout.pattern', 'geometry.edit',
     'resource.create', 'resource.patch', 'resource.delete',
   ]);
   assert.equal(inspectSchema.safeParse({ query: 'selector', selector: { tag: 'hero' }, include: ['tree', 'transform', 'bounds', 'references'] }).success, true);
@@ -137,6 +138,46 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
     ...mutation,
     operations: [{ op: 'resource.create', resourceType: 'audio', resource: { id: 'audio/chime', kind: 'audio' } }],
   }).success, true);
+});
+
+test('layout.pattern exposes strict bounded linear, grid, and radial payloads', () => {
+  const mutation = {
+    protocolVersion: 'three-studio/1',
+    sessionId: 'live-session',
+    projectId: 'project/test',
+    baseRevision: 4,
+    idempotencyKey: 'layout-pattern-0001',
+    label: 'Arrange source mesh',
+  };
+  const parse = pattern => applySchema.safeParse({
+    ...mutation,
+    operations: [{ op: 'layout.pattern', entityId: 'entity/source', pattern }],
+  });
+
+  assert.equal(parse({
+    id: 'modifier/linear', mode: 'linear', count: 12, offset: [1.5, 0, -0.25],
+  }).success, true);
+  assert.equal(parse({
+    id: 'modifier/grid', mode: 'grid', counts: [8, 4, 2], spacing: [2, 3, 4],
+  }).success, true);
+  assert.equal(parse({
+    id: 'modifier/radial', mode: 'radial', count: 16, axis: 'y', center: [1, 2, 3],
+    radius: 10, startAngle: 0.25, arc: Math.PI * 2, closed: true, orientation: 'tangent',
+  }).success, true);
+
+  assert.equal(parse({
+    id: 'modifier/grid-too-large', mode: 'grid', counts: [64, 64, 3], spacing: [1, 1, 1],
+  }).success, false);
+  assert.equal(parse({
+    id: 'modifier/unknown', mode: 'linear', count: 2, offset: [1, 0, 0], typo: true,
+  }).success, false);
+  assert.equal(parse({
+    id: 'modifier/typed', type: 'pattern', mode: 'linear', count: 2, offset: [1, 0, 0],
+  }).success, false);
+  assert.equal(applySchema.safeParse({
+    ...mutation,
+    operations: [{ op: 'layout.pattern', entityId: 'entity/source' }],
+  }).success, false);
 });
 
 test('validation and rendering schemas reject advertised-but-unimplemented modes', () => {

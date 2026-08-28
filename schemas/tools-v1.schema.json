@@ -51,7 +51,8 @@
         "status": {
           "enum": [
             "implemented", "partial", "planned", "bake-required", "not-applicable",
-            "live-tsl", "layout-only", "catalogued", "migration-required"
+            "live-tsl", "layout-only", "catalogued", "migration-required",
+            "live-runtime", "live-geometry"
           ]
         }
       }
@@ -60,6 +61,169 @@
     "bounds3": {
       "type": "object", "additionalProperties": false, "required": ["min", "max"],
       "properties": { "min": { "$ref": "#/$defs/vec3" }, "max": { "$ref": "#/$defs/vec3" } }
+    },
+    "cameraFrameTarget": {
+      "description": "Exact committed entity bounds or explicit document-space bounds for a persistent authored shot.",
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false, "required": ["targetIds"],
+          "properties": { "targetIds": { "type": "array", "minItems": 1, "maxItems": 100, "items": { "$ref": "#/$defs/id" } } }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["bounds"],
+          "properties": { "bounds": { "$ref": "#/$defs/bounds3" } }
+        }
+      ]
+    },
+    "rtxPatch": {
+      "description": "A partial canonical native ray-query lighting configuration. At least one field is required.",
+      "type": "object", "additionalProperties": false, "minProperties": 1,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "lighting": { "type": "boolean" },
+        "shadows": { "type": "boolean" },
+        "ambientOcclusion": { "type": "boolean" },
+        "directionalSampleCount": { "type": "integer", "minimum": 1, "maximum": 64 },
+        "aoSampleCount": { "type": "integer", "minimum": 1, "maximum": 64 },
+        "directionalAngularRadius": { "type": "number", "minimum": 0, "exclusiveMaximum": 1.5707963267948966 },
+        "shadowStrength": { "type": "number", "minimum": 0, "maximum": 1 },
+        "aoStrength": { "type": "number", "minimum": 0, "maximum": 1 },
+        "aoRadius": { "type": "number", "exclusiveMinimum": 0, "maximum": 10000 },
+        "maxDistance": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000000 },
+        "rayBias": { "type": "number", "exclusiveMinimum": 0, "maximum": 10000 }
+      }
+    },
+    "layoutPattern": {
+      "description": "A canonical live-instancing layout pattern. Grid count products must not exceed 8192.",
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["id", "mode", "count", "offset"],
+          "properties": {
+            "id": { "$ref": "#/$defs/id" }, "mode": { "const": "linear" },
+            "count": { "type": "integer", "minimum": 1, "maximum": 8192 },
+            "offset": { "$ref": "#/$defs/vec3" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["id", "mode", "counts", "spacing"],
+          "properties": {
+            "id": { "$ref": "#/$defs/id" }, "mode": { "const": "grid" },
+            "counts": {
+              "type": "array", "minItems": 3, "maxItems": 3,
+              "items": { "type": "integer", "minimum": 1, "maximum": 8192 }
+            },
+            "spacing": { "$ref": "#/$defs/vec3" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["id", "mode", "count", "axis", "center", "radius", "startAngle", "arc", "closed", "orientation"],
+          "properties": {
+            "id": { "$ref": "#/$defs/id" }, "mode": { "const": "radial" },
+            "count": { "type": "integer", "minimum": 1, "maximum": 8192 },
+            "axis": { "enum": ["x", "y", "z"] }, "center": { "$ref": "#/$defs/vec3" },
+            "radius": { "type": "number", "minimum": 0, "maximum": 1000000000 },
+            "startAngle": { "type": "number", "minimum": -1000000000, "maximum": 1000000000 },
+            "arc": { "type": "number", "minimum": -1000000000, "maximum": 1000000000 },
+            "closed": { "type": "boolean" },
+            "orientation": { "enum": ["keep", "radial", "tangent"] }
+          }
+        }
+      ]
+    },
+    "geometryVec3": {
+      "type": "array", "minItems": 3, "maxItems": 3,
+      "items": { "type": "number", "minimum": -1000000, "maximum": 1000000 }
+    },
+    "geometryVertexIndices": {
+      "type": "array", "minItems": 1, "maxItems": 20000, "uniqueItems": true,
+      "items": { "type": "integer", "minimum": 0, "maximum": 999999 }
+    },
+    "geometryEditCommand": {
+      "description": "One strict indexed-mesh edit. Rotations use radians and either XYZ rotation or axis plus angle.",
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "vertexIndices", "offset"],
+          "properties": {
+            "type": { "const": "move" },
+            "vertexIndices": { "$ref": "#/$defs/geometryVertexIndices" },
+            "offset": { "$ref": "#/$defs/geometryVec3" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "vertexIndices", "scale"],
+          "properties": {
+            "type": { "const": "scale" },
+            "vertexIndices": { "$ref": "#/$defs/geometryVertexIndices" },
+            "scale": {
+              "oneOf": [
+                { "type": "number", "minimum": -1000000, "maximum": 1000000 },
+                { "$ref": "#/$defs/geometryVec3" }
+              ]
+            },
+            "pivot": { "$ref": "#/$defs/geometryVec3" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "vertexIndices", "rotation"],
+          "properties": {
+            "type": { "const": "rotate" },
+            "vertexIndices": { "$ref": "#/$defs/geometryVertexIndices" },
+            "rotation": { "$ref": "#/$defs/geometryVec3" },
+            "pivot": { "$ref": "#/$defs/geometryVec3" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "vertexIndices", "axis", "angle"],
+          "properties": {
+            "type": { "const": "rotate" },
+            "vertexIndices": { "$ref": "#/$defs/geometryVertexIndices" },
+            "axis": {
+              "allOf": [
+                { "$ref": "#/$defs/geometryVec3" },
+                { "not": { "const": [0, 0, 0] } }
+              ]
+            },
+            "angle": { "type": "number", "minimum": -1000000, "maximum": 1000000 },
+            "pivot": { "$ref": "#/$defs/geometryVec3" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type"],
+          "properties": {
+            "type": { "const": "smooth" },
+            "vertexIndices": { "$ref": "#/$defs/geometryVertexIndices" },
+            "iterations": { "type": "integer", "minimum": 1, "maximum": 100 },
+            "factor": { "type": "number", "minimum": 0, "maximum": 1 },
+            "preserveBoundary": { "type": "boolean" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type"],
+          "properties": { "type": { "const": "recalculateNormals" } }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type"],
+          "properties": {
+            "type": { "const": "weld" },
+            "tolerance": { "type": "number", "minimum": 1e-9, "maximum": 1000000 }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type"],
+          "properties": { "type": { "const": "triangulate" } }
+        }
+      ]
     },
     "inspect": {
       "type": "object", "additionalProperties": false,
@@ -77,8 +241,9 @@
       "type": "object", "additionalProperties": false, "required": ["op"],
       "properties": {
         "op": { "enum": [
-          "scene.create", "scene.patch", "scene.delete", "scene.setActive", "scene.settings.patch", "scene.setActiveCamera",
+          "scene.create", "scene.patch", "scene.delete", "scene.setActive", "scene.settings.patch", "scene.rtx.patch", "scene.setActiveCamera",
           "entity.create", "entity.patch", "entity.duplicate", "entity.reparent", "entity.delete",
+          "camera.frame", "layout.pattern", "geometry.edit",
           "resource.create", "resource.patch", "resource.delete"
         ] },
         "sceneId": { "$ref": "#/$defs/reference" }, "entityId": { "$ref": "#/$defs/reference" }, "cameraId": { "oneOf": [{ "$ref": "#/$defs/reference" }, { "type": "null" }] },
@@ -90,8 +255,51 @@
         "name": { "type": "string", "minLength": 1, "maxLength": 240 },
         "resourceType": { "enum": ["geometries", "materials", "textures", "graphs", "animations", "prefabs", "audio", "assets", "geometry", "material", "texture", "graph", "animation", "prefab", "asset"] },
         "scene": { "type": "object" }, "entity": { "type": "object" }, "resource": { "type": "object" }, "patch": { "type": "object" },
+        "pattern": { "$ref": "#/$defs/layoutPattern" },
+        "target": { "$ref": "#/$defs/cameraFrameTarget" },
+        "aspect": { "type": "number", "minimum": 0.1, "maximum": 10 },
+        "padding": { "type": "number", "minimum": 1, "maximum": 10 },
+        "direction": {
+          "allOf": [
+            { "$ref": "#/$defs/vec3" },
+            { "not": { "const": [0, 0, 0] } }
+          ]
+        },
+        "lockPreviewAspect": { "type": "boolean" },
+        "edits": {
+          "type": "array", "minItems": 1, "maxItems": 64,
+          "items": { "$ref": "#/$defs/geometryEditCommand" }
+        },
         "idMap": { "type": "object", "additionalProperties": { "$ref": "#/$defs/reference" } }
-      }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "op": { "const": "scene.rtx.patch" } }, "required": ["op"] },
+          "then": {
+            "required": ["sceneId", "patch"],
+            "properties": { "patch": { "$ref": "#/$defs/rtxPatch" } },
+            "propertyNames": { "enum": ["op", "sceneId", "patch"] }
+          }
+        },
+        {
+          "if": { "properties": { "op": { "const": "camera.frame" } }, "required": ["op"] },
+          "then": {
+            "required": ["cameraId", "target", "aspect"],
+            "propertyNames": { "enum": ["op", "cameraId", "target", "aspect", "padding", "direction", "lockPreviewAspect"] }
+          }
+        },
+        {
+          "if": { "properties": { "op": { "const": "layout.pattern" } }, "required": ["op"] },
+          "then": { "required": ["entityId", "pattern"] }
+        },
+        {
+          "if": { "properties": { "op": { "const": "geometry.edit" } }, "required": ["op"] },
+          "then": {
+            "required": ["resourceId", "edits"],
+            "propertyNames": { "enum": ["op", "resourceId", "edits"] }
+          }
+        }
+      ]
     },
     "apply": {
       "type": "object", "additionalProperties": false,

@@ -9,7 +9,8 @@ const OBS_CONFIG = path.join(os.homedir(), 'AppData', 'Roaming', 'obs-studio', '
 const PROFILE_NAME = 'ThreeBrowser Showcase';
 const COLLECTION_NAME = 'ThreeBrowser Showcase';
 const SCENE_NAME = 'ThreeBrowser Showcase';
-const INPUT_NAME = 'ThreeBrowser Game Capture';
+const INPUT_NAME = 'ThreeBrowser Window Capture';
+const LEGACY_INPUT_NAME = 'ThreeBrowser Game Capture';
 const DEFAULT_WINDOW = 'ThreeBrowser WebGPU:ThreeBrowser.WebGPU:node.exe';
 const DEFAULT_OUTPUT = 'C:\\example Videos';
 
@@ -237,19 +238,41 @@ async function ensureScene(client, windowName) {
     await client.request('CreateScene', { sceneName: SCENE_NAME });
   }
 
-  const inputList = await client.request('GetInputList');
+  let inputList = await client.request('GetInputList');
+  const legacyInput = (inputList.inputs ?? []).find(input => input.inputName === LEGACY_INPUT_NAME);
+  if (legacyInput) {
+    await client.request('RemoveInput', { inputName: LEGACY_INPUT_NAME });
+    inputList = await client.request('GetInputList');
+  }
+
+  const existingInput = (inputList.inputs ?? []).find(input => input.inputName === INPUT_NAME);
+  if (existingInput && existingInput.inputKind !== 'window_capture') {
+    await client.request('RemoveInput', { inputName: INPUT_NAME });
+    inputList = await client.request('GetInputList');
+  }
+
   if (!collectObsNames(inputList.inputs, 'inputName').has(INPUT_NAME)) {
     await client.request('CreateInput', {
       sceneName: SCENE_NAME,
       inputName: INPUT_NAME,
-      inputKind: 'game_capture',
-      inputSettings: { window: windowName, capture_mode: 'window', capture_cursor: false },
+      inputKind: 'window_capture',
+      inputSettings: {
+        window: windowName,
+        method: 2,
+        capture_cursor: false,
+        client_area: true,
+      },
       sceneItemEnabled: true,
     });
   } else {
     await client.request('SetInputSettings', {
       inputName: INPUT_NAME,
-      inputSettings: { window: windowName, capture_mode: 'window', capture_cursor: false },
+      inputSettings: {
+        window: windowName,
+        method: 2,
+        capture_cursor: false,
+        client_area: true,
+      },
       overlay: true,
     });
   }
@@ -293,7 +316,7 @@ async function setup({ outputDirectory, windowName, recordingName }) {
       await delay(250);
     }
     if (!sourceState.videoActive || !sourceState.videoShowing) {
-      throw new Error('OBS Game Capture did not become active for the ThreeBrowser window.');
+      throw new Error('OBS Window Capture did not become active for the ThreeBrowser window.');
     }
     const preview = await client.request('GetSourceScreenshot', {
       sourceName: INPUT_NAME,
@@ -303,7 +326,7 @@ async function setup({ outputDirectory, windowName, recordingName }) {
       imageCompressionQuality: 50,
     });
     if (typeof preview.imageData !== 'string' || preview.imageData.length < 1_000) {
-      throw new Error('OBS could not read a preview frame from ThreeBrowser Game Capture.');
+      throw new Error('OBS could not read a preview frame from ThreeBrowser Window Capture.');
     }
     const version = await client.request('GetVersion');
     const directory = await client.request('GetRecordDirectory');
@@ -381,7 +404,7 @@ async function preview(filePath) {
   const client = await connectObs({ launch: false });
   try {
     const sourceState = await client.request('GetSourceActive', { sourceName: INPUT_NAME });
-    if (!sourceState.videoActive || !sourceState.videoShowing) throw new Error('ThreeBrowser Game Capture is not active.');
+    if (!sourceState.videoActive || !sourceState.videoShowing) throw new Error('ThreeBrowser Window Capture is not active.');
     const result = await client.request('GetSourceScreenshot', {
       sourceName: INPUT_NAME,
       imageFormat: 'png',

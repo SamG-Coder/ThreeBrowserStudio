@@ -70,6 +70,158 @@ test('applies an alias-aware changeset atomically with one revision', async () =
   assert.equal(kernel.status().undoAvailable, true);
 });
 
+test('entity component aliases resolve singular materials and typed targets', async () => {
+  const kernel = createKernel();
+  await kernel.apply(request({
+    idempotencyKey: 'idempotency-component-aliases',
+    operations: [
+      {
+        type: 'resource.create', resourceType: 'geometry', alias: '$geometry',
+        resource: { id: 'geometry/source', kind: 'box' },
+      },
+      {
+        type: 'resource.create', resourceType: 'material', alias: '$material',
+        resource: { id: 'material/source', kind: 'standard' },
+      },
+      {
+        type: 'resource.create', resourceType: 'animation', alias: '$animation',
+        resource: { id: 'animation/source' },
+      },
+      {
+        type: 'resource.create', resourceType: 'prefab', alias: '$prefab',
+        resource: { id: 'prefab/source' },
+      },
+      {
+        type: 'resource.create', resourceType: 'audio', alias: '$audio',
+        resource: { id: 'audio/source' },
+      },
+      {
+        type: 'entity.create', sceneId: 'scene/main', alias: '$target',
+        entity: { id: 'entity/target', kind: 'empty' },
+      },
+      {
+        type: 'entity.create', sceneId: 'scene/main', alias: '$subject',
+        entity: {
+          id: 'entity/subject',
+          kind: 'mesh',
+          components: {
+            mesh: { geometryId: '$geometry', materialId: '$material' },
+            light: { targetId: '$target' },
+            constraints: [{ id: 'constraint/target', type: 'lookAt', targetId: '$target' }],
+            animation: { actionId: '$animation' },
+            prefab: { prefabId: '$prefab' },
+            audio: { audioId: '$audio' },
+          },
+        },
+      },
+    ],
+  }));
+
+  const components = kernel.document.scenes['scene/main'].entities['entity/subject'].components;
+  assert.equal(components.mesh.geometryId, 'geometry/source');
+  assert.equal(components.mesh.materialId, 'material/source');
+  assert.equal(components.light.targetId, 'entity/target');
+  assert.equal(components.constraints[0].targetId, 'entity/target');
+  assert.equal(components.animation.actionId, 'animation/source');
+  assert.equal(components.prefab.prefabId, 'prefab/source');
+  assert.equal(components.audio.audioId, 'audio/source');
+});
+
+test('layout.pattern upserts by stable modifier ID, dry-runs, rejects collisions, and undoes', async () => {
+  const kernel = createKernel();
+  await kernel.apply(request({
+    idempotencyKey: 'idempotency-layout-create',
+    operations: [
+      {
+        type: 'resource.create', resourceType: 'geometry', alias: '$geometry',
+        resource: { id: 'geometry/pattern-source', kind: 'box' },
+      },
+      {
+        type: 'entity.create', sceneId: 'scene/main', alias: '$source',
+        entity: {
+          id: 'entity/pattern-source',
+          kind: 'mesh',
+          components: {
+            mesh: { geometryId: '$geometry' },
+            modifiers: [{ id: 'modifier/mirror', type: 'mirror', axis: 'x' }],
+          },
+        },
+      },
+      {
+        type: 'layout.pattern',
+        entityId: '$source',
+        pattern: { id: 'modifier/pattern', mode: 'linear', count: 4, offset: [2, 0, 0] },
+      },
+    ],
+  }));
+
+  const modifiers = () => kernel.document.scenes['scene/main']
+    .entities['entity/pattern-source'].components.modifiers;
+  assert.deepEqual(modifiers().map(item => item.id), ['modifier/mirror', 'modifier/pattern']);
+  assert.deepEqual(modifiers()[1], {
+    id: 'modifier/pattern', type: 'pattern', mode: 'linear', count: 4, offset: [2, 0, 0],
+  });
+
+  const gridOperation = {
+    type: 'layout.pattern',
+    entityId: 'entity/pattern-source',
+    pattern: { id: 'modifier/pattern', mode: 'grid', counts: [2, 3, 1], spacing: [5, 1, 2] },
+  };
+  const dryRun = await kernel.apply(request({
+    baseRevision: 1,
+    dryRun: true,
+    idempotencyKey: 'idempotency-layout-dry-run',
+    operations: [gridOperation],
+  }));
+  assert.equal(dryRun.dryRun, true);
+  assert.equal(kernel.revision, 1);
+  assert.equal(modifiers()[1].mode, 'linear');
+
+  await kernel.apply(request({
+    baseRevision: 1,
+    idempotencyKey: 'idempotency-layout-update',
+    operations: [gridOperation],
+  }));
+  assert.deepEqual(modifiers().map(item => item.id), ['modifier/mirror', 'modifier/pattern']);
+  assert.deepEqual(modifiers()[1], {
+    id: 'modifier/pattern', type: 'pattern', mode: 'grid', counts: [2, 3, 1], spacing: [5, 1, 2],
+  });
+
+  await assert.rejects(kernel.apply(request({
+    baseRevision: 2,
+    idempotencyKey: 'idempotency-layout-collision',
+    operations: [{
+      type: 'layout.pattern',
+      entityId: 'entity/pattern-source',
+      pattern: { id: 'modifier/mirror', mode: 'linear', count: 2, offset: [1, 0, 0] },
+    }],
+  })), error => error.code === 'layout_pattern_id_collision');
+  assert.equal(kernel.revision, 2);
+
+  await assert.rejects(kernel.apply(request({
+    baseRevision: 2,
+    idempotencyKey: 'idempotency-layout-too-large',
+    operations: [{
+      type: 'layout.pattern',
+      entityId: 'entity/pattern-source',
+      pattern: {
+        id: 'modifier/pattern', mode: 'grid', counts: [64, 64, 3], spacing: [1, 1, 1],
+      },
+    }],
+  })), error => error.code === 'invalid_layout_pattern');
+  assert.equal(kernel.revision, 2);
+
+  await kernel.undo({
+    label: 'Undo pattern update',
+    baseRevision: 2,
+    idempotencyKey: 'idempotency-layout-undo',
+  });
+  assert.deepEqual(modifiers().map(item => item.id), ['modifier/mirror', 'modifier/pattern']);
+  assert.deepEqual(modifiers()[1], {
+    id: 'modifier/pattern', type: 'pattern', mode: 'linear', count: 4, offset: [2, 0, 0],
+  });
+});
+
 test('a failed operation leaves the entire batch and revision untouched', async () => {
   const kernel = createKernel();
   await assert.rejects(kernel.apply(request({

@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  cameraPresentationAspect,
   cloneCameraForCapture,
+  fitPresentationViewport,
   frameCameraToBounds,
 } from '../src/viewport/camera-projection.mjs';
 
@@ -209,6 +211,34 @@ test('capture cloning applies aspect and world transform only to the clone', () 
   assert.equal(capture.projectionUpdates, 1);
   assert.equal(capture.matrixWorldUpdates, 1);
   assert.deepEqual(cameraState(camera), before);
+});
+
+test('authored presentation aspect locks capture projection and fits exact bars', () => {
+  const camera = new Camera();
+  camera.userData = { studioPresentationAspect: 4 / 3 };
+
+  const capture = cloneCameraForCapture(camera, 16 / 9);
+  const viewport = fitPresentationViewport(1920, 1080, cameraPresentationAspect(camera, 16 / 9));
+
+  assert.equal(capture.aspect, 4 / 3);
+  assert.deepEqual(viewport, {
+    x: 240,
+    y: 0,
+    width: 1440,
+    height: 1080,
+    aspect: 4 / 3,
+    outerWidth: 1920,
+    outerHeight: 1080,
+  });
+});
+
+test('presentation viewport pillarboxes and letterboxes without fractional output sizes', () => {
+  assert.deepEqual(fitPresentationViewport(1000, 1000, 2), {
+    x: 0, y: 250, width: 1000, height: 500, aspect: 2, outerWidth: 1000, outerHeight: 1000,
+  });
+  assert.deepEqual(fitPresentationViewport(1000, 500, 1), {
+    x: 250, y: 0, width: 500, height: 500, aspect: 1, outerWidth: 1000, outerHeight: 500,
+  });
 });
 
 test('orthographic capture aspect changes do not mutate the live frustum', () => {

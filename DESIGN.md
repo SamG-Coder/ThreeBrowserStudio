@@ -14,16 +14,18 @@ product architecture. It is not, by itself, a promise that every described
 pipeline is callable. The live MCP input schemas and
 `three_studio_status.capabilities` are the normative model-facing contract.
 
-The current slice exposes atomic scene/entity/resource authoring; bounded
+The current slice exposes atomic scene/entity/resource authoring; persistent
+exact-aspect camera framing; bounded linear/grid/radial instancing; indexed
+vertex editing, smoothing, welding, and normal recalculation; canonical native
+ray-query lighting/shadow/AO controls with truthful lifecycle state; bounded
 scene inspection with delete-guard hashes, compiled bounds, references, and
 resource-usage checks; whole-project interactive document/graph validation;
 offscreen WebGPU beauty capture; list/inspect/undo/redo history; project
 list/create/open/save; deterministic Action playback and frame scrubbing; a
 queryable Blender compatibility catalog; and a transient Play boundary.
-Script operations/execution, blueprint execution, layout
-generators, shader/texture graph compilation, jobs/import/bake/export,
-diagnostic render passes, and RTX rendering remain planned and are absent from
-the current schemas.
+Script operations/execution, blueprint execution, layout generators beyond the
+implemented patterns, jobs/import/bake/export, diagnostic render passes, and
+behavior simulation remain planned and are absent from the current schemas.
 
 ## Product decision
 
@@ -94,7 +96,7 @@ Persistent ThreeBrowser Studio process
   - script / graph compilers (planned)
   - Three.js WebGPU runtime scene
   - deterministic Action runtime + blueprint runtime (blueprints planned)
-  - native RTX preview adapter (planned)
+  - native RTX lighting preview adapter (implemented when the host bridge supports it)
   - persistent viewport + evidence capture
 ```
 

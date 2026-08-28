@@ -2,12 +2,19 @@ import * as THREE from "three/webgpu";
 import * as TSL from "three/tsl";
 import { createBootstrapScene } from "./bootstrap-scene.mjs";
 import { createFrameCapture } from "./frame-capture.mjs";
-import { updateCameraAspect } from "./camera-projection.mjs";
+import {
+  cameraPresentationAspect,
+  fitPresentationViewport,
+  updateCameraAspect,
+} from "./camera-projection.mjs";
 import { applyStudioRenderState, STUDIO_RENDER_STATE } from "./render-state.mjs";
 import { createReviewControls } from "./review-controls.mjs";
 import { createMcpLiveFeedWebGpuHud } from "./mcp-live-feed-webgpu-hud.mjs";
 import { createStudioCommandTelemetry } from "../runtime/mcp-live-feed-telemetry.mjs";
+import { collectRtxScene } from "../runtime/rtx-scene-collector.mjs";
 import { startStudioApplication } from "../runtime/studio-application.mjs";
+import { createRtxLightingController } from "./rtx-lighting-controller.mjs";
+import { adaptSceneRtxSettings } from "./rtx-settings-adapter.mjs";
 
 document.title = "ThreeBrowser Studio — waiting for project";
 
@@ -21,9 +28,9 @@ async function main() {
   renderer.setSize(Math.max(1, innerWidth), Math.max(1, innerHeight));
   applyStudioRenderState(THREE, renderer);
   renderer.domElement.style.position = "fixed";
-  renderer.domElement.style.inset = "0";
-  renderer.domElement.style.width = "100%";
-  renderer.domElement.style.height = "100%";
+  renderer.domElement.style.inset = "auto";
+  renderer.domElement.style.left = "0";
+  renderer.domElement.style.top = "0";
   renderer.domElement.style.touchAction = "none";
   document.body.appendChild(renderer.domElement);
   await renderer.init();
@@ -71,21 +78,43 @@ async function main() {
     height: Math.max(1, innerHeight),
     pixelRatio: Math.max(1, Number(globalThis.devicePixelRatio || 1)),
   });
+  const rtxLighting = createRtxLightingController({
+    THREE,
+    renderer,
+    rtx: globalThis.navigator?.gpu?.threeBrowserRTX ?? null,
+    collectScene: root => collectRtxScene(root),
+    normalizeSettings: adaptSceneRtxSettings,
+    settings: {},
+  });
   const capture = createFrameCapture({
     renderer,
     scene,
     getCamera: () => renderCamera,
     excludedObjects: [liveFeed.sprite],
+    async renderFrame({ target, camera: activeCamera, width, height }) {
+      const renderedWithRtx = await rtxLighting.render({
+        scene,
+        camera: activeCamera,
+        width,
+        height,
+        outputTarget: target,
+      });
+      if (!renderedWithRtx) renderer.render(scene, activeCamera);
+    },
   });
   const started = performance.now() * 0.001;
   let application = null;
 
   function resize() {
-    const width = Math.max(1, innerWidth);
-    const height = Math.max(1, innerHeight);
-    updateCameraAspect(renderCamera, width / height);
-    renderer.setSize(width, height);
-    liveFeed.resize(width, height, Math.max(1, Number(globalThis.devicePixelRatio || 1)));
+    const width = Math.max(1, Number(innerWidth) || 1);
+    const height = Math.max(1, Number(innerHeight) || 1);
+    const presentationAspect = cameraPresentationAspect(renderCamera, width / height);
+    const content = fitPresentationViewport(width, height, presentationAspect);
+    updateCameraAspect(renderCamera, presentationAspect);
+    renderer.setSize(content.width, content.height);
+    renderer.domElement.style.left = `${content.x}px`;
+    renderer.domElement.style.top = `${content.y}px`;
+    liveFeed.resize(content.width, content.height, Math.max(1, Number(globalThis.devicePixelRatio || 1)));
   }
 
   let disposed = false;
@@ -98,6 +127,7 @@ async function main() {
     liveFeed.dispose();
     commandTelemetry.dispose();
     capture.dispose();
+    rtxLighting.dispose();
     controls.dispose();
     bootstrap.dispose();
     scene.clear();
@@ -125,6 +155,20 @@ async function main() {
       scene.backgroundNode = backgroundNode;
       scene.fog = fog;
       if (!background && !backgroundNode) renderer.setClearColor(STUDIO_RENDER_STATE.clearColor, 1);
+    },
+    configureRtx({ root, settings = {} } = {}) {
+      rtxLighting.setSettings(settings);
+      if (settings.enabled !== true) return Promise.resolve(false);
+      rtxLighting.markStale("compiled scene revision changed");
+      return rtxLighting.configure({
+        scene: root,
+        width: renderer.domElement.width,
+        height: renderer.domElement.height,
+        settings,
+      });
+    },
+    getRtxStatus() {
+      return rtxLighting.getStatus();
     },
     capture: capture.capture,
     async focusBounds(bounds) {
@@ -167,19 +211,32 @@ async function main() {
   globalThis.addEventListener("beforeunload", () => { void dispose(); }, { once: true });
   resize();
   let previousFrame = performance.now() * 0.001;
-  renderer.setAnimationLoop(() => {
-    if (disposed) return;
-    const now = performance.now() * 0.001;
-    const elapsed = now - started;
-    const delta = Math.min(0.1, Math.max(0, now - previousFrame));
-    previousFrame = now;
-    if (bootstrap.root.parent) bootstrap.update(elapsed);
-    application?.update(delta);
-    if (renderCamera === camera) controls.update(delta);
-    renderer.setRenderTarget(null);
-    renderer.setMRT(null);
-    liveFeed.updateCamera(renderCamera);
-    renderer.render(scene, renderCamera);
+  let renderingFrame = false;
+  renderer.setAnimationLoop(async () => {
+    if (disposed || renderingFrame) return;
+    renderingFrame = true;
+    try {
+      const now = performance.now() * 0.001;
+      const elapsed = now - started;
+      const delta = Math.min(0.1, Math.max(0, now - previousFrame));
+      previousFrame = now;
+      if (bootstrap.root.parent) bootstrap.update(elapsed);
+      application?.update(delta);
+      if (renderCamera === camera) controls.update(delta);
+      renderer.setRenderTarget(null);
+      renderer.setMRT(null);
+      liveFeed.updateCamera(renderCamera);
+      const renderedWithRtx = await rtxLighting.render({
+        scene,
+        camera: renderCamera,
+        width: renderer.domElement.width,
+        height: renderer.domElement.height,
+        outputTarget: null,
+      });
+      if (!renderedWithRtx) renderer.render(scene, renderCamera);
+    } finally {
+      renderingFrame = false;
+    }
   });
 
   console.log("[ThreeBrowser Studio] persistent WebGPU viewport ready");

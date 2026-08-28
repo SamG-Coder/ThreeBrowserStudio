@@ -8,4 +8,5 @@ export * from './indexes.mjs';
 export * from './kernel.mjs';
 export * from './operations.mjs';
 export * from './persistence.mjs';
+export * from './rtx-settings.mjs';
 export { cloneJson, contentHash, stableStringify } from './util.mjs';

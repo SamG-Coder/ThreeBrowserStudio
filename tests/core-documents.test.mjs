@@ -111,3 +111,27 @@ test('validation enforces globally unique stable IDs', () => {
   assert.equal(result.valid, false);
   assert.equal(result.diagnostics.some((item) => item.code === 'duplicate_id'), true);
 });
+
+test('validation rejects malformed persisted layout pattern modifiers', () => {
+  const project = createProjectDocument({
+    projectId: 'project/invalid-pattern',
+    resources: { geometries: [{ id: 'geometry/source', kind: 'box' }] },
+    scenes: [{
+      id: 'scene/main',
+      entities: [{
+        id: 'entity/source',
+        kind: 'mesh',
+        components: {
+          mesh: { geometryId: 'geometry/source' },
+          modifiers: [{
+            id: 'modifier/grid', type: 'pattern', mode: 'grid',
+            counts: [64, 64, 3], spacing: [1, 1, 1],
+          }],
+        },
+      }],
+    }],
+  });
+  const result = validateProjectDocument(project);
+  assert.equal(result.valid, false);
+  assert.equal(result.diagnostics.some(item => item.code === 'invalid_layout_pattern'), true);
+});

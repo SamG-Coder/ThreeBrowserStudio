@@ -1,3 +1,9 @@
+import {
+  BLENDER_MODIFIER_EXECUTION_STATUSES,
+  BLENDER_MODIFIER_INVENTORY_SUMMARY,
+  queryBlenderModifierInventory,
+} from './modifier-inventory.mjs';
+
 export const BLENDER_CATALOG_VERSION = 1;
 
 export const BLENDER_COMPATIBILITY_STATUSES = Object.freeze([
@@ -9,6 +15,7 @@ export const BLENDER_COMPATIBILITY_STATUSES = Object.freeze([
 ]);
 
 const STATUS_SET = new Set(BLENDER_COMPATIBILITY_STATUSES);
+const MODIFIER_STATUS_SET = new Set(BLENDER_MODIFIER_EXECUTION_STATUSES);
 const MAX_QUERY_RESULTS = 64;
 const DEFAULT_QUERY_RESULTS = 32;
 
@@ -171,10 +178,13 @@ const entries = [
     status: 'partial',
     canonicalRepresentation: 'Entity.components.modifiers is an ordered, stable-ID stack; supported entries lower non-destructively to instance matrices and other entries remain explicit bake boundaries.',
     mcpWorkflow: ['three_studio_apply: entity.create|entity.patch components.modifiers', 'three_studio_validate', 'Bake unsupported geometry-changing modifiers to indexedMesh.'],
-    runtimeNotes: 'Array and mirror execute in authored order without mutating base geometry. Unknown modifier kinds are preserved but produce a bake-required runtime diagnostic.',
-    supportedSubset: ['ordered stack up to 64 entries', 'stable modifier IDs', 'enable and viewport/render flags', 'array count/offset up to bounded limits', 'single-axis mirror', 'non-destructive base geometry'],
-    unsupportedSubset: ['bevel/subdivision/boolean/solidify evaluation', 'apply-to-base operation', 'edit cage', 'modifier object references', 'full Blender modifier set'],
-    officialUrls: ['https://docs.blender.org/manual/en/latest/modeling/modifiers/introduction.html'],
+    runtimeNotes: 'Array and mirror execute in authored order without mutating base geometry. Blender 5.2\'s complete 83-type RNA inventory is queryable here; every other type has an explicit non-live classification.',
+    supportedSubset: ['ordered stack up to 64 entries', 'stable modifier IDs', 'enable and viewport/render flags', 'array count/offset up to bounded limits', 'single-axis mirror', 'non-destructive base geometry', 'complete Blender 5.2 Object Modifier Type Items inventory'],
+    unsupportedSubset: ['live evaluation outside Array/Mirror', 'apply-to-base operation', 'edit cage', 'modifier object references', 'Grease Pencil stroke/layer object model', 'physics solvers'],
+    officialUrls: [
+      'https://docs.blender.org/manual/en/5.2/modeling/modifiers/introduction.html',
+      'https://docs.blender.org/api/5.2/bpy_types_enum_items/object_modifier_type_items.html',
+    ],
   }),
   capability({
     id: 'blender/constraints',
@@ -572,22 +582,33 @@ function searchText(entry) {
 }
 
 export function queryBlenderCatalog({ domain, search, status, limit } = {}) {
-  if (status !== undefined && !STATUS_SET.has(status)) {
+  const normalizedDomain = domain === undefined ? '' : String(domain).trim().toLowerCase();
+  const modifierDomainRequested = normalizedDomain === 'modifiers' || normalizedDomain === 'blender/modifiers';
+  const modifierStatusRequested = modifierDomainRequested && MODIFIER_STATUS_SET.has(status);
+  if (status !== undefined && !STATUS_SET.has(status) && !modifierStatusRequested) {
     throw new TypeError(`Unknown Blender compatibility status: ${status}`);
   }
-  const normalizedDomain = domain === undefined ? '' : String(domain).trim().toLowerCase();
   const normalizedSearch = search === undefined ? '' : String(search).trim().toLowerCase().slice(0, 256);
   const matches = entries
     .filter((entry) => !normalizedDomain || entry.domain.toLowerCase() === normalizedDomain || entry.id.toLowerCase() === normalizedDomain)
-    .filter((entry) => status === undefined || entry.status === status)
-    .filter((entry) => !normalizedSearch || searchText(entry).includes(normalizedSearch))
+    .filter((entry) => status === undefined || modifierStatusRequested || entry.status === status)
+    .filter((entry) => modifierDomainRequested || !normalizedSearch || searchText(entry).includes(normalizedSearch))
     .sort((left, right) => left.domain.localeCompare(right.domain));
   const returnedEntries = matches.slice(0, normalizeLimit(limit));
-  return {
+  const result = {
     version: BLENDER_CATALOG_VERSION,
     total: entries.length,
     matched: matches.length,
     returned: returnedEntries.length,
     entries: returnedEntries,
   };
+  if (modifierDomainRequested && (status === undefined || modifierStatusRequested || returnedEntries.length > 0)) {
+    result.modifierInventorySummary = BLENDER_MODIFIER_INVENTORY_SUMMARY;
+    result.modifierInventory = queryBlenderModifierInventory({
+      search: normalizedSearch,
+      status: modifierStatusRequested ? status : undefined,
+      limit,
+    });
+  }
+  return result;
 }
