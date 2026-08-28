@@ -178,9 +178,9 @@ const entries = [
     status: 'partial',
     canonicalRepresentation: 'Entity.components.modifiers is an ordered, stable-ID stack; supported entries lower non-destructively to instance matrices and other entries remain explicit bake boundaries.',
     mcpWorkflow: ['three_studio_apply: entity.create|entity.patch components.modifiers', 'three_studio_validate', 'Bake unsupported geometry-changing modifiers to indexedMesh.'],
-    runtimeNotes: 'Array and mirror execute in authored order without mutating base geometry. Blender 5.2\'s complete 83-type RNA inventory is queryable here; every other type has an explicit non-live classification.',
-    supportedSubset: ['ordered stack up to 64 entries', 'stable modifier IDs', 'enable and viewport/render flags', 'array count/offset up to bounded limits', 'single-axis mirror', 'non-destructive base geometry', 'complete Blender 5.2 Object Modifier Type Items inventory'],
-    unsupportedSubset: ['live evaluation outside Array/Mirror', 'apply-to-base operation', 'edit cage', 'modifier object references', 'Grease Pencil stroke/layer object model', 'physics solvers'],
+    runtimeNotes: 'Array, mirror, and pattern modifiers execute in authored order without mutating base geometry. Pattern mode includes bounded linear, grid, radial, and deterministic seeded volume scatter placement. Blender 5.2\'s complete 83-type RNA inventory is queryable here; every other type has an explicit non-live classification.',
+    supportedSubset: ['ordered stack up to 64 entries', 'stable modifier IDs', 'enable and viewport/render flags', 'array count/offset up to bounded limits', 'single-axis mirror', 'bounded linear/grid/radial patterns', 'seeded volume scatter with transform ranges', 'non-destructive base geometry', 'complete Blender 5.2 Object Modifier Type Items inventory'],
+    unsupportedSubset: ['live evaluation outside Array/Mirror/Pattern', 'surface masks or collision-aware scatter', 'apply-to-base operation', 'edit cage', 'modifier object references', 'Grease Pencil stroke/layer object model', 'physics solvers'],
     officialUrls: [
       'https://docs.blender.org/manual/en/5.2/modeling/modifiers/introduction.html',
       'https://docs.blender.org/api/5.2/bpy_types_enum_items/object_modifier_type_items.html',

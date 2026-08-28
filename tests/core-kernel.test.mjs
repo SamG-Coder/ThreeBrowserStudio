@@ -222,6 +222,71 @@ test('layout.pattern upserts by stable modifier ID, dry-runs, rejects collisions
   });
 });
 
+test('layout.pattern normalizes seeded scatter ranges into canonical modifier data', async () => {
+  const kernel = createKernel();
+  await kernel.apply(request({
+    idempotencyKey: 'idempotency-scatter-create',
+    operations: [
+      {
+        type: 'resource.create', resourceType: 'geometry', alias: '$geometry',
+        resource: { id: 'geometry/scatter-source', kind: 'box' },
+      },
+      {
+        type: 'entity.create', sceneId: 'scene/main', alias: '$source',
+        entity: {
+          id: 'entity/scatter-source', kind: 'mesh',
+          components: { mesh: { geometryId: '$geometry' } },
+        },
+      },
+      {
+        type: 'layout.pattern', entityId: '$source',
+        pattern: {
+          id: 'modifier/scatter', mode: 'scatter', count: 12, seed: -17,
+          bounds: { min: [-5, 0, -3], max: [5, 2, 3] },
+          rotationMax: [0.1, 0.2, 0.3],
+          scaleMin: [0.8, 0.9, 1], scaleMax: [1.2, 1.3, 1.4],
+        },
+      },
+    ],
+  }));
+
+  const [modifier] = kernel.document.scenes['scene/main']
+    .entities['entity/scatter-source'].components.modifiers;
+  assert.deepEqual(modifier, {
+    id: 'modifier/scatter', type: 'pattern', mode: 'scatter', count: 12, seed: -17,
+    bounds: { min: [-5, 0, -3], max: [5, 2, 3] },
+    rotationMin: [0.1, 0.2, 0.3], rotationMax: [0.1, 0.2, 0.3],
+    scaleMin: [0.8, 0.9, 1], scaleMax: [1.2, 1.3, 1.4],
+  });
+
+  await assert.rejects(kernel.apply(request({
+    baseRevision: 1,
+    idempotencyKey: 'idempotency-scatter-inverted',
+    operations: [{
+      type: 'layout.pattern', entityId: 'entity/scatter-source',
+      pattern: {
+        id: 'modifier/scatter', mode: 'scatter', count: 12, seed: -17,
+        bounds: { min: [2, 0, 0], max: [1, 1, 1] },
+      },
+    }],
+  })), error => error.code === 'invalid_layout_pattern');
+  assert.equal(kernel.revision, 1);
+
+  await assert.rejects(kernel.apply(request({
+    baseRevision: 1,
+    idempotencyKey: 'idempotency-scatter-zero-scale',
+    operations: [{
+      type: 'layout.pattern', entityId: 'entity/scatter-source',
+      pattern: {
+        id: 'modifier/scatter', mode: 'scatter', count: 12, seed: -17,
+        bounds: { min: [-1, 0, -1], max: [1, 1, 1] },
+        scaleMin: [0, 1, 1], scaleMax: [1, 2, 2],
+      },
+    }],
+  })), error => error.code === 'invalid_layout_pattern');
+  assert.equal(kernel.revision, 1);
+});
+
 test('a failed operation leaves the entire batch and revision untouched', async () => {
   const kernel = createKernel();
   await assert.rejects(kernel.apply(request({

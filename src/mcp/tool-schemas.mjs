@@ -107,6 +107,12 @@ export const rtxPatchSchema = z.object({
   message: 'scene.rtx.patch requires at least one setting.',
 });
 const layoutCount = z.number().int().min(1).max(8192);
+const layoutScatterSeed = z.number().int().min(-2_147_483_648).max(2_147_483_647);
+const layoutPositiveVec3 = z.tuple([
+  z.number().finite().gt(0).max(1_000_000_000),
+  z.number().finite().gt(0).max(1_000_000_000),
+  z.number().finite().gt(0).max(1_000_000_000),
+]);
 const layoutGridCounts = z.tuple([layoutCount, layoutCount, layoutCount]);
 const layoutPatternUnion = z.discriminatedUnion('mode', [
   z.object({
@@ -133,16 +139,45 @@ const layoutPatternUnion = z.discriminatedUnion('mode', [
     closed: z.boolean(),
     orientation: z.enum(['keep', 'radial', 'tangent']),
   }).strict(),
+  z.object({
+    id: identifier,
+    mode: z.literal('scatter'),
+    count: layoutCount,
+    seed: layoutScatterSeed,
+    bounds: bounds3,
+    rotationMin: vec3.optional(),
+    rotationMax: vec3.optional(),
+    scaleMin: layoutPositiveVec3.optional(),
+    scaleMax: layoutPositiveVec3.optional(),
+  }).strict(),
 ]);
 export const layoutPatternSchema = layoutPatternUnion.superRefine((pattern, context) => {
-  if (pattern.mode !== 'grid') return;
-  const product = pattern.counts[0] * pattern.counts[1] * pattern.counts[2];
-  if (!Number.isSafeInteger(product) || product > 8192) {
-    context.addIssue({
-      code: 'custom',
-      path: ['counts'],
-      message: 'Grid count product must not exceed 8192.',
-    });
+  if (pattern.mode === 'grid') {
+    const product = pattern.counts[0] * pattern.counts[1] * pattern.counts[2];
+    if (!Number.isSafeInteger(product) || product > 8192) {
+      context.addIssue({
+        code: 'custom',
+        path: ['counts'],
+        message: 'Grid count product must not exceed 8192.',
+      });
+    }
+  }
+  if (pattern.mode === 'scatter') {
+    const ranges = [
+      ['bounds', pattern.bounds.min, pattern.bounds.max],
+      ['rotation', pattern.rotationMin ?? pattern.rotationMax ?? [0, 0, 0], pattern.rotationMax ?? pattern.rotationMin ?? [0, 0, 0]],
+      ['scale', pattern.scaleMin ?? pattern.scaleMax ?? [1, 1, 1], pattern.scaleMax ?? pattern.scaleMin ?? [1, 1, 1]],
+    ];
+    for (const [label, minimum, maximum] of ranges) {
+      minimum.forEach((value, index) => {
+        if (value <= maximum[index]) return;
+        context.addIssue({
+          code: 'custom',
+          path: label === 'bounds' ? ['bounds', 'min', index] : [`${label}Min`, index],
+          message: `${label} minimum must not exceed maximum on any axis.`,
+        });
+      });
+    }
   }
 });
 

@@ -58,6 +58,7 @@
       }
     },
     "vec3": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "number", "minimum": -1000000000, "maximum": 1000000000 } },
+    "positiveVec3": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000000000 } },
     "bounds3": {
       "type": "object", "additionalProperties": false, "required": ["min", "max"],
       "properties": { "min": { "$ref": "#/$defs/vec3" }, "max": { "$ref": "#/$defs/vec3" } }
@@ -94,7 +95,7 @@
       }
     },
     "layoutPattern": {
-      "description": "A canonical live-instancing layout pattern. Grid count products must not exceed 8192.",
+      "description": "A canonical live-instancing layout pattern. Grid count products and all pattern counts must not exceed 8192. Scatter is deterministic for a given signed 32-bit seed.",
       "oneOf": [
         {
           "type": "object", "additionalProperties": false,
@@ -129,6 +130,20 @@
             "arc": { "type": "number", "minimum": -1000000000, "maximum": 1000000000 },
             "closed": { "type": "boolean" },
             "orientation": { "enum": ["keep", "radial", "tangent"] }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["id", "mode", "count", "seed", "bounds"],
+          "properties": {
+            "id": { "$ref": "#/$defs/id" }, "mode": { "const": "scatter" },
+            "count": { "type": "integer", "minimum": 1, "maximum": 8192 },
+            "seed": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+            "bounds": { "$ref": "#/$defs/bounds3" },
+            "rotationMin": { "$ref": "#/$defs/vec3" },
+            "rotationMax": { "$ref": "#/$defs/vec3" },
+            "scaleMin": { "$ref": "#/$defs/positiveVec3" },
+            "scaleMax": { "$ref": "#/$defs/positiveVec3" }
           }
         }
       ]

@@ -15,7 +15,7 @@ pipeline is callable. The live MCP input schemas and
 `three_studio_status.capabilities` are the normative model-facing contract.
 
 The current slice exposes atomic scene/entity/resource authoring; persistent
-exact-aspect camera framing; bounded linear/grid/radial instancing; indexed
+exact-aspect camera framing; bounded linear/grid/radial/seeded-scatter instancing; indexed
 vertex editing, smoothing, welding, and normal recalculation; canonical native
 ray-query lighting/shadow/AO controls with truthful lifecycle state; bounded
 scene inspection with delete-guard hashes, compiled bounds, references, and
@@ -532,17 +532,19 @@ leaves canonical document state unchanged. Incremental resource compilation,
 TSL/script/blueprint preparation, automatic evidence capture, and swap
 compensation are later pipeline stages.
 
-## High-level layout pipeline (planned)
+## High-level layout pipeline (partially implemented)
 
 The model should not spend hundreds of tokens hand-authoring repetitive object
-coordinates. A later `apply` slice is designed to support deterministic layout
-operations:
+coordinates. The live `layout.pattern` operation supports bounded linear,
+grid, radial, and seeded volume scatter instancing. A broader later `apply`
+slice is designed to support the remaining deterministic layout operations:
 
 - align minimum/centre/maximum on an axis;
 - distribute by centres, edges, or equal gaps;
 - stack and pack within bounds;
 - grid and radial arrays;
-- seeded scatter with density, masks, slope, clearance, and collision rules;
+- seeded volume scatter is live; density, masks, slope, clearance, and collision
+  rules remain planned;
 - along-curve placement with tangent/orientation policy;
 - snap to ground, surface, vertex, grid, or named anchor;
 - frame or aim cameras at targets;

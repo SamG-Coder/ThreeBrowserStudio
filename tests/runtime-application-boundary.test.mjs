@@ -5,6 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { LiveBridgeClient, RpcError } from '../src/bridge/index.mjs';
 import { AtomicProjectStore, createProjectDocument } from '../src/core/index.mjs';
+import { LAYOUT_PATTERN_MODES } from '../src/core/layout-patterns.mjs';
 import { StudioApplication } from '../src/runtime/studio-application.mjs';
 
 class Vector3 {
@@ -427,7 +428,7 @@ test('a project switch compile failure preserves the active project and live sce
   assert.equal(status.projectId, 'project/active');
   assert.equal(status.projectPath, path.join(studioRoot, 'projects', 'active'));
   assert.equal(status.capabilities.layoutGenerators, true);
-  assert.deepEqual(status.capabilities.layoutPatterns, ['linear', 'grid', 'radial']);
+  assert.deepEqual(status.capabilities.layoutPatterns, [...LAYOUT_PATTERN_MODES]);
   assert.equal(status.capabilities.modifierRuntime.includes('pattern'), true);
   assert.equal(status.capabilities.implementedOperations.includes('layout.pattern'), true);
   assert.equal(status.capabilities.geometryEditing, true);

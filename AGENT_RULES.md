@@ -22,7 +22,7 @@ authority. In the current lean slice:
 - Play changes and reports transient counters/input state but executes no game
   behaviour; and
 - jobs, asset import, script authoring/execution, layout modes beyond the live
-  linear/grid/radial patterns, diagnostic render passes, export, and behavior
+  linear/grid/radial/seeded-scatter patterns, diagnostic render passes, export, and behavior
   simulation are not available.
 
 Do not attempt a reserved pipeline because it appears in the design document.
@@ -47,8 +47,9 @@ Use it only after both status and the current tool schema expose it.
 - World units are metres. Rotation values are radians. Time is seconds.
 - Use meaningful stable IDs such as `market/stall-03`, not runtime UUIDs.
 - Never write using fuzzy name/tag selectors.
-- Prefer `layout.pattern` for bounded linear, grid, and radial repetition when
-  status reports it implemented; use explicit transforms for other layouts.
+- Prefer `layout.pattern` for bounded linear, grid, radial, and seeded volume
+  scatter repetition when status reports it implemented; use explicit
+  transforms for other layouts.
 - Use deterministic seeds and preserve generator IDs when work may be revised.
 - Keep transforms finite and scales non-zero.
 - Inspect compiled bounds before dependent placement, and frame captures from

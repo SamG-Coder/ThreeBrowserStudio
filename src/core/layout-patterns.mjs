@@ -3,7 +3,10 @@ import { assertStableId } from './ids.mjs';
 import { cloneJson, isPlainRecord } from './util.mjs';
 
 export const MAX_LAYOUT_PATTERN_INSTANCES = 8192;
-export const LAYOUT_PATTERN_MODES = Object.freeze(['linear', 'grid', 'radial']);
+export const MIN_LAYOUT_SCATTER_SEED = -2_147_483_648;
+export const MAX_LAYOUT_SCATTER_SEED = 2_147_483_647;
+export const MAX_LAYOUT_PATTERN_COMPONENT = 1_000_000_000;
+export const LAYOUT_PATTERN_MODES = Object.freeze(['linear', 'grid', 'radial', 'scatter']);
 export const LAYOUT_PATTERN_ORIENTATIONS = Object.freeze(['keep', 'radial', 'tangent']);
 
 const COMMON_KEYS = new Set(['id', 'mode']);
@@ -12,6 +15,7 @@ const MODE_KEYS = Object.freeze({
   linear: new Set(['count', 'offset']),
   grid: new Set(['counts', 'spacing']),
   radial: new Set(['count', 'axis', 'center', 'radius', 'startAngle', 'arc', 'closed', 'orientation']),
+  scatter: new Set(['count', 'seed', 'bounds', 'rotationMin', 'rotationMax', 'scaleMin', 'scaleMax']),
 });
 
 function invalid(message, details = {}) {
@@ -30,6 +34,63 @@ function finiteVector3(value, label) {
     invalid(`${label} must contain three finite numbers.`, { field: label });
   }
   return [...value];
+}
+
+function boundedVector3(value, label) {
+  const vector = finiteVector3(value, label);
+  if (vector.some(number => number < -MAX_LAYOUT_PATTERN_COMPONENT || number > MAX_LAYOUT_PATTERN_COMPONENT)) {
+    invalid(
+      `${label} entries must be from ${-MAX_LAYOUT_PATTERN_COMPONENT} to ${MAX_LAYOUT_PATTERN_COMPONENT}.`,
+      { field: label, value },
+    );
+  }
+  return vector;
+}
+
+function positiveScaleVector3(value, label) {
+  const vector = boundedVector3(value, label);
+  if (vector.some(number => number <= 0)) {
+    invalid(`${label} entries must be greater than zero.`, { field: label, value });
+  }
+  return vector;
+}
+
+function orderedVectorRange(minimum, maximum, label) {
+  for (let index = 0; index < 3; index += 1) {
+    if (minimum[index] > maximum[index]) {
+      invalid(`${label}.min must not exceed ${label}.max on any axis.`, {
+        field: label,
+        axis: index,
+        minimum: minimum[index],
+        maximum: maximum[index],
+      });
+    }
+  }
+}
+
+function scatterBounds(value) {
+  if (!isPlainRecord(value)) invalid('bounds must be an object.', { field: 'bounds' });
+  for (const key of Object.keys(value)) {
+    if (!['min', 'max'].includes(key)) invalid(`bounds contains unknown property ${key}.`, { field: 'bounds', key });
+  }
+  const minimum = boundedVector3(value.min, 'bounds.min');
+  const maximum = boundedVector3(value.max, 'bounds.max');
+  orderedVectorRange(minimum, maximum, 'bounds');
+  return { min: minimum, max: maximum };
+}
+
+function scatterVectorRange(input, minimumKey, maximumKey, fallback, { positive = false } = {}) {
+  const normalizeVector = positive ? positiveScaleVector3 : boundedVector3;
+  const authoredMinimum = input[minimumKey] === undefined
+    ? undefined
+    : normalizeVector(input[minimumKey], minimumKey);
+  const authoredMaximum = input[maximumKey] === undefined
+    ? undefined
+    : normalizeVector(input[maximumKey], maximumKey);
+  const minimum = authoredMinimum ?? authoredMaximum ?? [...fallback];
+  const maximum = authoredMaximum ?? authoredMinimum ?? [...fallback];
+  orderedVectorRange(minimum, maximum, minimumKey.replace(/Min$/, ''));
+  return { minimum, maximum };
 }
 
 function instanceCount(value, label = 'count') {
@@ -80,7 +141,7 @@ export function normalizeLayoutPattern(input, { modifier = false } = {}) {
     }
     output.counts = counts;
     output.spacing = finiteVector3(input.spacing, 'spacing');
-  } else {
+  } else if (mode === 'radial') {
     output.count = instanceCount(input.count);
     if (!['x', 'y', 'z'].includes(input.axis)) invalid('axis must be x, y, or z.', { axis: input.axis });
     output.axis = input.axis;
@@ -97,6 +158,24 @@ export function normalizeLayoutPattern(input, { modifier = false } = {}) {
     output.arc = input.arc;
     output.closed = input.closed;
     output.orientation = input.orientation;
+  } else {
+    output.count = instanceCount(input.count);
+    if (!Number.isInteger(input.seed)
+        || input.seed < MIN_LAYOUT_SCATTER_SEED
+        || input.seed > MAX_LAYOUT_SCATTER_SEED) {
+      invalid(
+        `seed must be a 32-bit integer from ${MIN_LAYOUT_SCATTER_SEED} to ${MAX_LAYOUT_SCATTER_SEED}.`,
+        { field: 'seed', value: input.seed },
+      );
+    }
+    output.seed = input.seed;
+    output.bounds = scatterBounds(input.bounds);
+    const rotation = scatterVectorRange(input, 'rotationMin', 'rotationMax', [0, 0, 0]);
+    const scale = scatterVectorRange(input, 'scaleMin', 'scaleMax', [1, 1, 1], { positive: true });
+    output.rotationMin = rotation.minimum;
+    output.rotationMax = rotation.maximum;
+    output.scaleMin = scale.minimum;
+    output.scaleMax = scale.maximum;
   }
   return cloneJson(output);
 }

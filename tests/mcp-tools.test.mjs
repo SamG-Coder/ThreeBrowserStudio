@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { McpServer } from '@modelcontextprotocol/server';
+import { LAYOUT_PATTERN_MODES } from '../src/core/layout-patterns.mjs';
 import {
   INSPECT_SLICES,
   OPERATION_TYPES,
@@ -72,6 +73,10 @@ test('checked-in JSON contract mirrors the lean capability enums', async () => {
   assert.deepEqual(contract.$defs.render.properties.passes.items, { const: 'beauty' });
   assert.deepEqual(contract.$defs.render.properties.renderer, { const: 'webgpu' });
   assert.deepEqual(Object.keys(contract.$defs.job.properties), ['protocolVersion', 'sessionId']);
+  assert.deepEqual(
+    contract.$defs.layoutPattern.oneOf.map(pattern => pattern.properties.mode.const),
+    [...LAYOUT_PATTERN_MODES],
+  );
 });
 
 test('apply enforces shared mutation metadata and the 128-operation bound', () => {
@@ -140,7 +145,7 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
   }).success, true);
 });
 
-test('layout.pattern exposes strict bounded linear, grid, and radial payloads', () => {
+test('layout.pattern exposes strict bounded linear, grid, radial, and seeded scatter payloads', () => {
   const mutation = {
     protocolVersion: 'three-studio/1',
     sessionId: 'live-session',
@@ -164,6 +169,16 @@ test('layout.pattern exposes strict bounded linear, grid, and radial payloads', 
     id: 'modifier/radial', mode: 'radial', count: 16, axis: 'y', center: [1, 2, 3],
     radius: 10, startAngle: 0.25, arc: Math.PI * 2, closed: true, orientation: 'tangent',
   }).success, true);
+  assert.equal(parse({
+    id: 'modifier/scatter-minimal', mode: 'scatter', count: 256, seed: -2147483648,
+    bounds: { min: [-20, 0, -10], max: [20, 4, 10] },
+  }).success, true);
+  assert.equal(parse({
+    id: 'modifier/scatter-ranges', mode: 'scatter', count: 128, seed: 2147483647,
+    bounds: { min: [-20, 0, -10], max: [20, 4, 10] },
+    rotationMin: [-0.1, -Math.PI, -0.1], rotationMax: [0.1, Math.PI, 0.1],
+    scaleMin: [0.7, 0.7, 0.7], scaleMax: [1.3, 1.5, 1.3],
+  }).success, true);
 
   assert.equal(parse({
     id: 'modifier/grid-too-large', mode: 'grid', counts: [64, 64, 3], spacing: [1, 1, 1],
@@ -173,6 +188,32 @@ test('layout.pattern exposes strict bounded linear, grid, and radial payloads', 
   }).success, false);
   assert.equal(parse({
     id: 'modifier/typed', type: 'pattern', mode: 'linear', count: 2, offset: [1, 0, 0],
+  }).success, false);
+  assert.equal(parse({
+    id: 'modifier/scatter-float-seed', mode: 'scatter', count: 2, seed: 1.5,
+    bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+  }).success, false);
+  assert.equal(parse({
+    id: 'modifier/scatter-too-large', mode: 'scatter', count: 8193, seed: 7,
+    bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+  }).success, false);
+  assert.equal(parse({
+    id: 'modifier/scatter-inverted', mode: 'scatter', count: 2, seed: 7,
+    bounds: { min: [0, 2, 0], max: [1, 1, 1] },
+  }).success, false);
+  assert.equal(parse({
+    id: 'modifier/scatter-range-inverted', mode: 'scatter', count: 2, seed: 7,
+    bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+    scaleMin: [1, 2, 1], scaleMax: [2, 1, 2],
+  }).success, false);
+  assert.equal(parse({
+    id: 'modifier/scatter-zero-scale', mode: 'scatter', count: 2, seed: 7,
+    bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+    scaleMin: [0, 1, 1], scaleMax: [1, 2, 2],
+  }).success, false);
+  assert.equal(parse({
+    id: 'modifier/scatter-unknown', mode: 'scatter', count: 2, seed: 7,
+    bounds: { min: [0, 0, 0], max: [1, 1, 1], radius: 3 },
   }).success, false);
   assert.equal(applySchema.safeParse({
     ...mutation,

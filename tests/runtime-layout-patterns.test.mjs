@@ -185,3 +185,48 @@ test('open radial tangent patterns include both arc endpoints', () => {
     .multiply(new Matrix4().makeRotationZ(Math.PI * 1.5));
   assertMatrixClose(matrices[2].elements, expectedLast.elements);
 });
+
+test('seeded scatter is byte-deterministic, channel-stable, and bounded', () => {
+  const pattern = {
+    id: 'modifier/scatter',
+    mode: 'scatter',
+    count: 5,
+    seed: -123456789,
+    bounds: { min: [-8, 1, -3], max: [12, 5, 9] },
+    rotationMin: [-0.2, -1, -0.1],
+    rotationMax: [0.3, 1.5, 0.4],
+    scaleMin: [0.7, 0.8, 0.9],
+    scaleMax: [1.2, 1.3, 1.4],
+  };
+  const first = evaluateInstanceStack(THREE, subject(pattern));
+  const repeated = evaluateInstanceStack(THREE, subject(structuredClone(pattern)));
+  assert.deepEqual(first.map(matrixTranslation), [
+    [6.90852857939899, 3.1160522317513824, 4.093838249333203],
+    [7.9553913259878755, 4.455218220129609, 7.01245922036469],
+    [7.900008026510477, 3.159367000684142, -0.936228976584971],
+    [-0.31706900522112846, 2.1518278205767274, 6.739670444279909],
+    [-1.5214587021619081, 1.4221533173695207, -0.9787315595895052],
+  ]);
+  const bytes = matrices => Buffer.from(new Float64Array(
+    matrices.flatMap(matrix => matrix.elements),
+  ).buffer);
+  assert.equal(Buffer.compare(bytes(first), bytes(repeated)), 0);
+
+  const extended = evaluateInstanceStack(THREE, subject({ ...pattern, count: 8 }));
+  assert.equal(Buffer.compare(bytes(first), bytes(extended.slice(0, pattern.count))), 0);
+
+  const changedRanges = evaluateInstanceStack(THREE, subject({
+    ...pattern,
+    rotationMin: [0, 0, 0], rotationMax: [0, 0, 0],
+    scaleMin: [1, 1, 1], scaleMax: [1, 1, 1],
+  }));
+  assert.deepEqual(changedRanges.map(matrixTranslation), first.map(matrixTranslation));
+
+  for (const [x, y, z] of first.map(matrixTranslation)) {
+    assert.ok(x >= -8 && x <= 12);
+    assert.ok(y >= 1 && y <= 5);
+    assert.ok(z >= -3 && z <= 9);
+  }
+  const otherSeed = evaluateInstanceStack(THREE, subject({ ...pattern, seed: pattern.seed + 1 }));
+  assert.notEqual(Buffer.compare(bytes(first), bytes(otherSeed)), 0);
+});

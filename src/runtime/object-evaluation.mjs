@@ -51,6 +51,54 @@ function radialPosition(pattern, angle) {
   return [x + cosine, y + sine, z];
 }
 
+function scatterUnit(seed, index, channel) {
+  // Fixed integer channels make the layout independent of iteration order.
+  // Keep these constants and channel assignments stable: they are part of the
+  // canonical seeded-scatter result, not an implementation detail.
+  let value = (seed >>> 0)
+    ^ Math.imul((index + 1) >>> 0, 0x9e3779b1)
+    ^ Math.imul((channel + 1) >>> 0, 0x85ebca77);
+  value ^= value >>> 16;
+  value = Math.imul(value, 0x7feb352d);
+  value ^= value >>> 15;
+  value = Math.imul(value, 0x846ca68b);
+  value ^= value >>> 16;
+  return (value >>> 0) / 0x1_0000_0000;
+}
+
+function sampleScatterVector(seed, index, channelOffset, minimum, maximum) {
+  return minimum.map((value, component) => (
+    value + (maximum[component] - value) * scatterUnit(seed, index, channelOffset + component)
+  ));
+}
+
+function scatterTransformMatrix(THREE, position, rotation, scale) {
+  const matrix = new THREE.Matrix4().makeTranslation(...position);
+  const rotations = [
+    ['makeRotationX', rotation[0]],
+    ['makeRotationY', rotation[1]],
+    ['makeRotationZ', rotation[2]],
+  ];
+  for (const [method, angle] of rotations) {
+    if (angle === 0) continue;
+    const rotationMatrix = new THREE.Matrix4();
+    if (typeof rotationMatrix[method] === 'function') matrix.multiply(rotationMatrix[method](angle));
+  }
+  if (scale.some(value => value !== 1)) {
+    matrix.multiply(new THREE.Matrix4().makeScale(...scale));
+  }
+  return matrix;
+}
+
+function scatterMatrices(THREE, pattern) {
+  return Array.from({ length: pattern.count }, (_, index) => {
+    const position = sampleScatterVector(pattern.seed, index, 0, pattern.bounds.min, pattern.bounds.max);
+    const rotation = sampleScatterVector(pattern.seed, index, 3, pattern.rotationMin, pattern.rotationMax);
+    const scale = sampleScatterVector(pattern.seed, index, 6, pattern.scaleMin, pattern.scaleMax);
+    return scatterTransformMatrix(THREE, position, rotation, scale);
+  });
+}
+
 function patternMatrices(THREE, authoredPattern) {
   const pattern = normalizeLayoutPattern(authoredPattern, { modifier: true });
   if (pattern.mode === 'linear') {
@@ -76,6 +124,7 @@ function patternMatrices(THREE, authoredPattern) {
     }
     return matrices;
   }
+  if (pattern.mode === 'scatter') return scatterMatrices(THREE, pattern);
   return Array.from({ length: pattern.count }, (_, index) => {
     const angle = patternAngle(pattern, index);
     const orientationAngle = pattern.orientation === 'keep'

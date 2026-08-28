@@ -36,6 +36,7 @@ import { compileSceneDocument } from './scene-compiler.mjs';
 import { validateAnimationResource } from './animation-runtime.mjs';
 import { frameCameraToBounds } from '../viewport/camera-projection.mjs';
 import { describeEffectiveCamera } from '../viewport/camera-evidence.mjs';
+import { LAYOUT_PATTERN_MODES } from '../core/layout-patterns.mjs';
 
 const RESOURCE_OPERATIONS = Object.freeze({
   'geometry.put': ['geometries', 'put'],
@@ -661,7 +662,7 @@ export class StudioApplication {
         materialRecipes: ['basic', 'standard', 'physical', 'toon'],
         modifierRuntime: ['array', 'mirror', 'pattern'],
         layoutGenerators: true,
-        layoutPatterns: ['linear', 'grid', 'radial'],
+        layoutPatterns: [...LAYOUT_PATTERN_MODES],
         cameraFraming: true,
         persistentCameraShots: true,
         constraintRuntime: ['lookAt', 'trackTo', 'copyLocation', 'copyRotation', 'copyScale', 'limitLocation'],
