@@ -8,8 +8,9 @@ import {
 } from './constants.mjs';
 import { StudioError } from './errors.mjs';
 import { assertStableId, isStableId } from './ids.mjs';
-import { assertJsonValue, cloneJson, isPlainRecord, nowIso, uniqueSorted } from './util.mjs';
+import { assertJsonValue, cloneJson, isPlainRecord, mergePatch, nowIso, uniqueSorted } from './util.mjs';
 import { entityComponentReferences, validateEntityComponents } from './component-validation.mjs';
+import { validateGraph } from '../graphs/validator.mjs';
 
 const PROJECT_KEYS = new Set([
   'kind', 'protocolVersion', 'formatVersion', 'projectId', 'name', 'revision',
@@ -24,6 +25,7 @@ const ENTITY_KEYS = new Set([
   'components', 'tags', 'scriptIds', 'metadata',
 ]);
 const TRANSFORM_KEYS = new Set(['position', 'rotation', 'scale']);
+const FLAT_GRAPH_KEYS = Object.freeze(['formatVersion', 'domain', 'nodes', 'edges', 'outputs', 'settings']);
 
 function defaultResources() {
   return Object.fromEntries(RESOURCE_TYPES.map((type) => [type, {}]));
@@ -46,6 +48,73 @@ function defaultSceneSettings() {
       framesPerSecond: 24,
     },
   };
+}
+
+export function normalizeResourceType(type) {
+  const aliases = {
+    geometry: 'geometries', material: 'materials', texture: 'textures', graph: 'graphs',
+    animation: 'animations', prefab: 'prefabs', asset: 'assets',
+  };
+  const normalized = aliases[type] ?? type;
+  if (!RESOURCE_TYPES.includes(normalized)) {
+    throw new StudioError('invalid_resource_type', `Unknown resource type ${type}`);
+  }
+  return normalized;
+}
+
+function graphValidationError(resourceId, diagnostics) {
+  return new StudioError('graph_validation_failed', `Graph ${resourceId ?? '<unknown>'} is invalid.`, { diagnostics });
+}
+
+/**
+ * Accept the historical flat MCP graph form while keeping the project document
+ * canonical. Envelope metadata remains outside `graph`; graph control data is
+ * moved under `graph` and validated by createResourceDocument.
+ */
+export function normalizeGraphResourceEnvelope(input, { graphId } = {}) {
+  if (!isPlainRecord(input)) throw new StudioError('invalid_graph_resource', 'Graph resource must be an object.');
+  const normalized = cloneJson(input);
+  const flatKeys = FLAT_GRAPH_KEYS.filter(key => Object.hasOwn(normalized, key));
+  if (Object.hasOwn(normalized, 'graph') && flatKeys.length) {
+    throw new StudioError(
+      'ambiguous_graph_resource',
+      `Graph resource cannot mix nested graph with flat fields: ${flatKeys.join(', ')}.`,
+      { fields: flatKeys },
+    );
+  }
+  if (!Object.hasOwn(normalized, 'graph') && flatKeys.length) {
+    const graph = {};
+    const resolvedGraphId = graphId ?? normalized.id;
+    if (resolvedGraphId !== undefined) graph.id = resolvedGraphId;
+    for (const key of flatKeys) {
+      graph[key] = normalized[key];
+      delete normalized[key];
+    }
+    normalized.graph = graph;
+  }
+  return normalized;
+}
+
+export function normalizeGraphResourcePatch(patch, currentResource) {
+  if (!isPlainRecord(patch)) throw new StudioError('invalid_patch', 'Graph resource patch must be an object.');
+  const source = cloneJson(patch);
+  const suppliedGraphId = source.id;
+  const currentGraphId = currentResource?.graph?.id ?? currentResource?.id;
+  if (suppliedGraphId !== undefined && currentGraphId !== undefined && suppliedGraphId !== currentGraphId) {
+    throw new StudioError(
+      'invalid_patch',
+      `Graph id ${suppliedGraphId} does not match existing graph ${currentGraphId}.`,
+      { graphId: suppliedGraphId, expectedGraphId: currentGraphId },
+    );
+  }
+  delete source.id;
+  const normalized = normalizeGraphResourceEnvelope(source, {
+    graphId: suppliedGraphId ?? currentGraphId,
+  });
+  if (!currentResource) return normalized;
+  const candidate = createResourceDocument('graphs', mergePatch(currentResource, normalized));
+  if (Object.hasOwn(normalized, 'graph')) normalized.graph = candidate.graph;
+  return normalized;
 }
 
 export function createEntityDocument(input = {}) {
@@ -106,10 +175,23 @@ export function createSceneDocument(input = {}) {
 }
 
 export function createResourceDocument(resourceType, input = {}) {
-  if (!RESOURCE_TYPES.includes(resourceType)) {
-    throw new StudioError('invalid_resource_type', `Unknown resource type ${resourceType}`);
+  const normalizedResourceType = normalizeResourceType(resourceType);
+  const source = normalizedResourceType === 'graphs'
+    ? normalizeGraphResourceEnvelope(input)
+    : cloneJson(input);
+  const id = assertStableId(source.id, 'resource.id');
+  if (normalizedResourceType === 'graphs') {
+    if (!isPlainRecord(source.graph)) {
+      throw new StudioError(
+        'invalid_graph_resource',
+        `Graph resource ${id} requires a nested graph object.`,
+        { canonicalEnvelope: { id, kind: 'graph', graph: { formatVersion: 1, id, domain: 'shader', nodes: [], edges: [], outputs: {} } } },
+      );
+    }
+    const validation = validateGraph(source.graph);
+    if (!validation.valid) throw graphValidationError(id, validation.diagnostics);
+    source.graph = validation.graph;
   }
-  const id = assertStableId(input.id, 'resource.id');
   const defaultKinds = {
     geometries: 'geometry',
     materials: 'material',
@@ -121,11 +203,11 @@ export function createResourceDocument(resourceType, input = {}) {
     assets: 'asset',
   };
   return {
-    ...cloneJson(input),
+    ...source,
     id,
-    kind: input.kind ?? defaultKinds[resourceType],
-    name: input.name ?? id.split('/').at(-1),
-    metadata: cloneJson(input.metadata ?? {}),
+    kind: source.kind ?? defaultKinds[normalizedResourceType],
+    name: source.name ?? id.split('/').at(-1),
+    metadata: cloneJson(source.metadata ?? {}),
   };
 }
 
@@ -409,6 +491,18 @@ export function validateProjectDocument(project, { maxEntities = MAX_AUTHORED_EN
     }
     for (const [id, resource] of Object.entries(table)) {
       if (!isPlainRecord(resource) || !isStableId(resource.id) || resource.id !== id) issue(diagnostics, 'invalid_resource', `$.resources.${type}.${id}`, 'Resource key and stable resource.id must match');
+      if (type === 'graphs' && isPlainRecord(resource)) {
+        const graphPath = `$.resources.graphs.${id}.graph`;
+        if (!isPlainRecord(resource.graph)) {
+          issue(diagnostics, 'invalid_graph_resource', graphPath, 'Graph resources require a canonical nested graph object.');
+        } else {
+          const validation = validateGraph(resource.graph);
+          for (const item of validation.errors) {
+            const suffix = item.path ? item.path.replaceAll('/', '.') : '';
+            issue(diagnostics, item.code, `${graphPath}${suffix}`, item.message);
+          }
+        }
+      }
     }
   }
   for (const [id, script] of Object.entries(project.scripts ?? {})) {

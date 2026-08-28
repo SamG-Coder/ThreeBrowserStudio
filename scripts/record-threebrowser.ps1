@@ -3,9 +3,11 @@
 param(
   [Parameter(Mandatory = $true)]
   [int]$TargetPid,
-  [ValidateRange(5, 180)]
+  [ValidateRange(5, 3600)]
   [int]$DurationSeconds = 28,
   [string]$OutputDirectory = 'C:\example Videos',
+  [string]$RecordingName = 'ThreeBrowser-Showcase',
+  [string]$StopSignalPath,
   [switch]$SkipPlay
 )
 
@@ -53,17 +55,34 @@ if (-not [ThreeBrowserRecordingWindow]::IsZoomed($windowHandle)) {
 }
 
 $windowSelector = "$($target.MainWindowTitle):ThreeBrowser.WebGPU:$([IO.Path]::GetFileName($target.Path))"
-$setup = Invoke-NodeJson @($obsScript, 'setup', '--output', $outputRoot, '--window', $windowSelector)
+$setup = Invoke-NodeJson @(
+  $obsScript,
+  'setup',
+  '--output', $outputRoot,
+  '--window', $windowSelector,
+  '--name', $RecordingName
+)
 if (-not $setup.success) { throw 'OBS setup did not complete.' }
 
-$status = Invoke-NodeJson @($studioCall, 'three_studio_status')
-$playParams = @{
-  action = 'enter'
-  projectId = $status.projectId
-  baseRevision = $status.revision
-  idempotencyKey = "record-rainy-window-$([Guid]::NewGuid())"
-  label = 'Restart showcase animation for guarded OBS recording'
-} | ConvertTo-Json -Compress
+$stopSignal = $null
+if ($StopSignalPath) {
+  $stopSignal = [IO.Path]::GetFullPath($StopSignalPath)
+  if (Test-Path -LiteralPath $stopSignal) {
+    throw "Stop signal already exists; recording was not started: $stopSignal"
+  }
+}
+
+$playParams = $null
+if (-not $SkipPlay) {
+  $status = Invoke-NodeJson @($studioCall, 'three_studio_status')
+  $playParams = @{
+    action = 'enter'
+    projectId = $status.projectId
+    baseRevision = $status.revision
+    idempotencyKey = "record-threebrowser-showcase-$([Guid]::NewGuid())"
+    label = 'Restart showcase animation for guarded OBS recording'
+  } | ConvertTo-Json -Compress
+}
 
 $recordStarted = $false
 $cancelled = $false
@@ -80,6 +99,7 @@ try {
   $stopwatch = [Diagnostics.Stopwatch]::StartNew()
   while ($stopwatch.Elapsed.TotalSeconds -lt $DurationSeconds) {
     Start-Sleep -Milliseconds 200
+    if ($stopSignal -and (Test-Path -LiteralPath $stopSignal -PathType Leaf)) { break }
     $current = Get-TargetProcess
     if (-not $current -or $current.MainWindowHandle -ne $windowHandle -or -not [ThreeBrowserRecordingWindow]::IsWindow($windowHandle)) {
       $cancelled = $true
@@ -123,7 +143,8 @@ $file = Get-Item -LiteralPath $outputPath
   Cancelled = $false
   OutputPath = $file.FullName
   Bytes = $file.Length
-  DurationSeconds = $DurationSeconds
+  DurationSeconds = [Math]::Round($stopwatch.Elapsed.TotalSeconds, 3)
+  StoppedBySignal = [bool]($stopSignal -and (Test-Path -LiteralPath $stopSignal -PathType Leaf))
   Profile = $setup.profile
   Scene = $setup.scene
   Width = $setup.video.width

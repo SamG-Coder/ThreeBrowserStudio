@@ -93,6 +93,43 @@ test('server-side dispatch timeout is explicit and aborts the dispatch signal', 
   assert.equal(aborted, true);
 });
 
+test('authenticated command lifecycle observes success and timeout without changing RPC semantics', async (t) => {
+  const events = [];
+  const beginCommand = (method, params) => {
+    events.push({ stage: 'started', method, params });
+    return {
+      complete: result => events.push({ stage: 'completed', method, result }),
+      fail: error => events.push({ stage: 'failed', method, code: error.code }),
+    };
+  };
+  const { client } = await fixture(t, async (method) => {
+    if (method === 'three_studio_render') return new Promise(() => {});
+    return { revision: 12 };
+  }, { beginCommand, requestTimeoutMs: 30 });
+
+  assert.deepEqual(await client.request('three_studio_status', { detail: 'compact' }), { revision: 12 });
+  await client.ping();
+  await assert.rejects(
+    client.request('three_studio_render', {}, { timeoutMs: 500 }),
+    error => error instanceof RpcError && error.code === 'timeout',
+  );
+
+  assert.deepEqual(events.map(({ stage, method, code }) => ({ stage, method, ...(code ? { code } : {}) })), [
+    { stage: 'started', method: 'three_studio_status' },
+    { stage: 'completed', method: 'three_studio_status' },
+    { stage: 'started', method: 'three_studio_render' },
+    { stage: 'failed', method: 'three_studio_render', code: 'timeout' },
+  ]);
+});
+
+test('throwing command observers are isolated from successful bridge requests', async (t) => {
+  const { client } = await fixture(t, async () => ({ ok: true }), {
+    beginCommand: () => ({ complete: () => { throw new Error('display failed'); } }),
+    onError: () => { throw new Error('error sink failed'); },
+  });
+  assert.deepEqual(await client.request('three_studio_status', {}), { ok: true });
+});
+
 test('domain error codes and compact conflict data survive the thin bridge', async (t) => {
   const { client } = await fixture(t, async () => {
     const error = new Error('Base revision is stale.');

@@ -1,0 +1,8 @@
+interface:
+  display_name: "ThreeBrowser Studio MCP"
+  short_description: "Build native WebGPU scenes through real MCP"
+  brand_color: "#F28C45"
+  default_prompt: "Use $threebrowser-studio-mcp to build and visually verify a fresh scene through real ThreeBrowser Studio MCP calls."
+
+policy:
+  allow_implicit_invocation: true

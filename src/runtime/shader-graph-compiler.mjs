@@ -95,8 +95,15 @@ function color3(TSL, value, fallback = [0.8, 0.8, 0.8]) {
   return vector3(TSL, value, fallback);
 }
 
-function surface(channels) {
-  return Object.freeze({ [SURFACE]: true, ...channels });
+function surface(channels, features = {}) {
+  return Object.freeze({
+    [SURFACE]: true,
+    ...channels,
+    features: Object.freeze({
+      transparent: Boolean(features.transparent),
+      transmission: Boolean(features.transmission),
+    }),
+  });
 }
 
 export function isCompiledSurface(value) {
@@ -798,6 +805,10 @@ function compileNodeFactory({ TSL, graph, parameters, textureResolver }) {
       return { color: TSL.mix(color, adjusted, input.get(node, 'factor', 1).saturate()) };
     }
     if (type === 'blender.principledBSDF') {
+      const alphaConnected = input.connected(node, 'alpha') || input.connected(node, 'opacity');
+      const transmissionConnected = input.connected(node, 'transmissionWeight') || input.connected(node, 'transmission');
+      const staticAlpha = alphaConnected ? null : input.static(node, ['alpha', 'opacity'], 1);
+      const staticTransmission = transmissionConnected ? null : input.static(node, ['transmissionWeight', 'transmission'], 0);
       return { surface: surface({
         baseColor: input.get(node, 'baseColor', [0.8, 0.8, 0.8], 'color'),
         metallic: input.get(node, ['metallic', 'metalness'], 0),
@@ -810,6 +821,9 @@ function compileNodeFactory({ TSL, graph, parameters, textureResolver }) {
         coatWeight: input.get(node, ['coatWeight', 'clearcoat'], 0),
         coatRoughness: input.get(node, ['coatRoughness', 'clearcoatRoughness'], 0.03),
         transmissionWeight: input.get(node, ['transmissionWeight', 'transmission'], 0),
+      }, {
+        transparent: alphaConnected || (Number.isFinite(staticAlpha) && staticAlpha < 1),
+        transmission: transmissionConnected || (Number.isFinite(staticTransmission) && staticTransmission > 0),
       }) };
     }
     if (type === 'blender.materialOutput') {
@@ -837,8 +851,10 @@ export function compileShaderGraph({ TSL, graph, parameterValues = {}, textureRe
   const { compileOutput, cache } = compileNodeFactory({ TSL, graph: canonical, parameters: parameterValues, textureResolver });
   const outputs = {};
   for (const [name, reference] of Object.entries(canonical.outputs)) outputs[name] = compileOutput(reference.nodeId, reference.port);
+  let features = Object.freeze({ transparent: false, transmission: false });
   if (isCompiledSurface(outputs.surface)) {
     const value = outputs.surface;
+    features = value.features;
     outputs.baseColor ??= value.baseColor;
     outputs.metalness ??= value.metallic;
     outputs.roughness ??= value.roughness;
@@ -855,6 +871,8 @@ export function compileShaderGraph({ TSL, graph, parameterValues = {}, textureRe
     domain: canonical.domain,
     mode: 'tsl-webgpu',
     outputs: Object.freeze(outputs),
+    outputNames: Object.freeze(Object.keys(canonical.outputs)),
+    features,
     nodesCompiled: new Set([...cache.keys()].map(key => key.split('\u0000')[0])).size,
   });
 }

@@ -104,6 +104,8 @@ test('Blender Principled-to-Material-Output flow compiles to a live surface cont
   assert.equal(compilation.mode, 'tsl-webgpu');
   assert.equal(compilation.graphId, 'shader/blender-socket-surface');
   assert.equal(compilation.nodesCompiled, 2);
+  assert.deepEqual(compilation.outputNames, ['surface']);
+  assert.deepEqual(compilation.features, { transparent: true, transmission: false });
   assert.equal(isCompiledSurface(compilation.outputs.surface), true);
   assert.deepEqual(compilation.outputs.baseColor.arguments, [0.04, 0.24, 0.08, 1]);
   assert.deepEqual(compilation.outputs.roughness.arguments, [0.31]);
@@ -134,6 +136,8 @@ test('createMaterial resolves graphId and binds compiled Blender surface channel
   assert.equal(material.userData.studioGraphId, graph.id);
   assert.equal(material.userData.studioGraphCompilation, 'tsl-webgpu');
   assert.equal(material.userData.studioGraphNodesCompiled, 2);
+  assert.equal(material.transparent, true);
+  assert.equal(material.transmissionNode, null, 'default zero transmission must not start a transmission pass');
 
   assert.throws(
     () => createMaterial(FAKE_THREE, { id: 'material/missing', kind: 'material', graphId: 'shader/missing' }, { TSL: FAKE_TSL, graphs: {} }),

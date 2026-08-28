@@ -36,6 +36,19 @@ function normalizeDispatcher(dispatch) {
   throw new TypeError('dispatch must be a function, an object with dispatch(), or a method map.');
 }
 
+function callLifecycle(lifecycle, method, value, onError) {
+  if (!lifecycle || typeof lifecycle[method] !== 'function') return;
+  try {
+    lifecycle[method](value);
+  } catch (error) {
+    try {
+      onError(error);
+    } catch {
+      // Observability sinks must never alter RPC command semantics.
+    }
+  }
+}
+
 export class LiveBridgeServer {
   constructor(options = {}) {
     const credentials = options.credentials ?? createSessionCredentials(options);
@@ -57,6 +70,7 @@ export class LiveBridgeServer {
       1_024,
     );
     this.dispatch = normalizeDispatcher(options.dispatch);
+    this.beginCommand = typeof options.beginCommand === 'function' ? options.beginCommand : null;
     this.onError = typeof options.onError === 'function' ? options.onError : () => {};
     this._server = net.createServer((socket) => this._accept(socket));
     this._server.on('error', (error) => this.onError(error));
@@ -181,6 +195,19 @@ export class LiveBridgeServer {
           state.timer.unref?.();
         });
 
+        let lifecycle = null;
+        if (request.method !== 'ping' && this.beginCommand) {
+          try {
+            lifecycle = this.beginCommand(request.method, request.params);
+          } catch (error) {
+            try {
+              this.onError(error);
+            } catch {
+              // Observability sinks must never alter RPC command semantics.
+            }
+          }
+        }
+
         try {
           const invocation = request.method === 'ping'
             ? Promise.resolve({
@@ -200,8 +227,10 @@ export class LiveBridgeServer {
             invocation,
             timeout,
           ]);
+          callLifecycle(lifecycle, 'complete', result, this.onError);
           write({ protocolVersion: this.protocolVersion, id: request.id, ok: true, result: result ?? null });
         } catch (error) {
+          callLifecycle(lifecycle, 'fail', error, this.onError);
           writeError(request.id, error);
         } finally {
           clearTimeout(state.timer);

@@ -1,9 +1,11 @@
-import { MAX_OPERATIONS_PER_TRANSACTION, RESOURCE_TYPES } from './constants.mjs';
+import { MAX_OPERATIONS_PER_TRANSACTION } from './constants.mjs';
 import {
   assertValidProjectDocument,
   createEntityDocument,
   createResourceDocument,
   createSceneDocument,
+  normalizeGraphResourcePatch,
+  normalizeResourceType,
 } from './documents.mjs';
 import { StudioError, studioAssert } from './errors.mjs';
 import { assertStableId, assertTransactionAlias, resolveId } from './ids.mjs';
@@ -56,16 +58,6 @@ function assertPatchKeys(patch, allowed, label) {
   for (const key of Object.keys(patch)) {
     if (!allowed.has(key)) throw new StudioError('unknown_property', `${label} cannot patch ${key}`, { key });
   }
-}
-
-function normalizeResourceType(type) {
-  const aliases = {
-    geometry: 'geometries', material: 'materials', texture: 'textures', graph: 'graphs',
-    animation: 'animations', prefab: 'prefabs', asset: 'assets',
-  };
-  const normalized = aliases[type] ?? type;
-  if (!RESOURCE_TYPES.includes(normalized)) throw new StudioError('invalid_resource_type', `Unknown resource type ${type}`);
-  return normalized;
 }
 
 function addAlias(aliases, resolvedIds, alias, id) {
@@ -413,11 +405,14 @@ function applyResourcePatch(draft, operation, aliases) {
   const resourceId = resolveId(operation.resourceId, aliases, 'resourceId');
   const { resource } = buildProjectIndex(draft).getResource(resourceId, resourceType);
   studioAssert(isPlainRecord(operation.patch), 'invalid_patch', 'resource.patch requires an object patch');
-  studioAssert(!Object.hasOwn(operation.patch, 'id'), 'invalid_patch', 'Resource IDs are immutable');
+  const patch = resourceType === 'graphs'
+    ? normalizeGraphResourcePatch(operation.patch, resource)
+    : cloneJson(operation.patch);
+  studioAssert(!Object.hasOwn(patch, 'id'), 'invalid_patch', 'Resource IDs are immutable');
   const snapshot = cloneJson(resource);
-  draft.resources[resourceType][resourceId] = createResourceDocument(resourceType, mergePatch(resource, operation.patch));
+  draft.resources[resourceType][resourceId] = createResourceDocument(resourceType, mergePatch(resource, patch));
   return {
-    resolved: { type: 'resource.patch', resourceType, resourceId, patch: cloneJson(operation.patch) },
+    resolved: { type: 'resource.patch', resourceType, resourceId, patch: cloneJson(patch) },
     inverse: {
       type: '_resource.restore', resourceType, resourceId, snapshot,
       expectedCurrentHash: contentHash(draft.resources[resourceType][resourceId]),

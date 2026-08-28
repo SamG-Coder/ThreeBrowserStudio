@@ -174,13 +174,23 @@ function instantiateEntity(THREE, entity, context) {
   return object;
 }
 
-function sceneAppearance(THREE, settings = {}) {
+function sceneAppearance(THREE, _TSL, settings = {}) {
   let background = null;
-  if (settings.background?.mode === 'color') background = colorFrom(THREE, settings.background.color);
+  let backgroundNode = null;
+  if (settings.background?.mode === 'color') {
+    background = colorFrom(THREE, settings.background.color);
+    // The native WebGPU output pass preserves swapchain transparency and does
+    // not guarantee that an attachment clear becomes an output fragment.
+    // An authored scene colour therefore needs an opaque background node so
+    // both the persistent viewport and evidence target receive RGBA colour.
+    if (typeof _TSL?.vec4 === 'function') {
+      backgroundNode = _TSL.vec4(background.r, background.g, background.b, 1);
+    }
+  }
   let fog = null;
   if (settings.fog?.mode === 'exp2') fog = new THREE.FogExp2(colorFrom(THREE, settings.fog.color), settings.fog.density ?? 0.01);
   if (settings.fog?.mode === 'linear') fog = new THREE.Fog(colorFrom(THREE, settings.fog.color), settings.fog.near ?? 10, settings.fog.far ?? 1000);
-  return { background, fog };
+  return { background, backgroundNode, fog };
 }
 
 /**
@@ -323,7 +333,7 @@ export function compileSceneDocument({ THREE, TSL, project, sceneId = project.ac
   restoreAuthoredPose();
   if (animationRuntime) animationRuntime.setTime(animationTime);
   evaluateConstraints();
-  const appearance = sceneAppearance(THREE, document.settings);
+  const appearance = sceneAppearance(THREE, TSL, document.settings);
   const activeCamera = objects.get(document.settings?.activeCameraId) ?? null;
   const ownedMaterials = new Set([...materials.values(), ...(fallback ? [fallback] : [])]);
   const ownedDisposableObjects = new Set(
@@ -335,6 +345,7 @@ export function compileSceneDocument({ THREE, TSL, project, sceneId = project.ac
     objects,
     activeCamera,
     background: appearance.background,
+    backgroundNode: appearance.backgroundNode,
     fog: appearance.fog,
     diagnostics,
     animationRuntime,
@@ -376,6 +387,7 @@ export function compileSceneDocument({ THREE, TSL, project, sceneId = project.ac
       materials.clear();
       objects.clear();
       authoredPose.clear();
+      appearance.backgroundNode?.dispose?.();
       animationRuntime?.actions.clear();
       animationRuntime?.states.clear();
       animationRuntime = null;

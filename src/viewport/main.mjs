@@ -3,7 +3,10 @@ import * as TSL from "three/tsl";
 import { createBootstrapScene } from "./bootstrap-scene.mjs";
 import { createFrameCapture } from "./frame-capture.mjs";
 import { updateCameraAspect } from "./camera-projection.mjs";
+import { applyStudioRenderState, STUDIO_RENDER_STATE } from "./render-state.mjs";
 import { createReviewControls } from "./review-controls.mjs";
+import { createMcpLiveFeedWebGpuHud } from "./mcp-live-feed-webgpu-hud.mjs";
+import { createStudioCommandTelemetry } from "../runtime/mcp-live-feed-telemetry.mjs";
 import { startStudioApplication } from "../runtime/studio-application.mjs";
 
 document.title = "ThreeBrowser Studio — waiting for project";
@@ -16,12 +19,7 @@ async function main() {
   });
   renderer.setPixelRatio(Math.max(1, Number(globalThis.devicePixelRatio || 1)));
   renderer.setSize(Math.max(1, innerWidth), Math.max(1, innerHeight));
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1;
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.setClearColor(0x0d1118, 1);
+  applyStudioRenderState(THREE, renderer);
   renderer.domElement.style.position = "fixed";
   renderer.domElement.style.inset = "0";
   renderer.domElement.style.width = "100%";
@@ -39,8 +37,8 @@ async function main() {
 
   const scene = new THREE.Scene();
   scene.name = "ThreeBrowser Studio live stage";
-  scene.background = new THREE.Color(0x0d1118);
-  scene.fog = new THREE.FogExp2(0x0d1118, 0.018);
+  scene.background = null;
+  scene.fog = new THREE.FogExp2(STUDIO_RENDER_STATE.clearColor, 0.018);
   scene.userData.renderer = renderer;
 
   const camera = new THREE.PerspectiveCamera(
@@ -62,7 +60,23 @@ async function main() {
   const bootstrap = createBootstrapScene();
   scene.add(bootstrap.root);
   let renderCamera = camera;
-  const capture = createFrameCapture({ renderer, scene, getCamera: () => renderCamera });
+  const commandTelemetry = createStudioCommandTelemetry({
+    onSinkError: error => console.warn("[ThreeBrowser Studio live feed]", error?.message || error),
+  });
+  const liveFeed = createMcpLiveFeedWebGpuHud({
+    THREE,
+    scene,
+    source: commandTelemetry,
+    width: Math.max(1, innerWidth),
+    height: Math.max(1, innerHeight),
+    pixelRatio: Math.max(1, Number(globalThis.devicePixelRatio || 1)),
+  });
+  const capture = createFrameCapture({
+    renderer,
+    scene,
+    getCamera: () => renderCamera,
+    excludedObjects: [liveFeed.sprite],
+  });
   const started = performance.now() * 0.001;
   let application = null;
 
@@ -71,6 +85,7 @@ async function main() {
     const height = Math.max(1, innerHeight);
     updateCameraAspect(renderCamera, width / height);
     renderer.setSize(width, height);
+    liveFeed.resize(width, height, Math.max(1, Number(globalThis.devicePixelRatio || 1)));
   }
 
   let disposed = false;
@@ -80,6 +95,8 @@ async function main() {
     renderer.setAnimationLoop(null);
     globalThis.removeEventListener("resize", resize);
     await application?.dispose();
+    liveFeed.dispose();
+    commandTelemetry.dispose();
     capture.dispose();
     controls.dispose();
     bootstrap.dispose();
@@ -98,6 +115,16 @@ async function main() {
     setRenderCamera(nextCamera) {
       renderCamera = nextCamera ?? camera;
       resize();
+    },
+    setAppearance({ background = null, backgroundNode = null, fog = null } = {}) {
+      // Scene colours belong to the scene background path. Keeping the colour
+      // there makes WebGPURenderer force the authored clear value for every
+      // output target; renderer-only clear state can be superseded by the
+      // node-material render path.
+      scene.background = background;
+      scene.backgroundNode = backgroundNode;
+      scene.fog = fog;
+      if (!background && !backgroundNode) renderer.setClearColor(STUDIO_RENDER_STATE.clearColor, 1);
     },
     capture: capture.capture,
     async focusBounds(bounds) {
@@ -127,12 +154,14 @@ async function main() {
       TSL,
       viewport: viewportApi,
       bootstrap,
+      beginCommand: commandTelemetry.begin,
     });
   } catch (error) {
     await dispose();
     throw error;
   }
   globalThis.__THREE_STUDIO_APPLICATION__ = application;
+  globalThis.__THREE_STUDIO_LIVE_FEED__ = liveFeed;
 
   globalThis.addEventListener("resize", resize);
   globalThis.addEventListener("beforeunload", () => { void dispose(); }, { once: true });
@@ -149,6 +178,7 @@ async function main() {
     if (renderCamera === camera) controls.update(delta);
     renderer.setRenderTarget(null);
     renderer.setMRT(null);
+    liveFeed.updateCamera(renderCamera);
     renderer.render(scene, renderCamera);
   });
 

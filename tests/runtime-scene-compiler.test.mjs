@@ -43,7 +43,11 @@ function fakeThree() {
   }
   class Group extends Object3D {}
   class Color {
-    setRGB(...values) { this.values = values; return this; }
+    setRGB(...values) {
+      this.values = values;
+      [this.r, this.g, this.b] = values;
+      return this;
+    }
     set(value) { this.value = value; return this; }
   }
   class DisposableGeometry {
@@ -113,6 +117,27 @@ function fakeThree() {
   };
 }
 
+function fakeTsl() {
+  return {
+    color(value) {
+      return {
+        isNode: true,
+        value,
+        disposeCount: 0,
+        dispose() { this.disposeCount += 1; },
+      };
+    },
+    vec4(...value) {
+      return {
+        isNode: true,
+        value,
+        disposeCount: 0,
+        dispose() { this.disposeCount += 1; },
+      };
+    },
+  };
+}
+
 function entity(id, kind, options = {}) {
   return {
     id,
@@ -137,7 +162,7 @@ test('scene compilation follows canonical root and child order', () => {
       ],
     }],
   });
-  const compiled = compileSceneDocument({ THREE: fakeThree(), project });
+  const compiled = compileSceneDocument({ THREE: fakeThree(), TSL: fakeTsl(), project });
 
   assert.deepEqual(compiled.root.children.map(child => child.userData.studioEntityId), [
     'entity/root-b',
@@ -172,7 +197,7 @@ test('unsupported multi-material and populated instancing produce explicit diagn
       ],
     }],
   });
-  const compiled = compileSceneDocument({ THREE: fakeThree(), project });
+  const compiled = compileSceneDocument({ THREE: fakeThree(), TSL: fakeTsl(), project });
 
   assert.deepEqual(compiled.diagnostics.map(item => item.code), [
     'runtime_multi_material_unsupported',
@@ -202,7 +227,7 @@ test('compiled lights, instances, geometry, and materials dispose exactly once',
       ],
     }],
   });
-  const compiled = compileSceneDocument({ THREE: fakeThree(), project });
+  const compiled = compileSceneDocument({ THREE: fakeThree(), TSL: fakeTsl(), project });
   const light = compiled.objects.get('entity/light');
   const instance = compiled.objects.get('entity/instance');
   const geometry = instance.geometry;
@@ -236,7 +261,7 @@ test('ordered array and mirror modifiers lower to deterministic instance matrice
     }],
   });
 
-  const compiled = compileSceneDocument({ THREE: fakeThree(), project });
+  const compiled = compileSceneDocument({ THREE: fakeThree(), TSL: fakeTsl(), project });
   const subject = compiled.objects.get('entity/subject');
   assert.equal(subject.isInstancedMesh, true);
   assert.equal(subject.count, 6);
@@ -262,7 +287,7 @@ test('look-at and copy-location constraints evaluate in authored order', () => {
   });
   project.scenes['scene/main'].entities['entity/target'].transform.position = [4, 3, 2];
 
-  const compiled = compileSceneDocument({ THREE: fakeThree(), project });
+  const compiled = compileSceneDocument({ THREE: fakeThree(), TSL: fakeTsl(), project });
   assert.deepEqual(compiled.objects.get('entity/camera').lookAtValues, [4, 3, 2]);
   assert.deepEqual(compiled.objects.get('entity/follower').position.values, [4, 3, 2]);
   assert.deepEqual(compiled.diagnostics, []);
@@ -301,11 +326,37 @@ test('compiled Blender-style Actions scrub exact frames and remain derived state
     }],
   });
 
-  const compiled = compileSceneDocument({ THREE: fakeThree(), project });
+  const compiled = compileSceneDocument({ THREE: fakeThree(), TSL: fakeTsl(), project });
   assert.deepEqual(compiled.animationActions, ['animation/bounce']);
   assert.deepEqual(compiled.objects.get('entity/ball').position.values, [0, 0.5, 0]);
   compiled.setAnimationTime(0.5);
   assert.deepEqual(compiled.objects.get('entity/ball').position.values, [0, 2.5, 0]);
   assert.deepEqual(project.scenes['scene/main'].entities['entity/ball'].transform.position, [0, 0, 0]);
   assert.deepEqual(compiled.diagnostics, []);
+});
+
+test('authored linear color backgrounds become an opaque WebGPU background node', () => {
+  const THREE = fakeThree();
+  const TSL = fakeTsl();
+  const project = createProjectDocument({
+    projectId: 'project/background-node',
+    scenes: [{
+      id: 'scene/main',
+      settings: {
+        background: {
+          mode: 'color',
+          color: [0.035, 0.045, 0.06],
+          colorSpace: 'linear-srgb',
+        },
+      },
+    }],
+  });
+
+  const compiled = compileSceneDocument({ THREE, TSL, project });
+
+  assert.equal(compiled.backgroundNode.isNode, true);
+  assert.deepEqual(compiled.backgroundNode.value, [0.035, 0.045, 0.06, 1]);
+  assert.deepEqual(compiled.background.values, [0.035, 0.045, 0.06]);
+  compiled.dispose();
+  compiled.dispose();
 });

@@ -9,6 +9,9 @@ import {
   atomicWriteJson,
   contentHash,
   createProjectDocument,
+  createResourceDocument,
+  normalizeGraphResourcePatch,
+  normalizeResourceType,
   supportedOperationTypes,
   validateProjectDocument,
 } from '../core/index.mjs';
@@ -95,19 +98,21 @@ function resourceOperation(operation, document) {
   const data = operation.data ?? {};
   const resourceId = required(operation.targetId ?? data.resourceId ?? data.id ?? data.resource?.id, `${operation.op}.targetId`);
   if (action === 'delete') return { type: 'resource.delete', resourceType, resourceId };
-  if (action === 'patch') return {
-    type: 'resource.patch',
-    resourceType,
-    resourceId,
-    patch: data.patch ?? without(data, ['resourceId']),
-  };
-  const source = data.resource ?? data.value ?? data;
-  const resource = { ...source, id: resourceId };
-  if (resourceType === 'graphs' && resource.graph) {
-    const result = validateGraph(resource.graph);
-    if (!result.valid) throw new StudioError('graph_validation_failed', `Graph ${resourceId} is invalid.`, { diagnostics: result.diagnostics });
-    resource.graph = result.graph;
+  if (action === 'patch') {
+    const patch = data.patch ?? without(data, ['resourceId']);
+    return {
+      type: 'resource.patch',
+      resourceType,
+      resourceId,
+      patch: resourceType === 'graphs'
+        ? normalizeGraphResourcePatch(patch, document.resources?.graphs?.[resourceId])
+        : patch,
+    };
   }
+  const source = data.resource ?? data.value ?? data;
+  const resource = resourceType === 'graphs'
+    ? createResourceDocument(resourceType, { ...source, id: resourceId })
+    : { ...source, id: resourceId };
   if (document.resources?.[resourceType]?.[resourceId]) {
     return { type: 'resource.patch', resourceType, resourceId, patch: without(resource, ['id']) };
   }
@@ -118,12 +123,11 @@ export function translateToolOperation(operation, document) {
   const data = operation.data ?? {};
   if (DIRECT_CORE_OPERATIONS.has(operation.op)) {
     const direct = structuredClone(operation);
-    if ((direct.op === 'resource.create' && direct.resourceType === 'graphs' && direct.resource?.graph)
-      || (direct.op === 'resource.patch' && direct.resourceType === 'graphs' && direct.patch?.graph)) {
-      const holder = direct.op === 'resource.create' ? direct.resource : direct.patch;
-      const result = validateGraph(holder.graph);
-      if (!result.valid) throw new StudioError('graph_validation_failed', 'Graph resource is invalid.', { diagnostics: result.diagnostics });
-      holder.graph = result.graph;
+    if (direct.op.startsWith('resource.')) direct.resourceType = normalizeResourceType(direct.resourceType);
+    if (direct.op === 'resource.create' && direct.resourceType === 'graphs') {
+      direct.resource = createResourceDocument('graphs', direct.resource);
+    } else if (direct.op === 'resource.patch' && direct.resourceType === 'graphs') {
+      direct.patch = normalizeGraphResourcePatch(direct.patch, document.resources?.graphs?.[direct.resourceId]);
     }
     return direct;
   }
@@ -249,13 +253,15 @@ export class StudioApplication {
   #play = { paused: false, tick: 0, elapsed: 0, latestInput: null };
   #disposed = false;
   #viewHash = null;
+  #beginCommand = null;
 
-  constructor({ THREE, TSL, viewport, bootstrap, markerPath, credentials } = {}) {
+  constructor({ THREE, TSL, viewport, bootstrap, markerPath, credentials, beginCommand } = {}) {
     this.#THREE = THREE;
     this.#TSL = TSL;
     this.#viewport = viewport;
     this.#bootstrap = bootstrap;
     this.#credentials = credentials ?? createSessionCredentials();
+    this.#beginCommand = typeof beginCommand === 'function' ? beginCommand : null;
     const studioRoot = process.env.THREE_STUDIO_ROOT ?? process.cwd();
     this.studioRoot = path.resolve(studioRoot);
     this.projectsRoot = path.join(this.studioRoot, 'projects');
@@ -284,6 +290,7 @@ export class StudioApplication {
     this.#bridge = await createLiveBridgeServer({
       credentials: this.#credentials,
       dispatch: (method, params, context) => this.dispatch(method, params, context),
+      beginCommand: this.#beginCommand,
       onError: error => console.error('[ThreeBrowser Studio bridge]', error.message),
     });
     await this.#writeMarker(true, { required: true });
@@ -312,6 +319,9 @@ export class StudioApplication {
     if (typeof this.#viewport.renderer.compileAsync === 'function' && compiled.activeCamera) {
       const stagingScene = new this.#THREE.Scene();
       stagingScene.add(compiled.root);
+      stagingScene.background = compiled.background;
+      stagingScene.backgroundNode = compiled.backgroundNode;
+      stagingScene.fog = compiled.fog;
       try {
         await this.#viewport.renderer.compileAsync(stagingScene, compiled.activeCamera);
       } catch (error) {
@@ -321,6 +331,9 @@ export class StudioApplication {
         });
       } finally {
         compiled.root.removeFromParent();
+        stagingScene.background = null;
+        stagingScene.backgroundNode = null;
+        stagingScene.fog = null;
       }
     }
     return compiled;
@@ -344,8 +357,13 @@ export class StudioApplication {
     this.#bootstrap?.dispose();
     this.#bootstrap = null;
     this.#viewport.scene.add(next.root);
-    this.#viewport.scene.background = next.background;
-    this.#viewport.scene.fog = next.fog;
+    if (typeof this.#viewport.setAppearance === 'function') {
+      this.#viewport.setAppearance(next);
+    } else {
+      this.#viewport.scene.background = next.background;
+      this.#viewport.scene.backgroundNode = next.backgroundNode;
+      this.#viewport.scene.fog = next.fog;
+    }
     this.#viewport.setRenderCamera(next.activeCamera ?? this.#viewport.camera);
     const previous = this.#compiled;
     this.#compiled = next;
@@ -766,7 +784,7 @@ export class StudioApplication {
       for (const resource of Object.values(document.resources.graphs)) {
         if (!resource.graph) continue;
         const validation = validateGraph(resource.graph);
-        graphDiagnostics.push(...validation.diagnostics.map(item => ({ ...item, resourceId: resource.id })));
+        graphDiagnostics.push(...validation.warnings.map(item => ({ ...item, resourceId: resource.id })));
       }
     }
     const animationDiagnostics = [];
@@ -978,7 +996,14 @@ export class StudioApplication {
       if (owned) await rm(this.#markerPath, { force: true }).catch(() => {});
     }
     this.#prepared?.dispose();
-    this.#compiled?.dispose();
+    const compiled = this.#compiled;
+    if (typeof this.#viewport.setAppearance === 'function') this.#viewport.setAppearance({});
+    else {
+      if (this.#viewport.scene.background === compiled?.background) this.#viewport.scene.background = null;
+      if (this.#viewport.scene.backgroundNode === compiled?.backgroundNode) this.#viewport.scene.backgroundNode = null;
+      if (this.#viewport.scene.fog === compiled?.fog) this.#viewport.scene.fog = null;
+    }
+    compiled?.dispose();
     this.#prepared = null;
     this.#compiled = null;
   }

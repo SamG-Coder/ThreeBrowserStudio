@@ -182,7 +182,16 @@ async function waitForObsFrontend(client) {
   throw lastError ?? new Error('OBS frontend did not become ready.');
 }
 
-async function ensureProfile(client, outputDirectory) {
+export function sanitizeRecordingName(value = 'ThreeBrowser-Showcase') {
+  const normalized = String(value)
+    .normalize('NFKD')
+    .replace(/[^a-zA-Z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+  return normalized || 'ThreeBrowser-Showcase';
+}
+
+async function ensureProfile(client, outputDirectory, recordingName) {
   let profiles = await client.request('GetProfileList');
   if (!collectObsNames(profiles.profiles, 'profileName').has(PROFILE_NAME)) {
     await client.request('CreateProfile', { profileName: PROFILE_NAME });
@@ -194,7 +203,7 @@ async function ensureProfile(client, outputDirectory) {
 
   const profileParameters = [
     ['Output', 'Mode', 'Simple'],
-    ['Output', 'FilenameFormatting', 'ThreeBrowser-Rainy-Window-%CCYY-%MM-%DD-%hh-%mm-%ss'],
+    ['Output', 'FilenameFormatting', `${sanitizeRecordingName(recordingName)}-%CCYY-%MM-%DD-%hh-%mm-%ss`],
     ['SimpleOutput', 'FilePath', outputDirectory],
     ['SimpleOutput', 'RecFormat2', 'mkv'],
     ['SimpleOutput', 'RecQuality', 'Small'],
@@ -270,12 +279,12 @@ async function ensureScene(client, windowName) {
   return sceneItemId;
 }
 
-async function setup({ outputDirectory, windowName }) {
+async function setup({ outputDirectory, windowName, recordingName }) {
   const client = await connectObs();
   try {
     const record = await waitForObsFrontend(client);
     if (record.outputActive) throw new Error('OBS is already recording; refusing to change its profile or scene.');
-    await ensureProfile(client, outputDirectory);
+    await ensureProfile(client, outputDirectory, recordingName);
     const sceneItemId = await ensureScene(client, windowName);
     let sourceState = { videoActive: false, videoShowing: false };
     for (let attempt = 0; attempt < 40; attempt += 1) {
@@ -391,10 +400,17 @@ async function preview(filePath) {
 }
 
 function parseArguments(argv) {
-  const values = { command: argv[0] ?? 'status', outputDirectory: DEFAULT_OUTPUT, windowName: DEFAULT_WINDOW, filePath: null };
+  const values = {
+    command: argv[0] ?? 'status',
+    outputDirectory: DEFAULT_OUTPUT,
+    windowName: DEFAULT_WINDOW,
+    recordingName: 'ThreeBrowser-Showcase',
+    filePath: null,
+  };
   for (let index = 1; index < argv.length; index += 1) {
     if (argv[index] === '--output') values.outputDirectory = path.resolve(argv[++index]);
     else if (argv[index] === '--window') values.windowName = argv[++index];
+    else if (argv[index] === '--name') values.recordingName = sanitizeRecordingName(argv[++index]);
     else if (argv[index] === '--file') values.filePath = path.resolve(argv[++index]);
     else throw new Error(`Unknown argument: ${argv[index]}`);
   }

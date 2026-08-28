@@ -850,6 +850,28 @@ export function queryGraphCatalog(domain, options = {}) {
     returned: matches.length,
     nodes: matches,
     outputs: catalog.outputs,
+    authoring: {
+      resourceType: 'graphs',
+      canonicalEnvelope: {
+        id: 'graph/example',
+        kind: 'graph',
+        name: 'Example Graph',
+        metadata: {},
+        graph: {
+          formatVersion: 1,
+          id: 'graph/example',
+          domain,
+          nodes: [],
+          edges: [],
+          outputs: {},
+        },
+      },
+      edgePortShape: {
+        from: { nodeId: 'source-node', port: 'outputPort' },
+        to: { nodeId: 'target-node', port: 'inputPort' },
+      },
+      guidance: 'Create graph resources with the graph control document nested under resource.graph. Every edge uses from/to objects with nodeId and port; use the returned node sockets exactly.',
+    },
   };
 }
 

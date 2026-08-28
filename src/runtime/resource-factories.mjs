@@ -328,20 +328,35 @@ function linearColor(THREE, value, fallback = [0.7, 0.7, 0.7]) {
   return color;
 }
 
-function materialConstructor(THREE, kind) {
-  const table = {
-    basic: THREE.MeshBasicNodeMaterial ?? THREE.MeshBasicMaterial,
-    standard: THREE.MeshStandardNodeMaterial ?? THREE.MeshStandardMaterial,
-    physical: THREE.MeshPhysicalNodeMaterial ?? THREE.MeshPhysicalMaterial,
-    toon: THREE.MeshToonNodeMaterial ?? THREE.MeshToonMaterial ?? THREE.MeshStandardMaterial,
+function materialConstructor(THREE, kind, graphBacked = false) {
+  const classic = {
+    basic: THREE.MeshBasicMaterial ?? THREE.MeshBasicNodeMaterial,
+    standard: THREE.MeshStandardMaterial ?? THREE.MeshStandardNodeMaterial,
+    physical: THREE.MeshPhysicalMaterial ?? THREE.MeshPhysicalNodeMaterial,
+    toon: THREE.MeshToonMaterial ?? THREE.MeshStandardMaterial ?? THREE.MeshStandardNodeMaterial,
   };
+  const node = {
+    basic: THREE.MeshBasicNodeMaterial ?? classic.basic,
+    standard: THREE.MeshStandardNodeMaterial ?? classic.standard,
+    physical: THREE.MeshPhysicalNodeMaterial ?? classic.physical,
+    toon: THREE.MeshToonNodeMaterial ?? classic.toon,
+  };
+  const table = graphBacked ? node : classic;
   if (!table[kind]) throw new Error(`Unsupported material recipe: ${kind}`);
   return table[kind];
 }
 
 export function createMaterial(THREE, resource = {}, options = {}) {
-  const values = resource.parameters ?? resource.values ?? resource;
-  const requestedKind = resource.materialKind ?? (resource.kind === 'material' ? 'standard' : resource.kind) ?? 'standard';
+  // Persisted Studio resources wrap their authored material values in `recipe`.
+  // Graph-backed materials previously masked this omission because colorNode was
+  // supplied by the graph, while ordinary materials silently used fallback
+  // values and the default Standard material.
+  const values = resource.recipe ?? resource.parameters ?? resource.values ?? resource;
+  const requestedKind = resource.materialKind
+    ?? values.materialKind
+    ?? values.type
+    ?? (resource.kind === 'material' ? 'standard' : resource.kind)
+    ?? 'standard';
   const graphResource = resource.graph ?? (resource.graphId ? options.graphs?.[resource.graphId] : null);
   if (resource.graphId && !graphResource) {
     throw new Error(`Material ${resource.id ?? '<unnamed>'} references missing graph ${resource.graphId}.`);
@@ -353,6 +368,12 @@ export function createMaterial(THREE, resource = {}, options = {}) {
     textureResolver: options.textureResolver,
   }) : null;
   const graphOutputs = graphCompilation?.outputs ?? {};
+  const graphOutputNames = new Set(graphCompilation?.outputNames ?? []);
+  const graphTransparency = graphCompilation?.features?.transparent === true
+    || graphOutputNames.has('opacity')
+    || graphOutputNames.has('mask');
+  const graphTransmission = graphCompilation?.features?.transmission === true
+    || graphOutputNames.has('transmission');
   const kind = isCompiledSurface(graphOutputs.surface) && ['standard', 'physical'].includes(requestedKind) ? 'physical' : requestedKind;
   const mapKeys = [
     'map', 'mapId', 'normalMap', 'normalMapId', 'roughnessMap', 'roughnessMapId',
@@ -361,7 +382,11 @@ export function createMaterial(THREE, resource = {}, options = {}) {
   ];
   const uncompiledMap = mapKeys.find(key => values[key] !== undefined || resource[key] !== undefined);
   if (uncompiledMap) throw new Error(`Material ${resource.id ?? '<unnamed>'} uses ${uncompiledMap}; image texture resources are not bound by the live graph compiler yet.`);
-  const Constructor = materialConstructor(THREE, kind);
+  // A NodeMaterial without node overrides is not a harmless substitute in the
+  // native WebGPU runtime: its unbound base-colour path resolves to black.
+  // Keep ordinary/default materials on Three's classic material pipeline and
+  // enter the node pipeline only for a successfully compiled graph.
+  const Constructor = materialConstructor(THREE, kind, graphCompilation !== null);
   const color = values.baseColor ?? values.color;
   const material = new Constructor({ color: linearColor(THREE, color) });
   const numericKeys = [
@@ -383,8 +408,14 @@ export function createMaterial(THREE, resource = {}, options = {}) {
   if (graphOutputs.ior && 'iorNode' in material) material.iorNode = graphOutputs.ior;
   if (graphOutputs.clearcoat && 'clearcoatNode' in material) material.clearcoatNode = graphOutputs.clearcoat;
   if (graphOutputs.clearcoatRoughness && 'clearcoatRoughnessNode' in material) material.clearcoatRoughnessNode = graphOutputs.clearcoatRoughness;
-  if (graphOutputs.transmission && 'transmissionNode' in material) material.transmissionNode = graphOutputs.transmission;
-  material.transparent = values.transparent === true || (Number.isFinite(values.opacity) && values.opacity < 1) || Boolean(graphOutputs.opacity ?? graphOutputs.mask);
+  if (graphTransmission && graphOutputs.transmission && 'transmissionNode' in material) {
+    material.transmissionNode = graphOutputs.transmission;
+  }
+  const inferredTransparency = (Number.isFinite(values.opacity) && values.opacity < 1)
+    || graphTransparency;
+  material.transparent = typeof values.transparent === 'boolean'
+    ? values.transparent
+    : inferredTransparency;
   material.depthWrite = values.depthWrite ?? !material.transparent;
   material.depthTest = values.depthTest ?? true;
   material.wireframe = values.wireframe ?? false;

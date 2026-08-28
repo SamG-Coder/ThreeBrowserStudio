@@ -114,6 +114,23 @@ function fakeThree() {
   };
 }
 
+function fakeTsl() {
+  const nodes = [];
+  return {
+    nodes,
+    color(value) {
+      const node = {
+        isNode: true,
+        value,
+        disposeCount: 0,
+        dispose() { this.disposeCount += 1; },
+      };
+      nodes.push(node);
+      return node;
+    },
+  };
+}
+
 function fakeViewport() {
   const scene = new Group();
   const camera = new Group();
@@ -159,9 +176,11 @@ async function applicationFixture(t) {
   const previousStudioRoot = process.env.THREE_STUDIO_ROOT;
   process.env.THREE_STUDIO_ROOT = studioRoot;
   const THREE = fakeThree();
+  const TSL = fakeTsl();
   const viewport = fakeViewport();
   const application = new StudioApplication({
     THREE,
+    TSL,
     viewport,
     markerPath: path.join(studioRoot, 'session', 'live-session.json'),
   });
@@ -173,7 +192,7 @@ async function applicationFixture(t) {
     await rm(studioRoot, { recursive: true, force: true });
   });
   await application.start({ projectPath: activeRoot });
-  return { application, activeRoot, studioRoot, THREE, viewport };
+  return { application, activeRoot, studioRoot, THREE, TSL, viewport };
 }
 
 function rejectsWithCode(code) {
@@ -257,6 +276,70 @@ test('project-scoped requests reject a mismatched stable project ID', async (t) 
   );
 });
 
+test('live apply canonicalizes and validates an unused flat singular graph resource', async (t) => {
+  const { application } = await applicationFixture(t);
+  const graphId = 'graph/live-flat-water';
+  const created = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1',
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    baseRevision: 0,
+    idempotencyKey: 'flat-graph-create-0001',
+    label: 'Create an unused flat graph through the live MCP path',
+    operations: [{
+      op: 'resource.create',
+      resourceType: 'graph',
+      resource: {
+        id: graphId,
+        kind: 'graph',
+        name: 'Live Flat Water',
+        metadata: { regression: true },
+        formatVersion: 1,
+        domain: 'shader',
+        nodes: [{ id: 'color', type: 'constant.color', params: { value: [0.08, 0.2, 0.3] } }],
+        edges: [],
+        outputs: { baseColor: { nodeId: 'color', port: 'value' } },
+      },
+    }],
+  });
+  assert.equal(created.success, true);
+  assert.equal(created.revision, 1);
+  const resource = application.kernel.document.resources.graphs[graphId];
+  assert.equal(resource.name, 'Live Flat Water');
+  assert.deepEqual(resource.metadata, { regression: true });
+  assert.equal(resource.graph.id, graphId);
+  assert.equal(Object.hasOwn(resource, 'nodes'), false);
+
+  await assert.rejects(
+    application.dispatch('three_studio_apply', {
+      protocolVersion: 'three-studio/1',
+      sessionId: application.sessionId,
+      projectId: 'project/active',
+      baseRevision: 1,
+      idempotencyKey: 'flat-graph-patch-0001',
+      label: 'Reject an invalid unused graph patch immediately',
+      operations: [{
+        op: 'resource.patch',
+        resourceType: 'graph',
+        resourceId: graphId,
+        patch: {
+          nodes: [{ id: 'unsafe', type: 'rawWgsl', params: {} }],
+          outputs: { baseColor: { nodeId: 'unsafe', port: 'value' } },
+        },
+      }],
+    }),
+    rejectsWithCode('graph_validation_failed'),
+  );
+  assert.equal(application.kernel.revision, 1);
+
+  const validation = await application.dispatch('three_studio_validate', {
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    checks: ['graphs'],
+  });
+  assert.equal(validation.success, true);
+});
+
 test('dry-run apply compiles and disposes its candidate without swapping or mutating the project', async (t) => {
   const { application, THREE, viewport } = await applicationFixture(t);
   const liveRoot = viewport.scene.children[0];
@@ -288,6 +371,32 @@ test('dry-run apply compiles and disposes its candidate without swapping or muta
   assert.equal(viewport.titles.length, titleCountBefore);
   assert.equal(THREE.groups.length, groupCountBefore + 2, 'candidate root and entity should be compiled');
   assert.equal(THREE.groups.at(-2).clearCount, 1, 'dry-run candidate root should be disposed');
+});
+
+test('scene swaps retain the authored linear background for the viewport presentation layer', async (t) => {
+  const { application, viewport } = await applicationFixture(t);
+  const initialBackground = viewport.scene.background;
+  assert.equal(viewport.scene.backgroundNode, null);
+  assert.deepEqual(initialBackground.value, [0.035, 0.045, 0.06]);
+
+  const result = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1',
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    baseRevision: 0,
+    idempotencyKey: 'background-node-swap-0001',
+    label: 'Exercise background-node scene swap',
+    operations: [{
+      op: 'entity.create',
+      sceneId: 'scene/main',
+      entity: { id: 'entity/background-swap', kind: 'group', name: 'Background swap marker' },
+    }],
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(viewport.scene.backgroundNode, null);
+  assert.notEqual(viewport.scene.background, initialBackground);
+  assert.deepEqual(viewport.scene.background.value, [0.035, 0.045, 0.06]);
 });
 
 test('a project switch compile failure preserves the active project and live scene', async (t) => {

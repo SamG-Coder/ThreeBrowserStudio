@@ -187,3 +187,74 @@ test('unsupported materials, missing graphs, and unbound map inputs fail explici
   assert.throws(() => createMaterial(THREE, { id: 'material/graph', kind: 'standard', graphId: 'graph/pbr' }), /references missing graph graph\/pbr/);
   assert.throws(() => createMaterial(THREE, { id: 'material/map', kind: 'standard', mapId: 'texture/albedo' }), /image texture resources are not bound/);
 });
+
+test('an explicit opaque material overrides inferred alpha blending', () => {
+  const THREE = {
+    Color: class { setRGB() { return this; } set() { return this; } },
+    MeshStandardMaterial: class {},
+  };
+  const opaque = createMaterial(THREE, {
+    id: 'material/opaque-paint', kind: 'standard', opacity: 0.5, transparent: false,
+  });
+  assert.equal(opaque.transparent, false);
+  assert.equal(opaque.depthWrite, true);
+
+  const blended = createMaterial(THREE, {
+    id: 'material/blended-water', kind: 'standard', opacity: 0.5, transparent: true,
+  });
+  assert.equal(blended.transparent, true);
+  assert.equal(blended.depthWrite, false);
+});
+
+test('persisted material recipes preserve the type and color of non-graph materials', () => {
+  class FakeColor {
+    setRGB(r, g, b) { Object.assign(this, { r, g, b }); return this; }
+    set(value) { this.value = value; return this; }
+  }
+  class FakeBasicMaterial {
+    constructor(parameters) { this.parameters = parameters; }
+  }
+  class FakeStandardMaterial {
+    constructor(parameters) { this.parameters = parameters; this.roughness = 1; this.metalness = 0; }
+  }
+  class FakeBasicNodeMaterial extends FakeBasicMaterial {}
+  class FakeStandardNodeMaterial extends FakeStandardMaterial {}
+  const THREE = {
+    Color: FakeColor,
+    MeshBasicMaterial: FakeBasicMaterial,
+    MeshStandardMaterial: FakeStandardMaterial,
+    MeshBasicNodeMaterial: FakeBasicNodeMaterial,
+    MeshStandardNodeMaterial: FakeStandardNodeMaterial,
+  };
+
+  const iron = createMaterial(THREE, {
+    id: 'material/painterly-hut/iron',
+    kind: 'material',
+    recipe: { type: 'basic', color: [0.018, 0.035, 0.05, 1] },
+  });
+  assert.equal(iron instanceof FakeBasicMaterial, true);
+  assert.equal(iron instanceof FakeBasicNodeMaterial, false);
+  assert.deepEqual(
+    [iron.parameters.color.r, iron.parameters.color.g, iron.parameters.color.b],
+    [0.018, 0.035, 0.05],
+  );
+
+  const rock = createMaterial(THREE, {
+    id: 'material/painterly-hut/rock-cool',
+    kind: 'material',
+    recipe: {
+      type: 'standard',
+      color: [0.12, 0.19, 0.22, 1],
+      roughness: 0.97,
+      metalness: 0,
+    },
+  });
+  assert.equal(rock instanceof FakeStandardMaterial, true);
+  assert.equal(rock instanceof FakeStandardNodeMaterial, false);
+  assert.deepEqual(
+    [rock.parameters.color.r, rock.parameters.color.g, rock.parameters.color.b],
+    [0.12, 0.19, 0.22],
+  );
+  assert.equal(rock.roughness, 0.97);
+  assert.equal(rock.metalness, 0);
+});

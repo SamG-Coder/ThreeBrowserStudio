@@ -126,6 +126,13 @@ The authenticated connection marker is kept outside the repository at
 `%LOCALAPPDATA%\ThreeBrowserStudio\live-session.json` with a current-user-only
 Windows ACL.
 
+Press **Ctrl+Shift+M** in the native window to toggle the MCP Live Feed. It is
+a read-only, Twitch-chat-style activity drawer for the real authenticated
+`three_studio_*` command stream: tool, lifecycle state, elapsed time, revision,
+and a compact redacted summary. It is visible by default, excludes bridge pings,
+never displays raw arguments or results, and is not a second editor or chat UI;
+the shortcut hides it when an unobstructed viewport is needed.
+
 While the window is running, the thin CLI is useful for diagnostics without
 starting an MCP client:
 
@@ -176,7 +183,8 @@ showcase capture with `npm run obs:setup`. The guarded recorder in
 `scripts/record-threebrowser.ps1` binds the exact native ThreeBrowser process,
 requires its window to remain maximized, and deletes the partial take if that
 window closes, is replaced, or stops being maximized. Pass `-SkipPlay` while a
-live runner owns the final Action start.
+live runner owns the final Action start; `-RecordingName` gives a take a stable
+OBS filename.
 
 ## Connect Codex or ChatGPT desktop
 
