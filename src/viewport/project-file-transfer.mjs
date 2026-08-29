@@ -27,6 +27,23 @@ export function downloadJsonFile(fileName, value, {
   revokeObjectURL(href);
 }
 
+export async function saveProjectPackFile(fileName, value, options = {}) {
+  if (options.native) {
+    const { saveJsonWithNativeDialog } = await import('./project-file-transfer-native.mjs');
+    return saveJsonWithNativeDialog(fileName, value, options);
+  }
+  downloadJsonFile(fileName, value, options);
+  return { name: fileName };
+}
+
+export async function openProjectPackFile(options = {}) {
+  if (options.native) {
+    const { openJsonWithNativeDialog } = await import('./project-file-transfer-native.mjs');
+    return openJsonWithNativeDialog(options);
+  }
+  return pickJsonFile(options);
+}
+
 export function pickJsonFile({
   accept = DEFAULT_ACCEPT,
   document: doc = globalThis.document,

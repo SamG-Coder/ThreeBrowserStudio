@@ -27,6 +27,7 @@ test('pages artifact keeps the browser shell and does not replace site-entry', a
   assert.match(html, new RegExp(`browser-entry\\.mjs\\?v=${PAGES_ASSET_STAMP}`));
   assert.doesNotMatch(main, /^import .*studio-application/m);
   assert.doesNotMatch(main, /^import .*system-typeface/m);
+  assert.doesNotMatch(main, /^import .*project-file-transfer-native/m);
   assert.match(
     await readFile(path.join(output, 'templates', 'starter-project', 'project.threestudio.json'), 'utf8'),
     /Starter Project/,

@@ -27,10 +27,14 @@ Settings has **Export JSON** and **Import JSON** for a portable pack of the
 canonical project (`ThreeStudioProjectPack`). History, recovery, session
 markers, and Prompt keys stay out of the file.
 
-On the desktop host, Import writes a new folder under `projects/imports/`
-and opens it. It does not overwrite the project that was already open. On
-GitHub Pages, Import compiles the document in this tab only — it does not
-create files on disk.
+On the desktop host, Export and Import open a Windows file dialog. Import
+then writes a new folder under `projects/imports/` and opens it. It does
+not overwrite the project that was already open. The native window has no
+browser download bar or `<input type="file">` chrome.
+
+On GitHub Pages, Export uses the browser download prompt and Import uses
+the browser file picker. Import compiles the document in this tab only —
+it does not create files on disk.
 
 Trusted-project scripts are forced to `agent-safe` on both hosts. Raw
 `ThreeStudioProject` JSON is accepted as well as a pack.

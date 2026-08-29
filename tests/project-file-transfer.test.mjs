@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { downloadJsonFile, pickJsonFile } from '../src/viewport/project-file-transfer.mjs';
+import { downloadJsonFile, openProjectPackFile, pickJsonFile, saveProjectPackFile } from '../src/viewport/project-file-transfer.mjs';
 
 class FakeElement {
   constructor(name) {
@@ -43,7 +43,7 @@ class FakeTransferDocument {
   }
 }
 
-test('downloadJsonFile writes a JSON attachment without keeping the object URL', () => {
+test('downloadJsonFile writes a JSON attachment without keeping the object URL', async () => {
   const document = new FakeTransferDocument();
   const urls = [];
   downloadJsonFile('three-studio-demo.json', { kind: 'ThreeStudioProjectPack' }, {
@@ -63,6 +63,13 @@ test('downloadJsonFile writes a JSON attachment without keeping the object URL',
   assert.equal(anchor.clicked, true);
   assert.equal(anchor.removed, true);
   assert.deepEqual(urls, ['blob:test', 'revoked:blob:test']);
+  const saved = await saveProjectPackFile('three-studio-demo.json', { kind: 'ThreeStudioProjectPack' }, {
+    native: false,
+    document,
+    createObjectURL: () => 'blob:test-2',
+    revokeObjectURL() {},
+  });
+  assert.equal(saved.name, 'three-studio-demo.json');
 });
 
 test('pickJsonFile returns file text and treats cancel as null', async () => {

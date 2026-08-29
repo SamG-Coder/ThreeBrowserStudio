@@ -18,7 +18,7 @@ import {
   parseProjectPack,
   projectPackFileName,
 } from "../core/project-pack.mjs";
-import { downloadJsonFile, pickJsonFile } from "./project-file-transfer.mjs";
+import { openProjectPackFile, saveProjectPackFile } from "./project-file-transfer.mjs";
 
 document.title = "ThreeBrowser Studio — waiting for project";
 
@@ -132,12 +132,18 @@ async function main() {
         const pack = application
           ? await application.exportProjectDocument()
           : createProjectPack(preview?.document ?? createBrowserPreviewDocument());
-        downloadJsonFile(projectPackFileName(pack.document), pack);
+        const saved = await saveProjectPackFile(projectPackFileName(pack.document), pack, {
+          native: Boolean(application),
+        });
+        if (!saved) {
+          liveFeed.setProjectTransferStatus("Export cancelled.");
+          return;
+        }
         liveFeed.setProjectTransferStatus(`Exported ${pack.document.name}.`);
         return;
       }
       liveFeed.setProjectTransferStatus("Choose a JSON pack…");
-      const picked = await pickJsonFile();
+      const picked = await openProjectPackFile({ native: Boolean(application) });
       if (!picked) {
         liveFeed.setProjectTransferStatus("Import cancelled.");
         return;
