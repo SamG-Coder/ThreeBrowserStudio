@@ -1,3 +1,4 @@
+import { principledFeatureFlags } from '../graphs/live-sockets.mjs';
 import { assertValidGraph } from '../graphs/validator.mjs';
 
 const TYPE_ALIASES = Object.freeze({
@@ -103,6 +104,9 @@ function surface(channels, features = {}) {
       transparent: Boolean(features.transparent),
       transmission: Boolean(features.transmission),
       sheen: Boolean(features.sheen),
+      specular: Boolean(features.specular),
+      anisotropy: Boolean(features.anisotropy),
+      iridescence: Boolean(features.iridescence),
     }),
   });
 }
@@ -473,6 +477,13 @@ function makeInputResolver({ TSL, graph, compileOutput }) {
   for (const edge of graph.edges) incoming.set(`${edge.to.nodeId}\u0000${edge.to.port}`, edge.from);
   return {
     connected(node, name) { return incoming.has(`${node.id}\u0000${name}`); },
+    incomingPorts(node) {
+      const ports = new Set();
+      for (const key of incoming.keys()) {
+        if (key.startsWith(`${node.id}\u0000`)) ports.add(key.slice(node.id.length + 1));
+      }
+      return ports;
+    },
     get(node, names, fallback, kind = 'value') {
       for (const name of Array.isArray(names) ? names : [names]) {
         const source = incoming.get(`${node.id}\u0000${name}`);
@@ -897,17 +908,16 @@ function compileNodeFactory({ TSL, graph, parameters, textureResolver, featureTr
     if (type === 'blender.principledBSDF') {
       const alphaConnected = input.connected(node, 'alpha') || input.connected(node, 'opacity');
       const transmissionConnected = input.connected(node, 'transmissionWeight') || input.connected(node, 'transmission');
-      const sheenConnected = input.connected(node, 'sheenWeight') || input.connected(node, 'sheen');
       const staticAlpha = alphaConnected ? null : input.static(node, ['alpha', 'opacity'], 1);
       const staticTransmission = transmissionConnected ? null : input.static(node, ['transmissionWeight', 'transmission'], 0);
-      const staticSheen = sheenConnected ? null : input.static(node, ['sheenWeight', 'sheen'], 0);
+      const extras = principledFeatureFlags(node, input.incomingPorts(node));
       return { surface: surface({
         baseColor: input.get(node, 'baseColor', [0.8, 0.8, 0.8], 'color'),
         metallic: input.get(node, ['metallic', 'metalness'], 0),
         roughness: input.get(node, 'roughness', 0.5),
         ior: input.get(node, 'ior', 1.5),
         alpha: input.get(node, ['alpha', 'opacity'], 1),
-        normal: input.connected(node, 'normal') ? input.get(node, 'normal', TSL.normalLocal) : null,
+        normal: extras.normal ? input.get(node, 'normal', TSL.normalLocal) : null,
         emissionColor: input.get(node, ['emissionColor', 'emission'], [0, 0, 0], 'color'),
         emissionStrength: input.get(node, 'emissionStrength', 1),
         coatWeight: input.get(node, ['coatWeight', 'clearcoat'], 0),
@@ -916,10 +926,20 @@ function compileNodeFactory({ TSL, graph, parameters, textureResolver, featureTr
         sheenWeight: input.get(node, ['sheenWeight', 'sheen'], 0),
         sheenRoughness: input.get(node, 'sheenRoughness', 0.5),
         sheenTint: input.get(node, ['sheenTint', 'sheenColor'], [1, 1, 1], 'color'),
+        specularIorLevel: extras.specular ? input.get(node, ['specularIorLevel', 'specularIntensity'], 0.5) : null,
+        specularTint: extras.specular ? input.get(node, ['specularTint', 'specularColor'], [1, 1, 1], 'color') : null,
+        anisotropic: extras.anisotropy ? input.get(node, ['anisotropic', 'anisotropy'], 0) : null,
+        anisotropicRotation: extras.anisotropy ? input.get(node, 'anisotropicRotation', 0) : null,
+        coatNormal: extras.coatNormal ? input.get(node, 'coatNormal', TSL.normalLocal) : null,
+        thinFilmThickness: extras.iridescence ? input.get(node, 'thinFilmThickness', 0) : null,
+        thinFilmIor: extras.iridescence ? input.get(node, 'thinFilmIor', 1.33) : null,
       }, {
         transparent: alphaConnected || (Number.isFinite(staticAlpha) && staticAlpha < 1),
         transmission: transmissionConnected || (Number.isFinite(staticTransmission) && staticTransmission > 0),
-        sheen: sheenConnected || (Number.isFinite(staticSheen) && staticSheen > 0),
+        sheen: extras.sheen,
+        specular: extras.specular,
+        anisotropy: extras.anisotropy,
+        iridescence: extras.iridescence,
       }) };
     }
     if (type === 'blender.materialOutput') {
@@ -962,7 +982,14 @@ export function compileShaderGraph({ TSL, graph, parameterValues = {}, textureRe
   });
   const outputs = {};
   for (const [name, reference] of Object.entries(canonical.outputs)) outputs[name] = compileOutput(reference.nodeId, reference.port);
-  let features = Object.freeze({ transparent: false, transmission: false, sheen: false });
+  let features = Object.freeze({
+    transparent: false,
+    transmission: false,
+    sheen: false,
+    specular: false,
+    anisotropy: false,
+    iridescence: false,
+  });
   if (isCompiledSurface(outputs.surface)) {
     const value = outputs.surface;
     features = value.features;
@@ -981,6 +1008,20 @@ export function compileShaderGraph({ TSL, graph, parameterValues = {}, textureRe
       outputs.sheenRoughness ??= value.sheenRoughness;
       outputs.sheenColor ??= value.sheenTint;
     }
+    if (features.specular) {
+      outputs.specularIntensity ??= value.specularIorLevel;
+      outputs.specularColor ??= value.specularTint;
+    }
+    if (features.anisotropy) {
+      outputs.anisotropy ??= value.anisotropic;
+      outputs.anisotropyRotation ??= value.anisotropicRotation;
+    }
+    if (features.iridescence) {
+      outputs.iridescence ??= value.thinFilmThickness ? TSL.float(1) : value.thinFilmThickness;
+      outputs.iridescenceIOR ??= value.thinFilmIor;
+      outputs.iridescenceThickness ??= value.thinFilmThickness;
+    }
+    if (value.coatNormal) outputs.clearcoatNormal ??= value.coatNormal;
   }
   return Object.freeze({
     graphId: canonical.id,

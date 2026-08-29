@@ -4,6 +4,16 @@ export const PROTOCOL_VERSION = 'three-studio/1';
 export const MAX_MESSAGE_BYTES = 1024 * 1024;
 export const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 export const MAX_REQUEST_TIMEOUT_MS = 120_000;
+export const COMPILE_HEAVY_METHODS = Object.freeze(new Set([
+  'three_studio_apply',
+  'three_studio_render',
+  'three_studio_project',
+  'three_studio_history',
+]));
+
+export function requestTimeoutMsForMethod(method, fallback = DEFAULT_REQUEST_TIMEOUT_MS) {
+  return COMPILE_HEAVY_METHODS.has(method) ? MAX_REQUEST_TIMEOUT_MS : fallback;
+}
 
 const ERROR_CODES = new Set([
   'authentication_failed',

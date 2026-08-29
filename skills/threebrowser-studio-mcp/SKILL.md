@@ -63,9 +63,18 @@ For every stage:
    render contradicts the plan, revise the scene through another MCP changeset.
 
 Dry-run destructive changes, graph-resource changes, and unusually large
-batches. Inspect a subtree and its guard hash before recursive deletion. Never
-delete a referenced resource without resolving its references in the same
-transaction.
+batches. Read `pixelForecast` on every apply (dry-run and commit):
+`will-move`, `will-not-move`, or `unknown`. Catalog-only sockets and bump
+`strength * distance` below `1/255` forecast `will-not-move` even when the
+document patch succeeds. Inspect a subtree and its guard hash before
+recursive deletion. Never delete a referenced resource without resolving its
+references in the same transaction.
+
+Compile-heavy tools (`three_studio_apply`, `three_studio_render`,
+`three_studio_project`, `three_studio_history`) use a 120s RPC budget.
+Inspect and status stay at 15s. If apply still times out, do not retry the
+same idempotency key until you have re-inspected revision; a timeout aborts
+before commit.
 
 ## Blender-style materials and graphs
 
@@ -125,6 +134,25 @@ transaction.
   not parameter names alone, and correct lighting/exposure before compensating
   with destructive colour shifts.
 
+## Live sockets, pixel forecast, and object-id
+
+- `graphDigest.socketContract` is `full-vs-default+live`. Every socket has
+  `source` plus `compiled` and `live`. `live: false` means the catalog accepts
+  the value but TSL does not bind it.
+- Principled live when bound: base/metallic/roughness/ior/alpha/emission/coat
+  weight and roughness/transmission; sheen when weight > 0 or connected;
+  specular IOR/tint when authored away from defaults; anisotropy when > 0 or
+  connected; thin-film/iridescence when thickness > 0 or connected; `normal`
+  and `coatNormal` only when connected. Catalog-only: `weight`,
+  `diffuseRoughness`, `subsurface*`, `coatIor`, `coatTint`, `tangent`.
+- Bump compiles, but `abs(strength * distance) < 1/255` will not move 8-bit
+  beauty. Raise `distance` (metres of height) rather than only `strength`.
+- Apply returns `pixelForecast` on dry-run and commit. Trust
+  `will-not-move` over a later identical PNG when diagnosing a socket patch.
+- Render `passes: ["objectId"]` or `["beauty", "objectId"]` for entity-named
+  probes and frustum occlusion. Object-id files are
+  `artifacts/studio-<timestamp>-objectid.png`.
+
 ## Composition, animation, and play
 
 - Use metres, radians, and seconds.
@@ -146,15 +174,24 @@ transaction.
 3. Render the committed revision at a useful final resolution and inspect the
    returned WebGPU image, not just its metadata. Follow the render with
    `beautyDigest` for file/pixel hashes, clip/black/mean luma, exact `(x,y)`
-   probes, and an optional capture-to-capture diff. A byte-identical PNG after
-   a `nodeInputs` patch means the socket is not in the live TSL subset or the
-   delta is below 8-bit, not that the document failed to patch. Principled
-   `sheenWeight` / `sheenRoughness` / `sheenTint` compile live.
+   probes, and an optional capture-to-capture diff. Read `graphDigest`
+   `sockets.live` / `sockets.compiled` and apply `pixelForecast` before
+   assuming a byte-identical PNG is a failed patch. Principled sheen,
+   specular IOR/tint, anisotropy, and thin-film/iridescence compile when live.
 4. Use `projectVisibility` before editing an object that may be off-screen.
-   Use `meshFilter` on `meshElements` instead of paging an entire cloth. Read
-   `graphDigest` `sockets` (authored vs default vs edge); `inputs.$summary`
-   is display truncation. Patch one socket with `resource.patch` `nodeInputs`.
+   When probes or occlusion need entity IDs, render
+   `passes: ["beauty", "objectId"]`. `beautyDigest` probes then include
+   `entityId`; `projectVisibility` reports `visible` / `occluded` /
+   `background` instead of `unknown`. Use `meshFilter` on `meshElements`
+   instead of paging an entire cloth. Read `graphDigest` `sockets` (authored
+   vs default vs edge, plus live flags); `inputs.$summary` is display
+   truncation. Patch one socket with `resource.patch` `nodeInputs`.
    `modifierDigest` accepts a group and returns descendant mesh stacks.
+   Editable-mesh `recalculateNormals` is accepted (derived at compile) and
+   forecasts `will-not-move` when it is the only edit.
+   Live editableMesh geometry modifiers: triangulate, smooth, weightedNormal,
+   displace, edgeSplit. Weld, subdivision, solidify, and decimate still
+   require a bake.
 5. Inspect final scene/resource counts and `latestEvidence`, and confirm that
    the evidence revision and camera match the native viewport result being
    claimed.

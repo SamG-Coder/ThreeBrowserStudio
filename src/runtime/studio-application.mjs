@@ -21,7 +21,11 @@ import {
   dataTextureGpuByteLength,
   EDITABLE_MESH_ATTRIBUTE_COMMAND_TYPES,
   hashExactEntitySet,
+  LIVE_EDITABLE_MESH_GEOMETRY_MODIFIERS,
   LIVE_INSTANCE_MODIFIER_TYPES,
+  encodeObjectIdRgb01,
+  forecastPixelImpact,
+  loadObjectIdEvidence,
   MATERIAL_TEXTURE_BINDINGS,
   MATERIAL_TEXTURE_CONTROL_CONTRACT,
   MAX_MODIFIERS_PER_ENTITY,
@@ -33,6 +37,7 @@ import {
 } from '../core/index.mjs';
 import { GEOMETRY_MODIFIER_TYPES } from '../core/geometry-modifier-evaluator.mjs';
 import {
+  MAX_REQUEST_TIMEOUT_MS,
   createLiveBridgeServer,
   createSessionCredentials,
   createSessionMarker,
@@ -648,6 +653,7 @@ export class StudioApplication {
     this.#bridge = await createLiveBridgeServer({
       credentials: this.#credentials,
       serverInfo: { toolContract: TOOL_CONTRACT },
+      requestTimeoutMs: MAX_REQUEST_TIMEOUT_MS,
       dispatch: (method, params, context) => this.dispatch(method, params, context),
       beginCommand: this.#beginCommand,
       onError: error => console.error('[ThreeBrowser Studio bridge]', error.message),
@@ -967,7 +973,8 @@ export class StudioApplication {
           materialSlots: { storage: true, topologyPropagation: true, directEditing: true },
           sharpEdges: { storage: true, topologyPropagation: true, directEditing: true },
           edgeCreases: { storage: true, topologyPropagation: true, directEditing: true, viewport: 'storage-editing-only' },
-          liveGeometryModifiers: 'indexed-mesh-only-until-seam-safe-lowering',
+          liveGeometryModifiers: 'indexed-mesh-and-seam-safe-editable-lowering',
+          liveEditableMeshGeometryModifiers: [...LIVE_EDITABLE_MESH_GEOMETRY_MODIFIERS],
         },
         imageTextures: {
           resourceKind: 'dataTexture',
@@ -1044,7 +1051,9 @@ export class StudioApplication {
         animationInterpolation: ['constant', 'linear', 'smooth', 'bezier'],
         animationLoops: ['once', 'repeat', 'pingpong'],
         renderers: ['webgpu'],
-        renderPasses: ['beauty'],
+        renderPasses: ['beauty', 'objectId'],
+        applyPixelForecast: true,
+        compileHeavyRpcTimeoutMs: 120_000,
         validationChecks: ['schemas', 'references', 'hierarchy', 'graphs', 'animations', 'budgets'],
         projectActions: ['list', 'create', 'open', 'save'],
         historyActions: ['list', 'inspect', 'undo', 'redo'],
@@ -1072,7 +1081,7 @@ export class StudioApplication {
         ? this.#project(params)
         : this.#idempotent(params, () => exclusive(() => this.#project(params)));
       case 'three_studio_inspect': return this.#inspect(params);
-      case 'three_studio_apply': return exclusive(() => this.#apply(params));
+      case 'three_studio_apply': return exclusive(() => this.#apply(params, context));
       case 'three_studio_validate': return this.#validate(params);
       case 'three_studio_render': return exclusive(() => this.#render(params));
       case 'three_studio_history': return ['undo', 'redo'].includes(params.action)
@@ -1284,6 +1293,12 @@ export class StudioApplication {
     if (!scene) throw new StudioError('scene_not_found', `Scene ${params.sceneId} does not exist.`);
     if (params.query === 'projectVisibility') {
       const canvas = this.#viewport.renderer?.domElement;
+      const objectId = params.projection?.objectIdPath
+        ? loadObjectIdEvidence({
+          path: params.projection.objectIdPath,
+          entities: this.#latestEvidence?.objectId?.entities ?? [],
+        }, { studioRoot: this.studioRoot })
+        : this.#latestObjectIdEvidence();
       return {
         success: true,
         revision: document.revision,
@@ -1291,8 +1306,9 @@ export class StudioApplication {
         sceneId: scene.id,
         ...buildProjectVisibility(scene, {
           ...(params.projection ?? {}),
-          width: params.projection?.width ?? canvas?.width ?? 1280,
-          height: params.projection?.height ?? canvas?.height ?? 720,
+          width: params.projection?.width ?? objectId?.width ?? canvas?.width ?? 1280,
+          height: params.projection?.height ?? objectId?.height ?? canvas?.height ?? 720,
+          objectId,
         }),
       };
     }
@@ -1412,13 +1428,14 @@ export class StudioApplication {
     };
   }
 
-  async #apply(params) {
+  async #apply(params, context = {}) {
     this.#assertTarget(params);
     const document = this.#kernel.document;
     const operations = params.operations.map(operation => materializeCameraFrameOperation(
       translateToolOperation(operation, document),
       { compiled: this.#compiled, THREE: this.#THREE },
     ));
+    const pixelForecast = forecastPixelImpact({ before: document, operations });
     const response = await this.#kernel.apply({
       protocolVersion: params.protocolVersion,
       projectId: params.projectId,
@@ -1427,8 +1444,14 @@ export class StudioApplication {
       idempotencyKey: params.idempotencyKey,
       dryRun: params.dryRun ?? false,
       operations,
-    });
-    return { ...response, sessionId: this.sessionId, projectId: this.#kernel.projectId, evidenceRequested: params.evidence === true };
+    }, { signal: context.signal });
+    return {
+      ...response,
+      sessionId: this.sessionId,
+      projectId: this.#kernel.projectId,
+      evidenceRequested: params.evidence === true,
+      pixelForecast,
+    };
   }
 
   #validate(params) {
@@ -1467,6 +1490,78 @@ export class StudioApplication {
       diagnostics,
       budgets: result.budgets,
     };
+  }
+
+  #latestObjectIdEvidence() {
+    const item = this.#latestEvidence?.objectId
+      ?? this.#latestEvidence?.items?.find(entry => entry.pass === 'objectId');
+    if (!item?.path) return null;
+    try {
+      return loadObjectIdEvidence(item, { studioRoot: this.studioRoot });
+    } catch {
+      return null;
+    }
+  }
+
+  async #captureObjectId(captureCamera, params) {
+    const THREE = this.#THREE;
+    const TSL = this.#TSL;
+    const scene = this.#viewport.scene;
+    const renderer = this.#viewport.renderer;
+    const entities = [];
+    const restored = [];
+    const seen = new Map();
+    const objects = this.#compiled?.objects ?? new Map();
+    for (const [id, object] of [...objects.entries()].sort(([left], [right]) => left.localeCompare(right))) {
+      if (!object) continue;
+      let hasMesh = object.isMesh || object.isSkinnedMesh || object.isInstancedMesh;
+      object.traverse?.(child => {
+        if (child.isMesh || child.isSkinnedMesh || child.isInstancedMesh) hasMesh = true;
+      });
+      if (!hasMesh || seen.has(id)) continue;
+      seen.set(id, true);
+      entities.push({ index: entities.length + 1, id });
+    }
+    const byId = new Map(entities.map(entity => [entity.id, entity]));
+    const MaterialCtor = THREE.MeshBasicNodeMaterial ?? THREE.MeshBasicMaterial;
+    scene.traverse(object => {
+      const id = object.userData?.studioEntityId;
+      if (!id || !(object.isMesh || object.isSkinnedMesh || object.isInstancedMesh)) return;
+      const entity = byId.get(id);
+      if (!entity) return;
+      const rgb = encodeObjectIdRgb01(entity.index);
+      const material = new MaterialCtor();
+      if (TSL?.vec3 && 'colorNode' in material) material.colorNode = TSL.vec3(rgb[0], rgb[1], rgb[2]);
+      else if (material.color?.setRGB) material.color.setRGB(rgb[0], rgb[1], rgb[2]);
+      else if (THREE.Color) material.color = new THREE.Color(rgb[0], rgb[1], rgb[2]);
+      restored.push({ object, material: object.material });
+      object.material = material;
+    });
+    const previousBackground = scene.background;
+    const previousBackgroundNode = scene.backgroundNode;
+    const previousColorSpace = renderer.outputColorSpace;
+    const previousTone = renderer.toneMapping;
+    scene.background = THREE.Color ? new THREE.Color(0, 0, 0) : 0;
+    scene.backgroundNode = null;
+    if (THREE.NoColorSpace !== undefined) renderer.outputColorSpace = THREE.NoColorSpace;
+    else if (THREE.LinearSRGBColorSpace !== undefined) renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+    if (THREE.NoToneMapping !== undefined) renderer.toneMapping = THREE.NoToneMapping;
+    try {
+      const filePath = path.join(this.studioRoot, 'artifacts', `studio-${Date.now()}-objectid.png`);
+      const item = await this.#viewport.capture(filePath, {
+        width: params.width,
+        height: params.height,
+        pass: 'objectId',
+        camera: captureCamera,
+      });
+      return { ...item, pass: 'objectId', entities };
+    } finally {
+      scene.background = previousBackground;
+      scene.backgroundNode = previousBackgroundNode;
+      renderer.outputColorSpace = previousColorSpace;
+      renderer.toneMapping = previousTone;
+      for (const { object, material } of restored) object.material = material;
+    }
   }
 
   async #render(params) {
@@ -1509,13 +1604,20 @@ export class StudioApplication {
       }
       const evidence = [];
       for (const pass of params.passes ?? ['beauty']) {
-        if (pass !== 'beauty') throw new StudioError('render_pass_not_implemented', `Render pass ${pass} is not enabled yet.`);
-        evidence.push(await this.#viewport.capture(undefined, {
-          width: params.width,
-          height: params.height,
-          pass,
-          camera: captureCamera,
-        }));
+        if (pass === 'beauty') {
+          evidence.push(await this.#viewport.capture(undefined, {
+            width: params.width,
+            height: params.height,
+            pass,
+            camera: captureCamera,
+          }));
+          continue;
+        }
+        if (pass === 'objectId') {
+          evidence.push(await this.#captureObjectId(captureCamera, params));
+          continue;
+        }
+        throw new StudioError('render_pass_not_implemented', `Render pass ${pass} is not enabled yet.`);
       }
       const sourceCameraId = params.cameraId ?? captureCamera?.userData?.studioEntityId ?? 'review-camera';
       const cameraEvidence = describeEffectiveCamera(captureCamera, params.frame
@@ -1527,6 +1629,7 @@ export class StudioApplication {
           }
         : authoredCameraEvidenceOptions(this.#kernel.document, captureCamera, sourceCameraId));
       const rtx = this.#viewport.getRtxStatus?.() ?? null;
+      const objectIdItem = evidence.find(item => item.pass === 'objectId');
       this.#latestEvidence = {
         revision: this.#kernel.revision,
         createdAt: new Date().toISOString(),
@@ -1534,6 +1637,14 @@ export class StudioApplication {
         camera: cameraEvidence,
         ...(rtx ? { rtx } : {}),
         items: evidence,
+        ...(objectIdItem ? {
+          objectId: {
+            path: objectIdItem.path,
+            width: objectIdItem.width,
+            height: objectIdItem.height,
+            entities: objectIdItem.entities ?? [],
+          },
+        } : {}),
       };
       return {
         success: true,

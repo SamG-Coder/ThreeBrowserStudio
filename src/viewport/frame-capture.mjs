@@ -70,7 +70,7 @@ export function createFrameCapture({ renderer, scene, camera, getCamera, renderF
     canvas.width = captureWidth;
     canvas.height = captureHeight;
     const context = canvas.getContext("2d");
-    context.fillStyle = "#0d1118";
+    context.fillStyle = pass === "objectId" ? "#000000" : "#0d1118";
     context.fillRect(0, 0, captureWidth, captureHeight);
     context.putImageData(
       new ImageData(new Uint8ClampedArray(packedPixels), content.width, content.height),
@@ -86,7 +86,9 @@ export function createFrameCapture({ renderer, scene, camera, getCamera, renderF
       || ".";
     const resolved = filePath
       ? path.resolve(String(filePath))
-      : path.join(studioRoot, "artifacts", `studio-${Date.now()}.png`);
+      : path.join(studioRoot, "artifacts", pass === "objectId"
+        ? `studio-${Date.now()}-objectid.png`
+        : `studio-${Date.now()}.png`);
     await mkdir(path.dirname(resolved), { recursive: true });
     await writeFile(resolved, canvas.toBuffer("image/png"));
     canvas.width = 1;

@@ -15,6 +15,12 @@ export const MAX_MODIFIERS_PER_ENTITY = 64;
 export const MAX_MODIFIER_DOCUMENT_BYTES = 32 * 1024;
 export const MAX_BAKE_BOUNDARY_PARAMETER_BYTES = 24 * 1024;
 export const LIVE_INSTANCE_MODIFIER_TYPES = Object.freeze(['array', 'mirror', 'pattern']);
+export const LIVE_EDITABLE_MESH_GEOMETRY_MODIFIERS = Object.freeze([
+  'triangulate', 'smooth', 'weightedNormal', 'displace', 'edgeSplit',
+]);
+const BLOCKED_EDITABLE_MESH_GEOMETRY_MODIFIERS = new Set([
+  'weld', 'subdivision', 'solidify', 'decimate',
+]);
 export const BAKE_BOUNDARY_MODIFIER_TYPE = 'bakeBoundary';
 export const AUTHORABLE_MODIFIER_TYPES = Object.freeze([
   ...LIVE_INSTANCE_MODIFIER_TYPES,
@@ -353,7 +359,7 @@ export function analyzeViewportModifierStack(entity, { sourceKind = null } = {})
           reasonCode: 'runtime_modifier_order_unsupported',
           message: `Geometry modifier ${modifier.id} (${modifier.type}) follows an instance modifier and requires baking or reordering.`,
         };
-      } else if (sourceKind === 'editableMesh') {
+      } else if (sourceKind === 'editableMesh' && BLOCKED_EDITABLE_MESH_GEOMETRY_MODIFIERS.has(modifier.type)) {
         blocked = {
           index,
           modifierId: modifier.id,

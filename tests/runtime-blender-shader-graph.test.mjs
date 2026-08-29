@@ -41,6 +41,16 @@ class FakePhysicalNodeMaterial {
   sheenRoughnessNode = null;
   sheenColorNode = null;
   sheen = 0;
+  specularIntensityNode = null;
+  specularColorNode = null;
+  anisotropyNode = null;
+  anisotropyRotationNode = null;
+  anisotropy = 0;
+  iridescenceNode = null;
+  iridescenceIORNode = null;
+  iridescenceThicknessNode = null;
+  iridescence = 0;
+  clearcoatNormalNode = null;
 
   constructor(values) {
     this.constructorValues = values;
@@ -109,7 +119,14 @@ test('Blender Principled-to-Material-Output flow compiles to a live surface cont
   assert.equal(compilation.graphId, 'shader/blender-socket-surface');
   assert.equal(compilation.nodesCompiled, 2);
   assert.deepEqual(compilation.outputNames, ['surface']);
-  assert.deepEqual(compilation.features, { transparent: true, transmission: false, sheen: false });
+  assert.deepEqual(compilation.features, {
+    transparent: true,
+    transmission: false,
+    sheen: false,
+    specular: false,
+    anisotropy: false,
+    iridescence: false,
+  });
   assert.equal(isCompiledSurface(compilation.outputs.surface), true);
   assert.deepEqual(compilation.outputs.baseColor.arguments, [0.04, 0.24, 0.08, 1]);
   assert.deepEqual(compilation.outputs.roughness.arguments, [0.31]);
@@ -159,7 +176,14 @@ test('authored Principled sheen sockets compile onto the physical NodeMaterial',
   graph.nodes[0].inputs.sheenTint = [0.72, 0.08, 0.16, 1];
 
   const compilation = compileShaderGraph({ TSL: FAKE_TSL, graph });
-  assert.deepEqual(compilation.features, { transparent: true, transmission: false, sheen: true });
+  assert.deepEqual(compilation.features, {
+    transparent: true,
+    transmission: false,
+    sheen: true,
+    specular: false,
+    anisotropy: false,
+    iridescence: false,
+  });
   assert.deepEqual(compilation.outputs.sheen.arguments, [0.38]);
   assert.deepEqual(compilation.outputs.sheenRoughness.arguments, [0.42]);
   assert.deepEqual(compilation.outputs.sheenColor.arguments, [0.72, 0.08, 0.16, 1]);
@@ -177,6 +201,40 @@ test('authored Principled sheen sockets compile onto the physical NodeMaterial',
   assert.deepEqual(material.sheenRoughnessNode.arguments, [0.42]);
   assert.deepEqual(material.sheenColorNode.arguments, [0.72, 0.08, 0.16, 1]);
   assert.equal(material.sheen, 1);
+});
+
+test('authored Principled specular, anisotropy, and thin-film sockets compile live', () => {
+  const graph = blenderSurfaceGraph();
+  graph.id = 'shader/blender-extra-lobes';
+  graph.nodes[0].inputs.specularIorLevel = 0.28;
+  graph.nodes[0].inputs.specularTint = [0.2, 0.4, 0.9, 1];
+  graph.nodes[0].inputs.anisotropic = 0.55;
+  graph.nodes[0].inputs.anisotropicRotation = 0.25;
+  graph.nodes[0].inputs.thinFilmThickness = 400;
+  graph.nodes[0].inputs.thinFilmIor = 1.45;
+
+  const compilation = compileShaderGraph({ TSL: FAKE_TSL, graph });
+  assert.equal(compilation.features.specular, true);
+  assert.equal(compilation.features.anisotropy, true);
+  assert.equal(compilation.features.iridescence, true);
+  assert.deepEqual(compilation.outputs.specularIntensity.arguments, [0.28]);
+  assert.deepEqual(compilation.outputs.anisotropy.arguments, [0.55]);
+  assert.deepEqual(compilation.outputs.iridescenceThickness.arguments, [400]);
+
+  const material = createMaterial(FAKE_THREE, {
+    id: 'material/aniso',
+    kind: 'material',
+    materialKind: 'physical',
+    graphId: graph.id,
+  }, {
+    TSL: FAKE_TSL,
+    graphs: { [graph.id]: { id: graph.id, kind: 'graph', graph } },
+  });
+  assert.deepEqual(material.specularIntensityNode.arguments, [0.28]);
+  assert.deepEqual(material.anisotropyNode.arguments, [0.55]);
+  assert.equal(material.anisotropy, 1);
+  assert.deepEqual(material.iridescenceThicknessNode.arguments, [400]);
+  assert.equal(material.iridescence, 1);
 });
 
 test('unsupported Blender nodes and modes fail explicitly instead of flattening', () => {

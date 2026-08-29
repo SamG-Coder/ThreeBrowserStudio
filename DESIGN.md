@@ -17,16 +17,18 @@ pipeline is callable. The live MCP input schemas and
 The current slice exposes atomic scene/entity/resource authoring; persistent
 exact-aspect camera framing; bounded linear/grid/radial/seeded-scatter instancing; indexed
 vertex editing with compact whole-mesh selection, smoothing, welding, and
-normal recalculation; canonical native
+normal recalculation; editable-mesh `recalculateNormals` plus seam-safe live
+geometry modifiers after lowering; canonical native
 ray-query lighting/shadow/AO controls with truthful lifecycle state; bounded
 scene and resource-topology inspection with delete-guard hashes, compiled/local
 bounds, references, and resource-usage checks; whole-project interactive document/graph validation;
-offscreen WebGPU beauty capture; list/inspect/undo/redo history; project
+offscreen WebGPU beauty and object-id capture; apply `pixelForecast`; list/inspect/undo/redo history; project
 list/create/open/save; deterministic Action playback and frame scrubbing; a
 queryable Blender compatibility catalog; and a transient Play boundary.
 Script operations/execution, blueprint execution, layout generators beyond the
-implemented patterns, jobs/import/bake/export, diagnostic render passes, and
-behavior simulation remain planned and are absent from the current schemas.
+implemented patterns, jobs/import/bake/export, diagnostic passes beyond
+beauty/object-id, and behavior simulation remain planned and are absent from
+the current schemas.
 
 ## Product decision
 
@@ -480,16 +482,24 @@ optional `meshFilter` hash when bbox / y-range / boundary / `notAdjacentTo`
 filters are used so a stale filter cannot continue.
 `graphDigest` returns graph/resource guards plus byte-bounded nodes, edges,
 outputs, settings, and validation diagnostics. Each node also carries a full
-authored-versus-default socket contract; `inputs.$summary.omittedKeyCount` is
-display truncation, not missing sockets. `resource.patch` accepts `nodeInputs`
-so one Principled socket can be merged without replacing the node list.
+authored-versus-default socket contract with `compiled` / `live` flags;
+`inputs.$summary.omittedKeyCount` is display truncation, not missing sockets.
+`resource.patch` accepts `nodeInputs` so one Principled socket can be merged
+without replacing the node list. Apply (including dry-run) returns
+`pixelForecast` from that same live-socket contract so a catalog-only or
+below-8-bit bump patch can be rejected before a GPU compile. Compile-heavy
+RPCs (`apply`, `render`, `project`, `history`) allow up to 120s; inspect and
+status stay at 15s. A timeout aborts before commit and does not cancel work
+that already prepared a candidate.
 `beautyDigest` hashes a Studio `artifacts/studio-*.png` capture, reports
 clip/black/mean luma, exact `(x,y)` probes, optional bbox stats, and an
-optional pixel diff against another capture. `projectVisibility` projects
-authored world points or entity origins through the authored camera. Pixel
-identity after a mutation is verified by rendering, then comparing with
-`beautyDigest`; apply dry-run remains a document-level preview and does not
-sample the GPU.
+optional pixel diff against another capture. When a matching
+`studio-*-objectid.png` exists, probes also report `entityId`.
+`projectVisibility` projects authored world points or entity origins through
+the authored camera and samples object-id evidence for
+`visible` / `occluded` / `background` when that pass has been rendered.
+Pixel identity after a mutation is still verified by rendering, then
+comparing with `beautyDigest`.
 `rtxDigest` retains the native collector report so skipped geometry can be
 diagnosed without rebuilding the static scene during inspection.
 
@@ -501,7 +511,9 @@ Useful special queries include:
 - resource digest with indexed-mesh counts, local bounds, compact components,
   and incoming references;
 - exact mesh elements and adjacency;
-- exact graph topology and validation diagnostics;
+- exact graph topology, live-socket flags, and validation diagnostics;
+- beauty digest with optional object-id entity probes;
+- project visibility with optional object-id occlusion;
 - authored/effective RTX state and collector exclusions;
 - changed since revision;
 - unresolved resources and unused resources;

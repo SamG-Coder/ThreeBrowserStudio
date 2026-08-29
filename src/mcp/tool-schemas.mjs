@@ -110,6 +110,7 @@ const inspectProbeSchema = z.object({
 const inspectEvidenceSchema = z.object({
   path: z.string().min(1).max(1024).optional(),
   comparePath: z.string().min(1).max(1024).optional(),
+  objectIdPath: z.string().min(1).max(1024).optional(),
   probes: z.array(inspectProbeSchema).max(32).optional(),
   bbox: z.object({
     x0: z.number().int().min(0).max(4095),
@@ -131,6 +132,7 @@ const inspectProjectionSchema = z.object({
   entityIds: z.array(identifier).max(32).optional(),
   width: z.number().int().min(1).max(4096).optional(),
   height: z.number().int().min(1).max(4096).optional(),
+  objectIdPath: z.string().min(1).max(1024).optional(),
 }).strict();
 
 const inspectMeshFilterSchema = z.object({
@@ -1004,7 +1006,7 @@ export const renderSchema = z.object({
   frame: frameSchema.optional(),
   width: z.number().int().min(16).max(1920).optional().default(1280),
   height: z.number().int().min(16).max(1080).optional().default(720),
-  passes: z.array(z.literal('beauty')).min(1).max(1).optional().default(['beauty']),
+  passes: z.array(z.enum(['beauty', 'objectId'])).min(1).max(2).optional().default(['beauty']),
   renderer: z.literal('webgpu').optional().default('webgpu'),
 }).strict();
 
@@ -1092,8 +1094,8 @@ export const TOOL_SCHEMAS = Object.freeze({
 
 export const STUDIO_TOOL_NAMES = Object.freeze(Object.keys(TOOL_SCHEMAS));
 
-export const MCP_SERVER_VERSION = '0.2.1';
-export const TOOL_CONTRACT_VERSION = 'three-studio-tools/4';
+export const MCP_SERVER_VERSION = '0.2.2';
+export const TOOL_CONTRACT_VERSION = 'three-studio-tools/5';
 export const TOOL_INPUT_SCHEMAS = Object.freeze(Object.fromEntries(
   STUDIO_TOOL_NAMES.map(name => [name, z.toJSONSchema(TOOL_SCHEMAS[name], { io: 'input' })]),
 ));
@@ -1141,9 +1143,20 @@ const TOOL_CONTRACT_FEATURES = Object.freeze({
   meshElementFilters: true,
   graphDigest: true,
   graphSocketDigest: true,
+  graphSocketLiveFlags: true,
   graphNodeInputPatch: true,
+  applyPixelForecast: true,
   beautyDigest: true,
+  objectIdPass: true,
+  beautyProbeEntityId: true,
   projectVisibility: true,
+  projectVisibilityOcclusion: true,
+  compileHeavyRpcTimeoutMs: 120_000,
+  editableMeshRecalculateNormals: true,
+  editableMeshLiveGeometryModifiers: Object.freeze([
+    'triangulate', 'smooth', 'weightedNormal', 'displace', 'edgeSplit',
+  ]),
+  principledSpecularAnisotropyIridescence: true,
   modifierDigestGroups: true,
   rtxDigest: true,
   exactBulkEntityEditing: true,

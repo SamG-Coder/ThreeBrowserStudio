@@ -394,6 +394,9 @@ test('generic edit dispatcher rejects unknown commands and bounds command batche
     expectedTopologyHash: hash,
   });
   assert.equal(editableMeshTopologyHash(guarded), hash);
+  const recalculated = applyEditableMeshEdit(quad(), { type: 'recalculateNormals' });
+  assert.equal(editableMeshTopologyHash(recalculated), hash);
+  assert.deepEqual(recalculated.positions, quad().positions);
   assert.throws(
     () => applyEditableMeshEdit(quad(), {
       type: 'moveVertices',

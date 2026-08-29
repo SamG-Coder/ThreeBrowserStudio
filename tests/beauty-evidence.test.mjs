@@ -6,6 +6,7 @@ import test from 'node:test';
 
 import {
   buildBeautyDigest,
+  encodeObjectId,
   encodePngRgba,
   resolveStudioEvidencePath,
 } from '../src/core/index.mjs';
@@ -83,6 +84,40 @@ test('beauty digest bbox isolates a region and identical captures compare cleanl
   assert.equal(digest.stats.pixelCount, 4);
   assert.equal(digest.compare.identical, true);
   assert.equal(digest.compare.regionIdentical, true);
+});
+
+test('beauty digest probes resolve entity ids from a matching object-id capture', async (t) => {
+  const { studioRoot, artifacts } = await withArtifacts(t);
+  const beauty = rgbaFill(2, 1, [10, 20, 30, 255]);
+  const objectId = rgbaFill(2, 1, [0, 0, 0, 255]);
+  objectId.set([...encodeObjectId(1), 255], 0);
+  await writeFile(path.join(artifacts, 'studio-500.png'), encodePngRgba(2, 1, beauty));
+  await writeFile(path.join(artifacts, 'studio-500-objectid.png'), encodePngRgba(2, 1, objectId));
+  const digest = buildBeautyDigest({
+    studioRoot,
+    latestEvidence: {
+      items: [
+        { path: path.join(artifacts, 'studio-500.png'), pass: 'beauty' },
+        {
+          path: path.join(artifacts, 'studio-500-objectid.png'),
+          pass: 'objectId',
+          entities: [{ index: 1, id: 'entity/cloth' }],
+        },
+      ],
+      objectId: {
+        path: path.join(artifacts, 'studio-500-objectid.png'),
+        entities: [{ index: 1, id: 'entity/cloth' }],
+      },
+    },
+    evidence: {
+      path: 'studio-500.png',
+      probes: [{ name: 'cloth', x: 0, y: 0 }, { name: 'empty', x: 1, y: 0 }],
+    },
+  });
+  assert.equal(digest.probes[0].entityId, 'entity/cloth');
+  assert.equal(digest.probes[0].objectId, 1);
+  assert.equal(digest.probes[1].entityId, null);
+  assert.equal(digest.probes[1].objectId, 0);
 });
 
 test('beauty evidence paths stay inside studio artifacts', async (t) => {

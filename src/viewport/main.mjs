@@ -91,15 +91,18 @@ async function main() {
     scene,
     getCamera: () => renderCamera,
     excludedObjects: [liveFeed.sprite],
-    async renderFrame({ target, camera: activeCamera, width, height }) {
-      const renderedWithRtx = await rtxLighting.render({
-        scene,
-        camera: activeCamera,
-        width,
-        height,
-        outputTarget: target,
-      });
-      if (!renderedWithRtx) renderer.render(scene, activeCamera);
+    async renderFrame({ target, camera: activeCamera, width, height, pass }) {
+      if (pass !== "objectId") {
+        const renderedWithRtx = await rtxLighting.render({
+          scene,
+          camera: activeCamera,
+          width,
+          height,
+          outputTarget: target,
+        });
+        if (renderedWithRtx) return;
+      }
+      renderer.render(scene, activeCamera);
     },
   });
   const started = performance.now() * 0.001;

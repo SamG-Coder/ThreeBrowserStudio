@@ -2,6 +2,7 @@ import { MAX_INSPECT_RESPONSE_BYTES } from '../core/constants.mjs';
 import { StudioError } from '../core/errors.mjs';
 import { contentHash, isPlainRecord, stableStringify } from '../core/util.mjs';
 import { getGraphNode } from './catalogs.mjs';
+import { GRAPH_SOCKET_CONTRACT, describeSocketLiveness } from './live-sockets.mjs';
 import { validateGraph } from './validator.mjs';
 
 const ENCODER = new TextEncoder();
@@ -133,11 +134,15 @@ function describeNodeSockets(node, domain, edges) {
     let source = 'default';
     if (connected) source = 'edge';
     else if (hasValue && (!hasDefault || !valuesEqual(value, spec.default))) source = 'authored';
+    const liveness = describeSocketLiveness(node, domain, port, incoming);
     return {
       port,
       type: spec.type,
       source,
       connected,
+      compiled: liveness.compiled,
+      live: liveness.live,
+      ...(liveness.reason ? { liveReason: liveness.reason } : {}),
       ...(connected ? { from: incoming.get(port) } : {}),
       ...(hasValue ? { value: compactSlice(value, 8) } : {}),
       ...(hasDefault ? { default: compactSlice(spec.default, 8) } : {}),
@@ -290,7 +295,7 @@ export function buildGraphDigest(resourceOrGraph, options = {}) {
     resourceHash,
     graphHash,
     domain: typeof inspectedGraph.domain === 'string' ? inspectedGraph.domain : null,
-    socketContract: 'full-vs-default',
+    socketContract: GRAPH_SOCKET_CONTRACT,
     validation: {
       valid: validation.valid,
       metrics: validation.metrics,

@@ -794,6 +794,32 @@ export function createMaterial(THREE, resource = {}, options = {}) {
   if (graphOutputs.sheenColor && 'sheenColorNode' in material) {
     material.sheenColorNode = graphOutputs.sheenColor;
   }
+  if (graphOutputs.specularIntensity && 'specularIntensityNode' in material) {
+    material.specularIntensityNode = graphOutputs.specularIntensity;
+  }
+  if (graphOutputs.specularColor && 'specularColorNode' in material) {
+    material.specularColorNode = graphOutputs.specularColor;
+  }
+  if (graphOutputs.anisotropy && 'anisotropyNode' in material) {
+    material.anisotropyNode = graphOutputs.anisotropy;
+    if ('anisotropy' in material && values.anisotropy === undefined) material.anisotropy = 1;
+  }
+  if (graphOutputs.anisotropyRotation && 'anisotropyRotationNode' in material) {
+    material.anisotropyRotationNode = graphOutputs.anisotropyRotation;
+  }
+  if (graphOutputs.clearcoatNormal && 'clearcoatNormalNode' in material) {
+    material.clearcoatNormalNode = graphOutputs.clearcoatNormal;
+  }
+  if (graphOutputs.iridescence && 'iridescenceNode' in material) {
+    material.iridescenceNode = graphOutputs.iridescence;
+    if ('iridescence' in material && values.iridescence === undefined) material.iridescence = 1;
+  }
+  if (graphOutputs.iridescenceIOR && 'iridescenceIORNode' in material) {
+    material.iridescenceIORNode = graphOutputs.iridescenceIOR;
+  }
+  if (graphOutputs.iridescenceThickness && 'iridescenceThicknessNode' in material) {
+    material.iridescenceThicknessNode = graphOutputs.iridescenceThickness;
+  }
   const hasAlphaMap = textureReferences.some(reference => reference.property === 'alphaMap');
   const usesAlphaCutout = Number.isFinite(values.alphaTest) && values.alphaTest > 0;
   const inferredTransparency = (Number.isFinite(values.opacity) && values.opacity < 1)

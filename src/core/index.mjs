@@ -2,6 +2,8 @@ export * from './constants.mjs';
 export * from './component-validation.mjs';
 export * from './beauty-evidence.mjs';
 export * from './camera-project.mjs';
+export * from './object-id-evidence.mjs';
+export * from './pixel-forecast.mjs';
 export * from './diff.mjs';
 export * from './documents.mjs';
 export * from './editable-mesh.mjs';

@@ -300,7 +300,7 @@ GPU capture → named save → close → reopen without touching the window.
 
 Still intentionally deferred: script execution/hot reload, blueprint
 execution, external image-file import/decoding and file-producing import/export
-jobs, diagnostic render passes, incremental resource recompilation, and RTX
+jobs, diagnostic passes beyond beauty/object-id, incremental resource recompilation, and RTX
 per-entity inclusion/material-hit controls.
 These are the next pipelines in `DESIGN.md`; the nine-tool contract already
 reserves them without pretending they work today.

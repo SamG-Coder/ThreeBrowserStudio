@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { StudioError } from './errors.mjs';
+import { loadObjectIdEvidence, sampleObjectId } from './object-id-evidence.mjs';
 import { decodePngRgba } from './png-rgba.mjs';
 
 export const STUDIO_EVIDENCE_NAME = /^studio-\d+\.png$/;
@@ -19,13 +20,25 @@ function pathIsInside(root, candidate) {
   return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
 }
 
-function latestEvidencePaths(latestEvidence) {
+function isObjectIdPath(filePath) {
+  return typeof filePath === 'string' && path.basename(filePath).includes('-objectid');
+}
+
+function latestEvidencePaths(latestEvidence, { beautyOnly = false } = {}) {
   const paths = [];
   if (typeof latestEvidence?.path === 'string') paths.push(latestEvidence.path);
   for (const item of latestEvidence?.items ?? []) {
+    if (item?.pass === 'objectId') continue;
     if (typeof item?.path === 'string') paths.push(item.path);
   }
-  return paths;
+  return beautyOnly ? paths.filter(entry => !isObjectIdPath(entry)) : paths.filter(entry => !isObjectIdPath(entry));
+}
+
+function latestObjectIdMeta(latestEvidence, requested) {
+  if (requested) return { path: requested, entities: latestEvidence?.objectId?.entities ?? [] };
+  if (latestEvidence?.objectId?.path) return latestEvidence.objectId;
+  const item = (latestEvidence?.items ?? []).find(entry => entry?.pass === 'objectId' || isObjectIdPath(entry?.path));
+  return item ?? null;
 }
 
 /**
@@ -40,7 +53,7 @@ export function resolveStudioEvidencePath(requested, {
     throw new StudioError('beauty_evidence_unavailable', 'Studio root is required to read beauty evidence.');
   }
   const artifactsDir = path.resolve(studioRoot, 'artifacts');
-  const allowedLatest = new Set(latestEvidencePaths(latestEvidence).map(entry => path.resolve(entry)));
+  const allowedLatest = new Set(latestEvidencePaths(latestEvidence, { beautyOnly: true }).map(entry => path.resolve(entry)));
   let candidate;
   if (requested === undefined || requested === null || requested === '') {
     candidate = allowedLatest.size ? [...allowedLatest][0] : null;
@@ -211,10 +224,24 @@ export function buildBeautyDigest({
   const bbox = evidence.bbox ? normalizeBbox(evidence.bbox, decoded.width, decoded.height) : null;
   const statsRegion = bbox ?? { x0: 0, y0: 0, x1: decoded.width - 1, y1: decoded.height - 1 };
   const stats = accumulateStats(decoded.rgba, decoded.width, decoded.height, statsRegion.x0, statsRegion.y0, statsRegion.x1, statsRegion.y1);
-  const probes = (evidence.probes ?? []).map((probe, index) => ({
-    name: probe.name ?? `probe-${index + 1}`,
-    ...samplePixel(decoded.rgba, decoded.width, decoded.height, probe.x, probe.y),
-  }));
+  const objectIdMeta = latestObjectIdMeta(latestEvidence, evidence.objectIdPath);
+  let objectId = null;
+  try {
+    if (objectIdMeta?.path) objectId = loadObjectIdEvidence(objectIdMeta, { studioRoot });
+  } catch {
+    objectId = null;
+  }
+  const probes = (evidence.probes ?? []).map((probe, index) => {
+    const sample = samplePixel(decoded.rgba, decoded.width, decoded.height, probe.x, probe.y);
+    const hit = objectId
+      ? sampleObjectId(objectId.rgba, objectId.width, objectId.height, probe.x, probe.y, objectId.entities)
+      : null;
+    return {
+      name: probe.name ?? `probe-${index + 1}`,
+      ...sample,
+      ...(hit ? { entityId: hit.entityId, objectId: hit.objectId } : {}),
+    };
+  });
   let compare;
   if (evidence.comparePath) {
     const comparePath = resolveStudioEvidencePath(evidence.comparePath, { studioRoot, latestEvidence });

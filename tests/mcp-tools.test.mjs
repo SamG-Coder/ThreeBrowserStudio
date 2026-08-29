@@ -163,7 +163,8 @@ test('checked-in JSON contract mirrors the lean capability enums', async () => {
   assert.deepEqual(contract.$defs.inspect.properties.query.enum, INSPECT_QUERIES);
   assert.deepEqual(contract.$defs.project.properties.action.enum, ['list', 'create', 'open', 'save']);
   assert.deepEqual(contract.$defs.history.properties.action.enum, ['list', 'inspect', 'undo', 'redo']);
-  assert.deepEqual(contract.$defs.render.properties.passes.items, { const: 'beauty' });
+  assert.deepEqual(contract.$defs.render.properties.passes.items, { enum: ['beauty', 'objectId'] });
+  assert.equal(contract.$defs.render.properties.passes.maxItems, 2);
   assert.deepEqual(contract.$defs.render.properties.renderer, { const: 'webgpu' });
   assert.deepEqual(Object.keys(contract.$defs.job.properties), ['protocolVersion', 'sessionId']);
   assert.deepEqual(

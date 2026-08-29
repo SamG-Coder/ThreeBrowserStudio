@@ -1,8 +1,10 @@
 export {
+  COMPILE_HEAVY_METHODS,
   DEFAULT_REQUEST_TIMEOUT_MS,
   MAX_MESSAGE_BYTES,
   MAX_REQUEST_TIMEOUT_MS,
   PROTOCOL_VERSION,
+  requestTimeoutMsForMethod,
   RpcError,
   assertRequestEnvelope,
   assertResponseEnvelope,

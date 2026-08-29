@@ -197,7 +197,7 @@ test('bare graph and resource envelopes both expose resourceHash and graphHash',
 test('graph digest lists authored-versus-default sockets even when compact inputs truncate', () => {
   const digest = buildGraphDigest(principledGraph());
   const bsdf = digest.nodes.find(node => node.id === 'bsdf');
-  assert.equal(digest.socketContract, 'full-vs-default');
+  assert.equal(digest.socketContract, 'full-vs-default+live');
   assert.ok(bsdf.sockets.length > 16);
   assert.ok(bsdf.inputs.$summary.omittedKeyCount > 0);
   const roughness = bsdf.sockets.find(socket => socket.port === 'roughness');
@@ -211,6 +211,12 @@ test('graph digest lists authored-versus-default sockets even when compact input
   assert.equal(baseColor.source, 'edge');
   assert.deepEqual(baseColor.from, { nodeId: 'color', port: 'value' });
   assert.equal(sheen.source, 'authored');
+  assert.equal(sheen.compiled, true);
+  assert.equal(sheen.live, true);
+  const weight = bsdf.sockets.find(socket => socket.port === 'weight');
+  const specular = bsdf.sockets.find(socket => socket.port === 'specularIorLevel');
+  assert.equal(weight.live, false);
+  assert.equal(specular.live, true);
   assert.ok(bsdf.authoredCount >= 3);
   assert.ok(bsdf.defaultCount >= 16);
   assert.equal(bsdf.connectedCount, 1);

@@ -26,13 +26,14 @@ authority. In the current lean slice:
 - validation is whole-project, interactive document/reference/hierarchy/graph
   validation with budgets;
 - rendering is WebGPU beauty capture through the same effective camera and
-  presentation aspect as the live viewport; native ray-query lighting augments
-  it only while the explicit RTX status is active;
+  presentation aspect as the live viewport, plus an optional `objectId` pass
+  for probe entity IDs and projection occlusion; native ray-query lighting
+  augments beauty only while the explicit RTX status is active;
 - Play changes and reports transient counters/input state but executes no game
   behaviour; and
 - jobs, asset import, script authoring/execution, layout modes beyond the live
-  linear/grid/radial/seeded-scatter patterns, diagnostic render passes, export, and behavior
-  simulation are not available.
+  linear/grid/radial/seeded-scatter patterns, diagnostic passes beyond beauty
+  and object-id, export, and behavior simulation are not available.
 
 Do not attempt a reserved pipeline because it appears in the design document.
 Use it only after both status and the current tool schema expose it.
@@ -217,17 +218,24 @@ operations.
   polygon faces, per-corner layers, material slots, annotations, and adjacency;
   continue only with its resource/topology/filter-bound cursor. Use
   `meshFilter` (bbox, y-range, boundary, `notAdjacentTo`) instead of paging
-  an entire cloth or shell. Use `graphDigest` before graph edits and read
-  `sockets` / `source` rather than compact `inputs.$summary`; patch one socket
-  with `resource.patch` `nodeInputs` instead of replacing the graph. Use
-  `projectVisibility` before editing an object that may be off-screen. Use
-  `beautyDigest` after a render for hash, clip/black/luma, exact probes, and
-  capture diffs. Byte-identical captures after a `nodeInputs` patch mean the
-  socket is not in the live TSL subset or the delta is below 8-bit; Principled
-  `sheenWeight` / `sheenRoughness` / `sheenTint` are live. Do not treat an
-  unchanged PNG as proof the document failed to patch. Use `rtxDigest` when geometry is unexpectedly missing from
-  native lighting. `modifierDigest` accepts a group and returns descendant
-  mesh stacks.
+  an entire cloth or shell. Use   `graphDigest` before graph edits and read `sockets` (`source`, `compiled`,
+  `live`) rather than compact `inputs.$summary`; patch one socket with
+  `resource.patch` `nodeInputs` instead of replacing the graph. Dry-run apply
+  returns `pixelForecast` (`will-move` / `will-not-move` / `unknown`) from the
+  same live-socket contract; catalog-only sockets and bump
+  `strength * distance` below 1/255 forecast `will-not-move`. Use
+  `projectVisibility` before editing an object that may be off-screen; render
+  `passes: ["beauty", "objectId"]` when probes or occlusion need entity IDs.
+  Use `beautyDigest` after a render for hash, clip/black/luma, exact probes
+  (with `entityId` when object-id evidence exists), and capture diffs. Do not
+  treat an unchanged PNG as proof the document failed to patch. Principled
+  sheen, specular IOR/tint, anisotropy, and thin-film/iridescence compile when
+  live. Use `rtxDigest` when geometry is unexpectedly missing from native
+  lighting. `modifierDigest` accepts a group and returns descendant mesh
+  stacks. Editable-mesh `recalculateNormals` is accepted (normals are derived
+  at compile) and forecasts `will-not-move` when it is the only edit.
+  Seam-safe live modifiers on editableMesh are triangulate,
+  smooth, weightedNormal, displace, and edgeSplit.
 - For whole-mesh transforms or smoothing, use `selection: "all"`; keep explicit
   vertex-index lists for genuinely local edits.
 - Treat realism as the combination of silhouette, bevel/profile detail,

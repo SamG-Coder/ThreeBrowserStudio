@@ -38,6 +38,7 @@ const EDIT_COMMAND_KEYS = new Map([
   ['rotateVertices', new Set(['type', 'expectedTopologyHash', 'vertexIndices', 'selection', 'rotation', 'euler', 'axis', 'angle', 'pivot'])],
   ['smooth', new Set(['type', 'expectedTopologyHash', 'vertexIndices', 'selection', 'iterations', 'factor', 'preserveBoundary'])],
   ['smoothVertices', new Set(['type', 'expectedTopologyHash', 'vertexIndices', 'selection', 'iterations', 'factor', 'preserveBoundary'])],
+  ['recalculateNormals', new Set(['type', 'expectedTopologyHash'])],
   ['subdivideFaces', new Set(['type', 'expectedTopologyHash', 'faceIndices', 'selection'])],
   ['insetFaces', new Set(['type', 'expectedTopologyHash', 'faceIndices', 'selection', 'factor', 'thickness'])],
   ['extrudeFaces', new Set(['type', 'expectedTopologyHash', 'faceIndices', 'selection', 'mode', 'offset', 'distance', 'sideMaterialIndex'])],
@@ -1246,6 +1247,9 @@ export function applyEditableMeshEdit(recipe, command) {
     case 'rotateVertices': return rotateEditableMeshVertices(recipe, command);
     case 'smooth':
     case 'smoothVertices': return smoothEditableMeshVertices(recipe, command);
+    case 'recalculateNormals':
+      // Normals are derived at compile from topology + sharp edges.
+      return recipe;
     case 'subdivideFaces': return subdivideEditableMeshFaces(recipe, command);
     case 'insetFaces': return insetEditableMeshFaces(recipe, command);
     case 'extrudeFaces': return extrudeEditableMeshFaces(recipe, command);

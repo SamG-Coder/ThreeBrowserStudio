@@ -86,7 +86,7 @@ const INDEXED_GEOMETRY_EDIT_TYPES = new Set([
   'move', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
 ]);
 const EDITABLE_GEOMETRY_EDIT_TYPES = new Set([
-  'move', 'scale', 'rotate', 'smooth', 'subdivideFaces', 'insetFaces', 'extrudeFaces',
+  'move', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'subdivideFaces', 'insetFaces', 'extrudeFaces',
   'bevelEdges', 'deleteFaces', 'mergeVertices',
   ...EDITABLE_MESH_ATTRIBUTE_COMMAND_TYPES,
 ]);

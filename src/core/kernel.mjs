@@ -131,6 +131,12 @@ export class AuthoringKernel {
     studioAssert(Number.isSafeInteger(request.baseRevision) && request.baseRevision >= 0, 'invalid_revision', 'baseRevision must be a non-negative safe integer');
   }
 
+  #assertNotAborted(signal) {
+    if (!signal?.aborted) return;
+    if (signal.reason instanceof Error) throw signal.reason;
+    throw new StudioError('request_aborted', 'The apply request was aborted before commit.');
+  }
+
   #checkRevision(baseRevision) {
     if (baseRevision !== this.#document.revision) {
       throw new StudioError('revision_conflict', `Base revision ${baseRevision} does not match current revision ${this.#document.revision}`, {
@@ -202,7 +208,7 @@ export class AuthoringKernel {
     return warnings;
   }
 
-  apply(request) {
+  apply(request, context = {}) {
     return this.#enqueue(async () => {
       this.#checkCommon(request, APPLY_KEYS);
       const fingerprint = contentHash(request);
@@ -226,6 +232,7 @@ export class AuthoringKernel {
             dryRun: true,
           });
         }
+        this.#assertNotAborted(context.signal);
         return {
           success: true,
           dryRun: true,
@@ -250,6 +257,7 @@ export class AuthoringKernel {
         before,
         applied,
         diff,
+        signal: context.signal,
       });
     });
   }
@@ -264,6 +272,7 @@ export class AuthoringKernel {
     diff,
     compensates,
     replays,
+    signal,
   }) {
     const transactionId = this.#transactionIdFactory(kind === 'apply' ? 'tx' : kind);
     studioAssert(typeof transactionId === 'string' && transactionId.length > 0, 'invalid_transaction_id', 'transactionIdFactory returned an invalid ID');
@@ -280,6 +289,7 @@ export class AuthoringKernel {
         invalidations: cloneJson(applied.invalidations),
       });
     }
+    this.#assertNotAborted(signal);
     const response = {
       success: true,
       dryRun: false,

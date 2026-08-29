@@ -103,10 +103,18 @@ test('viewport stack analysis exposes exact source and ordering boundaries', () 
   ]);
   assert.deepEqual(ordered.previewModifiers.map(modifier => modifier.id), ['modifier/array']);
 
-  const editable = analyzeViewportModifierStack({
+  const editableLive = analyzeViewportModifierStack({
     id: 'entity/editable',
     components: { modifiers: [{ id: 'modifier/smooth', type: 'smooth' }] },
   }, { sourceKind: 'editableMesh' });
-  assert.equal(editable.blocked.reasonCode, 'runtime_editable_modifier_bake_required');
-  assert.deepEqual(editable.geometryModifiers, []);
+  assert.equal(editableLive.status, 'live');
+  assert.equal(editableLive.blocked, null);
+  assert.deepEqual(editableLive.geometryModifiers.map(modifier => modifier.id), ['modifier/smooth']);
+
+  const editableBlocked = analyzeViewportModifierStack({
+    id: 'entity/editable-weld',
+    components: { modifiers: [{ id: 'modifier/weld', type: 'weld' }] },
+  }, { sourceKind: 'editableMesh' });
+  assert.equal(editableBlocked.blocked.reasonCode, 'runtime_editable_modifier_bake_required');
+  assert.deepEqual(editableBlocked.geometryModifiers, []);
 });

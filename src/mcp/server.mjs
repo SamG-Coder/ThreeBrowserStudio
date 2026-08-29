@@ -7,6 +7,7 @@ import {
   assertLiveSessionIdentity,
   defaultSessionMarkerPath,
   readSessionMarker,
+  requestTimeoutMsForMethod,
 } from '../bridge/index.mjs';
 import { createThreeStudioMcpServer, synchronizeThreeStudioToolContract } from './tools.mjs';
 import { TOOL_CONTRACT } from './tool-schemas.mjs';
@@ -127,12 +128,18 @@ export function createLiveMcpDispatch({
   const dispatch = async (method, params = {}, context = {}) => {
     try {
       const live = await ensureClient();
-      return await live.request(method, params, { signal: context.signal });
+      return await live.request(method, params, {
+        signal: context.signal,
+        timeoutMs: requestTimeoutMsForMethod(method),
+      });
     } catch (error) {
       if (!isRetryableLiveDisconnect(error)) throw error;
       await resetClient();
       const live = await ensureClient();
-      return live.request(method, params, { signal: context.signal });
+      return live.request(method, params, {
+        signal: context.signal,
+        timeoutMs: requestTimeoutMsForMethod(method),
+      });
     }
   };
 

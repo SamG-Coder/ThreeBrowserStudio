@@ -1,5 +1,6 @@
 import { CAMERA_KINDS } from './constants.mjs';
 import { StudioError } from './errors.mjs';
+import { occlusionForExpected, sampleObjectId } from './object-id-evidence.mjs';
 import {
   entityWorldMatrix,
   entityWorldPosition,
@@ -128,7 +129,7 @@ function resolveCamera(scene, cameraId) {
 
 /**
  * Project authored world points and entity origins through the authored camera.
- * Occlusion is unknown without a GPU depth sample; frustum visibility is exact.
+ * Occlusion is unknown without a matching object-id capture; frustum visibility is exact.
  */
 export function buildProjectVisibility(scene, options = {}) {
   const width = Math.trunc(finiteNumber(options.width, 1280, 'projection.width', { min: 1, max: 4096 }));
@@ -148,23 +149,35 @@ export function buildProjectVisibility(scene, options = {}) {
   const worldMemo = new Map();
   const cameraWorld = entityWorldMatrix(scene, camera.id, worldMemo);
   const projection = cameraProjectionFromEntity(camera, width, height);
+  const objectId = options.objectId?.rgba ? options.objectId : null;
+  const attachOcclusion = (record, expectedEntityId) => {
+    if (!objectId || !record.onScreen || !record.screen) return record;
+    const [x, y] = record.screen;
+    const sample = sampleObjectId(objectId.rgba, objectId.width, objectId.height, x, y, objectId.entities ?? []);
+    return {
+      ...record,
+      hitEntityId: sample.entityId,
+      objectId: sample.objectId,
+      occlusion: occlusionForExpected(sample, expectedEntityId),
+    };
+  };
   const records = [];
   for (const point of points) {
     if (!Array.isArray(point.world) || point.world.length !== 3 || !point.world.every(Number.isFinite)) {
       throw new StudioError('invalid_projection', `Projection point ${point.name ?? '<unnamed>'} needs a finite world XYZ.`);
     }
-    records.push({
+    records.push(attachOcclusion({
       name: point.name,
       ...projectWorldPoint(point.world, cameraWorld, projection, width, height),
-    });
+    }, null));
   }
   for (const entityId of entityIds) {
     const world = entityWorldPosition(scene, entityId, worldMemo);
-    records.push({
+    records.push(attachOcclusion({
       name: entityId,
       entityId,
       ...projectWorldPoint(world, cameraWorld, projection, width, height),
-    });
+    }, entityId));
   }
   return {
     cameraId: camera.id,
