@@ -1,108 +1,146 @@
 const DOCK_ID = 'tbs-prompt-dock';
+const MODAL_ID = 'tbs-prompt-modal';
 const STYLE_ID = 'tbs-prompt-dock-style';
 
 const STYLE_TEXT = `
+#${DOCK_ID}, #${MODAL_ID} { box-sizing: border-box; }
+#${DOCK_ID} *, #${MODAL_ID} * { box-sizing: border-box; }
 #${DOCK_ID} {
   position: fixed;
-  left: 16px;
-  right: 16px;
-  bottom: 16px;
+  left: 50%;
+  bottom: 20px;
   z-index: 30;
   display: none;
-  flex-direction: column;
-  max-height: min(46vh, 420px);
-  color: #dce8f7;
-  background: rgba(8, 13, 22, 0.94);
-  border: 1px solid rgba(135, 176, 224, 0.24);
-  border-radius: 14px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.42);
-  font: 13px/1.4 "Segoe UI", sans-serif;
-  backdrop-filter: blur(16px);
+  width: min(880px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  color: #e8eef6;
+  background: rgba(10, 15, 24, 0.92);
+  border: 1px solid rgba(150, 186, 226, 0.22);
+  border-radius: 16px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.46);
+  font: 14px/1.4 "Segoe UI", sans-serif;
+  backdrop-filter: blur(18px);
 }
-#${DOCK_ID}.is-visible { display: flex; }
+#${DOCK_ID}.is-visible { display: block; }
 #${DOCK_ID} .tbs-dock-bar {
   display: grid;
-  grid-template-columns: auto minmax(120px, 180px) 1fr auto auto;
-  gap: 8px;
+  grid-template-columns: auto minmax(140px, 200px) 1fr auto auto;
+  gap: 10px;
   align-items: center;
-  padding: 10px 12px;
+  padding: 12px 14px;
 }
 #${DOCK_ID} .tbs-dock-brand {
-  padding: 0 4px;
-  font: 600 12px/1 "Segoe UI", sans-serif;
-  letter-spacing: 0.08em;
+  padding: 0 2px 0 4px;
+  font: 650 11px/1 "Segoe UI", sans-serif;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: #9fc6f2;
 }
-#${DOCK_ID} .tbs-dock-models {
-  display: none;
-  gap: 10px;
-  padding: 0 12px 12px;
-  border-top: 1px solid rgba(135, 176, 224, 0.14);
-  overflow: auto;
-}
-#${DOCK_ID}.is-models .tbs-dock-models { display: grid; }
-#${DOCK_ID} .tbs-dock-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 8px;
-  padding-top: 10px;
-}
-#${DOCK_ID} label {
-  display: block;
-  margin: 0 0 4px;
-  color: #7f94ad;
-  font-size: 11px;
-}
-#${DOCK_ID} input, #${DOCK_ID} select, #${DOCK_ID} textarea {
+#${DOCK_ID} input, #${DOCK_ID} select, #${DOCK_ID} textarea,
+#${MODAL_ID} input, #${MODAL_ID} select, #${MODAL_ID} textarea {
   width: 100%;
-  box-sizing: border-box;
   margin: 0;
-  padding: 8px 10px;
-  color: #dce8f7;
-  background: rgba(12, 20, 32, 0.96);
-  border: 1px solid rgba(135, 176, 224, 0.28);
-  border-radius: 8px;
+  padding: 10px 12px;
+  color: #e8eef6;
+  background: rgba(7, 12, 20, 0.96);
+  border: 1px solid rgba(150, 186, 226, 0.28);
+  border-radius: 10px;
   font: inherit;
 }
-#${DOCK_ID} textarea {
-  min-height: 38px;
-  max-height: 96px;
-  resize: none;
-}
-#${DOCK_ID} button {
+#${DOCK_ID} textarea { min-height: 42px; max-height: 88px; resize: none; }
+#${DOCK_ID} button, #${MODAL_ID} button {
   margin: 0;
-  padding: 8px 12px;
-  color: #dce8f7;
-  background: rgba(36, 58, 88, 0.98);
-  border: 1px solid rgba(126, 176, 232, 0.35);
-  border-radius: 8px;
-  font: 600 12px/1.2 "Segoe UI", sans-serif;
+  padding: 10px 14px;
+  color: #e8eef6;
+  background: rgba(28, 46, 70, 0.96);
+  border: 1px solid rgba(126, 176, 232, 0.28);
+  border-radius: 10px;
+  font: 600 13px/1.2 "Segoe UI", sans-serif;
   cursor: pointer;
 }
-#${DOCK_ID} button.secondary { background: rgba(22, 34, 52, 0.96); }
-#${DOCK_ID} button.primary { background: #2d5f93; border-color: #7eb0e8; }
-#${DOCK_ID} .tbs-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-#${DOCK_ID} .tbs-status { margin: 0; color: #8eb4dc; }
-#${DOCK_ID} .tbs-status.is-error { color: #ffadba; }
-#${DOCK_ID} .tbs-hint { margin: 10px 0 0; color: #7f94ad; }
-#${DOCK_ID} .tbs-log {
-  min-height: 56px;
-  max-height: 120px;
+#${DOCK_ID} button.primary, #${MODAL_ID} button.primary {
+  background: #2f6aa3;
+  border-color: #8ebef0;
+}
+#${DOCK_ID} button.secondary, #${MODAL_ID} button.secondary {
+  background: rgba(16, 26, 40, 0.96);
+}
+#${MODAL_ID} {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: none;
+  place-items: center;
+  padding: 24px;
+}
+#${MODAL_ID}.is-open { display: grid; }
+#${MODAL_ID} .tbs-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 8, 14, 0.62);
+}
+#${MODAL_ID} .tbs-dialog {
+  position: relative;
+  width: min(520px, 100%);
+  max-height: min(80vh, 640px);
+  overflow: auto;
+  padding: 22px 22px 18px;
+  color: #e8eef6;
+  background: #101722;
+  border: 1px solid rgba(150, 186, 226, 0.24);
+  border-radius: 16px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+  font: 14px/1.45 "Segoe UI", sans-serif;
+}
+#${MODAL_ID} .tbs-dialog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+#${MODAL_ID} h2 {
   margin: 0;
-  padding: 8px 10px;
+  font: 650 18px/1.2 "Segoe UI", sans-serif;
+  color: #f3f7fc;
+}
+#${MODAL_ID} .tbs-lead {
+  margin: 6px 0 0;
+  color: #8ea2b8;
+  font-size: 13px;
+}
+#${MODAL_ID} .tbs-field { margin: 0 0 14px; }
+#${MODAL_ID} label {
+  display: block;
+  margin: 0 0 6px;
+  color: #9fb1c6;
+  font: 600 12px/1.2 "Segoe UI", sans-serif;
+}
+#${MODAL_ID} .tbs-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+#${MODAL_ID} .tbs-status { margin: 12px 0 0; color: #8eb4dc; font-size: 13px; }
+#${MODAL_ID} .tbs-status.is-error { color: #ffadba; }
+#${MODAL_ID} .tbs-log {
+  min-height: 72px;
+  max-height: 140px;
+  margin: 12px 0 0;
+  padding: 10px 12px;
   overflow: auto;
   color: #9fb1c6;
-  background: rgba(10, 16, 26, 0.96);
-  border-radius: 8px;
+  background: #0b111a;
+  border-radius: 10px;
   white-space: pre-wrap;
   word-break: break-word;
 }
-@media (max-width: 820px) {
+@media (max-width: 760px) {
   #${DOCK_ID} .tbs-dock-bar {
     grid-template-columns: 1fr auto auto;
   }
-  #${DOCK_ID} .tbs-dock-brand { grid-column: 1 / -1; }
+  #${DOCK_ID} .tbs-dock-brand { display: none; }
 }
 `;
 
@@ -117,8 +155,8 @@ function el(document, name, attrs = {}, text = '') {
   return node;
 }
 
-function labeledInput(document, { label, name, type = 'text', placeholder = '' }) {
-  const wrap = el(document, 'div');
+function field(document, { label, name, type = 'text', placeholder = '' }) {
+  const wrap = el(document, 'div', { className: 'tbs-field' });
   wrap.append(el(document, 'label', { for: name }, label));
   const input = el(document, 'input', {
     id: name,
@@ -132,7 +170,7 @@ function labeledInput(document, { label, name, type = 'text', placeholder = '' }
 }
 
 /**
- * Bottom Prompt dock for the browser preview. Native ThreeRuntime never mounts this.
+ * Bottom composer plus a settings modal. Native ThreeRuntime never mounts this.
  */
 export function createBrowserPromptPanel({
   document: suppliedDocument,
@@ -150,14 +188,22 @@ export function createBrowserPromptPanel({
     (document.head ?? document.body).appendChild(style);
   }
 
-  const root = el(document, 'footer', { id: DOCK_ID, 'aria-label': 'Studio prompt' });
-  const bar = el(document, 'div', { className: 'tbs-dock-bar' });
-  const modelsPane = el(document, 'div', { className: 'tbs-dock-models' });
+  const dock = el(document, 'footer', {
+    id: DOCK_ID,
+    'data-studio-overlay': 'prompt',
+    'aria-label': 'Studio prompt',
+  });
+  const modal = el(document, 'div', {
+    id: MODAL_ID,
+    'data-studio-overlay': 'prompt',
+    'aria-hidden': 'true',
+  });
+  const backdrop = el(document, 'div', { className: 'tbs-backdrop' });
+  const dialog = el(document, 'div', { className: 'tbs-dialog', role: 'dialog', 'aria-labelledby': 'tbs-models-title' });
   const lockView = el(document, 'div');
   const appView = el(document, 'div');
-  root.append(bar, modelsPane);
-  modelsPane.append(lockView, appView);
-  document.body.appendChild(root);
+  modal.append(backdrop, dialog);
+  document.body.append(dock, modal);
 
   const connectionSelect = el(document, 'select', { 'aria-label': 'Saved model' });
   const promptInput = el(document, 'textarea', {
@@ -167,18 +213,23 @@ export function createBrowserPromptPanel({
   });
   const runButton = el(document, 'button', { type: 'button', className: 'primary' }, 'Run');
   const modelsButton = el(document, 'button', { type: 'button', className: 'secondary' }, 'Models');
-  bar.append(
-    el(document, 'span', { className: 'tbs-dock-brand' }, 'Prompt'),
-    connectionSelect,
-    promptInput,
-    runButton,
-    modelsButton,
-  );
+  const bar = el(document, 'div', { className: 'tbs-dock-bar' });
+  bar.append(el(document, 'span', { className: 'tbs-dock-brand' }, 'Prompt'), connectionSelect, promptInput, runButton, modelsButton);
+  dock.append(bar);
 
-  const pin = labeledInput(document, { label: 'PIN', name: 'tbs-pin', type: 'password' });
-  const confirm = labeledInput(document, { label: 'Confirm PIN', name: 'tbs-pin-confirm', type: 'password' });
-  const lockHint = el(document, 'p', { className: 'tbs-hint' });
-  const unlockButton = el(document, 'button', { type: 'button' }, 'Unlock');
+  const closeButton = el(document, 'button', { type: 'button', className: 'secondary' }, 'Close');
+  const head = el(document, 'div', { className: 'tbs-dialog-head' });
+  const titleBlock = el(document, 'div');
+  titleBlock.append(
+    el(document, 'h2', { id: 'tbs-models-title' }, 'Models'),
+    el(document, 'p', { className: 'tbs-lead' }, 'Connect an HTTP chat API. Tokens stay PIN-encrypted in this browser.'),
+  );
+  head.append(titleBlock, closeButton);
+
+  const pin = field(document, { label: 'PIN', name: 'tbs-pin', type: 'password' });
+  const confirm = field(document, { label: 'Confirm PIN', name: 'tbs-pin-confirm', type: 'password' });
+  const lockHint = el(document, 'p', { className: 'tbs-lead' });
+  const unlockButton = el(document, 'button', { type: 'button', className: 'primary' }, 'Unlock');
   const createButton = el(document, 'button', { type: 'button', className: 'secondary' }, 'Create PIN');
   const lockRow = el(document, 'div', { className: 'tbs-row' });
   lockRow.append(unlockButton, createButton);
@@ -188,26 +239,25 @@ export function createBrowserPromptPanel({
   for (const kind of session.listProviderKinds()) {
     kindSelect.appendChild(el(document, 'option', { value: kind.id }, kind.label));
   }
-  const label = labeledInput(document, { label: 'Label', name: 'tbs-label', placeholder: 'OpenRouter' });
-  const url = labeledInput(document, { label: 'Base URL', name: 'tbs-url', placeholder: 'https://openrouter.ai/api/v1' });
-  const model = labeledInput(document, { label: 'Model', name: 'tbs-model', placeholder: 'openai/gpt-4.1-mini' });
-  const token = labeledInput(document, { label: 'Token', name: 'tbs-token', type: 'password' });
-  const kindWrap = el(document, 'div');
+  const kindWrap = el(document, 'div', { className: 'tbs-field' });
   kindWrap.append(el(document, 'label', { for: 'tbs-kind' }, 'Provider'), kindSelect);
-  const fields = el(document, 'div', { className: 'tbs-dock-grid' });
-  fields.append(kindWrap, label.wrap, url.wrap, model.wrap, token.wrap);
-  const saveButton = el(document, 'button', { type: 'button' }, 'Save');
+  const label = field(document, { label: 'Label', name: 'tbs-label', placeholder: 'OpenRouter' });
+  const url = field(document, { label: 'Base URL', name: 'tbs-url', placeholder: 'https://openrouter.ai/api/v1' });
+  const model = field(document, { label: 'Model', name: 'tbs-model', placeholder: 'openai/gpt-4.1-mini' });
+  const token = field(document, { label: 'Token', name: 'tbs-token', type: 'password' });
+  const saveButton = el(document, 'button', { type: 'button', className: 'primary' }, 'Save connection');
   const testButton = el(document, 'button', { type: 'button', className: 'secondary' }, 'Test');
   const deleteButton = el(document, 'button', { type: 'button', className: 'secondary' }, 'Remove');
-  const lockButton = el(document, 'button', { type: 'button', className: 'secondary' }, 'Lock');
+  const lockButton = el(document, 'button', { type: 'button', className: 'secondary' }, 'Lock vault');
   const actionRow = el(document, 'div', { className: 'tbs-row' });
   actionRow.append(saveButton, testButton, deleteButton, lockButton);
   const status = el(document, 'p', { className: 'tbs-status' });
   const transcript = el(document, 'pre', { className: 'tbs-log' });
-  appView.append(fields, actionRow, status, transcript);
+  appView.append(kindWrap, label.wrap, url.wrap, model.wrap, token.wrap, actionRow, status, transcript);
+  dialog.append(head, lockView, appView);
 
   let visible = false;
-  let modelsOpen = false;
+  let modalOpen = false;
   let disposed = false;
   let running = false;
 
@@ -260,8 +310,8 @@ export function createBrowserPromptPanel({
     appView.hidden = !unlocked;
     confirm.wrap.hidden = session.exists();
     lockHint.textContent = session.exists()
-      ? 'Unlock this browser to use saved model tokens. The PIN never leaves the page.'
-      : 'Create a PIN to encrypt tokens in this browser. Desktop Studio does not use this vault.';
+      ? 'Enter your PIN to use the tokens saved in this browser.'
+      : 'Create a PIN. Bearer tokens are encrypted here and never written into the page.';
     unlockButton.hidden = !session.exists();
     createButton.hidden = session.exists();
     if (unlocked) {
@@ -271,20 +321,22 @@ export function createBrowserPromptPanel({
         setStatus(error.message, true);
       }
     } else {
-      connectionSelect.replaceChildren(el(document, 'option', { value: '' }, 'Unlock to connect'));
+      connectionSelect.replaceChildren(el(document, 'option', { value: '' }, 'Unlock in Models'));
     }
   }
 
   function setVisible(next) {
     visible = Boolean(next) && !disposed;
-    root.classList.toggle('is-visible', visible);
+    dock.classList.toggle('is-visible', visible);
     if (visible) render();
+    if (!visible) setModalOpen(false);
   }
 
-  function setModelsOpen(next) {
-    modelsOpen = Boolean(next);
-    root.classList.toggle('is-models', modelsOpen);
-    modelsButton.textContent = modelsOpen ? 'Close' : 'Models';
+  function setModalOpen(next) {
+    modalOpen = Boolean(next) && !disposed;
+    modal.classList.toggle('is-open', modalOpen);
+    modal.setAttribute('aria-hidden', modalOpen ? 'false' : 'true');
+    if (modalOpen) render();
   }
 
   async function withBusy(work) {
@@ -294,7 +346,7 @@ export function createBrowserPromptPanel({
       await work();
     } catch (error) {
       setStatus(error?.message ?? String(error), true);
-      setModelsOpen(true);
+      setModalOpen(true);
     } finally {
       running = false;
     }
@@ -303,8 +355,8 @@ export function createBrowserPromptPanel({
   async function runPrompt() {
     await withBusy(async () => {
       if (!session.isUnlocked()) {
-        setModelsOpen(true);
-        throw new Error('Unlock or create a PIN first.');
+        setModalOpen(true);
+        throw new Error('Unlock or create a PIN in Models first.');
       }
       transcript.textContent = '';
       setStatus('Running…');
@@ -317,6 +369,7 @@ export function createBrowserPromptPanel({
       });
       if (result.text) appendLog(result.text);
       setStatus(result.finishReason === 'stop' ? 'Done.' : result.finishReason);
+      if (result.toolTrace?.some(item => item.code === 'kernel_unavailable')) setModalOpen(true);
     });
   }
 
@@ -371,18 +424,25 @@ export function createBrowserPromptPanel({
     fillEditor(session.activeConnection());
   }));
   runButton.addEventListener('click', () => { void runPrompt(); });
-  modelsButton.addEventListener('click', () => setModelsOpen(!modelsOpen));
+  modelsButton.addEventListener('click', () => setModalOpen(true));
+  closeButton.addEventListener('click', () => setModalOpen(false));
+  backdrop.addEventListener('click', () => setModalOpen(false));
   promptInput.addEventListener('keydown', event => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       void runPrompt();
     }
   });
+  const onDocumentKey = event => {
+    if (event.key === 'Escape' && modalOpen) setModalOpen(false);
+  };
+  document.addEventListener('keydown', onDocumentKey);
 
   render();
 
   return Object.freeze({
-    root,
+    root: dock,
+    modal,
     setVisible,
     setOpen: setVisible,
     setLauncherVisible: setVisible,
@@ -392,8 +452,11 @@ export function createBrowserPromptPanel({
       if (disposed) return;
       disposed = true;
       visible = false;
+      modalOpen = false;
+      document.removeEventListener('keydown', onDocumentKey);
       session.lock();
-      root.remove();
+      dock.remove();
+      modal.remove();
     },
   });
 }

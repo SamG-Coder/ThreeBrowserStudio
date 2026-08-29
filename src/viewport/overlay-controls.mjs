@@ -724,8 +724,19 @@ export class ToggleOption extends Control {
 }
 
 export function eventPoint(event) {
+  if (Number.isFinite(event?.clientX) && Number.isFinite(event?.clientY)) {
+    return { x: finite(event.clientX, 0), y: finite(event.clientY, 0) };
+  }
   if (Number.isFinite(event?.offsetX) && Number.isFinite(event?.offsetY)) {
     return { x: finite(event.offsetX, 0), y: finite(event.offsetY, 0) };
   }
-  return { x: finite(event?.clientX, -1), y: finite(event?.clientY, -1) };
+  return { x: -1, y: -1 };
+}
+
+export function isStudioOverlayEvent(event) {
+  try {
+    return Boolean(event?.target?.closest?.('[data-studio-overlay]'));
+  } catch {
+    return false;
+  }
 }

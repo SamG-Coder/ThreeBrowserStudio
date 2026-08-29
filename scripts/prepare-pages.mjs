@@ -5,7 +5,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const studioRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 /** Bump when Pages must ignore cached ES modules. */
-export const PAGES_ASSET_STAMP = "prompt-5";
+export const PAGES_ASSET_STAMP = "prompt-6";
 
 export function bustRelativeModuleImports(source, stamp = PAGES_ASSET_STAMP) {
   return String(source)

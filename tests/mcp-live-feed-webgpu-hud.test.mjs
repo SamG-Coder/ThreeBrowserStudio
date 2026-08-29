@@ -393,6 +393,24 @@ test('pointer hits on the panel steal the event so orbit does not start', () => 
   assert.equal(event.stopped, true);
 });
 
+test('HUD does not steal pointer events from the browser Prompt overlay', () => {
+  const { hud } = fixture({ width: 1000, height: 700, pixelRatio: 1 });
+  const overlay = { closest: selector => String(selector).includes('data-studio-overlay') ? overlay : null };
+  const event = {
+    clientX: 40,
+    clientY: 40,
+    offsetX: 3,
+    offsetY: 4,
+    target: overlay,
+    prevented: false,
+    preventDefault() { this.prevented = true; },
+    stopPropagation() {},
+    stopImmediatePropagation() {},
+  };
+  assert.equal(hud.handlePointerDown(event), false);
+  assert.equal(event.prevented, false);
+});
+
 test('explorer tab shows the scene tree and collapse stays in the HUD', () => {
   const { hud } = fixture({ width: 1000, height: 700, pixelRatio: 1 });
   hud.setExplorerOutline(buildExplorerOutline(createProjectDocument({

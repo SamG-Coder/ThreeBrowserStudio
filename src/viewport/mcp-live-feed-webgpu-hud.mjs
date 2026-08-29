@@ -12,6 +12,7 @@ import {
   ToggleOption,
   VirtualList,
   eventPoint,
+  isStudioOverlayEvent,
 } from './overlay-controls.mjs';
 import { defaultExpandedIds, flattenExplorerRows } from './scene-explorer.mjs';
 import { VIEW_MODE_FOLLOW_SHOT, VIEW_MODE_REVIEW } from './view-mode.mjs';
@@ -761,6 +762,7 @@ export function createMcpLiveFeedWebGpuHud({
   };
 
   const containsEvent = event => {
+    if (isStudioOverlayEvent(event)) return false;
     const point = eventPoint(event);
     return pointInRect(point.x, point.y, {
       x: originLeft,
