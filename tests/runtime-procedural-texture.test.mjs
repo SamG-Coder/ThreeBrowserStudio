@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  PROCEDURAL_TEXTURE_LIMITS,
   ProceduralTextureCompileError,
   bakeProceduralTextureGraph,
   compileProceduralTextureGraph,
@@ -18,6 +19,26 @@ function textureSettings(overrides = {}) {
     magFilter: 'linear',
     mode: 'interactive',
     ...overrides,
+  };
+}
+
+let singleNodeIndex = 0;
+function singleNodeTextureGraph({ type, params = {}, inputs, port, output = 'roughness' }) {
+  const node = { id: 'node', type, params, ...(inputs === undefined ? {} : { inputs }) };
+  return {
+    formatVersion: 1,
+    id: `texture/cpu-mode-${singleNodeIndex += 1}`,
+    domain: 'texture',
+    nodes: [node],
+    edges: [],
+    outputs: {
+      [output]: {
+        nodeId: node.id,
+        port,
+        colorSpace: output === 'albedo' ? 'srgb' : 'none',
+      },
+    },
+    settings: textureSettings({ resolution: [2, 2] }),
   };
 }
 
@@ -125,12 +146,12 @@ test('evaluates canonical Blender procedural aliases and socket defaults in a 2D
     nodes: [
       { id: 'coords', type: 'blender.textureCoordinate', params: {} },
       { id: 'mapping', type: 'blender.mapping', params: { vectorType: 'POINT' } },
-      { id: 'noise', type: 'blender.noiseTexture', params: { dimensions: '3D', noiseType: 'FBM', normalize: true, seed: 17 } },
+      { id: 'noise', type: 'blender.noiseTexture', params: { dimensions: '2D', noiseType: 'FBM', normalize: true, seed: 17 } },
       { id: 'ramp', type: 'blender.colorRamp', params: { interpolation: 'EASE', colorMode: 'RGB', hueInterpolation: 'NEAR', stops: [
         { position: 0, color: [0.025, 0.03, 0.04, 1] },
         { position: 1, color: [0.62, 0.52, 0.35, 1] },
       ] } },
-      { id: 'cells', type: 'blender.voronoiTexture', params: { dimensions: '3D', feature: 'F2', distanceMetric: 'CHEBYCHEV', normalize: false, seed: 23 } },
+      { id: 'cells', type: 'blender.voronoiTexture', params: { dimensions: '2D', feature: 'F2', distanceMetric: 'CHEBYCHEV', normalize: false, seed: 23 } },
       { id: 'range', type: 'blender.mapRange', params: { interpolationType: 'SMOOTHSTEP', clamp: true } },
       { id: 'math', type: 'blender.math', params: { operation: 'MULTIPLY', clamp: true } },
       { id: 'accent', type: 'blender.rgb', params: { value: [0.14, 0.22, 0.055, 1] } },
@@ -175,6 +196,227 @@ test('evaluates canonical Blender procedural aliases and socket defaults in a 2D
   assert.ok(Math.abs(bake.maps.height.range[0] - 0.05) < 1e-6);
   assert.ok(Math.abs(bake.maps.height.range[1] - 0.95) < 1e-6);
   assert.ok(bake.maps.normal.data.some((value, index) => index % 4 < 2 && value !== 128));
+});
+
+test('CPU bake rejects every catalogued Blender mode that would otherwise silently fall back', () => {
+  const cases = [
+    ...['1D', '3D', '4D'].map(dimensions => ({
+      label: `Noise ${dimensions}`,
+      property: 'dimensions',
+      graph: singleNodeTextureGraph({
+        type: 'blender.noiseTexture',
+        params: { dimensions, noiseType: 'FBM', normalize: true },
+        port: 'factor',
+      }),
+    })),
+    ...['MULTIFRACTAL', 'HYBRID_MULTIFRACTAL', 'RIDGED_MULTIFRACTAL', 'HETERO_TERRAIN'].map(noiseType => ({
+      label: `Noise ${noiseType}`,
+      property: 'noiseType',
+      graph: singleNodeTextureGraph({
+        type: 'blender.noiseTexture',
+        params: { dimensions: '2D', noiseType, normalize: true },
+        port: 'factor',
+      }),
+    })),
+    ...['1D', '3D', '4D'].map(dimensions => ({
+      label: `Voronoi ${dimensions}`,
+      property: 'dimensions',
+      graph: singleNodeTextureGraph({
+        type: 'blender.voronoiTexture',
+        params: { dimensions, feature: 'F1', distanceMetric: 'EUCLIDEAN', normalize: false },
+        port: 'distance',
+      }),
+    })),
+    ...['SMOOTH_F1', 'N_SPHERE_RADIUS'].map(feature => ({
+      label: `Voronoi ${feature}`,
+      property: 'feature',
+      graph: singleNodeTextureGraph({
+        type: 'blender.voronoiTexture',
+        params: { dimensions: '2D', feature, distanceMetric: 'EUCLIDEAN', normalize: false },
+        port: feature === 'N_SPHERE_RADIUS' ? 'radius' : 'distance',
+      }),
+    })),
+    {
+      label: 'Voronoi Minkowski',
+      property: 'distanceMetric',
+      graph: singleNodeTextureGraph({
+        type: 'blender.voronoiTexture',
+        params: { dimensions: '2D', feature: 'F1', distanceMetric: 'MINKOWSKI', normalize: false },
+        port: 'distance',
+      }),
+    },
+    ...['CARDINAL', 'B_SPLINE'].map(interpolation => ({
+      label: `Ramp ${interpolation}`,
+      property: 'interpolation',
+      graph: singleNodeTextureGraph({
+        type: 'blender.colorRamp',
+        params: { interpolation, colorMode: 'RGB', hueInterpolation: 'NEAR' },
+        port: 'color',
+        output: 'albedo',
+      }),
+    })),
+    ...['HSV', 'HSL'].map(colorMode => ({
+      label: `Ramp ${colorMode}`,
+      property: 'colorMode',
+      graph: singleNodeTextureGraph({
+        type: 'blender.colorRamp',
+        params: { interpolation: 'LINEAR', colorMode, hueInterpolation: 'NEAR' },
+        port: 'color',
+        output: 'albedo',
+      }),
+    })),
+    ...[
+      'DARKEN', 'BURN', 'LIGHTEN', 'DODGE', 'OVERLAY', 'SOFT_LIGHT', 'LINEAR_LIGHT',
+      'DIFFERENCE', 'EXCLUSION', 'DIVIDE', 'HUE', 'SATURATION', 'COLOR', 'VALUE',
+    ].map(blendMode => ({
+      label: `Mix ${blendMode}`,
+      property: 'blendMode',
+      graph: singleNodeTextureGraph({
+        type: 'blender.mix',
+        params: { valueType: 'color', blendMode, clampFactor: true, clampResult: false },
+        port: 'result',
+        output: 'albedo',
+      }),
+    })),
+  ];
+
+  for (const { label, property, graph } of cases) {
+    const validation = validateProceduralTextureGraph(graph);
+    assert.equal(validation.valid, false, label);
+    assert.ok(validation.errors.some(error => error.code === 'procedural_node_mode_unsupported'
+      && error.property === property), `${label}: ${JSON.stringify(validation.errors)}`);
+  }
+
+  for (const graph of [
+    singleNodeTextureGraph({
+      type: 'blender.noiseTexture',
+      params: { dimensions: '2D', noiseType: 'FBM', normalize: false },
+      port: 'factor',
+    }),
+    singleNodeTextureGraph({
+      type: 'blender.voronoiTexture',
+      params: { dimensions: '2D', feature: 'F1', distanceMetric: 'EUCLIDEAN', normalize: true },
+      port: 'distance',
+    }),
+  ]) {
+    const validation = validateProceduralTextureGraph(graph);
+    assert.equal(validation.valid, false);
+    assert.ok(validation.errors.some(error => error.code === 'procedural_node_property_unsupported'
+      && error.property === 'normalize'));
+  }
+});
+
+test('CPU bake keeps its implemented Blender modes usable and rejects invalid alias modes', () => {
+  const supported = [
+    singleNodeTextureGraph({
+      type: 'blender.noiseTexture',
+      params: { dimensions: '2D', noiseType: 'FBM', normalize: true },
+      inputs: { detail: PROCEDURAL_TEXTURE_LIMITS.maxBlenderNoiseDetail },
+      port: 'factor',
+    }),
+    ...['EUCLIDEAN', 'MANHATTAN', 'CHEBYCHEV'].map(distanceMetric => singleNodeTextureGraph({
+      type: 'blender.voronoiTexture',
+      params: { dimensions: '2D', feature: 'F1', distanceMetric, normalize: false },
+      inputs: { detail: 0 },
+      port: 'distance',
+    })),
+    ...['F1', 'F2', 'DISTANCE_TO_EDGE'].map(feature => singleNodeTextureGraph({
+      type: 'blender.voronoiTexture',
+      params: { dimensions: '2D', feature, distanceMetric: 'EUCLIDEAN', normalize: false },
+      inputs: { detail: 0 },
+      port: 'distance',
+    })),
+    ...['CONSTANT', 'LINEAR', 'EASE'].map(interpolation => singleNodeTextureGraph({
+      type: 'blender.colorRamp',
+      params: { interpolation, colorMode: 'RGB', hueInterpolation: 'NEAR' },
+      port: 'color',
+      output: 'albedo',
+    })),
+    ...['MIX', 'MULTIPLY', 'SCREEN', 'ADD', 'SUBTRACT'].map(blendMode => singleNodeTextureGraph({
+      type: 'blender.mix',
+      params: { valueType: 'color', blendMode, clampFactor: true, clampResult: false },
+      port: 'result',
+      output: 'albedo',
+    })),
+  ];
+  for (const graph of supported) {
+    const validation = validateProceduralTextureGraph(graph);
+    assert.equal(validation.valid, true, JSON.stringify(validation.errors));
+    assert.doesNotThrow(() => compileProceduralTextureGraph(graph).sample([0.25, 0.75]));
+  }
+
+  const invalidAlias = singleNodeTextureGraph({
+    type: 'NoiseTexture',
+    params: { dimensions: '7D', noiseType: 'ALIEN', normalize: true },
+    port: 'Factor',
+  });
+  const validation = validateProceduralTextureGraph(invalidAlias);
+  assert.equal(validation.valid, false);
+  assert.deepEqual(
+    validation.errors.filter(error => error.code === 'procedural_invalid_node_mode').map(error => error.property).sort(),
+    ['dimensions', 'noiseType'],
+  );
+});
+
+test('CPU bake exposes Detail limits and rejects exact over-budget Voronoi work', () => {
+  const noiseAtLimit = singleNodeTextureGraph({
+    type: 'blender.noiseTexture',
+    params: { dimensions: '2D', noiseType: 'FBM', normalize: true },
+    inputs: { detail: PROCEDURAL_TEXTURE_LIMITS.maxBlenderNoiseDetail },
+    port: 'factor',
+  });
+  assert.equal(validateProceduralTextureGraph(noiseAtLimit).valid, true);
+
+  const noiseOverLimit = structuredClone(noiseAtLimit);
+  noiseOverLimit.id = 'texture/cpu-noise-detail-over-limit';
+  noiseOverLimit.nodes[0].inputs.detail = PROCEDURAL_TEXTURE_LIMITS.maxBlenderNoiseDetail + 1;
+  const noiseValidation = validateProceduralTextureGraph(noiseOverLimit);
+  assert.ok(noiseValidation.errors.some(error => error.code === 'procedural_detail_limit_exceeded'
+    && error.limit === PROCEDURAL_TEXTURE_LIMITS.maxBlenderNoiseDetail));
+
+  const dynamicNoise = structuredClone(noiseAtLimit);
+  dynamicNoise.id = 'texture/cpu-noise-dynamic-detail';
+  delete dynamicNoise.nodes[0].inputs;
+  dynamicNoise.nodes.unshift({ id: 'detail', type: 'constant', params: { valueType: 'float', value: 4 } });
+  dynamicNoise.edges.push({
+    from: { nodeId: 'detail', port: 'value' },
+    to: { nodeId: 'node', port: 'detail' },
+  });
+  const dynamicValidation = validateProceduralTextureGraph(dynamicNoise);
+  assert.ok(dynamicValidation.errors.some(error => error.code === 'procedural_dynamic_setting_unsupported'
+    && error.property === 'detail'));
+
+  const voronoiOverLimit = singleNodeTextureGraph({
+    type: 'blender.voronoiTexture',
+    params: { dimensions: '2D', feature: 'F1', distanceMetric: 'EUCLIDEAN', normalize: false },
+    inputs: { detail: PROCEDURAL_TEXTURE_LIMITS.maxBlenderVoronoiDetail + 1 },
+    port: 'distance',
+  });
+  const detailValidation = validateProceduralTextureGraph(voronoiOverLimit);
+  assert.ok(detailValidation.errors.some(error => error.code === 'procedural_detail_limit_exceeded'
+    && error.limit === PROCEDURAL_TEXTURE_LIMITS.maxBlenderVoronoiDetail));
+
+  const unsupportedFractal = structuredClone(voronoiOverLimit);
+  unsupportedFractal.id = 'texture/cpu-voronoi-fractal-detail';
+  unsupportedFractal.nodes[0].inputs.detail = 1;
+  const fractalValidation = validateProceduralTextureGraph(unsupportedFractal);
+  assert.ok(fractalValidation.errors.some(error => error.code === 'procedural_node_property_unsupported'
+    && error.property === 'detail'));
+
+  const expensive = singleNodeTextureGraph({
+    type: 'blender.voronoiTexture',
+    params: { dimensions: '4D', feature: 'SMOOTH_F1', distanceMetric: 'EUCLIDEAN', normalize: false },
+    inputs: { detail: PROCEDURAL_TEXTURE_LIMITS.maxBlenderVoronoiDetail },
+    port: 'distance',
+  });
+  const expensiveValidation = validateProceduralTextureGraph(expensive);
+  const budget = expensiveValidation.errors.find(error => error.code === 'procedural_node_budget_exceeded');
+  assert.ok(budget, JSON.stringify(expensiveValidation.errors));
+  assert.equal(budget.candidateVisits, 5000);
+  assert.equal(budget.limit, PROCEDURAL_TEXTURE_LIMITS.maxVoronoiCandidateVisits);
+  assert.equal(budget.dimensions, 4);
+  assert.equal(budget.radius, 2);
+  assert.equal(budget.octaves, 8);
 });
 
 test('requires explicit bounded CPU image sources', () => {

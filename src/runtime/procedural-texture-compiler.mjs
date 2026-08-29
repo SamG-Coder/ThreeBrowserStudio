@@ -17,6 +17,9 @@ export const PROCEDURAL_TEXTURE_LIMITS = Object.freeze({
   maxPixels: 2048 * 2048,
   maxOutputs: 4,
   maxBlurRadius: 16,
+  maxBlenderNoiseDetail: 8,
+  maxBlenderVoronoiDetail: 7,
+  maxVoronoiCandidateVisits: 2500,
   maxEstimatedSamples: 250_000_000,
 });
 
@@ -34,6 +37,24 @@ const REF_KEYS = new Set(['nodeId', 'port']);
 const OUTPUT_REF_KEYS = new Set(['nodeId', 'port', 'colorSpace']);
 const SETTING_KEYS = new Set(['seed', 'resolution', 'wrapS', 'wrapT', 'minFilter', 'magFilter', 'mode']);
 const STABLE_ID = /^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,127}$/;
+
+const catalogModes = (nodeType, property) => new Set(GRAPH_CATALOGS.texture.nodes[nodeType].params[property].values);
+const BLENDER_NOISE_DIMENSIONS = catalogModes('blender.noiseTexture', 'dimensions');
+const BLENDER_NOISE_TYPES = catalogModes('blender.noiseTexture', 'noiseType');
+const CPU_NOISE_DIMENSIONS = new Set(['2D']);
+const CPU_NOISE_TYPES = new Set(['FBM']);
+const BLENDER_VORONOI_FEATURES = catalogModes('blender.voronoiTexture', 'feature');
+const CPU_VORONOI_FEATURES = new Set(['F1', 'F2', 'DISTANCE_TO_EDGE']);
+const BLENDER_VORONOI_METRICS = catalogModes('blender.voronoiTexture', 'distanceMetric');
+const CPU_VORONOI_METRICS = new Set(['EUCLIDEAN', 'MANHATTAN', 'CHEBYCHEV']);
+const BLENDER_RAMP_INTERPOLATIONS = catalogModes('blender.colorRamp', 'interpolation');
+const CPU_RAMP_INTERPOLATIONS = new Set(['CONSTANT', 'LINEAR', 'EASE']);
+const BLENDER_RAMP_COLOR_MODES = catalogModes('blender.colorRamp', 'colorMode');
+const CPU_RAMP_COLOR_MODES = new Set(['RGB']);
+const BLENDER_HUE_INTERPOLATIONS = catalogModes('blender.colorRamp', 'hueInterpolation');
+const BLENDER_MIX_MODES = catalogModes('blender.mix', 'blendMode');
+const CPU_MIX_MODES = new Set(['MIX', 'MULTIPLY', 'SCREEN', 'ADD', 'SUBTRACT']);
+const NUMERIC_VALUE_TYPES = new Set([...catalogModes('blender.mix', 'valueType')].map(value => value.toUpperCase()));
 
 const COMMON_NOISE_PARAMS = [
   'seed', 'scale', 'detail', 'octaves', 'roughness', 'gain', 'lacunarity',
@@ -333,6 +354,206 @@ function sourceMapName(domain, outputName) {
   return ['albedo', 'roughness', 'normal', 'height'].includes(outputName) ? outputName : null;
 }
 
+function modeValue(value, fallback) {
+  return String(value ?? fallback).toUpperCase();
+}
+
+function blenderStyleNoise(descriptor) {
+  const key = typeKey(descriptor.node.type);
+  return descriptor.classification.blenderDefaults || ['noisetexture', 'shadernodetexnoise', 'blendernoisetexture'].includes(key);
+}
+
+function blenderStyleVoronoi(descriptor) {
+  const key = typeKey(descriptor.node.type);
+  return descriptor.classification.blenderDefaults || ['voronoitexture', 'shadernodetexvoronoi', 'blendervoronoitexture'].includes(key);
+}
+
+function blenderStyleRamp(descriptor) {
+  const key = typeKey(descriptor.node.type);
+  return descriptor.classification.blenderDefaults
+    || ['valtorgb', 'shadernodevaltorgb', 'blendercolorramp'].includes(key)
+    || Object.hasOwn(descriptor.node.params ?? {}, 'colorMode')
+    || Object.hasOwn(descriptor.node.params ?? {}, 'hueInterpolation');
+}
+
+function blenderStyleMix(descriptor) {
+  const key = typeKey(descriptor.node.type);
+  return descriptor.classification.blenderDefaults
+    || ['mixrgb', 'shadernodemix', 'shadernodemixrgb', 'blendermix'].includes(key)
+    || Object.hasOwn(descriptor.node.params ?? {}, 'blendMode');
+}
+
+function literalInput(node, name, fallback) {
+  const entry = Object.entries(node.inputs ?? {}).find(([key]) => portKey(key) === portKey(name));
+  return entry ? entry[1] : fallback;
+}
+
+function numericLiteralInput(node, name, fallback) {
+  const value = literalInput(node, name, fallback);
+  return Number.isFinite(value) ? value : NaN;
+}
+
+function modeDiagnostic(diagnostics, path, node, property, value, supported) {
+  diagnostics.push(diagnostic(
+    'procedural_node_mode_unsupported',
+    `${node.type} ${property} ${value} is catalogued but is not implemented by bounded CPU bake.`,
+    `${path}/params/${property}`,
+    { nodeId: node.id, nodeType: node.type, property, value, supported: [...supported] },
+  ));
+}
+
+function invalidModeDiagnostic(diagnostics, path, node, property, value, advertised) {
+  diagnostics.push(diagnostic(
+    'procedural_invalid_node_mode',
+    `${node.type} ${property} ${value} is not an advertised mode.`,
+    `${path}/params/${property}`,
+    { nodeId: node.id, nodeType: node.type, property, value, advertised: [...advertised] },
+  ));
+}
+
+function validateMode({ diagnostics, path, node, property, value, advertised, supported }) {
+  if (!advertised.has(value)) invalidModeDiagnostic(diagnostics, path, node, property, value, advertised);
+  else if (!supported.has(value)) modeDiagnostic(diagnostics, path, node, property, value, supported);
+}
+
+function voronoiCost(descriptor) {
+  const node = descriptor.node;
+  const dimensions = Math.max(1, Math.min(4, Number.parseInt(modeValue(node.params?.dimensions, '3D'), 10) || 3));
+  const feature = modeValue(node.params?.feature, 'F1');
+  const dynamicDetail = descriptor.inputs.has('detail');
+  const detailValue = numericLiteralInput(node, 'detail', 0);
+  const detail = dynamicDetail || !Number.isFinite(detailValue)
+    ? PROCEDURAL_TEXTURE_LIMITS.maxBlenderVoronoiDetail
+    : Math.max(0, Math.min(PROCEDURAL_TEXTURE_LIMITS.maxBlenderVoronoiDetail, Math.floor(detailValue)));
+  const radius = feature === 'SMOOTH_F1' ? 2 : 1;
+  const passes = ['DISTANCE_TO_EDGE', 'N_SPHERE_RADIUS'].includes(feature) ? 2 : 1;
+  const octaves = feature === 'N_SPHERE_RADIUS' ? 1 : detail + 1;
+  const candidateVisits = (((radius * 2) + 1) ** dimensions) * passes * octaves;
+  return { dimensions, feature, radius, passes, octaves, candidateVisits };
+}
+
+function validateCpuCapabilities(graph, runtimeNodes, diagnostics) {
+  for (const descriptor of runtimeNodes.values()) {
+    const { node, classification } = descriptor;
+    const path = `/nodes/${graph.nodes.indexOf(node)}`;
+    const params = node.params ?? {};
+
+    if (classification.kind === 'fbm' && blenderStyleNoise(descriptor)) {
+      const dimensions = modeValue(params.dimensions, '3D');
+      const noiseType = modeValue(params.noiseType, 'FBM');
+      validateMode({ diagnostics, path, node, property: 'dimensions', value: dimensions, advertised: BLENDER_NOISE_DIMENSIONS, supported: CPU_NOISE_DIMENSIONS });
+      validateMode({ diagnostics, path, node, property: 'noiseType', value: noiseType, advertised: BLENDER_NOISE_TYPES, supported: CPU_NOISE_TYPES });
+      if (params.normalize !== undefined && typeof params.normalize !== 'boolean') {
+        diagnostics.push(diagnostic('procedural_invalid_node_property', `${node.type} normalize must be boolean.`, `${path}/params/normalize`, { nodeId: node.id, property: 'normalize' }));
+      } else if (params.normalize === false) {
+        diagnostics.push(diagnostic(
+          'procedural_node_property_unsupported',
+          `${node.type} normalize=false is catalogued but raw noise ranges are not implemented by bounded CPU bake.`,
+          `${path}/params/normalize`,
+          { nodeId: node.id, property: 'normalize', value: false, supported: true },
+        ));
+      }
+      if (descriptor.inputs.has('detail')) {
+        diagnostics.push(diagnostic(
+          'procedural_dynamic_setting_unsupported',
+          `${node.type} Detail must be a static socket value for bounded CPU bake.`,
+          `${path}/inputs/detail`,
+          { nodeId: node.id, property: 'detail' },
+        ));
+      } else {
+        const detail = numericLiteralInput(node, 'detail', 2);
+        if (!Number.isFinite(detail) || detail < 0 || detail > 15) {
+          diagnostics.push(diagnostic('procedural_invalid_node_property', `${node.type} Detail must be in 0..15.`, `${path}/inputs/detail`, { nodeId: node.id, property: 'detail', value: detail }));
+        } else if (detail > PROCEDURAL_TEXTURE_LIMITS.maxBlenderNoiseDetail) {
+          diagnostics.push(diagnostic(
+            'procedural_detail_limit_exceeded',
+            `${node.type} Detail ${detail} exceeds the published live CPU limit ${PROCEDURAL_TEXTURE_LIMITS.maxBlenderNoiseDetail}.`,
+            `${path}/inputs/detail`,
+            { nodeId: node.id, property: 'detail', value: detail, limit: PROCEDURAL_TEXTURE_LIMITS.maxBlenderNoiseDetail },
+          ));
+        }
+      }
+    }
+
+    if (classification.kind === 'voronoi' && blenderStyleVoronoi(descriptor)) {
+      const dimensions = modeValue(params.dimensions, '3D');
+      const feature = modeValue(params.feature, 'F1');
+      const metric = modeValue(params.distanceMetric ?? params.metric, 'EUCLIDEAN');
+      validateMode({ diagnostics, path, node, property: 'dimensions', value: dimensions, advertised: BLENDER_NOISE_DIMENSIONS, supported: CPU_NOISE_DIMENSIONS });
+      validateMode({ diagnostics, path, node, property: 'feature', value: feature, advertised: BLENDER_VORONOI_FEATURES, supported: CPU_VORONOI_FEATURES });
+      validateMode({ diagnostics, path, node, property: 'distanceMetric', value: metric, advertised: BLENDER_VORONOI_METRICS, supported: CPU_VORONOI_METRICS });
+      if (params.normalize !== undefined && typeof params.normalize !== 'boolean') {
+        diagnostics.push(diagnostic('procedural_invalid_node_property', `${node.type} normalize must be boolean.`, `${path}/params/normalize`, { nodeId: node.id, property: 'normalize' }));
+      } else if (params.normalize === true) {
+        diagnostics.push(diagnostic(
+          'procedural_node_property_unsupported',
+          `${node.type} normalize=true is catalogued but is not implemented by bounded CPU bake.`,
+          `${path}/params/normalize`,
+          { nodeId: node.id, property: 'normalize', value: true, supported: false },
+        ));
+      }
+
+      if (descriptor.inputs.has('detail')) {
+        diagnostics.push(diagnostic(
+          'procedural_dynamic_setting_unsupported',
+          `${node.type} Detail must be a static socket value for bounded CPU bake.`,
+          `${path}/inputs/detail`,
+          { nodeId: node.id, property: 'detail' },
+        ));
+      } else {
+        const detail = numericLiteralInput(node, 'detail', 0);
+        if (!Number.isFinite(detail) || detail < 0 || detail > 15) {
+          diagnostics.push(diagnostic('procedural_invalid_node_property', `${node.type} Detail must be in 0..15.`, `${path}/inputs/detail`, { nodeId: node.id, property: 'detail', value: detail }));
+        } else if (detail > PROCEDURAL_TEXTURE_LIMITS.maxBlenderVoronoiDetail) {
+          diagnostics.push(diagnostic(
+            'procedural_detail_limit_exceeded',
+            `${node.type} Detail ${detail} exceeds the published live CPU limit ${PROCEDURAL_TEXTURE_LIMITS.maxBlenderVoronoiDetail}.`,
+            `${path}/inputs/detail`,
+            { nodeId: node.id, property: 'detail', value: detail, limit: PROCEDURAL_TEXTURE_LIMITS.maxBlenderVoronoiDetail },
+          ));
+        } else if (detail > 0) {
+          diagnostics.push(diagnostic(
+            'procedural_node_property_unsupported',
+            `${node.type} fractal Detail is catalogued but is not implemented by bounded CPU bake.`,
+            `${path}/inputs/detail`,
+            { nodeId: node.id, property: 'detail', value: detail, supported: 0 },
+          ));
+        }
+      }
+
+      const cost = voronoiCost(descriptor);
+      if (cost.candidateVisits > PROCEDURAL_TEXTURE_LIMITS.maxVoronoiCandidateVisits) {
+        diagnostics.push(diagnostic(
+          'procedural_node_budget_exceeded',
+          `${node.type} requires ${cost.candidateVisits} Voronoi feature visits; the bounded CPU limit is ${PROCEDURAL_TEXTURE_LIMITS.maxVoronoiCandidateVisits}.`,
+          `${path}/inputs/detail`,
+          { nodeId: node.id, nodeType: node.type, ...cost, limit: PROCEDURAL_TEXTURE_LIMITS.maxVoronoiCandidateVisits },
+        ));
+      }
+    }
+
+    if (classification.kind === 'ramp' && blenderStyleRamp(descriptor)) {
+      const interpolation = modeValue(params.interpolation, 'LINEAR');
+      const colorMode = modeValue(params.colorMode, 'RGB');
+      const hueInterpolation = modeValue(params.hueInterpolation, 'NEAR');
+      validateMode({ diagnostics, path, node, property: 'interpolation', value: interpolation, advertised: BLENDER_RAMP_INTERPOLATIONS, supported: CPU_RAMP_INTERPOLATIONS });
+      validateMode({ diagnostics, path, node, property: 'colorMode', value: colorMode, advertised: BLENDER_RAMP_COLOR_MODES, supported: CPU_RAMP_COLOR_MODES });
+      if (!BLENDER_HUE_INTERPOLATIONS.has(hueInterpolation)) {
+        invalidModeDiagnostic(diagnostics, path, node, 'hueInterpolation', hueInterpolation, BLENDER_HUE_INTERPOLATIONS);
+      }
+    }
+
+    if (classification.kind === 'mix' && blenderStyleMix(descriptor)) {
+      const blendMode = modeValue(params.blendMode ?? params.blendType ?? params.operation, 'MIX');
+      const valueType = modeValue(params.valueType, 'COLOR');
+      validateMode({ diagnostics, path, node, property: 'blendMode', value: blendMode, advertised: BLENDER_MIX_MODES, supported: CPU_MIX_MODES });
+      if (!NUMERIC_VALUE_TYPES.has(valueType)) {
+        invalidModeDiagnostic(diagnostics, path, node, 'valueType', valueType, NUMERIC_VALUE_TYPES);
+      }
+    }
+  }
+}
+
 function validateCommonGraph(graph, options, diagnostics, warnings) {
   if (graph.nodes.length > PROCEDURAL_TEXTURE_LIMITS.maxNodes) {
     diagnostics.push(diagnostic('procedural_node_limit_exceeded', `Graph exceeds ${PROCEDURAL_TEXTURE_LIMITS.maxNodes} nodes.`, '/nodes'));
@@ -436,6 +657,8 @@ function validateCommonGraph(graph, options, diagnostics, warnings) {
     indegree.set(target.node.id, (indegree.get(target.node.id) ?? 0) + 1);
   }
 
+  validateCpuCapabilities(graph, runtimeNodes, diagnostics);
+
   for (const descriptor of runtimeNodes.values()) {
     if (descriptor.classification.blenderDefaults) continue;
     for (const group of descriptor.spec.requiredInputs) {
@@ -521,8 +744,20 @@ function validateRamp(node, path, diagnostics) {
 function estimatedSamples(runtimeNodes, resolution, outputs) {
   let factor = 0;
   for (const descriptor of runtimeNodes.values()) {
-    if (descriptor.classification.kind === 'fbm') factor += Math.max(1, Math.min(12, Math.trunc(descriptor.node.params.octaves ?? descriptor.node.params.detail ?? 4)));
-    else if (descriptor.classification.kind === 'voronoi') factor += 25;
+    if (descriptor.classification.kind === 'fbm') {
+      if (blenderStyleNoise(descriptor)) {
+        const detail = descriptor.inputs.has('detail')
+          ? PROCEDURAL_TEXTURE_LIMITS.maxBlenderNoiseDetail
+          : numericLiteralInput(descriptor.node, 'detail', 2);
+        const boundedDetail = Number.isFinite(detail) ? detail : PROCEDURAL_TEXTURE_LIMITS.maxBlenderNoiseDetail;
+        factor += Math.max(1, Math.min(PROCEDURAL_TEXTURE_LIMITS.maxBlenderNoiseDetail, Math.round(boundedDetail) || 1));
+      } else factor += Math.max(1, Math.min(12, Math.trunc(descriptor.node.params.octaves ?? descriptor.node.params.detail ?? 4)));
+    } else if (descriptor.classification.kind === 'voronoi') {
+      // The current bounded 2D kernel examines a 5x5 lattice. Future N-D
+      // modes use the exact catalogued neighborhood/pass/octave cost. Taking
+      // the maximum keeps the estimate conservative during that transition.
+      factor += Math.max(25, voronoiCost(descriptor).candidateVisits);
+    }
     else if (descriptor.classification.kind === 'blur') {
       const radius = descriptor.node.params.radius ?? 2;
       factor += (radius * 2 + 1) ** 2;
@@ -835,10 +1070,14 @@ function buildEvaluator(validation, options) {
       }
       case 'fbm': {
         const coordinate = vector(input(['coordinate', 'vector']), 2);
-        const scale = scalar(input('scale', params.scale ?? 1));
+        const isBlenderNoise = blenderStyleNoise(descriptor);
+        const scale = scalar(input('scale', params.scale ?? (isBlenderNoise ? 5 : 1)));
+        const detail = scalar(input('detail', params.octaves ?? params.detail ?? (isBlenderNoise ? 2 : 4)));
         const value = fbm2D(coordinate[0] * scale, coordinate[1] * scale, {
           seed: nodeSeed,
-          octaves: scalar(input('detail', params.octaves ?? params.detail ?? 4)),
+          octaves: isBlenderNoise
+            ? Math.max(1, Math.min(PROCEDURAL_TEXTURE_LIMITS.maxBlenderNoiseDetail, Math.round(detail)))
+            : detail,
           lacunarity: scalar(input('lacunarity', params.lacunarity ?? 2)),
           gain: scalar(input('roughness', input('gain', params.gain ?? params.roughness ?? 0.5))),
           distortion: scalar(input('distortion', params.distortion ?? 0)),
@@ -848,7 +1087,7 @@ function buildEvaluator(validation, options) {
       }
       case 'voronoi': {
         const coordinate = vector(input(['coordinate', 'vector']), 2);
-        const scale = scalar(input('scale', params.scale ?? 1));
+        const scale = scalar(input('scale', params.scale ?? (blenderStyleVoronoi(descriptor) ? 5 : 1)));
         const values = voronoi2D(coordinate[0] * scale, coordinate[1] * scale, {
           seed: nodeSeed,
           randomness: scalar(input('randomness', params.randomness ?? 1)),
