@@ -6,7 +6,7 @@ import { mkdtemp } from 'node:fs/promises';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { preparePages } from '../scripts/prepare-pages.mjs';
+import { PAGES_ASSET_STAMP, bustRelativeModuleImports, preparePages } from '../scripts/prepare-pages.mjs';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
@@ -23,6 +23,12 @@ test('pages artifact keeps the browser shell and does not replace site-entry', a
   assert.match(await readFile(path.join(root, 'site-entry.mjs'), 'utf8'), /src\/viewport\/main\.mjs/);
   const main = await readFile(path.join(output, 'src', 'viewport', 'main.mjs'), 'utf8');
   assert.match(main, /detectStudioHost/);
+  assert.match(main, new RegExp(`mcp-live-feed-webgpu-hud\\.mjs\\?v=${PAGES_ASSET_STAMP}`));
+  assert.match(html, new RegExp(`browser-entry\\.mjs\\?v=${PAGES_ASSET_STAMP}`));
   assert.doesNotMatch(main, /^import .*studio-application/m);
   assert.doesNotMatch(main, /^import .*system-typeface/m);
+  assert.match(
+    bustRelativeModuleImports("import { x } from './foo.mjs';", 'n'),
+    /foo\.mjs\?v=n/,
+  );
 });

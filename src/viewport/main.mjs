@@ -100,15 +100,9 @@ async function main() {
     height: Math.max(1, innerHeight),
     pixelRatio: Math.max(1, Number(globalThis.devicePixelRatio || 1)),
     typeface,
-    promptTab: browserPreview || !host.attached,
+    promptTab: false,
     onViewModeChange(mode) {
       reviewSession.setViewMode(mode);
-    },
-    onTabChange() {
-      promptSheet?.setOpen(Boolean(liveFeed.visible && liveFeed.tab === 'prompt'));
-    },
-    onVisibilityChange() {
-      promptSheet?.setOpen(Boolean(liveFeed.visible && liveFeed.tab === 'prompt'));
     },
   });
   const rtxLighting = createRtxLightingController({
@@ -299,11 +293,8 @@ async function main() {
           dispatch: createUnavailableStudioDispatch(),
         }),
       });
-      promptSheet = createBrowserPromptPanel({
-        document,
-        session,
-        getBounds: () => liveFeed.panelBounds,
-      });
+      promptSheet = createBrowserPromptPanel({ document, session });
+      promptSheet.setVisible(true);
     }
   } catch (error) {
     await dispose();
