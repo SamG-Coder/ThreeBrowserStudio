@@ -15,6 +15,10 @@ import {
   sampleBlenderColorRamp,
   separateBlenderColor,
 } from './procedural-texture-color.mjs';
+import {
+  blenderNoiseND,
+  blenderVoronoiND,
+} from './procedural-texture-noise-nd.mjs';
 
 export const PROCEDURAL_TEXTURE_LIMITS = Object.freeze({
   maxNodes: 256,
@@ -47,12 +51,12 @@ const STABLE_ID = /^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,127}$/;
 const catalogModes = (nodeType, property) => new Set(GRAPH_CATALOGS.texture.nodes[nodeType].params[property].values);
 const BLENDER_NOISE_DIMENSIONS = catalogModes('blender.noiseTexture', 'dimensions');
 const BLENDER_NOISE_TYPES = catalogModes('blender.noiseTexture', 'noiseType');
-const CPU_NOISE_DIMENSIONS = new Set(['2D']);
-const CPU_NOISE_TYPES = new Set(['FBM']);
+const CPU_NOISE_DIMENSIONS = BLENDER_NOISE_DIMENSIONS;
+const CPU_NOISE_TYPES = BLENDER_NOISE_TYPES;
 const BLENDER_VORONOI_FEATURES = catalogModes('blender.voronoiTexture', 'feature');
-const CPU_VORONOI_FEATURES = new Set(['F1', 'F2', 'DISTANCE_TO_EDGE']);
+const CPU_VORONOI_FEATURES = BLENDER_VORONOI_FEATURES;
 const BLENDER_VORONOI_METRICS = catalogModes('blender.voronoiTexture', 'distanceMetric');
-const CPU_VORONOI_METRICS = new Set(['EUCLIDEAN', 'MANHATTAN', 'CHEBYCHEV']);
+const CPU_VORONOI_METRICS = BLENDER_VORONOI_METRICS;
 const BLENDER_RAMP_INTERPOLATIONS = catalogModes('blender.colorRamp', 'interpolation');
 const CPU_RAMP_INTERPOLATIONS = BLENDER_RAMP_INTERPOLATIONS;
 const BLENDER_RAMP_COLOR_MODES = catalogModes('blender.colorRamp', 'colorMode');
@@ -88,7 +92,7 @@ const NODE_SPECS = Object.freeze({
   fbm: spec([['coordinate', 'vector']], ['value', 'fac', 'factor', 'color'], [
     ...COMMON_NOISE_PARAMS, 'dimensions', 'noiseType',
   ]),
-  voronoi: spec([['coordinate', 'vector']], ['distance', 'f1', 'f2', 'edge', 'cell', 'color'], [
+  voronoi: spec([['coordinate', 'vector']], ['distance', 'f1', 'f2', 'edge', 'cell', 'color', 'position', 'w', 'radius'], [
     'seed', 'scale', 'randomness', 'feature', 'distanceMetric', 'metric', 'dimensions', 'normalize',
   ]),
   wave: spec([['coordinate', 'vector']], ['value', 'fac', 'factor', 'color'], [
@@ -456,22 +460,8 @@ function validateCpuCapabilities(graph, runtimeNodes, diagnostics) {
       validateMode({ diagnostics, path, node, property: 'noiseType', value: noiseType, advertised: BLENDER_NOISE_TYPES, supported: CPU_NOISE_TYPES });
       if (params.normalize !== undefined && typeof params.normalize !== 'boolean') {
         diagnostics.push(diagnostic('procedural_invalid_node_property', `${node.type} normalize must be boolean.`, `${path}/params/normalize`, { nodeId: node.id, property: 'normalize' }));
-      } else if (params.normalize === false) {
-        diagnostics.push(diagnostic(
-          'procedural_node_property_unsupported',
-          `${node.type} normalize=false is catalogued but raw noise ranges are not implemented by bounded CPU bake.`,
-          `${path}/params/normalize`,
-          { nodeId: node.id, property: 'normalize', value: false, supported: true },
-        ));
       }
-      if (descriptor.inputs.has('detail')) {
-        diagnostics.push(diagnostic(
-          'procedural_dynamic_setting_unsupported',
-          `${node.type} Detail must be a static socket value for bounded CPU bake.`,
-          `${path}/inputs/detail`,
-          { nodeId: node.id, property: 'detail' },
-        ));
-      } else {
+      if (!descriptor.inputs.has('detail')) {
         const detail = numericLiteralInput(node, 'detail', 2);
         if (!Number.isFinite(detail) || detail < 0 || detail > 15) {
           diagnostics.push(diagnostic('procedural_invalid_node_property', `${node.type} Detail must be in 0..15.`, `${path}/inputs/detail`, { nodeId: node.id, property: 'detail', value: detail }));
@@ -495,23 +485,9 @@ function validateCpuCapabilities(graph, runtimeNodes, diagnostics) {
       validateMode({ diagnostics, path, node, property: 'distanceMetric', value: metric, advertised: BLENDER_VORONOI_METRICS, supported: CPU_VORONOI_METRICS });
       if (params.normalize !== undefined && typeof params.normalize !== 'boolean') {
         diagnostics.push(diagnostic('procedural_invalid_node_property', `${node.type} normalize must be boolean.`, `${path}/params/normalize`, { nodeId: node.id, property: 'normalize' }));
-      } else if (params.normalize === true) {
-        diagnostics.push(diagnostic(
-          'procedural_node_property_unsupported',
-          `${node.type} normalize=true is catalogued but is not implemented by bounded CPU bake.`,
-          `${path}/params/normalize`,
-          { nodeId: node.id, property: 'normalize', value: true, supported: false },
-        ));
       }
 
-      if (descriptor.inputs.has('detail')) {
-        diagnostics.push(diagnostic(
-          'procedural_dynamic_setting_unsupported',
-          `${node.type} Detail must be a static socket value for bounded CPU bake.`,
-          `${path}/inputs/detail`,
-          { nodeId: node.id, property: 'detail' },
-        ));
-      } else {
+      if (!descriptor.inputs.has('detail')) {
         const detail = numericLiteralInput(node, 'detail', 0);
         if (!Number.isFinite(detail) || detail < 0 || detail > 15) {
           diagnostics.push(diagnostic('procedural_invalid_node_property', `${node.type} Detail must be in 0..15.`, `${path}/inputs/detail`, { nodeId: node.id, property: 'detail', value: detail }));
@@ -521,13 +497,6 @@ function validateCpuCapabilities(graph, runtimeNodes, diagnostics) {
             `${node.type} Detail ${detail} exceeds the published live CPU limit ${PROCEDURAL_TEXTURE_LIMITS.maxBlenderVoronoiDetail}.`,
             `${path}/inputs/detail`,
             { nodeId: node.id, property: 'detail', value: detail, limit: PROCEDURAL_TEXTURE_LIMITS.maxBlenderVoronoiDetail },
-          ));
-        } else if (detail > 0) {
-          diagnostics.push(diagnostic(
-            'procedural_node_property_unsupported',
-            `${node.type} fractal Detail is catalogued but is not implemented by bounded CPU bake.`,
-            `${path}/inputs/detail`,
-            { nodeId: node.id, property: 'detail', value: detail, supported: 0 },
           ));
         }
       }
@@ -1101,8 +1070,26 @@ function buildEvaluator(validation, options) {
         break;
       }
       case 'fbm': {
-        const coordinate = vector(input(['coordinate', 'vector']), 2);
         const isBlenderNoise = blenderStyleNoise(descriptor);
+        if (isBlenderNoise) {
+          const values = blenderNoiseND(vector(input(['coordinate', 'vector'], [0, 0, 0]), 3), {
+            dimensions: params.dimensions ?? '3D',
+            noiseType: params.noiseType ?? 'FBM',
+            w: scalar(input('w', 0)),
+            scale: scalar(input('scale', params.scale ?? 5)),
+            detail: scalar(input('detail', params.octaves ?? params.detail ?? 2)),
+            roughness: scalar(input('roughness', params.roughness ?? 0.5)),
+            lacunarity: scalar(input('lacunarity', params.lacunarity ?? 2)),
+            offset: scalar(input('offset', params.offset ?? 0)),
+            gain: scalar(input('gain', params.gain ?? 1)),
+            distortion: scalar(input('distortion', params.distortion ?? 0)),
+            normalize: params.normalize !== false,
+            seed: nodeSeed,
+          });
+          result = { value: values.factor, fac: values.factor, factor: values.factor, color: values.color };
+          break;
+        }
+        const coordinate = vector(input(['coordinate', 'vector']), 2);
         const scale = scalar(input('scale', params.scale ?? (isBlenderNoise ? 5 : 1)));
         const detail = scalar(input('detail', params.octaves ?? params.detail ?? (isBlenderNoise ? 2 : 4)));
         const value = fbm2D(coordinate[0] * scale, coordinate[1] * scale, {
@@ -1118,6 +1105,32 @@ function buildEvaluator(validation, options) {
         break;
       }
       case 'voronoi': {
+        if (blenderStyleVoronoi(descriptor)) {
+          const values = blenderVoronoiND(vector(input(['coordinate', 'vector'], [0, 0, 0]), 3), {
+            dimensions: params.dimensions ?? '3D',
+            feature: params.feature ?? 'F1',
+            distanceMetric: params.distanceMetric ?? params.metric ?? 'EUCLIDEAN',
+            w: scalar(input('w', 0)),
+            scale: scalar(input('scale', params.scale ?? 5)),
+            detail: scalar(input('detail', 0)),
+            roughness: scalar(input('roughness', 0.5)),
+            lacunarity: scalar(input('lacunarity', 2)),
+            smoothness: scalar(input('smoothness', 1)),
+            exponent: scalar(input('exponent', 0.5)),
+            randomness: scalar(input('randomness', params.randomness ?? 1)),
+            normalize: params.normalize === true,
+            seed: nodeSeed,
+            maxCandidateVisits: PROCEDURAL_TEXTURE_LIMITS.maxVoronoiCandidateVisits,
+          });
+          result = {
+            distance: values.distance,
+            color: values.color,
+            position: values.position,
+            w: values.w,
+            radius: values.radius,
+          };
+          break;
+        }
         const coordinate = vector(input(['coordinate', 'vector']), 2);
         const scale = scalar(input('scale', params.scale ?? (blenderStyleVoronoi(descriptor) ? 5 : 1)));
         const values = voronoi2D(coordinate[0] * scale, coordinate[1] * scale, {

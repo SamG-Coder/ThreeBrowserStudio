@@ -198,100 +198,58 @@ test('evaluates canonical Blender procedural aliases and socket defaults in a 2D
   assert.ok(bake.maps.normal.data.some((value, index) => index % 4 < 2 && value !== 128));
 });
 
-test('CPU bake rejects every still-unimplemented Blender mode instead of silently falling back', () => {
-  const cases = [
-    ...['1D', '3D', '4D'].map(dimensions => ({
-      label: `Noise ${dimensions}`,
-      property: 'dimensions',
-      graph: singleNodeTextureGraph({
-        type: 'blender.noiseTexture',
-        params: { dimensions, noiseType: 'FBM', normalize: true },
-        port: 'factor',
-      }),
-    })),
-    ...['MULTIFRACTAL', 'HYBRID_MULTIFRACTAL', 'RIDGED_MULTIFRACTAL', 'HETERO_TERRAIN'].map(noiseType => ({
-      label: `Noise ${noiseType}`,
-      property: 'noiseType',
-      graph: singleNodeTextureGraph({
-        type: 'blender.noiseTexture',
-        params: { dimensions: '2D', noiseType, normalize: true },
-        port: 'factor',
-      }),
-    })),
-    ...['1D', '3D', '4D'].map(dimensions => ({
-      label: `Voronoi ${dimensions}`,
-      property: 'dimensions',
-      graph: singleNodeTextureGraph({
-        type: 'blender.voronoiTexture',
-        params: { dimensions, feature: 'F1', distanceMetric: 'EUCLIDEAN', normalize: false },
-        port: 'distance',
-      }),
-    })),
-    ...['SMOOTH_F1', 'N_SPHERE_RADIUS'].map(feature => ({
-      label: `Voronoi ${feature}`,
-      property: 'feature',
-      graph: singleNodeTextureGraph({
-        type: 'blender.voronoiTexture',
-        params: { dimensions: '2D', feature, distanceMetric: 'EUCLIDEAN', normalize: false },
-        port: feature === 'N_SPHERE_RADIUS' ? 'radius' : 'distance',
-      }),
-    })),
-    {
-      label: 'Voronoi Minkowski',
-      property: 'distanceMetric',
-      graph: singleNodeTextureGraph({
-        type: 'blender.voronoiTexture',
-        params: { dimensions: '2D', feature: 'F1', distanceMetric: 'MINKOWSKI', normalize: false },
-        port: 'distance',
-      }),
-    },
-  ];
-
-  for (const { label, property, graph } of cases) {
-    const validation = validateProceduralTextureGraph(graph);
-    assert.equal(validation.valid, false, label);
-    assert.ok(validation.errors.some(error => error.code === 'procedural_node_mode_unsupported'
-      && error.property === property), `${label}: ${JSON.stringify(validation.errors)}`);
-  }
-
+test('CPU bake rejects invalid Blender property types instead of coercing them', () => {
   for (const graph of [
     singleNodeTextureGraph({
       type: 'blender.noiseTexture',
-      params: { dimensions: '2D', noiseType: 'FBM', normalize: false },
+      params: { dimensions: '2D', noiseType: 'FBM', normalize: 'yes' },
       port: 'factor',
     }),
     singleNodeTextureGraph({
       type: 'blender.voronoiTexture',
-      params: { dimensions: '2D', feature: 'F1', distanceMetric: 'EUCLIDEAN', normalize: true },
+      params: { dimensions: '2D', feature: 'F1', distanceMetric: 'EUCLIDEAN', normalize: 1 },
       port: 'distance',
     }),
   ]) {
     const validation = validateProceduralTextureGraph(graph);
     assert.equal(validation.valid, false);
-    assert.ok(validation.errors.some(error => error.code === 'procedural_node_property_unsupported'
-      && error.property === 'normalize'));
+    assert.ok(validation.errors.some(error => error.path?.endsWith('/params/normalize')));
   }
 });
 
 test('CPU bake keeps its implemented Blender modes usable and rejects invalid alias modes', () => {
   const supported = [
+    ...['1D', '2D', '3D', '4D'].flatMap(dimensions => [
+      ...['FBM', 'MULTIFRACTAL', 'HYBRID_MULTIFRACTAL', 'RIDGED_MULTIFRACTAL', 'HETERO_TERRAIN'].map(noiseType => singleNodeTextureGraph({
+        type: 'blender.noiseTexture',
+        params: { dimensions, noiseType, normalize: true },
+        inputs: { detail: PROCEDURAL_TEXTURE_LIMITS.maxBlenderNoiseDetail, w: 0.37 },
+        port: 'factor',
+      })),
+    ]),
     singleNodeTextureGraph({
       type: 'blender.noiseTexture',
-      params: { dimensions: '2D', noiseType: 'FBM', normalize: true },
-      inputs: { detail: PROCEDURAL_TEXTURE_LIMITS.maxBlenderNoiseDetail },
+      params: { dimensions: '4D', noiseType: 'RIDGED_MULTIFRACTAL', normalize: false },
+      inputs: { detail: 3, w: 0.37 },
       port: 'factor',
     }),
-    ...['EUCLIDEAN', 'MANHATTAN', 'CHEBYCHEV'].map(distanceMetric => singleNodeTextureGraph({
+    ...['1D', '2D', '3D', '4D'].map(dimensions => singleNodeTextureGraph({
+      type: 'blender.voronoiTexture',
+      params: { dimensions, feature: 'F1', distanceMetric: 'EUCLIDEAN', normalize: true },
+      inputs: { detail: 0, w: 0.43 },
+      port: 'distance',
+    })),
+    ...['EUCLIDEAN', 'MANHATTAN', 'CHEBYCHEV', 'MINKOWSKI'].map(distanceMetric => singleNodeTextureGraph({
       type: 'blender.voronoiTexture',
       params: { dimensions: '2D', feature: 'F1', distanceMetric, normalize: false },
       inputs: { detail: 0 },
       port: 'distance',
     })),
-    ...['F1', 'F2', 'DISTANCE_TO_EDGE'].map(feature => singleNodeTextureGraph({
+    ...['F1', 'F2', 'SMOOTH_F1', 'DISTANCE_TO_EDGE', 'N_SPHERE_RADIUS'].map(feature => singleNodeTextureGraph({
       type: 'blender.voronoiTexture',
       params: { dimensions: '2D', feature, distanceMetric: 'EUCLIDEAN', normalize: false },
       inputs: { detail: 0 },
-      port: 'distance',
+      port: feature === 'N_SPHERE_RADIUS' ? 'radius' : 'distance',
     })),
     ...['CONSTANT', 'LINEAR', 'EASE', 'CARDINAL', 'B_SPLINE'].map(interpolation => singleNodeTextureGraph({
       type: 'blender.colorRamp',
@@ -391,7 +349,7 @@ test('CPU bake evaluates Blender colour nodes with live-compatible semantics', (
   assert.ok(Math.abs(colorMix[2] - 0.25) < 1e-8);
 });
 
-test('CPU bake exposes Detail limits and rejects exact over-budget Voronoi work', () => {
+test('CPU bake executes dynamic/fractal Detail within limits and rejects exact over-budget Voronoi work', () => {
   const noiseAtLimit = singleNodeTextureGraph({
     type: 'blender.noiseTexture',
     params: { dimensions: '2D', noiseType: 'FBM', normalize: true },
@@ -416,8 +374,8 @@ test('CPU bake exposes Detail limits and rejects exact over-budget Voronoi work'
     to: { nodeId: 'node', port: 'detail' },
   });
   const dynamicValidation = validateProceduralTextureGraph(dynamicNoise);
-  assert.ok(dynamicValidation.errors.some(error => error.code === 'procedural_dynamic_setting_unsupported'
-    && error.property === 'detail'));
+  assert.equal(dynamicValidation.valid, true, JSON.stringify(dynamicValidation.errors));
+  assert.doesNotThrow(() => compileProceduralTextureGraph(dynamicNoise).sample([0.2, 0.3]));
 
   const voronoiOverLimit = singleNodeTextureGraph({
     type: 'blender.voronoiTexture',
@@ -429,12 +387,12 @@ test('CPU bake exposes Detail limits and rejects exact over-budget Voronoi work'
   assert.ok(detailValidation.errors.some(error => error.code === 'procedural_detail_limit_exceeded'
     && error.limit === PROCEDURAL_TEXTURE_LIMITS.maxBlenderVoronoiDetail));
 
-  const unsupportedFractal = structuredClone(voronoiOverLimit);
-  unsupportedFractal.id = 'texture/cpu-voronoi-fractal-detail';
-  unsupportedFractal.nodes[0].inputs.detail = 1;
-  const fractalValidation = validateProceduralTextureGraph(unsupportedFractal);
-  assert.ok(fractalValidation.errors.some(error => error.code === 'procedural_node_property_unsupported'
-    && error.property === 'detail'));
+  const fractal = structuredClone(voronoiOverLimit);
+  fractal.id = 'texture/cpu-voronoi-fractal-detail';
+  fractal.nodes[0].inputs.detail = 1;
+  const fractalValidation = validateProceduralTextureGraph(fractal);
+  assert.equal(fractalValidation.valid, true, JSON.stringify(fractalValidation.errors));
+  assert.doesNotThrow(() => compileProceduralTextureGraph(fractal).sample([0.2, 0.3]));
 
   const expensive = singleNodeTextureGraph({
     type: 'blender.voronoiTexture',
