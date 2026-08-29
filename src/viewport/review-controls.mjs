@@ -1,4 +1,6 @@
 import * as THREE from "three/webgpu";
+import { isStudioOverlayEvent } from "./overlay-controls.mjs";
+import { reviewShouldIgnoreKey, reviewShouldReleaseKeys, reviewShouldStartLook } from "./review-input.mjs";
 import { applyLookDelta, clampPitch, flyStep } from "./review-fly.mjs";
 
 function keyName(event) {
@@ -38,8 +40,27 @@ export function createReviewControls(camera, domElement, {
     applyLook();
   }
 
+  function releaseKeys() {
+    keys.clear();
+  }
+
+  function cancelPointer() {
+    if (!dragging) return;
+    dragging = false;
+    try {
+      domElement.releasePointerCapture?.(pointerId);
+    } catch {
+      // Capture may already be gone after a context menu or blur.
+    }
+  }
+
   function onPointerDown(event) {
     if (disposed || dragging) return;
+    if (reviewShouldReleaseKeys(event)) {
+      releaseKeys();
+      return;
+    }
+    if (!reviewShouldStartLook(event)) return;
     onBeginInteract?.(event);
     if (!enabled) return;
     dragging = true;
@@ -67,8 +88,28 @@ export function createReviewControls(camera, domElement, {
 
   function finishPointer(event) {
     if (!dragging || Number(event.pointerId ?? 1) !== pointerId) return;
-    dragging = false;
-    domElement.releasePointerCapture?.(pointerId);
+    cancelPointer();
+  }
+
+  function onContextMenu(event) {
+    releaseKeys();
+    cancelPointer();
+    if (isStudioOverlayEvent(event)) return;
+    if (event.target === domElement || domElement.contains?.(event.target)) {
+      event.preventDefault?.();
+    }
+  }
+
+  function onBlur() {
+    releaseKeys();
+    cancelPointer();
+  }
+
+  function onVisibilityChange() {
+    if (globalThis.document?.hidden) {
+      releaseKeys();
+      cancelPointer();
+    }
   }
 
   function onWheel(event) {
@@ -81,6 +122,10 @@ export function createReviewControls(camera, domElement, {
 
   function onKeyDown(event) {
     if (disposed || !enabled) return;
+    if (reviewShouldIgnoreKey(event)) {
+      releaseKeys();
+      return;
+    }
     const code = keyName(event);
     if (code === 'Space' || code === ' ') {
       keys.add('Space');
@@ -110,9 +155,13 @@ export function createReviewControls(camera, domElement, {
   domElement.addEventListener("pointerup", finishPointer);
   domElement.addEventListener("pointercancel", finishPointer);
   domElement.addEventListener("lostpointercapture", finishPointer);
+  domElement.addEventListener("contextmenu", onContextMenu);
   domElement.addEventListener("wheel", onWheel, { passive: false });
   keyboard.addEventListener?.("keydown", onKeyDown);
   keyboard.addEventListener?.("keyup", onKeyUp);
+  keyboard.addEventListener?.("contextmenu", onContextMenu);
+  keyboard.addEventListener?.("blur", onBlur);
+  globalThis.document?.addEventListener?.("visibilitychange", onVisibilityChange);
   syncFromCamera();
 
   return {
@@ -138,14 +187,19 @@ export function createReviewControls(camera, domElement, {
       if (disposed) return;
       disposed = true;
       keys.clear();
+      dragging = false;
       domElement.removeEventListener("pointerdown", onPointerDown);
       domElement.removeEventListener("pointermove", onPointerMove);
       domElement.removeEventListener("pointerup", finishPointer);
       domElement.removeEventListener("pointercancel", finishPointer);
       domElement.removeEventListener("lostpointercapture", finishPointer);
+      domElement.removeEventListener("contextmenu", onContextMenu);
       domElement.removeEventListener("wheel", onWheel);
       keyboard.removeEventListener?.("keydown", onKeyDown);
       keyboard.removeEventListener?.("keyup", onKeyUp);
+      keyboard.removeEventListener?.("contextmenu", onContextMenu);
+      keyboard.removeEventListener?.("blur", onBlur);
+      globalThis.document?.removeEventListener?.("visibilitychange", onVisibilityChange);
     },
   };
 }

@@ -8,6 +8,8 @@ import {
   Label,
   OverlayHost,
   VirtualList,
+  isEditableStudioEvent,
+  isStudioOverlayEvent,
 } from '../src/viewport/overlay-controls.mjs';
 import {
   createReviewSession,
@@ -270,4 +272,14 @@ test('a clean host update is a no-op and review mode does not re-seed', () => {
   session.enterReview({ seedFromAuthored: true });
   session.setViewMode('review');
   assert.equal(seeded, 1, 'already reviewing must not re-seed the free camera');
+});
+
+test('editable Prompt fields and overlay chrome count as typing targets', () => {
+  const overlay = { closest: selector => String(selector).includes('data-studio-overlay') ? overlay : null };
+  const textarea = { tagName: 'TEXTAREA', closest: () => null };
+  const canvas = { tagName: 'CANVAS', closest: () => null };
+  assert.equal(isStudioOverlayEvent({ target: overlay }), true);
+  assert.equal(isEditableStudioEvent({ target: overlay }), true);
+  assert.equal(isEditableStudioEvent({ target: textarea }), true);
+  assert.equal(isEditableStudioEvent({ target: canvas }), false);
 });

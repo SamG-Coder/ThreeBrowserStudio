@@ -740,3 +740,32 @@ export function isStudioOverlayEvent(event) {
     return false;
   }
 }
+
+const EDITABLE_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
+
+function isEditableNode(target) {
+  if (!target || typeof target !== 'object') return false;
+  try {
+    if (target.closest?.('[data-studio-overlay]')) return true;
+  } catch {
+    // Synthetic events may not implement closest.
+  }
+  const tag = String(target.tagName || '').toUpperCase();
+  if (EDITABLE_TAGS.has(tag)) return true;
+  if (target.isContentEditable === true) return true;
+  try {
+    return Boolean(target.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]'));
+  } catch {
+    return false;
+  }
+}
+
+/** Prompt, HUD chrome, and other page fields must not drive the review camera. */
+export function isEditableStudioEvent(event) {
+  if (isEditableNode(event?.target)) return true;
+  try {
+    return isEditableNode(globalThis.document?.activeElement);
+  } catch {
+    return false;
+  }
+}
