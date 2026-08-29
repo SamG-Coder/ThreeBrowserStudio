@@ -106,7 +106,7 @@ export function validateSessionMarker(marker) {
   if (!isPlainObject(marker)) throw new RpcError('invalid_message', 'Session marker must be an object.');
   const allowed = new Set([
     'protocolVersion', 'sessionId', 'pid', 'pipePath', 'token', 'projectPath',
-    'projectId', 'revision', 'heartbeat', 'viewportReady',
+    'projectId', 'revision', 'heartbeat', 'viewportReady', 'toolContractHash',
   ]);
   for (const key of Object.keys(marker)) {
     if (!allowed.has(key)) throw new RpcError('invalid_message', `Unexpected session marker field: ${key}.`);
@@ -134,6 +134,9 @@ export function validateSessionMarker(marker) {
   }
   if (marker.viewportReady !== undefined && typeof marker.viewportReady !== 'boolean') {
     throw new RpcError('invalid_message', 'Session marker viewportReady must be boolean.');
+  }
+  if (marker.toolContractHash !== undefined && !/^[a-f0-9]{64}$/.test(marker.toolContractHash)) {
+    throw new RpcError('invalid_message', 'Session marker has an invalid toolContractHash.');
   }
   return Object.freeze({ ...marker });
 }
@@ -190,6 +193,7 @@ export function createSessionMarker({ credentials, ...state } = {}) {
     revision: state.revision ?? 0,
     heartbeat: state.heartbeat ?? new Date().toISOString(),
     viewportReady: state.viewportReady ?? false,
+    ...(state.toolContractHash === undefined ? {} : { toolContractHash: state.toolContractHash }),
   });
 }
 

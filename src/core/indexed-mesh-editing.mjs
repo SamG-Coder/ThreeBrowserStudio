@@ -99,11 +99,14 @@ export function validateIndexedMeshRecipe(recipe) {
 
 function vertexSelection(options, vertexCount, { optional = false } = {}) {
   const source = options?.vertexIndices ?? options?.selection ?? options?.indices;
+  if (source === 'all') {
+    return Array.from({ length: vertexCount }, (_, index) => index);
+  }
   if (source === undefined && optional) {
     return Array.from({ length: vertexCount }, (_, index) => index);
   }
   if (!Array.isArray(source) || source.length === 0) {
-    throw new TypeError('vertexIndices must be a non-empty array.');
+    throw new TypeError("vertexIndices must be a non-empty array, or selection must be 'all'.");
   }
   if (source.length > vertexCount) {
     throw new RangeError(`vertexIndices cannot contain more than ${vertexCount} entries.`);

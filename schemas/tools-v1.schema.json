@@ -161,19 +161,23 @@
       "oneOf": [
         {
           "type": "object", "additionalProperties": false,
-          "required": ["type", "vertexIndices", "offset"],
+          "required": ["type", "offset"],
+          "oneOf": [{ "required": ["vertexIndices"] }, { "required": ["selection"] }],
           "properties": {
             "type": { "const": "move" },
             "vertexIndices": { "$ref": "#/$defs/geometryVertexIndices" },
+            "selection": { "const": "all" },
             "offset": { "$ref": "#/$defs/geometryVec3" }
           }
         },
         {
           "type": "object", "additionalProperties": false,
-          "required": ["type", "vertexIndices", "scale"],
+          "required": ["type", "scale"],
+          "oneOf": [{ "required": ["vertexIndices"] }, { "required": ["selection"] }],
           "properties": {
             "type": { "const": "scale" },
             "vertexIndices": { "$ref": "#/$defs/geometryVertexIndices" },
+            "selection": { "const": "all" },
             "scale": {
               "oneOf": [
                 { "type": "number", "minimum": -1000000, "maximum": 1000000 },
@@ -185,20 +189,24 @@
         },
         {
           "type": "object", "additionalProperties": false,
-          "required": ["type", "vertexIndices", "rotation"],
+          "required": ["type", "rotation"],
+          "oneOf": [{ "required": ["vertexIndices"] }, { "required": ["selection"] }],
           "properties": {
             "type": { "const": "rotate" },
             "vertexIndices": { "$ref": "#/$defs/geometryVertexIndices" },
+            "selection": { "const": "all" },
             "rotation": { "$ref": "#/$defs/geometryVec3" },
             "pivot": { "$ref": "#/$defs/geometryVec3" }
           }
         },
         {
           "type": "object", "additionalProperties": false,
-          "required": ["type", "vertexIndices", "axis", "angle"],
+          "required": ["type", "axis", "angle"],
+          "oneOf": [{ "required": ["vertexIndices"] }, { "required": ["selection"] }],
           "properties": {
             "type": { "const": "rotate" },
             "vertexIndices": { "$ref": "#/$defs/geometryVertexIndices" },
+            "selection": { "const": "all" },
             "axis": {
               "allOf": [
                 { "$ref": "#/$defs/geometryVec3" },
@@ -212,9 +220,11 @@
         {
           "type": "object", "additionalProperties": false,
           "required": ["type"],
+          "not": { "required": ["vertexIndices", "selection"] },
           "properties": {
             "type": { "const": "smooth" },
             "vertexIndices": { "$ref": "#/$defs/geometryVertexIndices" },
+            "selection": { "const": "all" },
             "iterations": { "type": "integer", "minimum": 1, "maximum": 100 },
             "factor": { "type": "number", "minimum": 0, "maximum": 1 },
             "preserveBoundary": { "type": "boolean" }
@@ -245,7 +255,7 @@
       "properties": {
         "protocolVersion": { "$ref": "#/$defs/protocolVersion" }, "sessionId": { "$ref": "#/$defs/sessionId" },
         "projectId": { "$ref": "#/$defs/id" }, "sceneId": { "$ref": "#/$defs/id" },
-        "query": { "enum": ["selector", "sceneDigest", "changedSinceRevision", "unresolvedResources", "unusedResources", "graphCatalog", "playState", "latestEvidence", "blenderCatalog"] },
+        "query": { "enum": ["selector", "sceneDigest", "resourceDigest", "changedSinceRevision", "unresolvedResources", "unusedResources", "graphCatalog", "playState", "latestEvidence", "blenderCatalog"] },
         "selector": { "$ref": "#/$defs/selector" },
         "include": { "type": "array", "maxItems": 6, "items": { "enum": ["summary", "tree", "transform", "components", "bounds", "references"] } },
         "sinceRevision": { "$ref": "#/$defs/revision" }, "cursor": { "type": "string", "maxLength": 1024 },

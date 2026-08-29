@@ -10,6 +10,7 @@ import { StudioError } from './errors.mjs';
 import { assertStableId, isStableId } from './ids.mjs';
 import { assertJsonValue, cloneJson, isPlainRecord, mergePatch, nowIso, uniqueSorted } from './util.mjs';
 import { entityComponentReferences, validateEntityComponents } from './component-validation.mjs';
+import { validateIndexedMeshRecipe } from './indexed-mesh-editing.mjs';
 import { validateGraph } from '../graphs/validator.mjs';
 
 const PROJECT_KEYS = new Set([
@@ -26,6 +27,35 @@ const ENTITY_KEYS = new Set([
 ]);
 const TRANSFORM_KEYS = new Set(['position', 'rotation', 'scale']);
 const FLAT_GRAPH_KEYS = Object.freeze(['formatVersion', 'domain', 'nodes', 'edges', 'outputs', 'settings']);
+const INDEXED_GEOMETRY_FIELDS = Object.freeze([
+  'positions', 'indices', 'normals', 'uvs', 'colors', 'computeNormals',
+]);
+
+function validateGeometryResource(id, source) {
+  const nested = isPlainRecord(source.recipe)
+    ? source.recipe
+    : isPlainRecord(source.parameters) ? source.parameters : null;
+  const candidate = nested ?? source;
+  const recipeKind = nested
+    ? (candidate.kind ?? candidate.type)
+    : (source.geometryKind ?? source.type ?? source.kind);
+  if (!['explicit', 'indexedMesh'].includes(recipeKind)) return;
+  const recipe = {
+    kind: 'indexedMesh',
+    ...Object.fromEntries(INDEXED_GEOMETRY_FIELDS
+      .filter(key => Object.hasOwn(candidate, key))
+      .map(key => [key, candidate[key]])),
+  };
+  try {
+    validateIndexedMeshRecipe(recipe);
+  } catch (error) {
+    throw new StudioError(
+      'invalid_geometry_resource',
+      `Geometry resource ${id} has an invalid ${recipeKind} recipe: ${error.message}`,
+      { resourceId: id, recipeKind },
+    );
+  }
+}
 
 function defaultResources() {
   return Object.fromEntries(RESOURCE_TYPES.map((type) => [type, {}]));
@@ -192,6 +222,7 @@ export function createResourceDocument(resourceType, input = {}) {
     if (!validation.valid) throw graphValidationError(id, validation.diagnostics);
     source.graph = validation.graph;
   }
+  if (normalizedResourceType === 'geometries') validateGeometryResource(id, source);
   const defaultKinds = {
     geometries: 'geometry',
     materials: 'material',

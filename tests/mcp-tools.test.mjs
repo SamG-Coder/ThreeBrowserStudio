@@ -1,13 +1,18 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { McpServer } from '@modelcontextprotocol/server';
+import { z } from 'zod';
 import { LAYOUT_PATTERN_MODES } from '../src/core/layout-patterns.mjs';
 import {
   INSPECT_SLICES,
+  INSPECT_QUERIES,
+  MAX_RESOURCE_ARRAY_ITEMS,
   OPERATION_TYPES,
   STUDIO_TOOL_NAMES,
   TOOL_DEFINITIONS,
+  TOOL_CONTRACT,
   TOOL_SCHEMAS,
   applySchema,
   createThreeStudioMcpServer,
@@ -46,6 +51,22 @@ test('MCP surface is deliberately bounded and uses the official v2 server', () =
   }
 });
 
+test('tool contract hash covers the exact registered MCP input schemas', () => {
+  const server = createThreeStudioMcpServer({ dispatch: async () => ({ success: true }) });
+  const inputSchemas = Object.fromEntries(
+    STUDIO_TOOL_NAMES.map(name => [name, z.toJSONSchema(TOOL_SCHEMAS[name], { io: 'input' })]),
+  );
+  for (const name of STUDIO_TOOL_NAMES) {
+    assert.deepEqual(inputSchemas[name], server.toolInputSchemaJson(name));
+  }
+  const { hash, ...metadata } = TOOL_CONTRACT;
+  const expected = createHash('sha256').update(JSON.stringify({
+    ...metadata,
+    inputSchemas,
+  })).digest('hex');
+  assert.equal(hash, expected);
+});
+
 test('all tool inputs reject undeclared top-level fields', () => {
   for (const [name, schema] of Object.entries(TOOL_SCHEMAS)) {
     const result = schema.safeParse({ unexpected: name });
@@ -68,6 +89,7 @@ test('checked-in JSON contract mirrors the lean capability enums', async () => {
   const contract = JSON.parse(await readFile(new URL('../schemas/tools-v1.schema.json', import.meta.url), 'utf8'));
   assert.deepEqual(contract.$defs.operation.properties.op.enum, OPERATION_TYPES);
   assert.deepEqual(contract.$defs.inspect.properties.include.items.enum, INSPECT_SLICES);
+  assert.deepEqual(contract.$defs.inspect.properties.query.enum, INSPECT_QUERIES);
   assert.deepEqual(contract.$defs.project.properties.action.enum, ['list', 'create', 'open', 'save']);
   assert.deepEqual(contract.$defs.history.properties.action.enum, ['list', 'inspect', 'undo', 'redo']);
   assert.deepEqual(contract.$defs.render.properties.passes.items, { const: 'beauty' });
@@ -102,6 +124,11 @@ test('apply enforces shared mutation metadata and the 128-operation bound', () =
 
 test('MCP contract exposes only the live inspect and mutation slice', () => {
   assert.deepEqual(INSPECT_SLICES, ['summary', 'tree', 'transform', 'components', 'bounds', 'references']);
+  assert.deepEqual(INSPECT_QUERIES, [
+    'selector', 'sceneDigest', 'resourceDigest', 'changedSinceRevision',
+    'unresolvedResources', 'unusedResources', 'graphCatalog', 'playState',
+    'latestEvidence', 'blenderCatalog',
+  ]);
   assert.deepEqual(OPERATION_TYPES, [
     'scene.create', 'scene.patch', 'scene.delete', 'scene.setActive',
     'scene.settings.patch', 'scene.rtx.patch', 'scene.setActiveCamera',
@@ -113,6 +140,7 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
   assert.equal(inspectSchema.safeParse({ query: 'graphCatalog', selector: { kind: 'shader', status: 'live-tsl' } }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'unresolvedResources' }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'unusedResources' }).success, true);
+  assert.equal(inspectSchema.safeParse({ query: 'resourceDigest', selector: { ids: ['geometry/dense'] }, include: ['components', 'bounds', 'references'] }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'codeDiagnostics' }).success, false);
   assert.equal(inspectSchema.safeParse({ query: 'selector', selector: { resourceId: 'material/hero' } }).success, false);
   assert.equal(inspectSchema.safeParse({ query: 'sceneDigest', include: ['script'] }).success, false);
@@ -143,6 +171,23 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
     ...mutation,
     operations: [{ op: 'resource.create', resourceType: 'audio', resource: { id: 'audio/chime', kind: 'audio' } }],
   }).success, true);
+  assert.equal(MAX_RESOURCE_ARRAY_ITEMS, 6_000_000);
+  const denseIndices = new Array(20_001).fill(0);
+  assert.equal(applySchema.safeParse({
+    ...mutation,
+    operations: [{
+      op: 'resource.create',
+      resourceType: 'geometries',
+      resource: {
+        id: 'geometry/dense',
+        recipe: { kind: 'indexedMesh', positions: [0, 0, 0, 1, 0, 0, 0, 1, 0], indices: denseIndices },
+      },
+    }],
+  }).success, true);
+  assert.equal(applySchema.safeParse({
+    ...mutation,
+    operations: [{ op: 'scene.create', scene: { id: 'scene/dense', values: denseIndices } }],
+  }).success, false);
 });
 
 test('layout.pattern exposes strict bounded linear, grid, radial, and seeded scatter payloads', () => {

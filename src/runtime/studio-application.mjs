@@ -3,6 +3,7 @@ import path from 'node:path';
 import {
   AtomicProjectStore,
   AuthoringKernel,
+  MAX_INSPECT_RESPONSE_BYTES,
   ProjectIndex,
   PROTOCOL_VERSION,
   StudioError,
@@ -31,7 +32,7 @@ import {
   validateGraph,
 } from '../graphs/index.mjs';
 import { BLENDER_CATALOG_SUMMARY, queryBlenderCatalog } from '../blender/index.mjs';
-import { TOOL_SCHEMAS } from '../mcp/tool-schemas.mjs';
+import { TOOL_CONTRACT, TOOL_SCHEMAS } from '../mcp/tool-schemas.mjs';
 import { compileSceneDocument } from './scene-compiler.mjs';
 import { validateAnimationResource } from './animation-runtime.mjs';
 import { frameCameraToBounds } from '../viewport/camera-projection.mjs';
@@ -281,6 +282,240 @@ function compactEntity(entity, include, { index, compiled, THREE } = {}) {
   return output;
 }
 
+const RESOURCE_COMPONENT_ARRAY_LIMIT = 16;
+const RESOURCE_COMPONENT_VALUE_BUDGET = 160;
+const RESOURCE_COMPONENT_DEPTH_LIMIT = 5;
+const RESOURCE_REFERENCE_LIMIT = 200;
+const RESOURCE_TAG_LIMIT = 32;
+const RESOURCE_DIGEST_RESPONSE_BYTE_BUDGET = MAX_INSPECT_RESPONSE_BYTES;
+const RESOURCE_DIGEST_ENCODE = new TextEncoder();
+
+function compactString(value, maximum = 256) {
+  const source = String(value ?? '');
+  return source.length <= maximum ? source : `${source.slice(0, maximum - 1)}\u2026`;
+}
+
+function resourceTags(resource) {
+  const values = [
+    ...(Array.isArray(resource?.tags) ? resource.tags : []),
+    ...(Array.isArray(resource?.metadata?.tags) ? resource.metadata.tags : []),
+  ].filter(value => typeof value === 'string');
+  return [...new Set(values)].sort((a, b) => a.localeCompare(b));
+}
+
+function geometryRecipe(resource) {
+  const nested = resource?.recipe ?? resource?.parameters;
+  return isRecord(nested) ? nested : resource;
+}
+
+function geometryArray(recipe, directKey, attributeKey) {
+  const direct = recipe?.[directKey];
+  if (Array.isArray(direct)) return direct;
+  const attribute = recipe?.attributes?.[attributeKey];
+  return Array.isArray(attribute) ? attribute : undefined;
+}
+
+function numericItemSize(key, values, parent) {
+  const normalized = String(key).toLowerCase();
+  if (['positions', 'position', 'normals', 'normal', 'tangents', 'tangent'].includes(normalized)) return 3;
+  if (['uvs', 'uv'].includes(normalized)) return 2;
+  if (['indices', 'index', 'times'].includes(normalized)) return 1;
+  if (['colors', 'color'].includes(normalized)) {
+    const positions = parent?.positions ?? parent?.position;
+    const vertexCount = Array.isArray(positions) ? positions.length / 3 : 0;
+    const inferred = vertexCount > 0 ? values.length / vertexCount : 0;
+    if (inferred === 3 || inferred === 4) return inferred;
+    return 3;
+  }
+  if (values.every(Number.isFinite)) return 1;
+  if (values.length && values.every(value => Array.isArray(value) && value.length === values[0].length)) {
+    return values[0].length;
+  }
+  return undefined;
+}
+
+function shouldSummarizeArray(key, values) {
+  return values.length > RESOURCE_COMPONENT_ARRAY_LIMIT
+    || ['positions', 'position', 'normals', 'normal', 'tangents', 'tangent', 'uvs', 'uv', 'colors', 'color', 'indices', 'index']
+      .includes(String(key).toLowerCase());
+}
+
+function compactComponentValue(value, key, parent, state, depth = 0) {
+  if (state.remaining <= 0) return { truncated: true };
+  state.remaining -= 1;
+  if (value === null || typeof value === 'boolean' || typeof value === 'number') return value;
+  if (typeof value === 'string') return compactString(value);
+  if (Array.isArray(value)) {
+    if (shouldSummarizeArray(key, value)) {
+      const itemSize = numericItemSize(key, value, parent);
+      return { length: value.length, ...(itemSize === undefined ? {} : { itemSize }) };
+    }
+    const result = [];
+    for (const item of value) {
+      if (state.remaining <= 0) break;
+      result.push(compactComponentValue(item, '', value, state, depth + 1));
+    }
+    if (result.length < value.length) result.push({ omitted: value.length - result.length });
+    return result;
+  }
+  if (!isRecord(value)) return compactString(value);
+  const keys = Object.keys(value).sort((a, b) => a.localeCompare(b));
+  if (depth >= RESOURCE_COMPONENT_DEPTH_LIMIT) return { keyCount: keys.length, truncated: keys.length > 0 };
+  const result = {};
+  let included = 0;
+  for (const childKey of keys) {
+    if (state.remaining <= 0) break;
+    result[childKey] = compactComponentValue(value[childKey], childKey, value, state, depth + 1);
+    included += 1;
+  }
+  if (included < keys.length) result.omittedKeyCount = keys.length - included;
+  return result;
+}
+
+function compactResourceComponents(resource) {
+  const identity = new Set(['id', 'name', 'kind', 'tags']);
+  const values = Object.fromEntries(
+    Object.keys(resource)
+      .filter(key => !identity.has(key))
+      .sort((a, b) => a.localeCompare(b))
+      .map(key => [key, resource[key]]),
+  );
+  return compactComponentValue(values, 'components', values, {
+    remaining: RESOURCE_COMPONENT_VALUE_BUDGET,
+  });
+}
+
+function explicitGeometrySummary(resource, { includeBounds = false } = {}) {
+  const recipe = geometryRecipe(resource);
+  const recipeKind = recipe === resource
+    ? (resource?.geometryKind ?? resource?.type ?? resource?.kind)
+    : (recipe?.kind ?? recipe?.type ?? resource?.geometryKind ?? resource?.kind);
+  const output = { recipeKind: compactString(recipeKind ?? 'box', 80) };
+  if (!['explicit', 'indexedMesh'].includes(recipeKind)) return output;
+  const positions = geometryArray(recipe, 'positions', 'position') ?? [];
+  const indices = geometryArray(recipe, 'indices', 'index') ?? [];
+  const normals = geometryArray(recipe, 'normals', 'normal');
+  const uvs = geometryArray(recipe, 'uvs', 'uv');
+  const colors = geometryArray(recipe, 'colors', 'color');
+  const vertexCount = Math.floor(positions.length / 3);
+  output.vertexCount = vertexCount;
+  output.indexCount = indices.length;
+  output.triangleCount = Math.floor((indices.length || vertexCount) / 3);
+  output.hasNormals = Boolean(normals?.length);
+  output.hasUVs = Boolean(uvs?.length);
+  output.hasColors = Boolean(colors?.length);
+  output.computeNormals = recipe.computeNormals !== false;
+  if (includeBounds && vertexCount > 0) {
+    const minimum = [Infinity, Infinity, Infinity];
+    const maximum = [-Infinity, -Infinity, -Infinity];
+    let valid = true;
+    for (let offset = 0; offset + 2 < positions.length; offset += 3) {
+      for (let axis = 0; axis < 3; axis += 1) {
+        const value = positions[offset + axis];
+        if (!Number.isFinite(value)) {
+          valid = false;
+          break;
+        }
+        minimum[axis] = Math.min(minimum[axis], value);
+        maximum[axis] = Math.max(maximum[axis], value);
+      }
+      if (!valid) break;
+    }
+    if (valid) output.localBounds = { min: minimum, max: maximum };
+  }
+  return output;
+}
+
+function resourceKindMatches(resourceType, resource, expectedKind) {
+  if (!expectedKind) return true;
+  const singularType = resourceType.endsWith('ies')
+    ? `${resourceType.slice(0, -3)}y`
+    : resourceType.endsWith('s') ? resourceType.slice(0, -1) : resourceType;
+  return [resourceType, singularType, resource.kind].includes(expectedKind);
+}
+
+/** Builds one deterministic, bounded page of project-wide resource summaries. */
+export function buildResourceDigest(document, params = {}) {
+  const include = new Set(params.include ?? ['summary']);
+  const selector = params.selector ?? {};
+  const selectorIds = selector.ids ? new Set(selector.ids) : null;
+  const selectorName = selector.name?.toLowerCase();
+  const index = new ProjectIndex(document);
+  const allResources = Object.entries(document.resources ?? {})
+    .flatMap(([resourceType, table]) => Object.values(table ?? {}).map(resource => ({ resourceType, resource })))
+    .sort((first, second) => (
+      first.resourceType.localeCompare(second.resourceType)
+      || first.resource.id.localeCompare(second.resource.id)
+    ));
+  const selected = allResources.filter(({ resourceType, resource }) => (
+    (!selectorIds || selectorIds.has(resource.id))
+    && (!selectorName || String(resource.name ?? '').toLowerCase().includes(selectorName))
+    && resourceKindMatches(resourceType, resource, selector.kind)
+    && (!selector.tag || resourceTags(resource).includes(selector.tag))
+  ));
+  const offset = Math.max(0, Number.parseInt(params.cursor ?? '0', 10) || 0);
+  const limit = Math.min(200, Math.max(1, params.limit ?? 50));
+  const summarize = ({ resourceType, resource }) => {
+    const tags = resourceTags(resource);
+    const summary = {
+      id: resource.id,
+      name: compactString(resource.name, 240),
+      kind: compactString(resource.kind, 80),
+      resourceType,
+      resourceHash: contentHash(resource),
+      ...(tags.length ? {
+        tags: tags.slice(0, RESOURCE_TAG_LIMIT).map(tag => compactString(tag, 120)),
+        ...(tags.length > RESOURCE_TAG_LIMIT ? { tagCount: tags.length } : {}),
+      } : {}),
+      ...(resourceType === 'geometries' ? explicitGeometrySummary(resource, {
+        includeBounds: include.has('bounds'),
+      }) : {}),
+    };
+    if (include.has('components')) summary.components = compactResourceComponents(resource);
+    if (include.has('references')) {
+      const references = index.getReferencesTo(resource.id);
+      summary.referencesTo = references.slice(0, RESOURCE_REFERENCE_LIMIT);
+      summary.referenceCount = references.length;
+    }
+    return summary;
+  };
+  const page = [];
+  let responseBytes = 256;
+  let nextOffset = offset;
+  const requestedEnd = Math.min(selected.length, offset + limit);
+  for (let index = offset; index < requestedEnd; index += 1) {
+    const summary = summarize(selected[index]);
+    const summaryBytes = RESOURCE_DIGEST_ENCODE.encode(JSON.stringify(summary)).byteLength + 1;
+    if (responseBytes + summaryBytes > RESOURCE_DIGEST_RESPONSE_BYTE_BUDGET) {
+      if (page.length > 0) break;
+      const fallback = {
+        id: summary.id,
+        name: summary.name,
+        kind: summary.kind,
+        resourceType: summary.resourceType,
+        resourceHash: summary.resourceHash,
+        truncated: true,
+        omittedSlices: ['components', 'bounds', 'references'],
+      };
+      page.push(fallback);
+      responseBytes += RESOURCE_DIGEST_ENCODE.encode(JSON.stringify(fallback)).byteLength + 1;
+      nextOffset = index + 1;
+      break;
+    }
+    page.push(summary);
+    responseBytes += summaryBytes;
+    nextOffset = index + 1;
+  }
+  return {
+    resourceCount: allResources.length,
+    selectedResourceCount: selected.length,
+    resources: page,
+    estimatedResponseBytes: responseBytes,
+    responseByteBudget: RESOURCE_DIGEST_RESPONSE_BYTE_BUDGET,
+    nextCursor: nextOffset < selected.length ? String(nextOffset) : null,
+  };
+}
+
 async function pathExists(filePath) {
   try {
     await stat(filePath);
@@ -351,6 +586,7 @@ export class StudioApplication {
     await this.#openOrCreate(initial, { create: true, name: 'Live Studio Project', template: 'starter' });
     this.#bridge = await createLiveBridgeServer({
       credentials: this.#credentials,
+      serverInfo: { toolContract: TOOL_CONTRACT },
       dispatch: (method, params, context) => this.dispatch(method, params, context),
       beginCommand: this.#beginCommand,
       onError: error => console.error('[ThreeBrowser Studio bridge]', error.message),
@@ -678,6 +914,7 @@ export class StudioApplication {
         maxShadowLights: 16,
         maxOperations: 128,
         implementedOperations: supportedOperationTypes(),
+        toolContract: TOOL_CONTRACT,
       },
       latestEvidence: this.#latestEvidence,
     };
@@ -777,6 +1014,12 @@ export class StudioApplication {
   #inspect(params) {
     this.#assertTarget(params);
     const document = this.#kernel.document;
+    if (params.query === 'resourceDigest') return {
+      success: true,
+      revision: document.revision,
+      projectId: document.projectId,
+      ...buildResourceDigest(document, params),
+    };
     const scene = document.scenes[params.sceneId ?? document.activeSceneId];
     if (!scene) throw new StudioError('scene_not_found', `Scene ${params.sceneId} does not exist.`);
     if (params.query === 'changedSinceRevision') return { success: true, revision: document.revision, ...this.#kernel.changedSince(params.sinceRevision ?? document.revision) };
@@ -1093,6 +1336,7 @@ export class StudioApplication {
       projectId: this.#kernel?.projectId ?? null,
       revision: this.#kernel?.revision ?? 0,
       viewportReady,
+      toolContractHash: TOOL_CONTRACT.hash,
     });
     const write = this.#markerTail.then(async () => {
       await writeSessionMarker(this.#markerPath, marker);

@@ -4,9 +4,16 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { LiveBridgeClient, RpcError } from '../src/bridge/index.mjs';
-import { AtomicProjectStore, createProjectDocument } from '../src/core/index.mjs';
+import {
+  AtomicProjectStore,
+  MAX_INSPECT_RESPONSE_BYTES,
+  contentHash,
+  createProjectDocument,
+  createResourceDocument,
+} from '../src/core/index.mjs';
 import { LAYOUT_PATTERN_MODES } from '../src/core/layout-patterns.mjs';
-import { StudioApplication } from '../src/runtime/studio-application.mjs';
+import { TOOL_CONTRACT } from '../src/mcp/tool-schemas.mjs';
+import { StudioApplication, buildResourceDigest } from '../src/runtime/studio-application.mjs';
 
 class Vector3 {
   constructor(x = 0, y = 0, z = 0) {
@@ -207,6 +214,8 @@ test('raw live-bridge dispatch rejects unknown and oversized fields before execu
   const { application } = await applicationFixture(t);
   const client = await LiveBridgeClient.fromMarker(application.markerPath, { timeoutMs: 1_000 });
   t.after(() => client.close());
+  const ping = await client.ping();
+  assert.deepEqual(ping.serverInfo.toolContract, TOOL_CONTRACT);
   await assert.rejects(
     client.request('three_studio_status', { unexpected: true }),
     error => {
@@ -275,6 +284,224 @@ test('project-scoped requests reject a mismatched stable project ID', async (t) 
     }),
     rejectsWithCode('project_mismatch'),
   );
+});
+
+test('resource digest exposes bounded topology summaries, filters, references, and pagination', async (t) => {
+  const { application } = await applicationFixture(t);
+  const positions = [
+    -2, -1, -3,
+    4, -1, -3,
+    4, 5, 6,
+    -2, 5, 6,
+  ];
+  const graphId = 'graph/resource-digest-surface';
+  const created = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1',
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    baseRevision: 0,
+    idempotencyKey: 'resource-digest-create-0001',
+    label: 'Create resources for bounded digest inspection',
+    operations: [
+      {
+        op: 'resource.create',
+        resourceType: 'geometry',
+        resource: {
+          id: 'geometry/resource-digest-hero',
+          kind: 'geometry',
+          name: 'Snow Hero Mesh',
+          tags: ['hero', 'snow'],
+          metadata: { samples: Array.from({ length: 40 }, (_, index) => index) },
+          recipe: {
+            kind: 'indexedMesh',
+            positions,
+            indices: [0, 1, 2, 0, 2, 3],
+            normals: new Array(12).fill(1),
+            uvs: [0, 0, 1, 0, 1, 1, 0, 1],
+            colors: new Array(16).fill(0.5),
+            computeNormals: false,
+          },
+        },
+      },
+      {
+        op: 'resource.create',
+        resourceType: 'graph',
+        resource: {
+          id: graphId,
+          kind: 'graph',
+          name: 'Digest Surface',
+          graph: {
+            formatVersion: 1,
+            id: graphId,
+            domain: 'shader',
+            nodes: [{ id: 'color', type: 'constant.color', params: { value: [0.2, 0.3, 0.4] } }],
+            edges: [],
+            outputs: { baseColor: { nodeId: 'color', port: 'value' } },
+          },
+        },
+      },
+      {
+        op: 'resource.create',
+        resourceType: 'material',
+        resource: {
+          id: 'material/resource-digest-hero',
+          kind: 'material',
+          name: 'Hero Material',
+          graphId,
+          roughness: 0.72,
+        },
+      },
+      {
+        op: 'resource.create',
+        resourceType: 'asset',
+        resource: {
+          id: 'asset/resource-digest-reference',
+          kind: 'asset',
+          name: 'Reference Asset',
+        },
+      },
+    ],
+  });
+  assert.equal(created.success, true);
+
+  const geometryPage = await application.dispatch('three_studio_inspect', {
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    query: 'resourceDigest',
+    selector: {
+      ids: ['geometry/resource-digest-hero'],
+      name: 'HERO',
+      kind: 'geometry',
+      tag: 'snow',
+    },
+    include: ['summary', 'components', 'bounds', 'references'],
+    limit: 1,
+  });
+  assert.equal(geometryPage.success, true);
+  assert.equal(geometryPage.revision, 1);
+  assert.equal(geometryPage.resourceCount, 4);
+  assert.equal(geometryPage.selectedResourceCount, 1);
+  assert.equal(geometryPage.nextCursor, null);
+  assert.equal(geometryPage.resources.length, 1);
+  const geometry = geometryPage.resources[0];
+  assert.deepEqual({
+    id: geometry.id,
+    resourceType: geometry.resourceType,
+    recipeKind: geometry.recipeKind,
+    vertexCount: geometry.vertexCount,
+    indexCount: geometry.indexCount,
+    triangleCount: geometry.triangleCount,
+    hasNormals: geometry.hasNormals,
+    hasUVs: geometry.hasUVs,
+    hasColors: geometry.hasColors,
+    computeNormals: geometry.computeNormals,
+    localBounds: geometry.localBounds,
+  }, {
+    id: 'geometry/resource-digest-hero',
+    resourceType: 'geometries',
+    recipeKind: 'indexedMesh',
+    vertexCount: 4,
+    indexCount: 6,
+    triangleCount: 2,
+    hasNormals: true,
+    hasUVs: true,
+    hasColors: true,
+    computeNormals: false,
+    localBounds: { min: [-2, -1, -3], max: [4, 5, 6] },
+  });
+  assert.equal(geometry.resourceHash, contentHash(
+    application.kernel.document.resources.geometries['geometry/resource-digest-hero'],
+  ));
+  assert.deepEqual(geometry.components.recipe.positions, { length: 12, itemSize: 3 });
+  assert.deepEqual(geometry.components.recipe.indices, { length: 6, itemSize: 1 });
+  assert.deepEqual(geometry.components.recipe.normals, { length: 12, itemSize: 3 });
+  assert.deepEqual(geometry.components.recipe.uvs, { length: 8, itemSize: 2 });
+  assert.deepEqual(geometry.components.recipe.colors, { length: 16, itemSize: 4 });
+  assert.deepEqual(geometry.components.metadata.samples, { length: 40, itemSize: 1 });
+  assert.equal(Array.isArray(geometry.components.recipe.positions), false);
+  assert.equal(Array.isArray(geometry.components.recipe.indices), false);
+  assert.equal(JSON.stringify(geometry.components).includes(JSON.stringify(positions)), false);
+  assert.equal(geometry.referenceCount, 0);
+  assert.deepEqual(geometry.referencesTo, []);
+
+  const firstPage = await application.dispatch('three_studio_inspect', {
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    query: 'resourceDigest',
+    limit: 2,
+  });
+  assert.deepEqual(firstPage.resources.map(resource => resource.id), [
+    'asset/resource-digest-reference',
+    'geometry/resource-digest-hero',
+  ]);
+  assert.equal(firstPage.nextCursor, '2');
+  assert.equal(Object.hasOwn(firstPage.resources[1], 'localBounds'), false);
+  const secondPage = await application.dispatch('three_studio_inspect', {
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    query: 'resourceDigest',
+    cursor: firstPage.nextCursor,
+    limit: 2,
+    include: ['summary', 'references'],
+  });
+  assert.deepEqual(secondPage.resources.map(resource => resource.id), [
+    'graph/resource-digest-surface',
+    'material/resource-digest-hero',
+  ]);
+  assert.equal(secondPage.nextCursor, null);
+  assert.equal(secondPage.resources[0].referenceCount, 1);
+  assert.deepEqual(secondPage.resources[0].referencesTo, [{
+    kind: 'materialGraph',
+    sourceId: 'material/resource-digest-hero',
+  }]);
+});
+
+test('resource digest enforces one total response budget across a maximum-size page', () => {
+  const document = createProjectDocument({ projectId: 'project/resource-budget', name: 'Resource budget' });
+  const metadata = Object.fromEntries(Array.from(
+    { length: 160 },
+    (_, index) => [`field_${String(index).padStart(3, '0')}`, 'x'.repeat(256)],
+  ));
+  for (let index = 0; index < 200; index += 1) {
+    const id = `asset/budget-${String(index).padStart(3, '0')}`;
+    document.resources.assets[id] = createResourceDocument('assets', {
+      id,
+      kind: 'asset',
+      name: `Budget asset ${index}`,
+      metadata,
+    });
+  }
+
+  const digest = buildResourceDigest(document, { include: ['components'], limit: 200 });
+  const serializedBytes = new TextEncoder().encode(JSON.stringify(digest)).byteLength;
+  assert.ok(digest.resources.length > 0 && digest.resources.length < 200);
+  assert.equal(digest.nextCursor, String(digest.resources.length));
+  assert.equal(digest.responseByteBudget, MAX_INSPECT_RESPONSE_BYTES);
+  assert.ok(serializedBytes <= MAX_INSPECT_RESPONSE_BYTES);
+
+  const next = buildResourceDigest(document, {
+    include: ['components'],
+    cursor: digest.nextCursor,
+    limit: 200,
+  });
+  assert.ok(next.resources.length > 0);
+  assert.equal(next.resources[0].id, `asset/budget-${String(digest.resources.length).padStart(3, '0')}`);
+});
+
+test('resource digest compacts a pathological first resource before bridge serialization', () => {
+  const document = createProjectDocument({ projectId: 'project/resource-pathological', name: 'Pathological resource' });
+  const id = 'asset/pathological-tag';
+  document.resources.assets[id] = createResourceDocument('assets', {
+    id,
+    kind: 'asset',
+    name: 'Pathological tag',
+    tags: ['z'.repeat(1_000_000)],
+  });
+  const digest = buildResourceDigest(document, { include: ['summary'], limit: 200 });
+  const serializedBytes = new TextEncoder().encode(JSON.stringify(digest)).byteLength;
+  assert.equal(digest.resources.length, 1);
+  assert.ok(digest.resources[0].tags[0].length <= 120);
+  assert.ok(serializedBytes <= MAX_INSPECT_RESPONSE_BYTES);
 });
 
 test('live apply canonicalizes and validates an unused flat singular graph resource', async (t) => {
@@ -437,6 +664,7 @@ test('a project switch compile failure preserves the active project and live sce
   ]);
   assert.equal(status.capabilities.maxGeometryEditCommands, 64);
   assert.equal(status.capabilities.implementedOperations.includes('geometry.edit'), true);
+  assert.deepEqual(status.capabilities.toolContract, TOOL_CONTRACT);
   assert.deepEqual(viewport.scene.children, [liveRoot]);
   assert.equal(liveRoot.parent, viewport.scene);
 });

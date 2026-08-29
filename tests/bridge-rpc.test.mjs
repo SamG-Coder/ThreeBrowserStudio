@@ -57,6 +57,14 @@ test('authenticated NDJSON RPC correlates concurrent requests and has a built-in
   assert.equal(typeof ping.pid, 'number');
 });
 
+test('bridge ping exposes bounded native server information', async (t) => {
+  const serverInfo = { toolContract: { contractVersion: 'test/1', hash: 'a'.repeat(64) } };
+  const { client } = await fixture(t, async () => ({}), { serverInfo });
+  const ping = await client.ping();
+  assert.deepEqual(ping.serverInfo, serverInfo);
+  assert.notEqual(ping.serverInfo, serverInfo);
+});
+
 test('wrong ownership token is rejected with a typed error', async (t) => {
   const { credentials } = await fixture(t, async () => ({ shouldNotRun: true }));
   const badClient = new LiveBridgeClient({
@@ -179,6 +187,7 @@ test('session marker is strict, atomic, and contains the live ownership data', a
     projectId: 'project/test',
     revision: 7,
     viewportReady: true,
+    toolContractHash: 'a'.repeat(64),
   });
   await writeSessionMarker(markerPath, marker);
   assert.deepEqual(await readSessionMarker(markerPath), marker);
@@ -186,6 +195,7 @@ test('session marker is strict, atomic, and contains the live ownership data', a
   assert.equal(persisted.token, credentials.token);
   assert.equal(persisted.pipePath, credentials.pipePath);
   assert.equal(persisted.revision, 7);
+  assert.equal(persisted.toolContractHash, 'a'.repeat(64));
   if (process.platform === 'win32') {
     const { stdout } = await execFileAsync(
       path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'icacls.exe'),

@@ -108,6 +108,49 @@ test('geometry.edit resolves transaction aliases and applies ordered edits to a 
   });
 });
 
+test('resource create and patch reject malformed indexed topology before commit', async () => {
+  const kernel = new AuthoringKernel(createProjectDocument({
+    projectId: 'project/geometry-edit',
+    timestamp: '2026-08-29T00:00:00.000Z',
+  }));
+  await assert.rejects(kernel.apply(applyRequest({
+    idempotencyKey: 'geometry-create-invalid-0001',
+    operations: [{
+      type: 'resource.create',
+      resourceType: 'geometry',
+      resource: {
+        id: 'geometry/invalid',
+        recipe: {
+          kind: 'indexedMesh',
+          positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+          indices: [0, 1, 9],
+        },
+      },
+    }],
+  })), error => error.code === 'invalid_geometry_resource');
+  assert.equal(kernel.revision, 0);
+
+  await kernel.apply(applyRequest({
+    idempotencyKey: 'geometry-create-valid-0001',
+    operations: [{
+      type: 'resource.create',
+      resourceType: 'geometry',
+      resource: { id: 'geometry/valid', recipe: TRIANGLE_RECIPE },
+    }],
+  }));
+  await assert.rejects(kernel.apply(applyRequest({
+    baseRevision: 1,
+    idempotencyKey: 'geometry-patch-invalid-0001',
+    operations: [{
+      type: 'resource.patch',
+      resourceType: 'geometry',
+      resourceId: 'geometry/valid',
+      patch: { recipe: { uvs: [0, 0] } },
+    }],
+  })), error => error.code === 'invalid_geometry_resource');
+  assert.equal(kernel.revision, 1);
+});
+
 test('geometry.edit supports dry-run, idempotency, undo, and redo through resource history', async () => {
   const kernel = kernelWithGeometry();
   const original = structuredClone(kernel.document.resources.geometries['geometry/editable']);
@@ -185,6 +228,16 @@ test('geometry.edit canonicalizes a direct explicit type and rejects invalid tar
   assert.equal(strict.revision, 0);
 
   await assert.rejects(strict.apply(applyRequest({
+    idempotencyKey: 'geometry-edit-ambiguous-selection',
+    operations: [{
+      type: 'geometry.edit',
+      resourceId: 'geometry/editable',
+      edits: [{ type: 'move', vertexIndices: [0], selection: 'all', offset: [1, 0, 0] }],
+    }],
+  })), error => error.code === 'invalid_geometry_edit');
+  assert.equal(strict.revision, 0);
+
+  await assert.rejects(strict.apply(applyRequest({
     idempotencyKey: 'geometry-edit-too-many',
     operations: [{
       type: 'geometry.edit',
@@ -197,7 +250,7 @@ test('geometry.edit canonicalizes a direct explicit type and rejects invalid tar
 
 test('MCP geometry.edit exposes every strict bounded command shape', () => {
   const edits = [
-    { type: 'move', vertexIndices: [0], offset: [1, 2, 3] },
+    { type: 'move', selection: 'all', offset: [1, 2, 3] },
     { type: 'scale', vertexIndices: [0, 1], scale: [2, 1, 0.5] },
     { type: 'rotate', vertexIndices: [1], rotation: [0, Math.PI / 2, 0], pivot: [0, 0, 0] },
     { type: 'rotate', vertexIndices: [2], axis: [0, 1, 0], angle: Math.PI },
@@ -213,6 +266,8 @@ test('MCP geometry.edit exposes every strict bounded command shape', () => {
 
   const parseEdit = edit => applySchema.safeParse(mcpRequest([edit])).success;
   assert.equal(parseEdit({ type: 'move', vertexIndices: [0, 0], offset: [1, 0, 0] }), false);
+  assert.equal(parseEdit({ type: 'move', selection: 'all', vertexIndices: [0], offset: [1, 0, 0] }), false);
+  assert.equal(parseEdit({ type: 'move', selection: 'visible', offset: [1, 0, 0] }), false);
   assert.equal(parseEdit({ type: 'move', vertexIndices: [1_000_000], offset: [1, 0, 0] }), false);
   assert.equal(parseEdit({ type: 'move', vertexIndices: [0], offset: [1_000_001, 0, 0] }), false);
   assert.equal(parseEdit({ type: 'rotate', vertexIndices: [0], rotation: [0, 0, 1], axis: [0, 0, 1], angle: 1 }), false);

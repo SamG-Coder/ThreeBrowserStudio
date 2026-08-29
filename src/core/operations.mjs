@@ -21,10 +21,10 @@ const GEOMETRY_RECIPE_FIELDS = Object.freeze([
   'positions', 'indices', 'normals', 'uvs', 'colors', 'computeNormals',
 ]);
 const GEOMETRY_EDIT_KEYS = new Map([
-  ['move', new Set(['type', 'vertexIndices', 'offset'])],
-  ['scale', new Set(['type', 'vertexIndices', 'scale', 'pivot'])],
-  ['rotate', new Set(['type', 'vertexIndices', 'rotation', 'axis', 'angle', 'pivot'])],
-  ['smooth', new Set(['type', 'vertexIndices', 'iterations', 'factor', 'preserveBoundary'])],
+  ['move', new Set(['type', 'vertexIndices', 'selection', 'offset'])],
+  ['scale', new Set(['type', 'vertexIndices', 'selection', 'scale', 'pivot'])],
+  ['rotate', new Set(['type', 'vertexIndices', 'selection', 'rotation', 'axis', 'angle', 'pivot'])],
+  ['smooth', new Set(['type', 'vertexIndices', 'selection', 'iterations', 'factor', 'preserveBoundary'])],
   ['recalculateNormals', new Set(['type'])],
   ['weld', new Set(['type', 'tolerance'])],
   ['triangulate', new Set(['type'])],
@@ -598,6 +598,31 @@ function assertGeometryEditCommand(command, editIndex) {
     commandType: command.type ?? null,
   });
   assertKnownKeys(command, allowed, `geometry.edit edits[${editIndex}]`);
+  const supportsSelection = ['move', 'scale', 'rotate', 'smooth'].includes(command.type);
+  if (supportsSelection) {
+    const hasVertexIndices = command.vertexIndices !== undefined;
+    const hasCompactSelection = command.selection !== undefined;
+    studioAssert(
+      !hasCompactSelection || command.selection === 'all',
+      'invalid_geometry_edit',
+      `geometry.edit edits[${editIndex}] selection must be 'all'.`,
+      { editIndex },
+    );
+    studioAssert(
+      !(hasVertexIndices && hasCompactSelection),
+      'invalid_geometry_edit',
+      `geometry.edit edits[${editIndex}] accepts vertexIndices or selection, not both.`,
+      { editIndex },
+    );
+    if (command.type !== 'smooth') {
+      studioAssert(
+        hasVertexIndices || hasCompactSelection,
+        'invalid_geometry_edit',
+        `geometry.edit edits[${editIndex}] requires vertexIndices or selection.`,
+        { editIndex },
+      );
+    }
+  }
   if (command.type === 'rotate') {
     const hasEuler = command.rotation !== undefined;
     const hasAxis = command.axis !== undefined;

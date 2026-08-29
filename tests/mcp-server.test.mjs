@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createLiveMcpDispatch } from '../src/mcp/index.mjs';
+import { TOOL_CONTRACT } from '../src/mcp/tool-schemas.mjs';
 import { RpcError } from '../src/bridge/protocol.mjs';
 
 const LIVE_CONNECTION = {
@@ -18,6 +19,7 @@ const LIVE_PING = {
   sessionId: LIVE_CONNECTION.sessionId,
   pid: LIVE_CONNECTION.pid,
   heartbeat: LIVE_CONNECTION.heartbeat,
+  serverInfo: { toolContract: TOOL_CONTRACT },
 };
 
 function fakeClient({ ping = LIVE_PING, request } = {}) {
@@ -96,4 +98,41 @@ test('live MCP dispatch reconnects once after a dropped live bridge', async () =
   assert.equal(first.calls.close, 1);
   assert.equal(second.calls.connect, 1);
   assert.equal(result.method, 'three_studio_inspect');
+});
+
+test('live MCP dispatch rejects a stale native tool contract before forwarding calls', async () => {
+  const client = fakeClient({
+    ping: {
+      ...LIVE_PING,
+      serverInfo: { toolContract: { ...TOOL_CONTRACT, hash: '0'.repeat(64) } },
+    },
+  });
+  const live = createLiveMcpDispatch({
+    resolveConnection: async () => LIVE_CONNECTION,
+    clientFactory: () => client,
+  });
+  await assert.rejects(
+    () => live.dispatch('three_studio_status', {}),
+    error => error instanceof RpcError
+      && error.code === 'tool_contract_mismatch'
+      && error.data.actualHash === '0'.repeat(64),
+  );
+  assert.equal(client.calls.request, 0);
+  assert.equal(client.calls.close, 1);
+});
+
+test('live MCP dispatch rejects a stale marker contract before connecting', async () => {
+  let factoryCalls = 0;
+  const live = createLiveMcpDispatch({
+    resolveConnection: async () => ({ ...LIVE_CONNECTION, toolContractHash: 'f'.repeat(64) }),
+    clientFactory() {
+      factoryCalls += 1;
+      return fakeClient();
+    },
+  });
+  await assert.rejects(
+    () => live.dispatch('three_studio_status', {}),
+    error => error instanceof RpcError && error.code === 'tool_contract_mismatch',
+  );
+  assert.equal(factoryCalls, 0);
 });

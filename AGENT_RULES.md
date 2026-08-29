@@ -9,8 +9,9 @@ authority. In the current lean slice:
 
 - inspect supports scene summaries and delete-guard hashes,
   ID/name/kind/tag selection, tree, transforms, components, compiled bounds,
-  incoming references, resource-usage checks, changes, graph catalog, Play
-  counters, and latest evidence metadata;
+  incoming references, bounded resource topology/component digests,
+  resource-usage checks, changes, graph catalog, Play counters, and latest
+  evidence metadata;
 - apply supports the declared scene/entity/resource operations plus persistent
   `camera.frame`, bounded `layout.pattern`, indexed `geometry.edit`, and
   canonical `scene.rtx.patch`;
@@ -31,6 +32,9 @@ Use it only after both status and the current tool schema expose it.
 ## Authoring loop
 
 1. Call status after connecting or losing context.
+   If the adapter reports `tool_contract_mismatch`, stop and reconnect the MCP
+   client so it rediscovers the current schemas; do not infer support from a
+   newer native status through an older tool declaration.
 2. Inspect only the bounded slices needed for the next decision.
 3. Use exact stable IDs returned by inspect for every mutation.
 4. Group one coherent intent into one labelled atomic apply.
@@ -141,12 +145,23 @@ operations.
 
 - Stay within the limits reported by status; do not hard-code assumed limits.
 - Prefer instancing for repeated geometry.
+- Build and render one representative high-detail asset before scattering or
+  duplicating it. Repetition amplifies silhouette and shading defects.
+- Use `resourceDigest` to verify indexed vertex/triangle counts, attributes,
+  bounds, and references without requesting raw geometry arrays.
+- For whole-mesh transforms or smoothing, use `selection: "all"`; keep explicit
+  vertex-index lists for genuinely local edits.
+- Treat realism as the combination of silhouette, bevel/profile detail,
+  coherent material response, scale cues, camera, and lighting. Polygon count
+  alone is not evidence of realism.
 - Use graph parameters or material instances for shader variants.
 - Avoid per-object lights when an emissive material or shared light suffices.
 - Keep interactive texture graphs at or below 2048 unless a bake job is
   explicitly justified.
 - Dry-run large explicit batches and inspect the budgets returned by current
-  validation. Generated layouts and RTX remain bounded and capability-gated.
+  validation. Dense resource arrays remain subject to the one-MiB MCP request
+  ceiling even when their per-array schema budget is higher. Generated layouts
+  and RTX remain bounded and capability-gated.
 
 ## Files and assets
 

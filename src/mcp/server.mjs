@@ -3,11 +3,13 @@ import { serveStdio, StdioServerTransport } from '@modelcontextprotocol/server/s
 import {
   LiveBridgeClient,
   MAX_MESSAGE_BYTES,
+  RpcError,
   assertLiveSessionIdentity,
   defaultSessionMarkerPath,
   readSessionMarker,
 } from '../bridge/index.mjs';
 import { createThreeStudioMcpServer } from './tools.mjs';
+import { TOOL_CONTRACT } from './tool-schemas.mjs';
 
 function parseArguments(argv) {
   const values = {};
@@ -52,6 +54,21 @@ function isRetryableLiveDisconnect(error) {
   return code === 'connection_closed' || code === 'timeout' || code === 'session_mismatch';
 }
 
+function assertToolContract(ping) {
+  const actual = ping?.serverInfo?.toolContract;
+  if (actual?.hash === TOOL_CONTRACT.hash) return actual;
+  throw new RpcError(
+    'tool_contract_mismatch',
+    'The native Studio and this MCP adapter expose different tool contracts. Restart or reconnect the MCP client so it rediscovers Studio tools.',
+    {
+      expectedHash: TOOL_CONTRACT.hash,
+      actualHash: actual?.hash ?? null,
+      expectedVersion: TOOL_CONTRACT.contractVersion,
+      actualVersion: actual?.contractVersion ?? null,
+    },
+  );
+}
+
 export function createLiveMcpDispatch({
   argv = [],
   env = process.env,
@@ -74,6 +91,13 @@ export function createLiveMcpDispatch({
     if (connecting) return connecting;
     connecting = (async () => {
       const connection = await resolveConnection({ argv, env });
+      if (connection.toolContractHash !== undefined && connection.toolContractHash !== TOOL_CONTRACT.hash) {
+        throw new RpcError(
+          'tool_contract_mismatch',
+          'The live Studio marker uses a different tool contract. Restart or reconnect the MCP client so it rediscovers Studio tools.',
+          { expectedHash: TOOL_CONTRACT.hash, actualHash: connection.toolContractHash },
+        );
+      }
       const next = clientFactory(connection);
       try {
         await next.connect();
@@ -81,6 +105,7 @@ export function createLiveMcpDispatch({
         if (connection.sessionId !== undefined || connection.pid !== undefined) {
           assertIdentity(connection, ping);
         }
+        assertToolContract(ping);
         client = next;
         return next;
       } catch (error) {

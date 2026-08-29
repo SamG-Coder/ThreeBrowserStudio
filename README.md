@@ -37,9 +37,11 @@ The nine-tool shape is stable, but each tool advertises only its live slice:
 
 - `inspect`: scene digest or ID/name/kind/tag selection with summary, tree and
   delete-guard hashes, transform, component, compiled-bounds, and incoming-
-  reference slices; changes, unresolved/unused resources, graph and Blender
-  compatibility catalogs, Play/Action state, and latest evidence metadata;
-- `apply`: 14 atomic scene, entity, and resource operations only;
+  reference slices; bounded resource topology/component digests; changes,
+  unresolved/unused resources, graph and Blender compatibility catalogs,
+  Play/Action state, and latest evidence metadata;
+- `apply`: 18 atomic scene, camera, layout, indexed-geometry, RTX, entity, and
+  resource operations;
 - `validate`: whole-project interactive schema, reference, hierarchy, typed
   graph, Action/keyframe, and budget validation;
 - `render`: an exact animation frame, named camera, or explicit framing followed
@@ -212,10 +214,13 @@ configuration on a Codex host. Studio supplies server-level LLM instructions
 as well as strict schemas for all nine tools. See the
 [official MCP configuration guide](https://learn.chatgpt.com/docs/extend/mcp).
 
-The adapter discovers the per-user marker automatically and refuses to connect
-to a stale, mismatched, or absent live session. Restart the
-MCP server after starting a new Studio window because every native session gets
-a fresh random pipe and ownership token.
+The adapter discovers the per-user marker automatically and reconnects when a
+new native window uses the same tool contract. Every tool contract has a
+deterministic hash published in the session marker, bridge ping, and status.
+If native Studio and the long-lived MCP adapter were built from different tool
+contracts, the adapter returns `tool_contract_mismatch` instead of exposing stale
+validation. Restart or reconnect the MCP client then so it rediscovers all nine
+tool schemas.
 
 ## Working first slice
 
@@ -225,7 +230,8 @@ The current native loop is functional, not a static design mock:
 - atomic multi-operation changes, dry-run, optimistic revisions, idempotency,
   recovery, named split-file saves, guarded delete, and monotonic undo/redo;
 - authenticated one-MiB NDJSON bridge over a random local named pipe;
-- official MCP v2 STDIO adapter with nine bounded model-facing tools;
+- official MCP v2 STDIO adapter with nine bounded model-facing tools and an
+  explicit native/adapter contract handshake;
 - typed shader, texture, and blueprint graph catalogs and validation;
 - Blender 4.5/5.2 RNA-shaped shader nodes with per-socket values and links,
   Principled-to-Material-Output flow, live TSL/WebGPU compilation, an official

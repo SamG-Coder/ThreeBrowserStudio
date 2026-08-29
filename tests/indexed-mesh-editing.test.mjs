@@ -60,6 +60,20 @@ test('moveVertices edits only selected vertices, preserves UVs, and never mutate
   assert.equal('normals' in result, false);
 });
 
+test("selection 'all' edits a dense mesh without enumerating vertex indices", () => {
+  const moved = moveVertices(quadRecipe(), { selection: 'all', offset: [0, 0, 2] });
+  assert.deepEqual(moved.positions, [
+    0, 0, 2,
+    2, 0, 2,
+    2, 2, 2,
+    0, 2, 2,
+  ]);
+  assert.throws(
+    () => moveVertices(quadRecipe(), { selection: 'visible', offset: [0, 0, 2] }),
+    /selection must be 'all'/,
+  );
+});
+
 test('scaleVertices defaults to the selection centroid and accepts scalar factors', () => {
   const result = scaleVertices(quadRecipe(), { vertexIndices: [0, 1], scale: 2 });
   assert.deepEqual(result.positions, [

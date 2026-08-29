@@ -71,6 +71,7 @@ export class LiveBridgeServer {
     );
     this.dispatch = normalizeDispatcher(options.dispatch);
     this.beginCommand = typeof options.beginCommand === 'function' ? options.beginCommand : null;
+    this.serverInfo = options.serverInfo === undefined ? {} : structuredClone(options.serverInfo);
     this.onError = typeof options.onError === 'function' ? options.onError : () => {};
     this._server = net.createServer((socket) => this._accept(socket));
     this._server.on('error', (error) => this.onError(error));
@@ -215,6 +216,7 @@ export class LiveBridgeServer {
                 sessionId: this.sessionId,
                 pid: process.pid,
                 heartbeat: new Date().toISOString(),
+                serverInfo: this.serverInfo,
               })
             : Promise.resolve(this.dispatch(request.method, request.params, {
               id: request.id,

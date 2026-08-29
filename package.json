@@ -1,6 +1,6 @@
 {
   "name": "threebrowser-studio",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "LLM-first Three.js WebGPU scene and animation authoring runtime with a persistent native viewport and typed MCP editing",

@@ -16,10 +16,11 @@ pipeline is callable. The live MCP input schemas and
 
 The current slice exposes atomic scene/entity/resource authoring; persistent
 exact-aspect camera framing; bounded linear/grid/radial/seeded-scatter instancing; indexed
-vertex editing, smoothing, welding, and normal recalculation; canonical native
+vertex editing with compact whole-mesh selection, smoothing, welding, and
+normal recalculation; canonical native
 ray-query lighting/shadow/AO controls with truthful lifecycle state; bounded
-scene inspection with delete-guard hashes, compiled bounds, references, and
-resource-usage checks; whole-project interactive document/graph validation;
+scene and resource-topology inspection with delete-guard hashes, compiled/local
+bounds, references, and resource-usage checks; whole-project interactive document/graph validation;
 offscreen WebGPU beauty capture; list/inspect/undo/redo history; project
 list/create/open/save; deterministic Action playback and frame scrubbing; a
 queryable Blender compatibility catalog; and a transient Play boundary.
@@ -416,9 +417,16 @@ bounds, and incoming references. Scene digests include the exact scene hash;
 the tree slice includes subtree hashes needed for guarded deletes. Pagination
 prevents a large scene from flooding model context.
 
+`resourceDigest` searches every canonical resource table and returns bounded
+hashes and topology summaries. Dense geometry attributes are reported as
+counts/item sizes rather than echoed as raw arrays, so a model can verify that
+it authored real indexed geometry without consuming the next request budget.
+
 Useful special queries include:
 
 - scene digest;
+- resource digest with indexed-mesh counts, local bounds, compact components,
+  and incoming references;
 - changed since revision;
 - unresolved resources and unused resources;
 - graph node catalog and typed ports;
@@ -437,14 +445,24 @@ Operation families include:
 - scene create, patch, guarded delete, active scene, settings, and active
   camera;
 - entity create, patch, duplicate, reparent, and guarded delete;
+- exact-aspect camera framing, bounded live layout patterns, indexed geometry
+  edits (including `selection: "all"`), and canonical RTX settings; and
 - resource create, patch, and reference-safe delete across canonical resource
   tables.
 
 In-transaction aliases such as `$ground` let later operations reference new
 entities/resources without round trips. A dry-run returns resolved IDs, the
 compact document diff, diagnostics, and expected invalidations without
-touching the document or viewport. Script, layout, selection/review-camera, and
-persistent Play-parameter operations are not in the current schema.
+touching the document or viewport. Script, arbitrary selection/review-camera,
+layout modes beyond the four declared patterns, and persistent Play-parameter
+operations are not in the current schema.
+
+Dense resource arrays use geometry-scale schema budgets rather than the generic
+20,000-item JSON limit, while the one-MiB control request and core topology
+budgets remain authoritative. Explicit vertex-index lists stay bounded; use
+`selection: "all"` for a whole indexed mesh instead of serializing thousands of
+indices. Indexed and explicit topology is validated on both resource creation
+and the fully merged result of a resource patch before canonical state changes.
 
 ### 5. `three_studio_validate`
 

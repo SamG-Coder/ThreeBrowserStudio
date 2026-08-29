@@ -1,5 +1,11 @@
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { PROTOCOL_VERSION } from '../bridge/protocol.mjs';
+import {
+  MAX_CONTROL_REQUEST_BYTES,
+  MAX_INSPECT_RESPONSE_BYTES,
+  MAX_OPERATIONS_PER_TRANSACTION,
+} from '../core/constants.mjs';
 
 const finite = z.number().finite().min(-1_000_000_000).max(1_000_000_000);
 const nonNegativeInteger = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
@@ -19,6 +25,20 @@ export const jsonValueSchema = z.lazy(() => z.union([
   z.record(z.string().max(160), jsonValueSchema),
 ]));
 export const jsonObjectSchema = z.record(z.string().max(160), jsonValueSchema);
+
+// Resource payloads can contain dense indexed-mesh attributes. Their practical
+// ceiling remains the one MiB control-message budget, while core geometry
+// validation applies topology-specific limits after transport validation.
+export const MAX_RESOURCE_ARRAY_ITEMS = 6_000_000;
+export const resourceJsonValueSchema = z.lazy(() => z.union([
+  z.null(),
+  z.boolean(),
+  finite,
+  z.string().max(1_000_000),
+  z.array(resourceJsonValueSchema).max(MAX_RESOURCE_ARRAY_ITEMS),
+  z.record(z.string().max(160), resourceJsonValueSchema),
+]));
+export const resourceJsonObjectSchema = z.record(z.string().max(160), resourceJsonValueSchema);
 
 const connectionFields = {
   protocolVersion: z.literal(PROTOCOL_VERSION).optional().default(PROTOCOL_VERSION),
@@ -59,14 +79,16 @@ export const INSPECT_SLICES = Object.freeze([
   'summary', 'tree', 'transform', 'components', 'bounds', 'references',
 ]);
 
+export const INSPECT_QUERIES = Object.freeze([
+  'selector', 'sceneDigest', 'resourceDigest', 'changedSinceRevision',
+  'unresolvedResources', 'unusedResources', 'graphCatalog', 'playState',
+  'latestEvidence', 'blenderCatalog',
+]);
+
 export const inspectSchema = z.object({
   ...connectionFields,
   ...projectFields,
-  query: z.enum([
-    'selector', 'sceneDigest', 'changedSinceRevision', 'unresolvedResources',
-    'unusedResources', 'graphCatalog', 'playState', 'latestEvidence',
-    'blenderCatalog',
-  ]).default('sceneDigest'),
+  query: z.enum(INSPECT_QUERIES).default('sceneDigest'),
   selector: selectorSchema.optional(),
   include: z.array(z.enum(INSPECT_SLICES)).max(6).optional().default(['summary']),
   sinceRevision: nonNegativeInteger.optional(),
@@ -200,37 +222,34 @@ const geometryVertexIndices = z.array(
   { message: 'vertexIndices cannot contain duplicates.' },
 );
 const geometryScale = z.union([geometryFinite, geometryVec3]);
-const geometryMoveEdit = z.object({
-  type: z.literal('move'),
-  vertexIndices: geometryVertexIndices,
-  offset: geometryVec3,
-}).strict();
-const geometryScaleEdit = z.object({
-  type: z.literal('scale'),
-  vertexIndices: geometryVertexIndices,
+const geometrySelectedVariants = (type, fields) => z.union([
+  z.object({ type: z.literal(type), vertexIndices: geometryVertexIndices, ...fields }).strict(),
+  z.object({ type: z.literal(type), selection: z.literal('all'), ...fields }).strict(),
+]);
+const geometryMoveEdit = geometrySelectedVariants('move', { offset: geometryVec3 });
+const geometryScaleEdit = geometrySelectedVariants('scale', {
   scale: geometryScale,
   pivot: geometryVec3.optional(),
-}).strict();
-const geometryEulerRotateEdit = z.object({
-  type: z.literal('rotate'),
-  vertexIndices: geometryVertexIndices,
+});
+const geometryEulerRotateEdit = geometrySelectedVariants('rotate', {
   rotation: geometryVec3,
   pivot: geometryVec3.optional(),
-}).strict();
-const geometryAxisRotateEdit = z.object({
-  type: z.literal('rotate'),
-  vertexIndices: geometryVertexIndices,
+});
+const geometryAxisRotateEdit = geometrySelectedVariants('rotate', {
   axis: geometryAxis,
   angle: geometryFinite,
   pivot: geometryVec3.optional(),
-}).strict();
+});
 const geometrySmoothEdit = z.object({
   type: z.literal('smooth'),
   vertexIndices: geometryVertexIndices.optional(),
+  selection: z.literal('all').optional(),
   iterations: z.number().int().min(1).max(100).optional(),
   factor: z.number().finite().min(0).max(1).optional(),
   preserveBoundary: z.boolean().optional(),
-}).strict();
+}).strict().refine(value => value.vertexIndices === undefined || value.selection === undefined, {
+  message: 'smooth accepts vertexIndices or selection, not both.',
+});
 const geometryRecalculateNormalsEdit = z.object({
   type: z.literal('recalculateNormals'),
 }).strict();
@@ -303,8 +322,8 @@ const directOperations = [
   }),
   operation('layout.pattern', { entityId: reference, pattern: layoutPatternSchema }),
   operation('geometry.edit', { resourceId: reference, edits: geometryEditsSchema }),
-  operation('resource.create', { resourceType, resource: jsonObjectSchema, alias: alias.optional() }),
-  operation('resource.patch', { resourceType, resourceId: reference, patch: jsonObjectSchema }),
+  operation('resource.create', { resourceType, resource: resourceJsonObjectSchema, alias: alias.optional() }),
+  operation('resource.patch', { resourceType, resourceId: reference, patch: resourceJsonObjectSchema }),
   operation('resource.delete', { resourceType, resourceId: reference }),
 ];
 
@@ -430,3 +449,38 @@ export const TOOL_SCHEMAS = Object.freeze({
 });
 
 export const STUDIO_TOOL_NAMES = Object.freeze(Object.keys(TOOL_SCHEMAS));
+
+export const MCP_SERVER_VERSION = '0.2.0';
+export const TOOL_CONTRACT_VERSION = 'three-studio-tools/2';
+const TOOL_INPUT_SCHEMAS = Object.fromEntries(
+  STUDIO_TOOL_NAMES.map(name => [name, z.toJSONSchema(TOOL_SCHEMAS[name], { io: 'input' })]),
+);
+const TOOL_CONTRACT_LIMITS = Object.freeze({
+  maxOperations: MAX_OPERATIONS_PER_TRANSACTION,
+  maxControlRequestBytes: MAX_CONTROL_REQUEST_BYTES,
+  maxInspectResponseBytes: MAX_INSPECT_RESPONSE_BYTES,
+  maxResourceArrayItems: MAX_RESOURCE_ARRAY_ITEMS,
+  maxGeometryEditCommands: MAX_GEOMETRY_EDIT_COMMANDS,
+  maxGeometryEditVertexSelection: MAX_GEOMETRY_EDIT_VERTEX_SELECTION,
+});
+const TOOL_CONTRACT_FEATURES = Object.freeze({
+  compactGeometrySelectionAll: true,
+  resourceDigest: true,
+});
+const TOOL_CONTRACT_METADATA = Object.freeze({
+  contractVersion: TOOL_CONTRACT_VERSION,
+  protocolVersion: PROTOCOL_VERSION,
+  serverVersion: MCP_SERVER_VERSION,
+  operations: OPERATION_TYPES,
+  inspectQueries: INSPECT_QUERIES,
+  inspectSlices: INSPECT_SLICES,
+  limits: TOOL_CONTRACT_LIMITS,
+  features: TOOL_CONTRACT_FEATURES,
+});
+export const TOOL_CONTRACT = Object.freeze({
+  ...TOOL_CONTRACT_METADATA,
+  hash: createHash('sha256').update(JSON.stringify({
+    ...TOOL_CONTRACT_METADATA,
+    inputSchemas: TOOL_INPUT_SCHEMAS,
+  })).digest('hex'),
+});
