@@ -226,6 +226,8 @@ function fixture({
   pixelRatio = 2,
   maxVisibleRows = 10,
   promptTab = false,
+  onExportProject,
+  onImportProject,
 } = {}) {
   const document = new FakeDocument();
   const eventTarget = new FakeEventTarget();
@@ -235,6 +237,8 @@ function fixture({
   const hud = createMcpLiveFeedWebGpuHud({
     THREE, document, eventTarget, source: telemetry, scene,
     width, height, pixelRatio, maxVisibleRows, now, promptTab,
+    onExportProject,
+    onImportProject,
     setIntervalFn: timers.setIntervalFn,
     clearIntervalFn: timers.clearIntervalFn,
     schedulePaint: callback => callback(),
@@ -528,4 +532,24 @@ test('Prompt tab is browser-only and does not appear on the native HUD', () => {
   openPrompt.onClick();
   assert.equal(browser.hud.tab, 'prompt');
   browser.hud.dispose();
+});
+
+test('Settings Import/Export is always present and does not create file inputs', () => {
+  const calls = [];
+  const { document, hud } = fixture({
+    onExportProject() { calls.push('export'); },
+    onImportProject() { calls.push('import'); },
+  });
+  assert.equal(document.canvases.length > 0, true);
+  const settings = hud.host.children.find(child => child.name === 'settings-page');
+  const exportButton = settings.children.find(child => child.name === 'export-project');
+  const importButton = settings.children.find(child => child.name === 'import-project');
+  assert.equal(exportButton.text, 'Export JSON');
+  assert.equal(importButton.text, 'Import JSON');
+  exportButton.onClick();
+  importButton.onClick();
+  assert.deepEqual(calls, ['export', 'import']);
+  hud.setProjectTransferStatus('Exported Packed Scene.');
+  assert.equal(hud.projectTransferStatus, 'Exported Packed Scene.');
+  hud.dispose();
 });

@@ -1,4 +1,15 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { sha256HexUtf8 } from './sha256.mjs';
+
+function nodeCrypto() {
+  return globalThis.process?.getBuiltinModule?.('crypto') ?? null;
+}
+
+function randomUuid() {
+  if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
+  const crypto = nodeCrypto();
+  if (typeof crypto?.randomUUID === 'function') return crypto.randomUUID();
+  throw new TypeError('A cryptographically secure UUID source is required');
+}
 
 export function cloneJson(value) {
   return value === undefined ? undefined : structuredClone(value);
@@ -48,11 +59,16 @@ export function stableStringify(value, space = 0) {
 }
 
 export function contentHash(value) {
-  return createHash('sha256').update(stableStringify(value)).digest('hex');
+  const text = stableStringify(value);
+  const crypto = nodeCrypto();
+  if (typeof crypto?.createHash === 'function') {
+    return crypto.createHash('sha256').update(text).digest('hex');
+  }
+  return sha256HexUtf8(text);
 }
 
 export function createTransactionId(prefix = 'tx') {
-  return `${prefix}/${randomUUID()}`;
+  return `${prefix}/${randomUuid()}`;
 }
 
 export function uniqueSorted(values) {

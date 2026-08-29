@@ -35,6 +35,11 @@ import {
   supportedOperationTypes,
   validateProjectDocument,
 } from '../core/index.mjs';
+import {
+  createProjectPack,
+  parseProjectPack,
+  projectImportFolderName,
+} from '../core/project-pack.mjs';
 import { GEOMETRY_MODIFIER_TYPES } from '../core/geometry-modifier-evaluator.mjs';
 import {
   MAX_REQUEST_TIMEOUT_MS,
@@ -671,6 +676,36 @@ export class StudioApplication {
     console.log(`[ThreeBrowser Studio] live control: ${this.#credentials.pipePath}`);
     console.log(`[ThreeBrowser Studio] MCP marker: ${this.#markerPath}`);
     return this;
+  }
+
+  exportProjectDocument() {
+    return this.#exclusive(async () => {
+      if (!this.#kernel) throw new StudioError('project_not_open', 'No project is open.');
+      return createProjectPack(this.#kernel.document);
+    });
+  }
+
+  importProjectDocument(source) {
+    return this.#exclusive(async () => {
+      const document = parseProjectPack(source);
+      const folder = projectImportFolderName(document.name);
+      const root = this.#managedProjectPath(path.join('imports', folder));
+      if (await pathExists(path.join(root, 'project.threestudio.json'))) {
+        throw new StudioError('project_exists', `A Studio project already exists at ${root}.`);
+      }
+      const store = new AtomicProjectStore(root);
+      const projectId = `project/${path.basename(root).toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'import'}`;
+      const created = createProjectDocument({
+        ...document,
+        projectId,
+        name: document.name,
+        revision: 0,
+        savedRevision: 0,
+        scriptTrustPolicy: 'agent-safe',
+      });
+      await store.save(created);
+      return this.#openOrCreate(root, { create: false });
+    });
   }
 
   #aspect() {

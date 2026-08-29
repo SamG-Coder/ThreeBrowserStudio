@@ -15,6 +15,7 @@ import {
 } from '../src/core/index.mjs';
 import { LAYOUT_PATTERN_MODES } from '../src/core/layout-patterns.mjs';
 import { TOOL_CONTRACT, TOOL_CONTRACT_SUMMARY } from '../src/mcp/tool-schemas.mjs';
+import { createProjectPack, parseProjectPack } from '../src/core/project-pack.mjs';
 import { StudioApplication, buildResourceDigest } from '../src/runtime/studio-application.mjs';
 
 class Vector3 {
@@ -1271,4 +1272,23 @@ test('new inspect queries and nodeInputs patches work together as an authoring d
   assert.equal(beauty.width, 2);
   assert.equal(beauty.compare.changedPixelCount, 1);
   assert.equal(beauty.probes[0].rgba[0], 40);
+});
+
+test('host Settings import writes a new managed project and export returns a pack', async (t) => {
+  const { application, studioRoot } = await applicationFixture(t);
+  const packed = createProjectDocument({
+    projectId: 'project/packed',
+    name: 'Packed Scene',
+    scriptTrustPolicy: 'trusted-project',
+  });
+  const status = await application.importProjectDocument(createProjectPack(packed));
+  assert.equal(status.projectName, 'Packed Scene');
+  assert.equal(application.kernel.document.scriptTrustPolicy, 'agent-safe');
+  assert.match(application.kernel.store.root.replaceAll('\\', '/'), /\/projects\/imports\/packed-scene-/);
+  assert.equal(application.kernel.store.root.startsWith(path.join(studioRoot, 'projects')), true);
+
+  const exported = await application.exportProjectDocument();
+  assert.equal(exported.kind, 'ThreeStudioProjectPack');
+  assert.equal(exported.document.name, 'Packed Scene');
+  assert.equal(parseProjectPack(JSON.stringify(exported)).scriptTrustPolicy, 'agent-safe');
 });

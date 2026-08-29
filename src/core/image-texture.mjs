@@ -1,6 +1,32 @@
-import { Buffer } from 'node:buffer';
 import { StudioError } from './errors.mjs';
 import { isPlainRecord } from './util.mjs';
+
+const BASE64_CHUNK = 0x8000;
+
+function decodeCanonicalBase64(data) {
+  if (typeof globalThis.atob !== 'function') {
+    throw new TypeError('Base64 decoding is unavailable');
+  }
+  const binary = globalThis.atob(data);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+function encodeCanonicalBase64(bytes) {
+  if (typeof globalThis.btoa !== 'function') {
+    throw new TypeError('Base64 encoding is unavailable');
+  }
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += BASE64_CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + BASE64_CHUNK));
+  }
+  return globalThis.btoa(binary);
+}
+
+function utf8ByteLength(text) {
+  return new TextEncoder().encode(text).byteLength;
+}
 
 function rgbaTextureByteLength(width, height, generateMipmaps) {
   let levelWidth = width;
@@ -138,8 +164,8 @@ function validateBase64(diagnostics, data, expectedLength) {
     ));
     return;
   }
-  const bytes = Buffer.from(data, 'base64');
-  if (bytes.toString('base64') !== data) {
+  const bytes = decodeCanonicalBase64(data);
+  if (encodeCanonicalBase64(bytes) !== data) {
     pushDiagnostic(diagnostics, diagnostic(
       'data_texture_invalid_base64',
       'data must use canonical padded base64 encoding.',
@@ -314,7 +340,7 @@ export function normalizeDataTextureResource(resource) {
 export function decodeDataTexturePixels(resource) {
   const canonical = normalizeDataTextureResource(resource?.recipe ?? resource?.parameters ?? resource);
   return canonical.pixels === undefined
-    ? Uint8Array.from(Buffer.from(canonical.data, 'base64'))
+    ? decodeCanonicalBase64(canonical.data)
     : Uint8Array.from(canonical.pixels);
 }
 
@@ -325,7 +351,7 @@ export function dataTextureDecodedByteLength(resource) {
 
 export function dataTextureSerializedByteLength(resource) {
   const canonical = normalizeDataTextureResource(resource?.recipe ?? resource?.parameters ?? resource);
-  return Buffer.byteLength(JSON.stringify(canonical), 'utf8');
+  return utf8ByteLength(JSON.stringify(canonical));
 }
 
 export function dataTextureGpuByteLength(resource) {

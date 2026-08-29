@@ -12,6 +12,13 @@ import { detectStudioHost } from "../runtime/host-environment.mjs";
 import { collectRtxScene } from "../runtime/rtx-scene-collector.mjs";
 import { createRtxLightingController } from "./rtx-lighting-controller.mjs";
 import { adaptSceneRtxSettings } from "./rtx-settings-adapter.mjs";
+import {
+  createBrowserPreviewDocument,
+  createProjectPack,
+  parseProjectPack,
+  projectPackFileName,
+} from "../core/project-pack.mjs";
+import { downloadJsonFile, pickJsonFile } from "./project-file-transfer.mjs";
 
 document.title = "ThreeBrowser Studio — waiting for project";
 
@@ -92,6 +99,10 @@ async function main() {
     typeface = getSystemTypeface();
   }
   let promptSheet = null;
+  let application = null;
+  let preview = null;
+  let bootstrapDisposed = false;
+  let transferBusy = false;
   const liveFeed = createMcpLiveFeedWebGpuHud({
     THREE,
     scene,
@@ -104,7 +115,55 @@ async function main() {
     onViewModeChange(mode) {
       reviewSession.setViewMode(mode);
     },
+    onExportProject() { void transferProject("export"); },
+    onImportProject() { void transferProject("import"); },
   });
+
+  async function transferProject(action) {
+    if (transferBusy) {
+      liveFeed.setProjectTransferStatus("A transfer is already running.");
+      return;
+    }
+    transferBusy = true;
+    try {
+      if (action === "export") {
+        liveFeed.setProjectTransferStatus("Exporting…");
+        const pack = application
+          ? await application.exportProjectDocument()
+          : createProjectPack(preview?.document ?? createBrowserPreviewDocument());
+        downloadJsonFile(projectPackFileName(pack.document), pack);
+        liveFeed.setProjectTransferStatus(`Exported ${pack.document.name}.`);
+        return;
+      }
+      liveFeed.setProjectTransferStatus("Choose a JSON pack…");
+      const picked = await pickJsonFile();
+      if (!picked) {
+        liveFeed.setProjectTransferStatus("Import cancelled.");
+        return;
+      }
+      liveFeed.setProjectTransferStatus("Importing…");
+      const document = parseProjectPack(picked.text);
+      if (application) {
+        await application.importProjectDocument(document);
+      } else if (preview) {
+        await preview.show(document, {
+          onBeforeSwap() {
+            if (bootstrapDisposed) return;
+            bootstrap.dispose();
+            bootstrapDisposed = true;
+          },
+        });
+      } else {
+        throw new Error("Project preview is not ready.");
+      }
+      liveFeed.setProjectTransferStatus(`Imported ${document.name}.`);
+    } catch (error) {
+      liveFeed.setProjectTransferStatus(error?.message ?? String(error));
+      console.warn("[ThreeBrowser Studio import/export]", error);
+    } finally {
+      transferBusy = false;
+    }
+  }
   const rtxLighting = createRtxLightingController({
     THREE,
     renderer,
@@ -133,7 +192,6 @@ async function main() {
     },
   });
   const started = performance.now() * 0.001;
-  let application = null;
 
   let lastPresentation = '';
   let gpuResizeTimer = null;
@@ -181,13 +239,15 @@ async function main() {
     globalThis.removeEventListener("resize", resize);
     promptSheet?.dispose();
     promptSheet = null;
+    preview?.dispose();
+    preview = null;
     await application?.dispose();
     liveFeed.dispose();
     commandTelemetry.dispose();
     capture.dispose();
     rtxLighting.dispose();
     controls.dispose();
-    bootstrap.dispose();
+    if (!bootstrapDisposed) bootstrap.dispose();
     scene.clear();
     renderer.dispose();
   }
@@ -287,6 +347,7 @@ async function main() {
       const { createBrowserMcpHarness, createUnavailableStudioDispatch } = await import("../browser/mcp-harness.mjs");
       const { createBrowserPromptSession } = await import("../browser/prompt-session.mjs");
       const { createBrowserPromptPanel } = await import("../browser/prompt-panel.mjs");
+      const { createLiveProjectPreview } = await import("./live-project-preview.mjs");
       const session = createBrowserPromptSession({
         vault: createSecretVault(),
         harness: createBrowserMcpHarness({
@@ -295,6 +356,12 @@ async function main() {
       });
       promptSheet = createBrowserPromptPanel({ document, session });
       promptSheet.setVisible(true);
+      preview = createLiveProjectPreview({
+        THREE,
+        TSL,
+        viewport: viewportApi,
+        getAspect: () => Math.max(1, innerWidth) / Math.max(1, innerHeight),
+      });
     }
   } catch (error) {
     await dispose();
@@ -302,6 +369,9 @@ async function main() {
   }
   if (application) globalThis.__THREE_STUDIO_APPLICATION__ = application;
   globalThis.__THREE_STUDIO_LIVE_FEED__ = liveFeed;
+  liveFeed.setProjectTransferStatus(application
+    ? "Exports the open project as JSON."
+    : "Exports a starter pack. Import compiles a project in this tab.");
 
   globalThis.addEventListener("resize", resize);
   globalThis.addEventListener("beforeunload", () => { void dispose(); }, { once: true });

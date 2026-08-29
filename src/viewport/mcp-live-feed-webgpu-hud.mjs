@@ -146,6 +146,8 @@ export function createMcpLiveFeedWebGpuHud({
   promptTab = false,
   onTabChange,
   onVisibilityChange,
+  onExportProject,
+  onImportProject,
 } = {}) {
   const document = suppliedDocument ?? globalThis.document;
   const keyboard = eventTarget ?? globalThis;
@@ -451,6 +453,32 @@ export function createMcpLiveFeedWebGpuHud({
     text: 'Expanded details name whitelisted operation types. Never raw arguments or results.',
     color: '#7f94ad',
   }));
+  const projectLabel = settingsPage.add(new Label({
+    name: 'project-label',
+    text: 'Project',
+    font: UI_FONT_BOLD,
+    color: '#9fc6f2',
+  }));
+  const exportProjectButton = settingsPage.add(new Button({
+    name: 'export-project',
+    text: 'Export JSON',
+    onClick() { onExportProject?.(); },
+  }));
+  const importProjectButton = settingsPage.add(new Button({
+    name: 'import-project',
+    text: 'Import JSON',
+    onClick() { onImportProject?.(); },
+  }));
+  const projectTransferStatus = settingsPage.add(new Label({
+    name: 'project-transfer-status',
+    text: '',
+    color: '#9fc6f2',
+  }));
+  const projectHint = settingsPage.add(new Label({
+    name: 'project-hint',
+    text: 'JSON pack of the canonical project. History, recovery, and Prompt keys stay out.',
+    color: '#7f94ad',
+  }));
   const promptSettingsLabel = promptTab ? settingsPage.add(new Label({
     name: 'prompt-settings-label',
     text: 'Prompt',
@@ -522,9 +550,15 @@ export function createMcpLiveFeedWebGpuHud({
     logSettingsLabel.setBounds(12, 186, settingsPage.width - 24, 20);
     settingsDetailToggle.setBounds(8, 210, settingsPage.width - 16, 28);
     logHint.setBounds(12, 242, settingsPage.width - 24, 36);
-    promptSettingsLabel?.setBounds(12, 286, settingsPage.width - 24, 20);
-    promptSettingsButton?.setBounds(8, 310, settingsPage.width - 16, 28);
-    promptSettingsHint?.setBounds(12, 344, settingsPage.width - 24, 36);
+    projectLabel.setBounds(12, 286, settingsPage.width - 24, 20);
+    const buttonWidth = Math.max(80, Math.floor((settingsPage.width - 24) / 2));
+    exportProjectButton.setBounds(8, 310, buttonWidth, 28);
+    importProjectButton.setBounds(8 + buttonWidth + 8, 310, Math.max(80, settingsPage.width - 16 - buttonWidth - 8), 28);
+    projectTransferStatus.setBounds(12, 344, settingsPage.width - 24, 32);
+    projectHint.setBounds(12, 378, settingsPage.width - 24, 36);
+    promptSettingsLabel?.setBounds(12, 422, settingsPage.width - 24, 20);
+    promptSettingsButton?.setBounds(8, 446, settingsPage.width - 16, 28);
+    promptSettingsHint?.setBounds(12, 480, settingsPage.width - 24, 36);
     if (promptPage) {
       const [promptTitle, promptHint, promptKernelHint] = promptPage.children;
       promptTitle.setBounds(12, 10, promptPage.width - 24, 20);
@@ -899,6 +933,12 @@ export function createMcpLiveFeedWebGpuHud({
     updateCamera,
     setViewMode,
     setExplorerOutline,
+    setProjectTransferStatus(text) {
+      projectTransferStatus.setText(text);
+    },
+    get projectTransferStatus() {
+      return projectTransferStatus.text;
+    },
     handlePointerDown: onPointerDown,
     get tab() { return tab; },
     get logExpanded() { return logExpanded; },

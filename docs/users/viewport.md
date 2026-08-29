@@ -21,6 +21,20 @@ shot. Do not treat the Review pose as the camera the model is rendering.
 
 Switch modes from the header button or Settings.
 
+## Import / Export
+
+Settings has **Export JSON** and **Import JSON** for a portable pack of the
+canonical project (`ThreeStudioProjectPack`). History, recovery, session
+markers, and Prompt keys stay out of the file.
+
+On the desktop host, Import writes a new folder under `projects/imports/`
+and opens it. It does not overwrite the project that was already open. On
+GitHub Pages, Import compiles the document in this tab only — it does not
+create files on disk.
+
+Trusted-project scripts are forced to `agent-safe` on both hosts. Raw
+`ThreeStudioProject` JSON is accepted as well as a pack.
+
 On the GitHub Pages preview only, a **Prompt** dock sits at the bottom of the
 window for Gemini or an HTTP chat API. The native window does not show it.
 
