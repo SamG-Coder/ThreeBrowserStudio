@@ -1,4 +1,9 @@
 const RUNTIME_UA = /\bThreeBrowserRuntime\//i;
+export const BROWSER_PREVIEW_FLAG = '__THREE_STUDIO_BROWSER_PREVIEW__';
+
+export function isBrowserPreview({ globalObject = globalThis } = {}) {
+  return globalObject?.[BROWSER_PREVIEW_FLAG] === true;
+}
 
 /**
  * Detects the ThreeBrowser native host versus a stock browser (GitHub Pages).

@@ -450,9 +450,20 @@ export function createMcpLiveFeedWebGpuHud({
     text: 'Expanded details name whitelisted operation types. Never raw arguments or results.',
     color: '#7f94ad',
   }));
+  const promptSettingsLabel = promptTab ? settingsPage.add(new Label({
+    name: 'prompt-settings-label',
+    text: 'Prompt',
+    font: UI_FONT_BOLD,
+    color: '#9fc6f2',
+  })) : null;
+  const promptSettingsButton = promptTab ? settingsPage.add(new Button({
+    name: 'open-prompt',
+    text: 'Open Prompt  ·  models',
+    onClick() { tabs.setSelected('prompt'); },
+  })) : null;
   const promptSettingsHint = promptTab ? settingsPage.add(new Label({
     name: 'prompt-settings-hint',
-    text: 'Model connections are on the Prompt tab. Tokens stay PIN-encrypted in this browser.',
+    text: 'Connect HTTP chat APIs here. Tokens stay PIN-encrypted in this browser.',
     color: '#7f94ad',
   })) : null;
 
@@ -510,7 +521,9 @@ export function createMcpLiveFeedWebGpuHud({
     logSettingsLabel.setBounds(12, 186, settingsPage.width - 24, 20);
     settingsDetailToggle.setBounds(8, 210, settingsPage.width - 16, 28);
     logHint.setBounds(12, 242, settingsPage.width - 24, 36);
-    promptSettingsHint?.setBounds(12, 286, settingsPage.width - 24, 48);
+    promptSettingsLabel?.setBounds(12, 286, settingsPage.width - 24, 20);
+    promptSettingsButton?.setBounds(8, 310, settingsPage.width - 16, 28);
+    promptSettingsHint?.setBounds(12, 344, settingsPage.width - 24, 36);
     if (promptPage) {
       const [promptTitle, promptHint, promptKernelHint] = promptPage.children;
       promptTitle.setBounds(12, 10, promptPage.width - 24, 20);

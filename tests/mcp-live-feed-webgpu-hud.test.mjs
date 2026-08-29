@@ -503,5 +503,11 @@ test('Prompt tab is browser-only and does not appear on the native HUD', () => {
   assert.equal(promptPage.visible, true);
   const status = browser.hud.host.children.find(child => child.name === 'status');
   assert.equal(status.text, 'Prompt  ·  PIN-encrypted models');
+  browserTabs.setSelected('settings');
+  const openPrompt = browser.hud.host.children
+    .find(child => child.name === 'settings-page')
+    .children.find(child => child.name === 'open-prompt');
+  openPrompt.onClick();
+  assert.equal(browser.hud.tab, 'prompt');
   browser.hud.dispose();
 });

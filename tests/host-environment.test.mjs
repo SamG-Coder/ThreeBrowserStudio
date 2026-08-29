@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { detectStudioHost } from '../src/runtime/host-environment.mjs';
+import { BROWSER_PREVIEW_FLAG, detectStudioHost, isBrowserPreview } from '../src/runtime/host-environment.mjs';
 
 test('stock browser and Node test runner are not a native ThreeRuntime host', () => {
   const host = detectStudioHost({
@@ -38,4 +38,11 @@ test('RTX bridge or ThreeBrowserRuntime UA also attach the desktop host', () => 
       },
     },
   }).userAgentRuntime, true);
+});
+
+test('Pages entry flag is a browser preview even when ThreeRuntime is attached', () => {
+  assert.equal(isBrowserPreview({ globalObject: {} }), false);
+  assert.equal(isBrowserPreview({
+    globalObject: { [BROWSER_PREVIEW_FLAG]: true, __threeBrowserNativeRuntime: true },
+  }), true);
 });

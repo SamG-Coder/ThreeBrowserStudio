@@ -1,7 +1,9 @@
 # GitHub Pages preview
 
 The published page is a **browser WebGPU preview** of the Studio viewport. It
-is not the desktop authoring host.
+is not the desktop authoring host. The native `.exe` / `npm run launch` window
+does not show Prompt — open this URL in Chrome or Edge (WebGPU). Hard-refresh
+if the tab strip still has only Log / Explorer / Settings.
 
 https://samg-coder.github.io/ThreeBrowserStudio/
 

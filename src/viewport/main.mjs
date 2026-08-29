@@ -8,7 +8,7 @@ import { createReviewControls } from "./review-controls.mjs";
 import { createReviewSession, VIEW_MODE_FOLLOW_SHOT } from "./view-mode.mjs";
 import { createMcpLiveFeedWebGpuHud } from "./mcp-live-feed-webgpu-hud.mjs";
 import { createStudioCommandTelemetry } from "../runtime/mcp-live-feed-telemetry.mjs";
-import { detectStudioHost } from "../runtime/host-environment.mjs";
+import { detectStudioHost, isBrowserPreview } from "../runtime/host-environment.mjs";
 import { collectRtxScene } from "../runtime/rtx-scene-collector.mjs";
 import { createRtxLightingController } from "./rtx-lighting-controller.mjs";
 import { adaptSceneRtxSettings } from "./rtx-settings-adapter.mjs";
@@ -17,6 +17,7 @@ document.title = "ThreeBrowser Studio — waiting for project";
 
 async function main() {
   const host = detectStudioHost();
+  const browserPreview = isBrowserPreview();
   const renderer = new THREE.WebGPURenderer({
     antialias: true,
     powerPreference: "high-performance",
@@ -99,7 +100,7 @@ async function main() {
     height: Math.max(1, innerHeight),
     pixelRatio: Math.max(1, Number(globalThis.devicePixelRatio || 1)),
     typeface,
-    promptTab: !host.attached,
+    promptTab: browserPreview || !host.attached,
     onViewModeChange(mode) {
       reviewSession.setViewMode(mode);
     },
@@ -276,7 +277,7 @@ async function main() {
   globalThis.__THREE_STUDIO_VIEWPORT__ = viewportApi;
 
   try {
-    if (host.attached) {
+    if (host.attached && !browserPreview) {
       const { startStudioApplication } = await import("../runtime/studio-application.mjs");
       application = await startStudioApplication({
         THREE,
