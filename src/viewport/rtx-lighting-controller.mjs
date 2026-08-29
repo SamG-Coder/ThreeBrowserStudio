@@ -306,7 +306,7 @@ function inverseViewProjection(camera) {
   if (!camera?.projectionMatrixInverse?.clone || !camera?.matrixWorld) {
     throw new TypeError('RTX lighting requires a camera with projectionMatrixInverse and matrixWorld.');
   }
-  return camera.projectionMatrixInverse.clone().multiply(camera.matrixWorld).toArray();
+  return camera.projectionMatrixInverse.clone().premultiply(camera.matrixWorld).toArray();
 }
 
 function cameraPosition(camera) {
@@ -661,10 +661,8 @@ export class RtxLightingController {
     }
   }
 
-  #createPresenter(texture) {
-    const THREE = this.#THREE;
-    const geometry = new THREE.PlaneGeometry(2, 2);
-    const material = new THREE.MeshBasicMaterial({
+  #createPresenterMaterial(texture) {
+    const material = new this.#THREE.MeshBasicMaterial({
       map: texture,
       depthTest: false,
       depthWrite: false,
@@ -672,6 +670,13 @@ export class RtxLightingController {
       toneMapped: true,
     });
     material.toneMapped = true;
+    return material;
+  }
+
+  #createPresenter(texture) {
+    const THREE = this.#THREE;
+    const geometry = new THREE.PlaneGeometry(2, 2);
+    const material = this.#createPresenterMaterial(texture);
     const quad = new THREE.Mesh(geometry, material);
     // WebGPU render-target rows are addressed from the native attachment
     // origin. Sampling that storage image through the ordinary material map
@@ -691,11 +696,16 @@ export class RtxLightingController {
   }
 
   #disposeTarget() {
-    if (!this.#target) return;
     if (this.#presenter) {
-      this.#presenter.material.map = null;
-      this.#presenter.material.needsUpdate = true;
+      const material = this.#presenter.material;
+      this.#presenter.material = null;
+      this.#presenter.quad.material = null;
+      if (material) {
+        material.map = null;
+        material.dispose?.();
+      }
     }
+    if (!this.#target) return;
     this.#target.dispose?.();
     this.#target = null;
   }
@@ -736,8 +746,12 @@ export class RtxLightingController {
 
     if (!this.#presenter) this.#presenter = this.#createPresenter(target.texture);
     else {
-      this.#presenter.material.map = target.texture;
-      this.#presenter.material.needsUpdate = true;
+      // WebGPURenderer compiles the sampled texture into a material binding.
+      // A fresh material per render-target texture prevents a live/evidence
+      // resize from presenting the disposed target cached by the prior frame.
+      const material = this.#createPresenterMaterial(target.texture);
+      this.#presenter.material = material;
+      this.#presenter.quad.material = material;
     }
     this.#active = false;
     if (this.#configured) this.#reason = 'configured; awaiting a native lighting frame';

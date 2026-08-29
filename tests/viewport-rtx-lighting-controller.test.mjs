@@ -18,7 +18,7 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-function makeThree(targets = []) {
+function makeThree(targets = [], materials = []) {
   class Texture {
     constructor() {
       this.name = '';
@@ -71,6 +71,7 @@ function makeThree(targets = []) {
       Object.assign(this, options);
       this.disposed = false;
       this.needsUpdate = false;
+      materials.push(this);
     }
 
     dispose() {
@@ -139,7 +140,7 @@ function makeCamera() {
     projectionMatrixInverse: {
       clone() {
         return {
-          multiply(value) {
+          premultiply(value) {
             assert.equal(value, matrix);
             return this;
           },
@@ -149,6 +150,61 @@ function makeCamera() {
         };
       },
     },
+    updateMatrixWorld() {},
+  };
+}
+
+function multiplyMatrixVector(matrix, vector) {
+  return Array.from({ length: 4 }, (_, row) => (
+    matrix[row] * vector[0]
+    + matrix[4 + row] * vector[1]
+    + matrix[8 + row] * vector[2]
+    + matrix[12 + row] * vector[3]
+  ));
+}
+
+function multiplyMatrices(left, right) {
+  const result = Array(16).fill(0);
+  for (let column = 0; column < 4; column += 1) {
+    for (let row = 0; row < 4; row += 1) {
+      for (let index = 0; index < 4; index += 1) {
+        result[column * 4 + row] += left[index * 4 + row] * right[column * 4 + index];
+      }
+    }
+  }
+  return result;
+}
+
+function numericMatrix(elements) {
+  return {
+    elements: [...elements],
+    clone() {
+      return numericMatrix(this.elements);
+    },
+    premultiply(value) {
+      this.elements = multiplyMatrices(value.elements, this.elements);
+      return this;
+    },
+    toArray() {
+      return [...this.elements];
+    },
+  };
+}
+
+function makeNumericCamera() {
+  return {
+    matrixWorld: numericMatrix([
+      1, 0, 0, 0,
+      0, 1, 0, 0,
+      0, 0, 1, 0,
+      4, 5, 6, 1,
+    ]),
+    projectionMatrixInverse: numericMatrix([
+      2, 0, 0, 0,
+      0, 3, 0, 0,
+      0, 0, 4, 0,
+      0, 0, 0, 1,
+    ]),
     updateMatrixWorld() {},
   };
 }
@@ -179,8 +235,11 @@ function makeHarness({
   const events = [];
   const renderStates = [];
   const presenterScales = [];
+  const presenterBindings = [];
+  const compiledPresenterBindings = new Map();
   const targets = [];
-  const THREE = makeThree(targets);
+  const materials = [];
+  const THREE = makeThree(targets, materials);
   const queue = {
     submissions: [],
     submit(commandBuffers) {
@@ -244,7 +303,12 @@ function makeHarness({
     },
     render(scene) {
       if (scene?.name === 'ThreeBrowser Studio RTX presentation') {
-        presenterScales.push(scene.children[0]?.scale?.y);
+        const quad = scene.children[0];
+        presenterScales.push(quad?.scale?.y);
+        if (!compiledPresenterBindings.has(quad.material)) {
+          compiledPresenterBindings.set(quad.material, quad.material?.map ?? null);
+        }
+        presenterBindings.push(compiledPresenterBindings.get(quad.material));
       }
       renderStates.push({
         scene: scene?.name || 'authored',
@@ -256,7 +320,12 @@ function makeHarness({
     },
     async renderAsync(scene) {
       if (scene?.name === 'ThreeBrowser Studio RTX presentation') {
-        presenterScales.push(scene.children[0]?.scale?.y);
+        const quad = scene.children[0];
+        presenterScales.push(quad?.scale?.y);
+        if (!compiledPresenterBindings.has(quad.material)) {
+          compiledPresenterBindings.set(quad.material, quad.material?.map ?? null);
+        }
+        presenterBindings.push(compiledPresenterBindings.get(quad.material));
       }
       renderStates.push({
         scene: scene?.name || 'authored',
@@ -316,7 +385,19 @@ function makeHarness({
     pollIntervalMs: 0,
     delay: async () => {},
   });
-  return { controller, THREE, renderer, rtx, device, events, renderStates, presenterScales, targets };
+  return {
+    controller,
+    THREE,
+    renderer,
+    rtx,
+    device,
+    events,
+    renderStates,
+    presenterScales,
+    presenterBindings,
+    targets,
+    materials,
+  };
 }
 
 test('settings normalizer maps independent master, lighting, shadow, and AO controls', () => {
@@ -528,6 +609,22 @@ test('native frame order is raster, evaluate on a fresh encoder, submit, then fu
   assert.equal(controller.getStatus().staticScene.packedLightCount, 1);
 });
 
+test('RTX payload reconstructs world positions with matrixWorld times projectionMatrixInverse', async () => {
+  const harness = makeHarness();
+  const camera = makeNumericCamera();
+  assert.equal(await harness.controller.configure({ scene: {}, width: 4, height: 4 }), true);
+  assert.equal(await harness.controller.render({ scene: {}, camera }), true);
+
+  const clip = [0.25, -0.5, 0.2, 1];
+  const viewPosition = multiplyMatrixVector(camera.projectionMatrixInverse.elements, clip);
+  const expectedWorld = multiplyMatrixVector(camera.matrixWorld.elements, viewPosition);
+  const reconstructed = multiplyMatrixVector(
+    harness.rtx.evaluations[0].inverseViewProjection,
+    clip,
+  );
+  assert.deepEqual(reconstructed, expectedWorld);
+});
+
 test('HDR base rendering disables the output transform and presentation honors an evidence output target', async () => {
   const harness = makeHarness();
   const { controller, renderer, renderStates, targets } = harness;
@@ -562,7 +659,9 @@ test('HDR base rendering disables the output transform and presentation honors a
 
 test('live and evidence RTX frames serialize incompatible attachment sizes', async () => {
   const harness = makeHarness();
-  const { controller, rtx, renderStates, targets } = harness;
+  const {
+    controller, rtx, renderStates, presenterBindings, targets, materials,
+  } = harness;
   assert.equal(await controller.configure({ scene: {}, width: 16, height: 9 }), true);
   rtx.evaluations.length = 0;
   renderStates.length = 0;
@@ -584,6 +683,11 @@ test('live and evidence RTX frames serialize incompatible attachment sizes', asy
   ]);
   assert.notEqual(rtx.evaluations[0].color.texture, rtx.evaluations[1].color.texture);
   assert.equal(targets.at(-2).disposed, true);
+  assert.deepEqual(presenterBindings, [targets.at(-2).texture, targets.at(-1).texture]);
+  assert.equal(materials.length, 3);
+  assert.equal(materials[0].disposed, true);
+  assert.equal(materials[1].disposed, true);
+  assert.equal(materials[2].disposed, false);
   assert.deepEqual(
     renderStates.filter(({ scene }) => scene === 'ThreeBrowser Studio RTX presentation')
       .map(({ outputTarget }) => outputTarget),
