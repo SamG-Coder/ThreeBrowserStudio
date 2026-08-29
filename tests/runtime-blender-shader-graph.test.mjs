@@ -28,8 +28,69 @@ const FAKE_TSL = Object.freeze({
   vec2: (...values) => new FakeNode('vec2', values),
   vec3: (...values) => new FakeNode('vec3', values),
   vec4: (...values) => new FakeNode('vec4', values),
+  min: (...values) => new FakeNode('min', values),
+  max: (...values) => new FakeNode('max', values),
+  pow: (...values) => new FakeNode('pow', values),
+  time: new FakeNode('time'),
   normalLocal: new FakeNode('normalLocal'),
   positionLocal: new FakeNode('positionLocal'),
+});
+
+test('all catalogued binary math nodes compile to live TSL operations', () => {
+  const expectedOperations = {
+    add: 'add',
+    subtract: 'sub',
+    multiply: 'mul',
+    divide: 'div',
+    min: 'min',
+    max: 'max',
+    power: 'pow',
+  };
+
+  for (const [operation, expectedOperation] of Object.entries(expectedOperations)) {
+    const graph = {
+      formatVersion: 1,
+      id: `shader/math-${operation}`,
+      domain: 'shader',
+      nodes: [
+        { id: 'a', type: 'constant.float', params: { value: 0.75 } },
+        { id: 'b', type: 'constant.float', params: { value: 0.25 } },
+        { id: 'math', type: `math.${operation}`, params: { valueType: 'float' } },
+      ],
+      edges: [
+        { from: { nodeId: 'a', port: 'value' }, to: { nodeId: 'math', port: 'a' } },
+        { from: { nodeId: 'b', port: 'value' }, to: { nodeId: 'math', port: 'b' } },
+      ],
+      outputs: { roughness: { nodeId: 'math', port: 'value' } },
+    };
+
+    const compilation = compileShaderGraph({ TSL: FAKE_TSL, graph });
+    assert.equal(compilation.outputs.roughness.operation, expectedOperation, operation);
+  }
+});
+
+test('Time can drive a live Multiply node for animated shader phase', () => {
+  const graph = {
+    formatVersion: 1,
+    id: 'shader/time-driven-phase',
+    domain: 'shader',
+    nodes: [
+      { id: 'time', type: 'input.time', params: {} },
+      { id: 'speed', type: 'constant.float', params: { value: 0.22 } },
+      { id: 'phase', type: 'math.multiply', params: { valueType: 'float' } },
+    ],
+    edges: [
+      { from: { nodeId: 'time', port: 'seconds' }, to: { nodeId: 'phase', port: 'a' } },
+      { from: { nodeId: 'speed', port: 'value' }, to: { nodeId: 'phase', port: 'b' } },
+    ],
+    outputs: { roughness: { nodeId: 'phase', port: 'value' } },
+  };
+
+  const compilation = compileShaderGraph({ TSL: FAKE_TSL, graph });
+  assert.equal(compilation.outputs.roughness.operation, 'mul');
+  assert.equal(compilation.outputs.roughness.arguments[0].operation, 'time');
+  assert.equal(compilation.outputs.roughness.arguments[1].operation, 'float');
+  assert.deepEqual(compilation.outputs.roughness.arguments[1].arguments, [0.22]);
 });
 
 class FakePhysicalNodeMaterial {

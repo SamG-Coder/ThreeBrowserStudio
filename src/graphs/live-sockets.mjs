@@ -20,6 +20,8 @@ export const COMPILED_SHADER_NODE_TYPES = Object.freeze(new Set([
   'noise.voronoi', 'voronoi',
   'ramp.color', 'colorRamp',
   'arithmetic',
+  'math.add', 'math.subtract', 'math.multiply', 'math.divide',
+  'math.min', 'math.max', 'math.power',
   'math.abs', 'math.saturate', 'math.mix', 'mix', 'math.remap', 'remap',
   'vector.dot', 'vector.normalize', 'vector.combine3',
   'normal.fromHeight', 'normalFromHeight',
