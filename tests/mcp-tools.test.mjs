@@ -5,6 +5,8 @@ import test from 'node:test';
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { LAYOUT_PATTERN_MODES } from '../src/core/layout-patterns.mjs';
+import { AUTHORABLE_MODIFIER_TYPES } from '../src/core/modifier-stack.mjs';
+import { BLENDER_MODIFIER_INVENTORY } from '../src/blender/modifier-inventory.mjs';
 import {
   INSPECT_SLICES,
   INSPECT_QUERIES,
@@ -22,6 +24,8 @@ import {
   historySchema,
   inspectSchema,
   jobSchema,
+  modifierDocumentSchema,
+  modifierPatchSchema,
   playSchema,
   projectSchema,
   renderSchema,
@@ -41,6 +45,35 @@ const EXPECTED_TOOLS = [
   'three_studio_project',
   'three_studio_play',
 ];
+
+function modifierDocumentBranches(schema, output = []) {
+  if (schema?.properties?.id && schema?.properties?.type?.const) output.push(schema);
+  for (const key of ['oneOf', 'anyOf']) {
+    for (const child of schema?.[key] ?? []) modifierDocumentBranches(child, output);
+  }
+  return output;
+}
+
+function modifierBranchSummary(schema) {
+  return Object.fromEntries(modifierDocumentBranches(schema).map((branch) => {
+    const type = branch.properties.type.const;
+    const mode = branch.properties.mode?.const;
+    return [`${type}${mode ? `:${mode}` : ''}`, {
+      properties: Object.keys(branch.properties).sort(),
+      required: [...(branch.required ?? [])].sort(),
+      additionalProperties: branch.additionalProperties,
+    }];
+  }));
+}
+
+function modifierPatchBranchSummary(schema) {
+  return schema.anyOf.map(branch => ({
+    description: branch.description,
+    properties: Object.keys(branch.properties).sort(),
+    additionalProperties: branch.additionalProperties,
+    minProperties: branch.minProperties,
+  }));
+}
 
 test('MCP surface is deliberately bounded and uses the official v2 server', () => {
   const server = createThreeStudioMcpServer({ dispatch: async () => ({ success: true }) });
@@ -139,6 +172,110 @@ test('checked-in JSON contract mirrors the lean capability enums', async () => {
   );
 });
 
+test('modifier schemas expose every strict per-type control and mirror the checked-in contract', async () => {
+  const runtimeDocument = z.toJSONSchema(modifierDocumentSchema, { io: 'input' });
+  const runtimeBranches = modifierDocumentBranches(runtimeDocument);
+  assert.equal(runtimeDocument.oneOf.length, 13, 'array, mirror, nested pattern, nine geometry types, and bakeBoundary');
+  assert.deepEqual(
+    [...new Set(runtimeBranches.map(branch => branch.properties.type.const))],
+    [...AUTHORABLE_MODIFIER_TYPES],
+  );
+  assert.ok(runtimeBranches.every(branch => branch.additionalProperties === false));
+
+  const byType = type => runtimeBranches.find(branch => branch.properties.type.const === type);
+  assert.ok(byType('array').required.includes('count'));
+  assert.equal(byType('array').properties.count.maximum, 256);
+  assert.equal(byType('weld').properties.tolerance.minimum, 1e-9);
+  assert.equal(byType('smooth').properties.iterations.maximum, 100);
+  assert.deepEqual(byType('weightedNormal').properties.weighting.enum, ['area', 'cornerAngle', 'areaAngle']);
+  assert.equal(byType('edgeSplit').properties.splitAngle.maximum, Math.PI);
+  assert.equal(byType('subdivision').properties.levels.maximum, 6);
+  assert.deepEqual(byType('subdivision').properties.scheme.enum, ['simple', 'loop']);
+  assert.equal(byType('decimate').properties.targetTriangles.maximum, 2_000_000);
+  assert.deepEqual(byType('decimate').not, { required: ['ratio', 'targetTriangles'] });
+  assert.deepEqual(
+    byType('displace').properties.source.oneOf.map(source => source.properties.type.const),
+    ['constant', 'wave', 'noise'],
+  );
+  assert.equal(
+    byType('bakeBoundary').properties.operatorType.enum.length,
+    BLENDER_MODIFIER_INVENTORY.entries.length,
+  );
+
+  const contract = JSON.parse(await readFile(new URL('../schemas/tools-v1.schema.json', import.meta.url), 'utf8'));
+  const checkedInDocument = contract.$defs.modifierDocument;
+  assert.equal(checkedInDocument.description, runtimeDocument.description);
+  assert.deepEqual(modifierBranchSummary(checkedInDocument), modifierBranchSummary(runtimeDocument));
+  assert.deepEqual(
+    modifierDocumentBranches(checkedInDocument).find(branch => branch.properties.type.const === 'decimate').not,
+    byType('decimate').not,
+  );
+  assert.equal(contract.$defs.blenderModifierOperatorType.enum.length, BLENDER_MODIFIER_INVENTORY.entries.length);
+  assert.deepEqual(
+    contract.$defs.modifierDisplacementSource.oneOf.map(source => source.properties.type.const),
+    ['constant', 'wave', 'noise'],
+  );
+  assert.deepEqual(contract.$defs.operation.properties.modifier, { $ref: '#/$defs/modifierDocument' });
+  assert.deepEqual(
+    contract.$defs.modifierStackChange.oneOf[0].properties.modifier,
+    { $ref: '#/$defs/modifierDocument' },
+  );
+  assert.deepEqual(
+    contract.$defs.modifierStackChange.oneOf[1].properties.patch,
+    { $ref: '#/$defs/modifierPatch' },
+  );
+});
+
+test('modifier patch schemas expose bounded partial controls without permitting identity or unknown-key edits', async () => {
+  for (const patch of [
+    { enabledViewport: false },
+    { count: 4, offset: [1, 0, 0] },
+    { axis: 'z' },
+    { radius: 5, orientation: 'radial' },
+    { tolerance: 1e-5 },
+    { iterations: 3, factor: 0.25 },
+    { weighting: 'areaAngle', influence: 0.8 },
+    { splitAngle: Math.PI / 4 },
+    { thickness: 0.1, offset: -0.5 },
+    { levels: 3, scheme: 'loop' },
+    { ratio: 0.5 },
+    { source: { type: 'noise', seed: 42, octaves: 4 }, strength: 0.2 },
+    { operatorType: 'BEVEL', parameters: { width: 0.04 } },
+    { enabled: null },
+  ]) assert.equal(modifierPatchSchema.safeParse(patch).success, true, JSON.stringify(patch));
+
+  for (const patch of [
+    {},
+    { id: 'modifier/replacement' },
+    { type: 'smooth' },
+    { levles: 3 },
+    { levels: 7 },
+    { ratio: 0.5, targetTriangles: 100 },
+    { splitAngle: Math.PI + 0.01 },
+    { source: { type: 'noise', octaves: 9 } },
+  ]) assert.equal(modifierPatchSchema.safeParse(patch).success, false, JSON.stringify(patch));
+
+  const emitted = z.toJSONSchema(modifierPatchSchema, { io: 'input' });
+  assert.ok(emitted.anyOf.every(branch => branch.additionalProperties === false));
+  assert.ok(emitted.anyOf.every(branch => branch.minProperties === 1));
+  assert.ok(emitted.anyOf.every(branch => !Object.hasOwn(branch.properties, 'id')));
+  assert.ok(emitted.anyOf.every(branch => !Object.hasOwn(branch.properties, 'type')));
+
+  const contract = JSON.parse(await readFile(new URL('../schemas/tools-v1.schema.json', import.meta.url), 'utf8'));
+  assert.deepEqual(
+    modifierPatchBranchSummary(contract.$defs.modifierPatch),
+    modifierPatchBranchSummary(emitted),
+  );
+  const staticArray = contract.$defs.modifierPatch.anyOf.find(branch => branch.description.includes('for array;'));
+  const staticSubdivision = contract.$defs.modifierPatch.anyOf.find(branch => branch.description.includes('for subdivision;'));
+  const staticDecimate = contract.$defs.modifierPatch.anyOf.find(branch => branch.description.includes('for decimate;'));
+  assert.equal(staticArray.properties.count.maximum, 256);
+  assert.equal(staticSubdivision.properties.levels.oneOf[0].maximum, 6);
+  assert.deepEqual(staticSubdivision.properties.scheme.oneOf[0].enum, ['simple', 'loop']);
+  assert.equal(staticDecimate.properties.targetTriangles.oneOf[0].maximum, 2_000_000);
+  assert.deepEqual(staticDecimate.not.required, ['ratio', 'targetTriangles']);
+});
+
 test('apply enforces shared mutation metadata and the 128-operation bound', () => {
   const valid = {
     protocolVersion: 'three-studio/1',
@@ -163,7 +300,7 @@ test('apply enforces shared mutation metadata and the 128-operation bound', () =
 test('MCP contract exposes only the live inspect and mutation slice', () => {
   assert.deepEqual(INSPECT_SLICES, ['summary', 'tree', 'transform', 'components', 'bounds', 'references']);
   assert.deepEqual(INSPECT_QUERIES, [
-    'selector', 'sceneDigest', 'resourceDigest', 'meshElements', 'graphDigest', 'rtxDigest', 'changedSinceRevision',
+    'selector', 'sceneDigest', 'resourceDigest', 'meshElements', 'graphDigest', 'modifierDigest', 'rtxDigest', 'changedSinceRevision',
     'unresolvedResources', 'unusedResources', 'graphCatalog', 'playState',
     'latestEvidence', 'blenderCatalog',
   ]);
@@ -173,7 +310,9 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
     'entity.create', 'entity.patch', 'entity.patchMany', 'entity.transformMany',
     'entity.group', 'entity.ungroup', 'entity.duplicate', 'entity.reparent', 'entity.delete',
     'collection.create', 'collection.patch', 'collection.membership.patch', 'collection.reparent', 'collection.delete',
-    'camera.frame', 'layout.pattern', 'geometry.edit',
+    'camera.frame', 'layout.pattern',
+    'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
+    'geometry.edit',
     'resource.create', 'resource.patch', 'resource.delete',
   ]);
   assert.equal(inspectSchema.safeParse({ query: 'selector', selector: { tag: 'hero' }, include: ['tree', 'transform', 'bounds', 'references'] }).success, true);
@@ -185,11 +324,48 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
   assert.equal(inspectSchema.safeParse({ query: 'meshElements', selector: { ids: ['geometry/dense'] }, element: 'faces' }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'meshElements', selector: { ids: ['geometry/a', 'geometry/b'] } }).success, false);
   assert.equal(inspectSchema.safeParse({ query: 'graphDigest', selector: { ids: ['graph/surface'] } }).success, true);
+  assert.equal(inspectSchema.safeParse({ query: 'modifierDigest', selector: { ids: ['entity/wall'] } }).success, true);
+  assert.equal(inspectSchema.safeParse({ query: 'modifierDigest', selector: { ids: ['entity/a', 'entity/b'] } }).success, false);
   assert.equal(inspectSchema.safeParse({ query: 'rtxDigest' }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'codeDiagnostics' }).success, false);
   assert.equal(inspectSchema.safeParse({ query: 'selector', selector: { resourceId: 'material/hero' } }).success, false);
   assert.equal(inspectSchema.safeParse({ query: 'sceneDigest', include: ['script'] }).success, false);
   assert.equal(inspectSchema.safeParse({ query: 'sceneDigest', depth: 3 }).success, false);
+  const modifierMutation = {
+    protocolVersion: 'three-studio/1', sessionId: 'live-session', projectId: 'project/test', baseRevision: 4,
+    idempotencyKey: 'change-modifiers', label: 'Edit exact modifier stack',
+  };
+  assert.equal(applySchema.safeParse({
+    ...modifierMutation,
+    operations: [{
+      op: 'modifier.create', entityId: 'entity/wall', expectedStackHash: 'a'.repeat(64),
+      modifier: { id: 'modifier/subdivision', type: 'subdivision', levels: 2, scheme: 'loop' },
+    }],
+  }).success, true);
+  assert.equal(applySchema.safeParse({
+    ...modifierMutation,
+    operations: [{
+      op: 'modifier.create', entityId: 'entity/wall', expectedStackHash: 'a'.repeat(64),
+      modifier: { id: 'modifier/typo', type: 'subdivison', levels: 2 },
+    }],
+  }).success, false);
+  assert.equal(applySchema.safeParse({
+    ...modifierMutation,
+    operations: [{
+      op: 'modifier.stack.edit', entityId: 'entity/wall', expectedStackHash: 'a'.repeat(64),
+      changes: [
+        { type: 'create', modifier: { id: 'modifier/bevel', type: 'bakeBoundary', operatorType: 'BEVEL', parameters: { width: 0.03 } } },
+        { type: 'move', modifierId: 'modifier/bevel', index: 0 },
+      ],
+    }],
+  }).success, true);
+  assert.equal(applySchema.safeParse({
+    ...modifierMutation,
+    operations: [{
+      op: 'modifier.stack.edit', entityId: 'entity/wall', expectedStackHash: 'a'.repeat(64),
+      changes: [{ type: 'create', modifier: { id: 'modifier/bevel', type: 'bakeBoundary', operatorType: 'BEVELL' } }],
+    }],
+  }).success, false);
   assert.equal(applySchema.safeParse({
     protocolVersion: 'three-studio/1', sessionId: 'live-session', projectId: 'project/test', baseRevision: 4,
     idempotencyKey: 'change-layout', label: 'Try unavailable layout',

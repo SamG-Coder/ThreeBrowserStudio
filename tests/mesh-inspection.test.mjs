@@ -21,7 +21,7 @@ test('mesh inspection pages exact vertices with adjacency and stable guards', ()
   assert.equal(first.vertexCount, 4);
   assert.equal(first.triangleCount, 2);
   assert.equal(first.total, 4);
-  assert.equal(first.nextCursor, `${first.resourceHash}.${first.topologyHash}.2`);
+  assert.equal(first.nextCursor, `${first.resourceHash}.${first.topologyHash}.vertices.2`);
   assert.deepEqual(first.elements[0], {
     index: 0,
     position: [0, 0, 0],
@@ -55,6 +55,21 @@ test('mesh inspection exposes unique edges, face corners, and exact corner attri
   ]);
 });
 
+test('indexed face inspection exposes exact triangle material slots', () => {
+  const resource = {
+    id: 'geometry/material-slots',
+    recipe: {
+      kind: 'indexedMesh',
+      positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+      indices: [0, 1, 2],
+      triangleMaterialIndices: [7],
+    },
+  };
+  const page = buildMeshElements(resource, { element: 'faces', limit: 10 });
+  assert.equal(page.elements[0].materialIndex, 7);
+  assert.deepEqual(page.attributes.triangleMaterialIndex, { itemSize: 1, count: 1, domain: 'face' });
+});
+
 test('mesh inspection obeys a total response byte budget', () => {
   const page = buildMeshElements(resource, {
     element: 'faces',
@@ -63,7 +78,7 @@ test('mesh inspection obeys a total response byte budget', () => {
   });
   assert.ok(new TextEncoder().encode(JSON.stringify(page)).byteLength <= 850);
   assert.equal(page.truncatedByByteBudget, true);
-  assert.equal(page.nextCursor, `${page.resourceHash}.${page.topologyHash}.${page.elements.length}`);
+  assert.equal(page.nextCursor, `${page.resourceHash}.${page.topologyHash}.faces.${page.elements.length}`);
 });
 
 test('mesh cursors are exact guards and cannot cross a mesh edit', () => {
@@ -78,6 +93,26 @@ test('mesh cursors are exact guards and cannot cross a mesh edit', () => {
     () => buildMeshElements(resource, { element: 'vertices', cursor: 'not-a-cursor', limit: 1 }),
     error => error?.code === 'inspect_cursor_invalid',
   );
+  assert.throws(
+    () => buildMeshElements(resource, { element: 'faces', cursor: first.nextCursor, limit: 1 }),
+    error => error?.code === 'inspect_cursor_mismatch',
+  );
+});
+
+test('direct legacy indexed and explicit resources remain exactly inspectable', () => {
+  for (const type of ['indexedMesh', 'explicit']) {
+    const direct = {
+      id: `geometry/direct-${type}`,
+      kind: 'geometry',
+      type,
+      positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+      indices: [0, 1, 2],
+      triangleMaterialIndices: [3],
+    };
+    const page = buildMeshElements(direct, { element: 'faces' });
+    assert.equal(page.recipeKind, type);
+    assert.equal(page.elements[0].materialIndex, 3);
+  }
 });
 
 test('mesh inspection rejects procedural recipes instead of inspecting compiled approximations', () => {

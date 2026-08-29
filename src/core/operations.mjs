@@ -23,13 +23,26 @@ import {
 } from './transform-math.mjs';
 import { solveCameraFrame } from './camera-framing.mjs';
 import { applyIndexedMeshEdit, validateIndexedMeshRecipe } from './indexed-mesh-editing.mjs';
+import {
+  applyEditableMeshEdit,
+  editableMeshTopologyHash,
+  normalizeEditableMeshRecipe,
+} from './editable-mesh.mjs';
 import { normalizeLayoutPattern } from './layout-patterns.mjs';
 import { DEFAULT_RTX_SETTINGS, normalizeRtxSettings } from './rtx-settings.mjs';
+import {
+  assertExpectedModifierStackHash,
+  MAX_MODIFIERS_PER_ENTITY,
+  normalizeModifierDocument,
+  normalizedModifierStack,
+} from './modifier-stack.mjs';
 import { cloneJson, contentHash, isPlainRecord, mergePatch, uniqueSorted } from './util.mjs';
 
 const MAX_GEOMETRY_EDIT_COMMANDS = 64;
 const GEOMETRY_RECIPE_FIELDS = Object.freeze([
-  'positions', 'indices', 'normals', 'uvs', 'colors', 'computeNormals',
+  'positions', 'indices', 'normals', 'uvs', 'colors', 'computeNormals', 'triangleMaterialIndices',
+  'faceOffsets', 'cornerVertexIndices', 'uvLayers', 'colorLayers',
+  'activeUvLayer', 'activeColorLayer', 'faceMaterialIndices', 'sharpEdges', 'edgeCreases',
 ]);
 const GEOMETRY_EDIT_KEYS = new Map([
   ['move', new Set(['type', 'vertexIndices', 'selection', 'offset'])],
@@ -39,8 +52,27 @@ const GEOMETRY_EDIT_KEYS = new Map([
   ['recalculateNormals', new Set(['type'])],
   ['weld', new Set(['type', 'tolerance'])],
   ['triangulate', new Set(['type'])],
+  ['subdivideFaces', new Set(['type', 'faceIndices', 'selection'])],
+  ['insetFaces', new Set(['type', 'faceIndices', 'selection', 'factor'])],
+  ['extrudeFaces', new Set(['type', 'faceIndices', 'selection', 'mode', 'offset', 'distance', 'sideMaterialIndex'])],
+  ['bevelEdges', new Set(['type', 'edges', 'edgeVertexIndices', 'factor', 'materialIndex'])],
+  ['deleteFaces', new Set(['type', 'faceIndices', 'selection'])],
+  ['mergeVertices', new Set(['type', 'vertexIndices', 'selection', 'targetVertexIndex', 'position'])],
+]);
+const INDEXED_GEOMETRY_EDIT_TYPES = new Set([
+  'move', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
+]);
+const EDITABLE_GEOMETRY_EDIT_TYPES = new Set([
+  'move', 'scale', 'rotate', 'smooth', 'subdivideFaces', 'insetFaces', 'extrudeFaces',
+  'bevelEdges', 'deleteFaces', 'mergeVertices',
 ]);
 const RTX_PATCH_KEYS = new Set(['enabled', ...Object.keys(DEFAULT_RTX_SETTINGS)]);
+const MODIFIER_STACK_EDIT_KEYS = new Map([
+  ['create', new Set(['type', 'modifier', 'index'])],
+  ['patch', new Set(['type', 'modifierId', 'patch'])],
+  ['move', new Set(['type', 'modifierId', 'index'])],
+  ['delete', new Set(['type', 'modifierId'])],
+]);
 
 const OPERATION_KEYS = new Map([
   ['scene.create', new Set(['type', 'op', 'scene', 'alias', 'index'])],
@@ -66,7 +98,12 @@ const OPERATION_KEYS = new Map([
   ['collection.delete', new Set(['type', 'op', 'collectionId', 'recursive', 'expectedSubtreeHash'])],
   ['camera.frame', new Set(['type', 'op', 'cameraId', 'bounds', 'targetIds', 'aspect', 'padding', 'direction', 'lockPreviewAspect'])],
   ['layout.pattern', new Set(['type', 'op', 'entityId', 'pattern'])],
-  ['geometry.edit', new Set(['type', 'op', 'resourceId', 'edits'])],
+  ['modifier.create', new Set(['type', 'op', 'entityId', 'modifier', 'expectedStackHash', 'index'])],
+  ['modifier.patch', new Set(['type', 'op', 'entityId', 'modifierId', 'patch', 'expectedStackHash'])],
+  ['modifier.move', new Set(['type', 'op', 'entityId', 'modifierId', 'index', 'expectedStackHash'])],
+  ['modifier.delete', new Set(['type', 'op', 'entityId', 'modifierId', 'expectedStackHash'])],
+  ['modifier.stack.edit', new Set(['type', 'op', 'entityId', 'changes', 'expectedStackHash'])],
+  ['geometry.edit', new Set(['type', 'op', 'resourceId', 'edits', 'expectedTopologyHash'])],
   ['resource.create', new Set(['type', 'op', 'resourceType', 'resource', 'alias'])],
   ['resource.patch', new Set(['type', 'op', 'resourceType', 'resourceId', 'patch'])],
   ['resource.delete', new Set(['type', 'op', 'resourceType', 'resourceId'])],
@@ -204,6 +241,26 @@ function restoreFields(value, fields) {
   return inverse;
 }
 
+function assertStrictSuppliedModifiers(entityLike, label) {
+  const components = entityLike?.components;
+  if (!isPlainRecord(components) || !Object.hasOwn(components, 'modifiers')) return;
+  // JSON Merge Patch uses null to remove a field. Clearing a legacy stack is
+  // allowed; any replacement stack is newly authored and must use the strict
+  // canonical modifier contract.
+  if (components.modifiers === null) return;
+  try {
+    normalizedModifierStack(
+      { components: { modifiers: components.modifiers } },
+      { allowLegacyUnknown: false },
+    );
+  } catch (error) {
+    if (error instanceof StudioError) {
+      error.details = { ...(error.details ?? {}), operationPath: `${label}.components.modifiers` };
+    }
+    throw error;
+  }
+}
+
 function assertIndexFree(draft, id) {
   const index = buildProjectIndex(draft);
   if (index.scenes.has(id) || index.entities.has(id) || index.collections.has(id) || index.resources.has(id) || index.scripts.has(id) || draft.projectId === id) {
@@ -233,6 +290,7 @@ function invalidationsFor(type, operation) {
   }
   if (type.startsWith('collection.')) return ['selection', 'persistence'];
   if (type === 'layout.pattern') return ['sceneGraph', 'transforms', 'geometry', 'renderer', 'rtxTopology', 'persistence'];
+  if (type.startsWith('modifier.')) return ['sceneGraph', 'geometry', 'transforms', 'renderer', 'rtxTopology', 'persistence'];
   if (type === 'geometry.edit') return ['geometry', 'renderer', 'rtxTopology', 'persistence'];
   if (type === 'entity.patch') {
     const fields = Object.keys(operation.patch ?? {});
@@ -258,7 +316,10 @@ function applySceneCreate(draft, operation, aliases, resolvedIds) {
   studioAssert(isPlainRecord(sceneInput), 'invalid_operation', 'scene.create requires scene');
   if (sceneInput.id && aliases.has(sceneInput.id)) sceneInput.id = aliases.get(sceneInput.id);
   const sceneEntities = Array.isArray(sceneInput.entities) ? sceneInput.entities : Object.values(sceneInput.entities ?? {});
-  for (const entity of sceneEntities) resolveEntityReferences(entity, aliases);
+  for (const entity of sceneEntities) {
+    resolveEntityReferences(entity, aliases);
+    assertStrictSuppliedModifiers(entity, 'scene.create.scene.entities');
+  }
   const sceneCollections = Array.isArray(sceneInput.collections) ? sceneInput.collections : Object.values(sceneInput.collections ?? {});
   for (const collection of sceneCollections) resolveCollectionReferences(collection, aliases);
   if (sceneInput.settings?.activeCameraId && aliases.has(sceneInput.settings.activeCameraId)) {
@@ -523,6 +584,7 @@ function applyEntityCreate(draft, operation, aliases, resolvedIds) {
   studioAssert(isPlainRecord(source), 'invalid_operation', 'entity.create requires entity');
   if (aliases.has(source.id)) source.id = aliases.get(source.id);
   resolveEntityReferences(source, aliases);
+  assertStrictSuppliedModifiers(source, 'entity.create.entity');
   studioAssert(!source.children || source.children.length === 0, 'invalid_operation', 'New entities cannot adopt children; use entity.reparent');
   const entity = createEntityDocument(source);
   assertIndexFree(draft, entity.id);
@@ -545,6 +607,7 @@ function applyEntityPatch(draft, operation, aliases) {
   const { scene, entity } = buildProjectIndex(draft).getEntity(entityId);
   assertPatchKeys(operation.patch, ENTITY_PATCH_KEYS, 'entity.patch');
   const resolvedPatch = resolveEntityReferences(cloneJson(operation.patch), aliases);
+  assertStrictSuppliedModifiers(resolvedPatch, 'entity.patch.patch');
   const fields = captureFields(entity, Object.keys(resolvedPatch));
   scene.entities[entityId] = createEntityDocument(mergePatch(entity, resolvedPatch));
   return {
@@ -559,6 +622,7 @@ function applyEntityPatchMany(draft, operation, aliases) {
   assertExpectedEntitySetHash(selection.entitySetHash, operation.expectedEntitySetHash);
   assertPatchKeys(operation.patch, ENTITY_PATCH_KEYS, 'entity.patchMany');
   const resolvedPatch = resolveEntityReferences(cloneJson(operation.patch), aliases);
+  assertStrictSuppliedModifiers(resolvedPatch, 'entity.patchMany.patch');
   const snapshots = selection.entries.map(({ entityId, scene, entity }) => ({
     entityId,
     scene,
@@ -628,6 +692,7 @@ function applyEntityGroup(draft, operation, aliases, resolvedIds) {
   const source = cloneJson(operation.group);
   studioAssert(isPlainRecord(source), 'invalid_operation', 'entity.group requires a group entity document');
   resolveEntityReferences(source, aliases);
+  assertStrictSuppliedModifiers(source, 'entity.group.group');
   studioAssert(source.kind === undefined || source.kind === 'group', 'invalid_group_entity', 'entity.group requires kind group');
   studioAssert(!source.children || source.children.length === 0, 'invalid_group_entity', 'entity.group determines the group children from entityIds');
   const parentIds = new Set(selection.entries.map(({ entity }) => entity.parentId));
@@ -892,6 +957,172 @@ function applyLayoutPattern(draft, operation, aliases) {
   };
 }
 
+function modifierTarget(draft, operation, aliases) {
+  const entityId = resolveId(operation.entityId, aliases, 'entityId');
+  const { scene, entity } = buildProjectIndex(draft).getEntity(entityId);
+  studioAssert(['mesh', 'instancedMesh'].includes(entity.kind), 'invalid_modifier_target', 'Modifier operations require a mesh or instancedMesh entity', {
+    entityId,
+    kind: entity.kind,
+  });
+  studioAssert(isPlainRecord(entity.components?.mesh), 'invalid_modifier_target', 'Modifier operations require components.mesh', { entityId });
+  assertExpectedModifierStackHash(entity, operation.expectedStackHash);
+  return { entityId, scene, entity, modifiers: normalizedModifierStack(entity) };
+}
+
+function commitModifierStack(scene, entity, modifiers) {
+  const fields = captureFields(entity, ['components']);
+  const components = cloneJson(entity.components);
+  components.modifiers = modifiers;
+  scene.entities[entity.id] = createEntityDocument({ ...entity, components });
+  return fields;
+}
+
+function applyModifierCreate(draft, operation, aliases) {
+  const { entityId, scene, entity, modifiers } = modifierTarget(draft, operation, aliases);
+  studioAssert(modifiers.length < MAX_MODIFIERS_PER_ENTITY, 'modifier_limit', `An entity may contain at most ${MAX_MODIFIERS_PER_ENTITY} modifiers`);
+  const modifier = normalizeModifierDocument(operation.modifier);
+  studioAssert(!modifiers.some(item => item.id === modifier.id), 'duplicate_modifier_id', `Modifier ${modifier.id} already exists on ${entityId}`);
+  studioAssert(
+    operation.index === undefined
+      || (Number.isInteger(operation.index) && operation.index >= 0 && operation.index <= modifiers.length),
+    'invalid_modifier_index',
+    'modifier.create index must be an insertion position in the current stack',
+    { index: operation.index, count: modifiers.length },
+  );
+  const index = insertAt(modifiers, modifier, operation.index);
+  const fields = commitModifierStack(scene, entity, modifiers);
+  return {
+    resolved: {
+      type: 'modifier.create', entityId, modifier: cloneJson(modifier), index,
+      expectedStackHash: operation.expectedStackHash,
+    },
+    inverse: { type: '_entity.fields.restore', entityId, fields },
+  };
+}
+
+function applyModifierPatch(draft, operation, aliases) {
+  const { entityId, scene, entity, modifiers } = modifierTarget(draft, operation, aliases);
+  const modifierId = assertStableId(operation.modifierId, 'modifierId');
+  studioAssert(isPlainRecord(operation.patch), 'invalid_patch', 'modifier.patch requires an object patch');
+  studioAssert(!Object.hasOwn(operation.patch, 'id') && !Object.hasOwn(operation.patch, 'type'), 'invalid_patch', 'Modifier ID and type are immutable');
+  const index = modifiers.findIndex(item => item.id === modifierId);
+  studioAssert(index >= 0, 'not_found', `Modifier ${modifierId} does not exist on ${entityId}`, { id: modifierId, kind: 'modifier' });
+  modifiers[index] = normalizeModifierDocument(mergePatch(modifiers[index], cloneJson(operation.patch)));
+  const fields = commitModifierStack(scene, entity, modifiers);
+  return {
+    resolved: {
+      type: 'modifier.patch', entityId, modifierId, patch: cloneJson(operation.patch),
+      expectedStackHash: operation.expectedStackHash,
+    },
+    inverse: { type: '_entity.fields.restore', entityId, fields },
+  };
+}
+
+function applyModifierMove(draft, operation, aliases) {
+  const { entityId, scene, entity, modifiers } = modifierTarget(draft, operation, aliases);
+  const modifierId = assertStableId(operation.modifierId, 'modifierId');
+  studioAssert(Number.isInteger(operation.index) && operation.index >= 0 && operation.index < modifiers.length, 'invalid_modifier_index', 'modifier.move index must target an existing stack position', {
+    index: operation.index,
+    count: modifiers.length,
+  });
+  const currentIndex = modifiers.findIndex(item => item.id === modifierId);
+  studioAssert(currentIndex >= 0, 'not_found', `Modifier ${modifierId} does not exist on ${entityId}`, { id: modifierId, kind: 'modifier' });
+  const [modifier] = modifiers.splice(currentIndex, 1);
+  modifiers.splice(operation.index, 0, modifier);
+  const fields = commitModifierStack(scene, entity, modifiers);
+  return {
+    resolved: {
+      type: 'modifier.move', entityId, modifierId, index: operation.index,
+      expectedStackHash: operation.expectedStackHash,
+    },
+    inverse: { type: '_entity.fields.restore', entityId, fields },
+  };
+}
+
+function applyModifierDelete(draft, operation, aliases) {
+  const { entityId, scene, entity, modifiers } = modifierTarget(draft, operation, aliases);
+  const modifierId = assertStableId(operation.modifierId, 'modifierId');
+  const index = modifiers.findIndex(item => item.id === modifierId);
+  studioAssert(index >= 0, 'not_found', `Modifier ${modifierId} does not exist on ${entityId}`, { id: modifierId, kind: 'modifier' });
+  modifiers.splice(index, 1);
+  const fields = commitModifierStack(scene, entity, modifiers);
+  return {
+    resolved: {
+      type: 'modifier.delete', entityId, modifierId,
+      expectedStackHash: operation.expectedStackHash,
+    },
+    inverse: { type: '_entity.fields.restore', entityId, fields },
+  };
+}
+
+function applyModifierStackEdit(draft, operation, aliases) {
+  const { entityId, scene, entity, modifiers } = modifierTarget(draft, operation, aliases);
+  studioAssert(
+    Array.isArray(operation.changes) && operation.changes.length > 0 && operation.changes.length <= 128,
+    'invalid_modifier_stack_edits',
+    'modifier.stack.edit requires from 1 to 128 ordered edits',
+    { count: Array.isArray(operation.changes) ? operation.changes.length : undefined },
+  );
+  const resolvedEdits = [];
+  for (let editIndex = 0; editIndex < operation.changes.length; editIndex += 1) {
+    const edit = operation.changes[editIndex];
+    studioAssert(isPlainRecord(edit) && typeof edit.type === 'string', 'invalid_modifier_stack_edit', 'Each modifier stack edit requires a type', { editIndex });
+    const allowedKeys = MODIFIER_STACK_EDIT_KEYS.get(edit.type);
+    studioAssert(allowedKeys, 'invalid_modifier_stack_edit', `Unknown modifier stack edit ${edit.type}`, { editIndex, type: edit.type });
+    assertKnownKeys(edit, allowedKeys, `modifier.stack.edit.edits[${editIndex}]`);
+    if (edit.type === 'create') {
+      studioAssert(modifiers.length < MAX_MODIFIERS_PER_ENTITY, 'modifier_limit', `An entity may contain at most ${MAX_MODIFIERS_PER_ENTITY} modifiers`);
+      const modifier = normalizeModifierDocument(edit.modifier);
+      studioAssert(!modifiers.some(item => item.id === modifier.id), 'duplicate_modifier_id', `Modifier ${modifier.id} already exists on ${entityId}`);
+      studioAssert(
+        edit.index === undefined || (Number.isInteger(edit.index) && edit.index >= 0 && edit.index <= modifiers.length),
+        'invalid_modifier_index',
+        'A modifier create index must be an insertion position in the current stack',
+        { editIndex, index: edit.index, count: modifiers.length },
+      );
+      const index = insertAt(modifiers, modifier, edit.index);
+      resolvedEdits.push({ type: 'create', modifier: cloneJson(modifier), index });
+      continue;
+    }
+    const modifierId = assertStableId(edit.modifierId, `modifier.stack.edit.edits[${editIndex}].modifierId`);
+    const currentIndex = modifiers.findIndex(item => item.id === modifierId);
+    studioAssert(currentIndex >= 0, 'not_found', `Modifier ${modifierId} does not exist on ${entityId}`, {
+      editIndex, id: modifierId, kind: 'modifier',
+    });
+    if (edit.type === 'patch') {
+      studioAssert(isPlainRecord(edit.patch), 'invalid_patch', 'A modifier stack patch edit requires an object patch', { editIndex });
+      studioAssert(!Object.hasOwn(edit.patch, 'id') && !Object.hasOwn(edit.patch, 'type'), 'invalid_patch', 'Modifier ID and type are immutable', { editIndex });
+      modifiers[currentIndex] = normalizeModifierDocument(mergePatch(modifiers[currentIndex], cloneJson(edit.patch)));
+      resolvedEdits.push({ type: 'patch', modifierId, patch: cloneJson(edit.patch) });
+      continue;
+    }
+    if (edit.type === 'move') {
+      studioAssert(
+        Number.isInteger(edit.index) && edit.index >= 0 && edit.index < modifiers.length,
+        'invalid_modifier_index',
+        'A modifier move index must target an existing current stack position',
+        { editIndex, index: edit.index, count: modifiers.length },
+      );
+      const [modifier] = modifiers.splice(currentIndex, 1);
+      modifiers.splice(edit.index, 0, modifier);
+      resolvedEdits.push({ type: 'move', modifierId, index: edit.index });
+      continue;
+    }
+    modifiers.splice(currentIndex, 1);
+    resolvedEdits.push({ type: 'delete', modifierId });
+  }
+  const fields = commitModifierStack(scene, entity, modifiers);
+  return {
+    resolved: {
+      type: 'modifier.stack.edit',
+      entityId,
+      changes: resolvedEdits,
+      expectedStackHash: operation.expectedStackHash,
+    },
+    inverse: { type: '_entity.fields.restore', entityId, fields },
+  };
+}
+
 function applyCameraFrame(draft, operation, aliases) {
   const cameraId = resolveId(operation.cameraId, aliases, 'cameraId');
   const { scene, entity } = buildProjectIndex(draft).getEntity(cameraId);
@@ -965,7 +1196,7 @@ function geometryRecipeSource(resource) {
   if (isPlainRecord(resource.parameters)) {
     return { source: resource.parameters, kind: resource.parameters.kind ?? resource.parameters.type };
   }
-  const directKind = ['indexedMesh', 'explicit'].includes(resource.type)
+  const directKind = ['indexedMesh', 'explicit', 'editableMesh'].includes(resource.type)
     ? resource.type
     : (resource.geometryKind ?? resource.kind);
   const source = Object.fromEntries(GEOMETRY_RECIPE_FIELDS
@@ -974,18 +1205,29 @@ function geometryRecipeSource(resource) {
   return { source, kind: directKind };
 }
 
-function canonicalIndexedMeshRecipe(resource, resourceId) {
+function canonicalGeometryEditRecipe(resource, resourceId) {
   const { source, kind } = geometryRecipeSource(resource);
+  if (kind === 'editableMesh') {
+    const recipe = { ...cloneJson(source), kind: 'editableMesh' };
+    delete recipe.type;
+    try {
+      return { kind: 'editableMesh', recipe: normalizeEditableMeshRecipe(recipe) };
+    } catch (error) {
+      throw new StudioError('invalid_geometry_edit_target', `Geometry ${resourceId} has an invalid editable mesh recipe: ${error.message}`, {
+        resourceId,
+      });
+    }
+  }
   studioAssert(
     ['indexedMesh', 'explicit'].includes(kind),
     'invalid_geometry_edit_target',
-    `geometry.edit requires an indexedMesh or explicit geometry recipe, not ${String(kind)}.`,
+    `geometry.edit requires an editableMesh, indexedMesh, or explicit geometry recipe, not ${String(kind)}.`,
     { resourceId, recipeKind: kind ?? null },
   );
   const recipe = { ...cloneJson(source), kind: 'indexedMesh' };
   delete recipe.type;
   try {
-    return validateIndexedMeshRecipe(recipe);
+    return { kind: 'indexedMesh', recipe: validateIndexedMeshRecipe(recipe) };
   } catch (error) {
     throw new StudioError('invalid_geometry_edit_target', `Geometry ${resourceId} has an invalid indexed mesh recipe: ${error.message}`, {
       resourceId,
@@ -993,7 +1235,7 @@ function canonicalIndexedMeshRecipe(resource, resourceId) {
   }
 }
 
-function assertGeometryEditCommand(command, editIndex) {
+function assertGeometryEditCommand(command, editIndex, recipeKind) {
   studioAssert(isPlainRecord(command), 'invalid_geometry_edit', `geometry.edit edits[${editIndex}] must be an object.`, {
     editIndex,
   });
@@ -1003,7 +1245,16 @@ function assertGeometryEditCommand(command, editIndex) {
     commandType: command.type ?? null,
   });
   assertKnownKeys(command, allowed, `geometry.edit edits[${editIndex}]`);
-  const supportsSelection = ['move', 'scale', 'rotate', 'smooth'].includes(command.type);
+  const supportedTypes = recipeKind === 'editableMesh'
+    ? EDITABLE_GEOMETRY_EDIT_TYPES
+    : INDEXED_GEOMETRY_EDIT_TYPES;
+  studioAssert(
+    supportedTypes.has(command.type),
+    'invalid_geometry_edit',
+    `geometry.edit command ${command.type} is not supported for ${recipeKind}.`,
+    { editIndex, commandType: command.type, recipeKind },
+  );
+  const supportsSelection = ['move', 'scale', 'rotate', 'smooth', 'mergeVertices'].includes(command.type);
   if (supportsSelection) {
     const hasVertexIndices = command.vertexIndices !== undefined;
     const hasCompactSelection = command.selection !== undefined;
@@ -1027,6 +1278,30 @@ function assertGeometryEditCommand(command, editIndex) {
         { editIndex },
       );
     }
+  }
+  if (['subdivideFaces', 'insetFaces', 'extrudeFaces', 'deleteFaces'].includes(command.type)) {
+    const hasFaceIndices = command.faceIndices !== undefined;
+    const hasCompactSelection = command.selection !== undefined;
+    studioAssert(
+      !hasCompactSelection || command.selection === 'all',
+      'invalid_geometry_edit',
+      `geometry.edit edits[${editIndex}] selection must be 'all'.`,
+      { editIndex },
+    );
+    studioAssert(
+      hasFaceIndices !== hasCompactSelection,
+      'invalid_geometry_edit',
+      `geometry.edit edits[${editIndex}] requires exactly one of faceIndices or selection.`,
+      { editIndex },
+    );
+  }
+  if (command.type === 'bevelEdges') {
+    studioAssert(
+      (command.edges !== undefined) !== (command.edgeVertexIndices !== undefined),
+      'invalid_geometry_edit',
+      `geometry.edit edits[${editIndex}] bevelEdges requires exactly one of edges or edgeVertexIndices.`,
+      { editIndex },
+    );
   }
   if (command.type === 'rotate') {
     const hasEuler = command.rotation !== undefined;
@@ -1054,13 +1329,47 @@ function applyGeometryEdit(draft, operation, aliases) {
   );
 
   const snapshot = cloneJson(resource);
-  let recipe = canonicalIndexedMeshRecipe(resource, resourceId);
+  const canonical = canonicalGeometryEditRecipe(resource, resourceId);
+  let { recipe } = canonical;
+  const initialTopologyHash = canonical.kind === 'editableMesh'
+    ? editableMeshTopologyHash(recipe)
+    : contentHash({ vertexCount: recipe.positions.length / 3, indices: recipe.indices });
+  if (canonical.kind === 'editableMesh') {
+    studioAssert(
+      operation.expectedTopologyHash !== undefined,
+      'geometry_topology_guard_required',
+      'geometry.edit requires expectedTopologyHash for editableMesh resources.',
+      { resourceId, actualTopologyHash: initialTopologyHash },
+    );
+  }
+  if (operation.expectedTopologyHash !== undefined) {
+    studioAssert(
+      typeof operation.expectedTopologyHash === 'string' && /^[a-f0-9]{64}$/u.test(operation.expectedTopologyHash),
+      'invalid_geometry_edit',
+      'expectedTopologyHash must be a lowercase SHA-256 hash.',
+      { resourceId },
+    );
+  }
+  if (operation.expectedTopologyHash !== undefined) {
+    studioAssert(
+      operation.expectedTopologyHash === initialTopologyHash,
+      'geometry_topology_changed',
+      `Geometry ${resourceId} topology changed after it was inspected.`,
+      {
+        resourceId,
+        expectedTopologyHash: operation.expectedTopologyHash,
+        actualTopologyHash: initialTopologyHash,
+      },
+    );
+  }
   const edits = cloneJson(operation.edits);
   for (let editIndex = 0; editIndex < edits.length; editIndex += 1) {
     const command = edits[editIndex];
-    assertGeometryEditCommand(command, editIndex);
+    assertGeometryEditCommand(command, editIndex, canonical.kind);
     try {
-      recipe = applyIndexedMeshEdit(recipe, command);
+      recipe = canonical.kind === 'editableMesh'
+        ? applyEditableMeshEdit(recipe, command)
+        : applyIndexedMeshEdit(recipe, command);
     } catch (error) {
       if (error instanceof StudioError) throw error;
       throw new StudioError('invalid_geometry_edit', `geometry.edit edits[${editIndex}] failed: ${error.message}`, {
@@ -1074,7 +1383,12 @@ function applyGeometryEdit(draft, operation, aliases) {
   const editedResource = createResourceDocument('geometries', { ...resource, recipe });
   draft.resources.geometries[resourceId] = editedResource;
   return {
-    resolved: { type: 'geometry.edit', resourceId, edits },
+    resolved: {
+      type: 'geometry.edit', resourceId, edits,
+      ...(operation.expectedTopologyHash === undefined
+        ? {}
+        : { expectedTopologyHash: operation.expectedTopologyHash }),
+    },
     inverse: {
       type: '_resource.restore', resourceType: 'geometries', resourceId, snapshot,
       expectedCurrentHash: contentHash(editedResource),
@@ -1292,6 +1606,11 @@ function applyOne(draft, operation, aliases, resolvedIds, allowInternal) {
     case 'entity.delete': return applyEntityDelete(draft, operation, aliases);
     case 'camera.frame': return applyCameraFrame(draft, operation, aliases);
     case 'layout.pattern': return applyLayoutPattern(draft, operation, aliases);
+    case 'modifier.create': return applyModifierCreate(draft, operation, aliases);
+    case 'modifier.patch': return applyModifierPatch(draft, operation, aliases);
+    case 'modifier.move': return applyModifierMove(draft, operation, aliases);
+    case 'modifier.delete': return applyModifierDelete(draft, operation, aliases);
+    case 'modifier.stack.edit': return applyModifierStackEdit(draft, operation, aliases);
     case 'geometry.edit': return applyGeometryEdit(draft, operation, aliases);
     case 'resource.create': return applyResourceCreate(draft, operation, aliases, resolvedIds);
     case 'resource.patch': return applyResourcePatch(draft, operation, aliases);

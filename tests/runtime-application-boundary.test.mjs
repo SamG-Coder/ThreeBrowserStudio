@@ -111,6 +111,18 @@ class Color {
 
 function fakeThree() {
   const groups = [];
+  class Disposable {
+    constructor() { this.userData = {}; this.disposeCount = 0; }
+    dispose() { this.disposeCount += 1; }
+  }
+  class Mesh extends Group {
+    constructor(geometry, material) {
+      super();
+      this.geometry = geometry;
+      this.material = material;
+      this.isMesh = true;
+    }
+  }
   return {
     groups,
     Group: class extends Group {
@@ -120,6 +132,18 @@ function fakeThree() {
       }
     },
     Color,
+    Matrix4: class {
+      makeTranslation() { return this; }
+      makeScale() { return this; }
+      clone() { return new this.constructor(); }
+      multiply() { return this; }
+    },
+    Mesh,
+    BoxGeometry: class extends Disposable {},
+    MeshStandardNodeMaterial: class extends Disposable {},
+    FrontSide: 0,
+    BackSide: 1,
+    DoubleSide: 2,
   };
 }
 
@@ -174,10 +198,10 @@ async function saveProject(projectRoot, document) {
   await new AtomicProjectStore(projectRoot).save(document);
 }
 
-async function applicationFixture(t) {
+async function applicationFixture(t, { document } = {}) {
   const studioRoot = await mkdtemp(path.join(os.tmpdir(), 'three-studio-app-boundary-'));
   const activeRoot = path.join(studioRoot, 'projects', 'active');
-  await saveProject(activeRoot, createProjectDocument({
+  await saveProject(activeRoot, document ?? createProjectDocument({
     projectId: 'project/active',
     name: 'Active',
   }));
@@ -528,7 +552,7 @@ test('meshElements returns exact hash-guarded authored topology pages', async (t
   assert.deepEqual(first.elements[0].vertices, [0, 1, 2]);
   assert.match(first.resourceHash, /^[a-f0-9]{64}$/);
   assert.match(first.topologyHash, /^[a-f0-9]{64}$/);
-  assert.match(first.nextCursor, /^[a-f0-9]{64}\.[a-f0-9]{64}\.1$/);
+  assert.match(first.nextCursor, /^[a-f0-9]{64}\.[a-f0-9]{64}\.faces\.1$/);
   const second = await application.dispatch('three_studio_inspect', {
     sessionId: application.sessionId,
     projectId: 'project/active',
@@ -600,6 +624,80 @@ test('graphDigest and rtxDigest expose exact authoring and runtime diagnostics',
   assert.match(rtx.authoredHash, /^[a-f0-9]{64}$/);
   assert.equal(rtx.effective.collection.skipCounts.rtx_transparent, 2);
   assert.equal(rtx.limits.maxTriangles, 2_000_000);
+});
+
+test('modifierDigest exposes the exact contextual viewport boundary without blocking authoring', async (t) => {
+  const { application } = await applicationFixture(t);
+  const created = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1',
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    baseRevision: 0,
+    idempotencyKey: 'modifier-digest-boundary-0001',
+    label: 'Author an explicit modifier bake boundary',
+    operations: [
+      { op: 'resource.create', resourceType: 'geometry', resource: {
+        id: 'geometry/wall', kind: 'box', width: 2, height: 2, depth: 0.2,
+      } },
+      { op: 'resource.create', resourceType: 'material', resource: {
+        id: 'material/stone', kind: 'standard', color: '#777777',
+      } },
+      { op: 'entity.create', sceneId: 'scene/main', entity: {
+        id: 'entity/wall', kind: 'mesh',
+        components: {
+          mesh: { geometryId: 'geometry/wall', materialIds: ['material/stone'] },
+          modifiers: [{
+            id: 'modifier/bevel', type: 'bakeBoundary', operatorType: 'BEVEL',
+            parameters: { width: 0.05, segments: 3 },
+          }],
+        },
+      } },
+    ],
+  });
+  assert.equal(created.success, true);
+  const digest = await application.dispatch('three_studio_inspect', {
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    query: 'modifierDigest',
+    selector: { ids: ['entity/wall'] },
+  });
+  assert.equal(digest.sourceGeometryId, 'geometry/wall');
+  assert.equal(digest.sourceRecipeKind, 'box');
+  assert.equal(digest.viewportEvaluation.status, 'partial-preview');
+  assert.equal(digest.viewportEvaluation.blocked.reasonCode, 'runtime_modifier_bake_required');
+  assert.equal(digest.modifiers[0].viewport.status, 'blocked');
+  assert.equal(digest.modifiers[0].viewport.reasonCode, 'runtime_modifier_bake_required');
+});
+
+test('format-v1 legacy modifier projects open as an explicitly partial preview', async (t) => {
+  const document = createProjectDocument({
+    projectId: 'project/active',
+    resources: {
+      geometries: [{ id: 'geometry/legacy', kind: 'box' }],
+      materials: [{ id: 'material/legacy', kind: 'standard' }],
+    },
+    scenes: [{
+      id: 'scene/main',
+      entities: [{
+        id: 'entity/legacy', kind: 'mesh',
+        components: {
+          mesh: { geometryId: 'geometry/legacy', materialIds: ['material/legacy'] },
+          modifiers: [{ id: 'modifier/legacy-bevel', type: 'bevel', width: 0.1 }],
+        },
+      }],
+    }],
+  });
+  const { application } = await applicationFixture(t, { document });
+  const digest = await application.dispatch('three_studio_inspect', {
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    query: 'modifierDigest',
+    selector: { ids: ['entity/legacy'] },
+  });
+  assert.equal(digest.modifiers[0].legacyUnknown, true);
+  assert.equal(digest.viewportEvaluation.status, 'partial-preview');
+  assert.equal(digest.viewportEvaluation.blocked.modifierId, 'modifier/legacy-bevel');
+  assert.equal(application.kernel.document.projectId, 'project/active');
 });
 
 test('resource digest compacts a pathological first resource before bridge serialization', () => {
@@ -771,11 +869,19 @@ test('a project switch compile failure preserves the active project and live sce
   assert.equal(status.capabilities.layoutGenerators, true);
   assert.deepEqual(status.capabilities.layoutPatterns, [...LAYOUT_PATTERN_MODES]);
   assert.equal(status.capabilities.modifierRuntime.includes('pattern'), true);
+  assert.equal(status.capabilities.geometryModifierRuntime.includes('subdivision'), true);
+  assert.equal(status.capabilities.modifierAuthoring.exactStackHashGuards, true);
+  assert.equal(status.capabilities.modifierAuthoring.atomicStackEditing, true);
+  assert.equal(status.capabilities.modifierAuthoring.renderEnableFlag, 'authored-only-no-render-parity-claim');
   assert.equal(status.capabilities.implementedOperations.includes('layout.pattern'), true);
+  assert.equal(status.capabilities.implementedOperations.includes('modifier.stack.edit'), true);
   assert.equal(status.capabilities.geometryEditing, true);
   assert.deepEqual(status.capabilities.geometryEditCommands, [
     'move', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
+    'subdivideFaces', 'insetFaces', 'extrudeFaces', 'bevelEdges', 'deleteFaces', 'mergeVertices',
   ]);
+  assert.equal(status.capabilities.geometryRecipes.includes('editableMesh'), true);
+  assert.equal(status.capabilities.editableMesh.topologyHashGuards, true);
   assert.equal(status.capabilities.maxGeometryEditCommands, 64);
   assert.equal(status.capabilities.implementedOperations.includes('geometry.edit'), true);
   assert.deepEqual(status.capabilities.toolContract, TOOL_CONTRACT_SUMMARY);

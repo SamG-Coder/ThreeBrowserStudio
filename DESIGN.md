@@ -461,8 +461,9 @@ Operation families include:
   group/ungroup, duplicate, reparent, and guarded delete;
 - independent nested collection create, patch, guarded membership edit,
   reparent, and collection-only delete;
-- exact-aspect camera framing, bounded live layout patterns, indexed geometry
-  edits (including `selection: "all"`), and canonical RTX settings; and
+- exact-aspect camera framing, bounded live layout patterns, indexed-triangle
+  edits plus topology-guarded editable polygon/corner operations (including
+  compact `selection: "all"`), and canonical RTX settings; and
 - resource create, patch, and reference-safe delete across canonical resource
   tables.
 

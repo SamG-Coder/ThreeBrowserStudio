@@ -6,6 +6,7 @@ import {
   BLENDER_MODIFIER_EXECUTION_STATUSES,
   BLENDER_MODIFIER_INVENTORY,
   BLENDER_MODIFIER_INVENTORY_SUMMARY,
+  BLENDER_LIVE_GEOMETRY_MODIFIER_TYPES,
   BLENDER_MODIFIER_SOURCES,
   queryBlenderModifierInventory,
   summarizeBlenderModifierInventory,
@@ -84,8 +85,8 @@ test('modifier execution classifications are conservative and internally consist
   });
   assert.deepEqual(BLENDER_MODIFIER_INVENTORY_SUMMARY.byStatus, {
     'live-runtime': 2,
-    'live-geometry': 0,
-    'bake-required': 44,
+    'live-geometry': 9,
+    'bake-required': 35,
     planned: 11,
     'not-applicable': 26,
   });
@@ -95,6 +96,13 @@ test('modifier execution classifications are conservative and internally consist
       .map((entry) => entry.operatorType)
       .sort(),
     ['ARRAY', 'MIRROR'],
+  );
+  assert.deepEqual(
+    BLENDER_MODIFIER_INVENTORY.entries
+      .filter((entry) => entry.status === 'live-geometry')
+      .map((entry) => entry.operatorType)
+      .sort(),
+    BLENDER_LIVE_GEOMETRY_MODIFIER_TYPES,
   );
   assert.equal(BLENDER_MODIFIER_INVENTORY.byType.NODES.status, 'planned');
   assert.equal(BLENDER_MODIFIER_INVENTORY.byType.BEVEL.status, 'bake-required');
@@ -118,6 +126,9 @@ test('modifier inventory query filters by category, execution status, and RNA/op
 
   const live = queryBlenderModifierInventory({ status: 'live-runtime', limit: 200 });
   assert.deepEqual(live.entries.map((entry) => entry.operatorType), ['ARRAY', 'MIRROR']);
+
+  const liveGeometry = queryBlenderModifierInventory({ status: 'live-geometry', limit: 200 });
+  assert.deepEqual(liveGeometry.entries.map((entry) => entry.operatorType), BLENDER_LIVE_GEOMETRY_MODIFIER_TYPES);
 
   const simulation = queryBlenderModifierInventory({ category: 'simulate', limit: 200 });
   assert.equal(simulation.matched, 10);

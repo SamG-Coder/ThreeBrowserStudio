@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createGeometry, createMaterial, normalizeGeometryRecipe } from '../src/runtime/resource-factories.mjs';
+import {
+  createGeometry,
+  createMaterial,
+  indexedMeshRecipeFromBufferGeometry,
+  normalizeGeometryRecipe,
+} from '../src/runtime/resource-factories.mjs';
 
 class FakeGeometry {
   constructor(...arguments_) {
@@ -60,11 +65,50 @@ test('geometry recipes clamp unsafe segment counts', () => {
   assert.equal(recipe.heightSegments, 1);
 });
 
+test('aggregate tessellation and readback budgets reject adversarial geometry before allocation', () => {
+  assert.throws(
+    () => createGeometry(FAKE_THREE, {
+      kind: 'box', widthSegments: 512, heightSegments: 512, depthSegments: 512,
+    }),
+    error => error.code === 'geometry_budget_exceeded'
+      && error.details.estimated.vertices > error.details.limits.maxVertices,
+  );
+  let attributeRead = false;
+  assert.throws(
+    () => indexedMeshRecipeFromBufferGeometry({
+      getAttribute(name) {
+        if (name !== 'position') return null;
+        return {
+          count: 1_000_001,
+          getX() { attributeRead = true; return 0; },
+        };
+      },
+      getIndex() { return null; },
+    }),
+    error => error.code === 'geometry_budget_exceeded',
+  );
+  assert.equal(attributeRead, false);
+});
+
 test('resource recipe takes precedence over resource kind', () => {
   const recipe = normalizeGeometryRecipe({ kind: 'geometry', recipe: { kind: 'torus', radius: 3 } });
   assert.equal(recipe.kind, 'torus');
   assert.equal(recipe.radius, 3);
   assert.equal(recipe.tubularSegments, 48);
+});
+
+test('direct legacy indexed and explicit types outrank a generic geometry envelope kind', () => {
+  for (const type of ['indexedMesh', 'explicit']) {
+    const recipe = normalizeGeometryRecipe({
+      id: `geometry/direct-${type}`,
+      kind: 'geometry',
+      type,
+      positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+      indices: [0, 1, 2],
+    });
+    assert.equal(recipe.kind, type);
+    assert.deepEqual(recipe.indices, [0, 1, 2]);
+  }
 });
 
 test('procedural recipe aliases normalize deterministically and clamp tessellation budgets', () => {

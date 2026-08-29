@@ -157,8 +157,19 @@
       "type": "array", "minItems": 1, "maxItems": 20000, "uniqueItems": true,
       "items": { "type": "integer", "minimum": 0, "maximum": 999999 }
     },
+    "geometryFaceIndices": {
+      "type": "array", "minItems": 1, "maxItems": 20000, "uniqueItems": true,
+      "items": { "type": "integer", "minimum": 0, "maximum": 999999 }
+    },
+    "geometryEdges": {
+      "type": "array", "minItems": 1, "maxItems": 20000,
+      "items": {
+        "type": "array", "minItems": 2, "maxItems": 2,
+        "items": { "type": "integer", "minimum": 0, "maximum": 999999 }
+      }
+    },
     "geometryEditCommand": {
-      "description": "One strict indexed-mesh edit. Rotations use radians and either XYZ rotation or axis plus angle.",
+      "description": "One strict indexed-triangle or editable-polygon mesh edit. Rotations use radians and either XYZ rotation or axis plus angle.",
       "oneOf": [
         {
           "type": "object", "additionalProperties": false,
@@ -248,6 +259,311 @@
           "type": "object", "additionalProperties": false,
           "required": ["type"],
           "properties": { "type": { "const": "triangulate" } }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type"],
+          "oneOf": [{ "required": ["faceIndices"] }, { "required": ["selection"] }],
+          "properties": {
+            "type": { "const": "subdivideFaces" },
+            "faceIndices": { "$ref": "#/$defs/geometryFaceIndices" },
+            "selection": { "const": "all" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type"],
+          "oneOf": [{ "required": ["faceIndices"] }, { "required": ["selection"] }],
+          "properties": {
+            "type": { "const": "insetFaces" },
+            "faceIndices": { "$ref": "#/$defs/geometryFaceIndices" },
+            "selection": { "const": "all" },
+            "factor": { "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1 }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type"],
+          "oneOf": [{ "required": ["faceIndices"] }, { "required": ["selection"] }],
+          "not": { "required": ["offset", "distance"] },
+          "properties": {
+            "type": { "const": "extrudeFaces" },
+            "faceIndices": { "$ref": "#/$defs/geometryFaceIndices" },
+            "selection": { "const": "all" },
+            "mode": { "const": "individual" },
+            "offset": { "$ref": "#/$defs/geometryVec3" },
+            "distance": { "type": "number", "minimum": -1000000, "maximum": 1000000 },
+            "sideMaterialIndex": { "type": "integer", "minimum": 0, "maximum": 255 }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "edges"],
+          "properties": {
+            "type": { "const": "bevelEdges" },
+            "edges": { "$ref": "#/$defs/geometryEdges" },
+            "factor": { "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 0.5 },
+            "materialIndex": { "type": "integer", "minimum": 0, "maximum": 255 }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "edgeVertexIndices"],
+          "properties": {
+            "type": { "const": "bevelEdges" },
+            "edgeVertexIndices": { "$ref": "#/$defs/geometryEdges" },
+            "factor": { "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 0.5 },
+            "materialIndex": { "type": "integer", "minimum": 0, "maximum": 255 }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type"],
+          "oneOf": [{ "required": ["faceIndices"] }, { "required": ["selection"] }],
+          "properties": {
+            "type": { "const": "deleteFaces" },
+            "faceIndices": { "$ref": "#/$defs/geometryFaceIndices" },
+            "selection": { "const": "all" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type"],
+          "oneOf": [{ "required": ["vertexIndices"] }, { "required": ["selection"] }],
+          "properties": {
+            "type": { "const": "mergeVertices" },
+            "vertexIndices": { "$ref": "#/$defs/geometryVertexIndices" },
+            "selection": { "const": "all" },
+            "targetVertexIndex": { "type": "integer", "minimum": 0, "maximum": 999999 },
+            "position": { "enum": ["average", "target"] }
+          }
+        }
+      ]
+    },
+    "blenderModifierOperatorType": {
+      "description": "One exact Blender 5.2 Object Modifier Type Items identifier for an explicit bake boundary.",
+      "enum": [
+        "GREASE_PENCIL_VERTEX_WEIGHT_PROXIMITY", "DATA_TRANSFER", "MESH_CACHE", "MESH_SEQUENCE_CACHE", "NORMAL_EDIT", "WEIGHTED_NORMAL", "UV_PROJECT", "UV_WARP", "VERTEX_WEIGHT_EDIT", "VERTEX_WEIGHT_MIX", "VERTEX_WEIGHT_PROXIMITY", "GREASE_PENCIL_COLOR", "GREASE_PENCIL_TINT", "GREASE_PENCIL_OPACITY", "GREASE_PENCIL_VERTEX_WEIGHT_ANGLE", "GREASE_PENCIL_TIME", "GREASE_PENCIL_TEXTURE", "ARRAY", "BEVEL", "BOOLEAN", "BUILD", "DECIMATE", "EDGE_SPLIT", "NODES", "MASK", "MIRROR", "MESH_TO_VOLUME", "MULTIRES", "REMESH", "SCREW", "SKIN", "SOLIDIFY", "SUBSURF", "TRIANGULATE", "VOLUME_TO_MESH", "WELD", "WIREFRAME", "GREASE_PENCIL_ARRAY", "GREASE_PENCIL_BUILD", "GREASE_PENCIL_LENGTH", "LINEART", "GREASE_PENCIL_MIRROR", "GREASE_PENCIL_MULTIPLY", "GREASE_PENCIL_SIMPLIFY", "GREASE_PENCIL_SUBDIV", "GREASE_PENCIL_ENVELOPE", "GREASE_PENCIL_OUTLINE", "ARMATURE", "CAST", "CURVE", "DISPLACE", "HOOK", "LAPLACIANDEFORM", "LATTICE", "MESH_DEFORM", "SHRINKWRAP", "SIMPLE_DEFORM", "SMOOTH", "CORRECTIVE_SMOOTH", "LAPLACIANSMOOTH", "SURFACE_DEFORM", "WARP", "WAVE", "VOLUME_DISPLACE", "GREASE_PENCIL_HOOK", "GREASE_PENCIL_NOISE", "GREASE_PENCIL_OFFSET", "GREASE_PENCIL_SMOOTH", "GREASE_PENCIL_THICKNESS", "GREASE_PENCIL_LATTICE", "GREASE_PENCIL_DASH", "GREASE_PENCIL_ARMATURE", "GREASE_PENCIL_SHRINKWRAP", "CLOTH", "COLLISION", "DYNAMIC_PAINT", "EXPLODE", "FLUID", "OCEAN", "PARTICLE_INSTANCE", "PARTICLE_SYSTEM", "SOFT_BODY", "SURFACE"
+      ]
+    },
+    "modifierDisplacementSource": {
+      "description": "Deterministic inline scalar source; texture and vertex-group references are not live.",
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false, "required": ["type"],
+          "properties": { "type": { "const": "constant" }, "value": { "type": "number", "minimum": 0, "maximum": 1 } }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["type"],
+          "properties": {
+            "type": { "const": "wave" }, "axis": { "$ref": "#/$defs/vec3" },
+            "frequency": { "type": "number", "minimum": 0, "maximum": 10000 },
+            "phase": { "type": "number", "minimum": -1000000, "maximum": 1000000 }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["type"],
+          "properties": {
+            "type": { "const": "noise" },
+            "seed": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+            "frequency": { "type": "number", "minimum": 0.000001, "maximum": 10000 },
+            "octaves": { "type": "integer", "minimum": 1, "maximum": 8 },
+            "persistence": { "type": "number", "minimum": 0, "maximum": 1 },
+            "lacunarity": { "type": "number", "minimum": 1, "maximum": 8 }
+          }
+        }
+      ]
+    },
+    "modifierDocument": {
+      "description": "Strict canonical modifier document. Objects reject unknown controls; types not listed here require bakeBoundary.",
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false, "required": ["id", "type", "count"],
+          "properties": { "id": { "$ref": "#/$defs/id" }, "type": { "const": "array" }, "count": { "type": "integer", "minimum": 1, "maximum": 256 }, "offset": { "$ref": "#/$defs/vec3" }, "enabled": { "type": "boolean" }, "enabledViewport": { "type": "boolean" }, "enabledRender": { "type": "boolean" } }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["id", "type"],
+          "properties": { "id": { "$ref": "#/$defs/id" }, "type": { "const": "mirror" }, "axis": { "enum": ["x", "y", "z"] }, "enabled": { "type": "boolean" }, "enabledViewport": { "type": "boolean" }, "enabledRender": { "type": "boolean" } }
+        },
+        {
+          "description": "Pattern modifiers are further discriminated by mode; grid products and every final instance count are bounded to 8192.",
+          "oneOf": [
+            {
+              "type": "object", "additionalProperties": false, "required": ["id", "type", "mode", "count", "offset"],
+              "properties": { "id": { "$ref": "#/$defs/id" }, "type": { "const": "pattern" }, "mode": { "const": "linear" }, "count": { "type": "integer", "minimum": 1, "maximum": 8192 }, "offset": { "$ref": "#/$defs/vec3" }, "enabled": { "type": "boolean" }, "enabledViewport": { "type": "boolean" }, "enabledRender": { "type": "boolean" } }
+            },
+            {
+              "type": "object", "additionalProperties": false, "required": ["id", "type", "mode", "counts", "spacing"],
+              "properties": { "id": { "$ref": "#/$defs/id" }, "type": { "const": "pattern" }, "mode": { "const": "grid" }, "counts": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "integer", "minimum": 1, "maximum": 8192 } }, "spacing": { "$ref": "#/$defs/vec3" }, "enabled": { "type": "boolean" }, "enabledViewport": { "type": "boolean" }, "enabledRender": { "type": "boolean" } }
+            },
+            {
+              "type": "object", "additionalProperties": false, "required": ["id", "type", "mode", "count", "axis", "center", "radius", "startAngle", "arc", "closed", "orientation"],
+              "properties": { "id": { "$ref": "#/$defs/id" }, "type": { "const": "pattern" }, "mode": { "const": "radial" }, "count": { "type": "integer", "minimum": 1, "maximum": 8192 }, "axis": { "enum": ["x", "y", "z"] }, "center": { "$ref": "#/$defs/vec3" }, "radius": { "type": "number", "minimum": 0, "maximum": 1000000000 }, "startAngle": { "type": "number", "minimum": -1000000000, "maximum": 1000000000 }, "arc": { "type": "number", "minimum": -1000000000, "maximum": 1000000000 }, "closed": { "type": "boolean" }, "orientation": { "enum": ["keep", "radial", "tangent"] }, "enabled": { "type": "boolean" }, "enabledViewport": { "type": "boolean" }, "enabledRender": { "type": "boolean" } }
+            },
+            {
+              "type": "object", "additionalProperties": false, "required": ["id", "type", "mode", "count", "seed", "bounds"],
+              "properties": { "id": { "$ref": "#/$defs/id" }, "type": { "const": "pattern" }, "mode": { "const": "scatter" }, "count": { "type": "integer", "minimum": 1, "maximum": 8192 }, "seed": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 }, "bounds": { "$ref": "#/$defs/bounds3" }, "rotationMin": { "$ref": "#/$defs/vec3" }, "rotationMax": { "$ref": "#/$defs/vec3" }, "scaleMin": { "$ref": "#/$defs/positiveVec3" }, "scaleMax": { "$ref": "#/$defs/positiveVec3" }, "enabled": { "type": "boolean" }, "enabledViewport": { "type": "boolean" }, "enabledRender": { "type": "boolean" } }
+            }
+          ]
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["id", "type"],
+          "properties": { "id": { "$ref": "#/$defs/id" }, "type": { "const": "triangulate" }, "enabled": { "type": "boolean" }, "enabledViewport": { "type": "boolean" }, "enabledRender": { "type": "boolean" } }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["id", "type"],
+          "properties": { "id": { "$ref": "#/$defs/id" }, "type": { "const": "weld" }, "tolerance": { "type": "number", "minimum": 1e-9, "maximum": 1000000 }, "enabled": { "type": "boolean" }, "enabledViewport": { "type": "boolean" }, "enabledRender": { "type": "boolean" } }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["id", "type"],
+          "properties": { "id": { "$ref": "#/$defs/id" }, "type": { "const": "smooth" }, "iterations": { "type": "integer", "minimum": 1, "maximum": 100 }, "factor": { "type": "number", "minimum": 0, "maximum": 1 }, "preserveBoundary": { "type": "boolean" }, "recalculateNormals": { "type": "boolean" }, "enabled": { "type": "boolean" }, "enabledViewport": { "type": "boolean" }, "enabledRender": { "type": "boolean" } }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["id", "type"],
+          "properties": { "id": { "$ref": "#/$defs/id" }, "type": { "const": "weightedNormal" }, "weighting": { "enum": ["area", "cornerAngle", "areaAngle"] }, "influence": { "type": "number", "minimum": 0, "maximum": 1 }, "enabled": { "type": "boolean" }, "enabledViewport": { "type": "boolean" }, "enabledRender": { "type": "boolean" } }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["id", "type"],
+          "properties": { "id": { "$ref": "#/$defs/id" }, "type": { "const": "edgeSplit" }, "splitAngle": { "type": "number", "minimum": 0, "maximum": 3.141592653589793 }, "recalculateNormals": { "type": "boolean" }, "enabled": { "type": "boolean" }, "enabledViewport": { "type": "boolean" }, "enabledRender": { "type": "boolean" } }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["id", "type"],
+          "properties": { "id": { "$ref": "#/$defs/id" }, "type": { "const": "solidify" }, "thickness": { "oneOf": [{ "type": "number", "minimum": -10000, "exclusiveMaximum": 0 }, { "type": "number", "exclusiveMinimum": 0, "maximum": 10000 }] }, "offset": { "type": "number", "minimum": -1, "maximum": 1 }, "recalculateNormals": { "type": "boolean" }, "enabled": { "type": "boolean" }, "enabledViewport": { "type": "boolean" }, "enabledRender": { "type": "boolean" } }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["id", "type"],
+          "properties": { "id": { "$ref": "#/$defs/id" }, "type": { "const": "subdivision" }, "levels": { "type": "integer", "minimum": 1, "maximum": 6 }, "scheme": { "enum": ["simple", "loop"] }, "recalculateNormals": { "type": "boolean" }, "enabled": { "type": "boolean" }, "enabledViewport": { "type": "boolean" }, "enabledRender": { "type": "boolean" } }
+        },
+        {
+          "description": "Live decimation by either ratio or target triangle count; the two controls are mutually exclusive.",
+          "type": "object", "additionalProperties": false, "required": ["id", "type"],
+          "not": { "required": ["ratio", "targetTriangles"] },
+          "properties": { "id": { "$ref": "#/$defs/id" }, "type": { "const": "decimate" }, "ratio": { "type": "number", "minimum": 0.001, "maximum": 1 }, "targetTriangles": { "type": "integer", "minimum": 1, "maximum": 2000000 }, "recalculateNormals": { "type": "boolean" }, "enabled": { "type": "boolean" }, "enabledViewport": { "type": "boolean" }, "enabledRender": { "type": "boolean" } }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["id", "type"],
+          "properties": { "id": { "$ref": "#/$defs/id" }, "type": { "const": "displace" }, "source": { "$ref": "#/$defs/modifierDisplacementSource" }, "direction": { "oneOf": [{ "enum": ["normal", "x", "y", "z"] }, { "$ref": "#/$defs/vec3" }] }, "coordinateSpace": { "const": "local" }, "strength": { "type": "number", "minimum": -10000, "maximum": 10000 }, "midlevel": { "type": "number", "minimum": 0, "maximum": 1 }, "recalculateNormals": { "type": "boolean" }, "enabled": { "type": "boolean" }, "enabledViewport": { "type": "boolean" }, "enabledRender": { "type": "boolean" } }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["id", "type", "operatorType"],
+          "properties": { "id": { "$ref": "#/$defs/id" }, "type": { "const": "bakeBoundary" }, "operatorType": { "$ref": "#/$defs/blenderModifierOperatorType" }, "parameters": { "type": "object" }, "enabled": { "type": "boolean" }, "enabledViewport": { "type": "boolean" }, "enabledRender": { "type": "boolean" } }
+        }
+      ]
+    },
+    "modifierPatch": {
+      "description": "A strict type-specific partial modifier control set. Inspect modifierDigest first; id and type are immutable. Null removes an optional authored setting.",
+      "anyOf": [
+        {
+          "description": "Strict partial controls for triangulate or common visibility flags on any modifier; inspect modifierDigest before patching because id and type are immutable.",
+          "type": "object", "additionalProperties": false, "minProperties": 1,
+          "properties": {
+            "enabled": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] },
+            "enabledViewport": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] },
+            "enabledRender": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }
+          }
+        },
+        {
+          "description": "Strict partial controls for array; inspect modifierDigest before patching because id and type are immutable.",
+          "type": "object", "additionalProperties": false, "minProperties": 1,
+          "properties": {
+            "enabled": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "enabledViewport": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "enabledRender": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] },
+            "count": { "type": "integer", "minimum": 1, "maximum": 256 }, "offset": { "oneOf": [{ "$ref": "#/$defs/vec3" }, { "type": "null" }] }
+          }
+        },
+        {
+          "description": "Strict partial controls for mirror; inspect modifierDigest before patching because id and type are immutable.",
+          "type": "object", "additionalProperties": false, "minProperties": 1,
+          "properties": {
+            "enabled": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "enabledViewport": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "enabledRender": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] },
+            "axis": { "oneOf": [{ "enum": ["x", "y", "z"] }, { "type": "null" }] }
+          }
+        },
+        {
+          "description": "Strict partial controls for pattern; inspect modifierDigest before patching because id and type are immutable.",
+          "type": "object", "additionalProperties": false, "minProperties": 1,
+          "properties": {
+            "enabled": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "enabledViewport": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "enabledRender": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] },
+            "count": { "type": "integer", "minimum": 1, "maximum": 8192 }, "offset": { "$ref": "#/$defs/vec3" },
+            "counts": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "integer", "minimum": 1, "maximum": 8192 } }, "spacing": { "$ref": "#/$defs/vec3" },
+            "axis": { "enum": ["x", "y", "z"] }, "center": { "$ref": "#/$defs/vec3" }, "radius": { "type": "number", "minimum": 0, "maximum": 1000000000 }, "startAngle": { "type": "number", "minimum": -1000000000, "maximum": 1000000000 }, "arc": { "type": "number", "minimum": -1000000000, "maximum": 1000000000 }, "closed": { "type": "boolean" }, "orientation": { "enum": ["keep", "radial", "tangent"] },
+            "seed": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 }, "bounds": { "$ref": "#/$defs/bounds3" },
+            "rotationMin": { "oneOf": [{ "$ref": "#/$defs/vec3" }, { "type": "null" }] }, "rotationMax": { "oneOf": [{ "$ref": "#/$defs/vec3" }, { "type": "null" }] }, "scaleMin": { "oneOf": [{ "$ref": "#/$defs/positiveVec3" }, { "type": "null" }] }, "scaleMax": { "oneOf": [{ "$ref": "#/$defs/positiveVec3" }, { "type": "null" }] }
+          }
+        },
+        {
+          "description": "Strict partial controls for weld; inspect modifierDigest before patching because id and type are immutable.",
+          "type": "object", "additionalProperties": false, "minProperties": 1,
+          "properties": { "enabled": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "enabledViewport": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "enabledRender": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "tolerance": { "oneOf": [{ "type": "number", "minimum": 1e-9, "maximum": 1000000 }, { "type": "null" }] } }
+        },
+        {
+          "description": "Strict partial controls for smooth; inspect modifierDigest before patching because id and type are immutable.",
+          "type": "object", "additionalProperties": false, "minProperties": 1,
+          "properties": { "enabled": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "enabledViewport": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "enabledRender": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "iterations": { "oneOf": [{ "type": "integer", "minimum": 1, "maximum": 100 }, { "type": "null" }] }, "factor": { "oneOf": [{ "type": "number", "minimum": 0, "maximum": 1 }, { "type": "null" }] }, "preserveBoundary": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "recalculateNormals": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] } }
+        },
+        {
+          "description": "Strict partial controls for weightedNormal; inspect modifierDigest before patching because id and type are immutable.",
+          "type": "object", "additionalProperties": false, "minProperties": 1,
+          "properties": { "enabled": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "enabledViewport": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "enabledRender": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "weighting": { "oneOf": [{ "enum": ["area", "cornerAngle", "areaAngle"] }, { "type": "null" }] }, "influence": { "oneOf": [{ "type": "number", "minimum": 0, "maximum": 1 }, { "type": "null" }] } }
+        },
+        {
+          "description": "Strict partial controls for edgeSplit; inspect modifierDigest before patching because id and type are immutable.",
+          "type": "object", "additionalProperties": false, "minProperties": 1,
+          "properties": { "enabled": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "enabledViewport": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "enabledRender": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "splitAngle": { "oneOf": [{ "type": "number", "minimum": 0, "maximum": 3.141592653589793 }, { "type": "null" }] }, "recalculateNormals": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] } }
+        },
+        {
+          "description": "Strict partial controls for solidify; inspect modifierDigest before patching because id and type are immutable.",
+          "type": "object", "additionalProperties": false, "minProperties": 1,
+          "properties": { "enabled": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "enabledViewport": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "enabledRender": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "thickness": { "oneOf": [{ "type": "number", "minimum": -10000, "exclusiveMaximum": 0 }, { "type": "number", "exclusiveMinimum": 0, "maximum": 10000 }, { "type": "null" }] }, "offset": { "oneOf": [{ "type": "number", "minimum": -1, "maximum": 1 }, { "type": "null" }] }, "recalculateNormals": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] } }
+        },
+        {
+          "description": "Strict partial controls for subdivision; inspect modifierDigest before patching because id and type are immutable.",
+          "type": "object", "additionalProperties": false, "minProperties": 1,
+          "properties": { "enabled": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "enabledViewport": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "enabledRender": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "levels": { "oneOf": [{ "type": "integer", "minimum": 1, "maximum": 6 }, { "type": "null" }] }, "scheme": { "oneOf": [{ "enum": ["simple", "loop"] }, { "type": "null" }] }, "recalculateNormals": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] } }
+        },
+        {
+          "description": "Strict partial controls for decimate; ratio and targetTriangles cannot both be non-null.",
+          "type": "object", "additionalProperties": false, "minProperties": 1,
+          "not": { "required": ["ratio", "targetTriangles"], "properties": { "ratio": { "type": "number" }, "targetTriangles": { "type": "integer" } } },
+          "properties": { "enabled": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "enabledViewport": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "enabledRender": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "ratio": { "oneOf": [{ "type": "number", "minimum": 0.001, "maximum": 1 }, { "type": "null" }] }, "targetTriangles": { "oneOf": [{ "type": "integer", "minimum": 1, "maximum": 2000000 }, { "type": "null" }] }, "recalculateNormals": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] } }
+        },
+        {
+          "description": "Strict partial controls for displace; inspect modifierDigest before patching because id and type are immutable.",
+          "type": "object", "additionalProperties": false, "minProperties": 1,
+          "properties": { "enabled": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "enabledViewport": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "enabledRender": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "source": { "oneOf": [{ "$ref": "#/$defs/modifierDisplacementSource" }, { "type": "null" }] }, "direction": { "oneOf": [{ "enum": ["normal", "x", "y", "z"] }, { "$ref": "#/$defs/vec3" }, { "type": "null" }] }, "coordinateSpace": { "oneOf": [{ "const": "local" }, { "type": "null" }] }, "strength": { "oneOf": [{ "type": "number", "minimum": -10000, "maximum": 10000 }, { "type": "null" }] }, "midlevel": { "oneOf": [{ "type": "number", "minimum": 0, "maximum": 1 }, { "type": "null" }] }, "recalculateNormals": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] } }
+        },
+        {
+          "description": "Strict partial controls for bakeBoundary; inspect modifierDigest before patching because id and type are immutable.",
+          "type": "object", "additionalProperties": false, "minProperties": 1,
+          "properties": { "enabled": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "enabledViewport": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "enabledRender": { "oneOf": [{ "type": "boolean" }, { "type": "null" }] }, "operatorType": { "$ref": "#/$defs/blenderModifierOperatorType" }, "parameters": { "oneOf": [{ "type": "object" }, { "type": "null" }] } }
+        }
+      ]
+    },
+    "modifierStackChange": {
+      "description": "One ordered edit in a hash-guarded modifier stack batch. Modifier payloads receive strict canonical-type and parameter validation in the kernel.",
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false, "required": ["type", "modifier"],
+          "properties": {
+            "type": { "const": "create" }, "modifier": { "$ref": "#/$defs/modifierDocument" },
+            "index": { "type": "integer", "minimum": 0, "maximum": 63 }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["type", "modifierId", "patch"],
+          "properties": {
+            "type": { "const": "patch" }, "modifierId": { "$ref": "#/$defs/id" }, "patch": { "$ref": "#/$defs/modifierPatch" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["type", "modifierId", "index"],
+          "properties": {
+            "type": { "const": "move" }, "modifierId": { "$ref": "#/$defs/id" },
+            "index": { "type": "integer", "minimum": 0, "maximum": 63 }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["type", "modifierId"],
+          "properties": { "type": { "const": "delete" }, "modifierId": { "$ref": "#/$defs/id" } }
         }
       ]
     },
@@ -256,7 +572,7 @@
       "properties": {
         "protocolVersion": { "$ref": "#/$defs/protocolVersion" }, "sessionId": { "$ref": "#/$defs/sessionId" },
         "projectId": { "$ref": "#/$defs/id" }, "sceneId": { "$ref": "#/$defs/id" },
-        "query": { "enum": ["selector", "sceneDigest", "resourceDigest", "meshElements", "graphDigest", "rtxDigest", "changedSinceRevision", "unresolvedResources", "unusedResources", "graphCatalog", "playState", "latestEvidence", "blenderCatalog"] },
+        "query": { "enum": ["selector", "sceneDigest", "resourceDigest", "meshElements", "graphDigest", "modifierDigest", "rtxDigest", "changedSinceRevision", "unresolvedResources", "unusedResources", "graphCatalog", "playState", "latestEvidence", "blenderCatalog"] },
         "selector": { "$ref": "#/$defs/selector" },
         "element": { "enum": ["vertices", "edges", "faces", "corners"] },
         "include": { "type": "array", "maxItems": 6, "items": { "enum": ["summary", "tree", "transform", "components", "bounds", "references"] } },
@@ -265,7 +581,7 @@
       },
       "allOf": [
           {
-            "if": { "properties": { "query": { "enum": ["meshElements", "graphDigest"] } }, "required": ["query"] },
+            "if": { "properties": { "query": { "enum": ["meshElements", "graphDigest", "modifierDigest"] } }, "required": ["query"] },
             "then": {
               "required": ["selector"],
               "properties": {
@@ -290,19 +606,19 @@
           "scene.create", "scene.patch", "scene.delete", "scene.setActive", "scene.settings.patch", "scene.rtx.patch", "scene.setActiveCamera",
           "entity.create", "entity.patch", "entity.patchMany", "entity.transformMany", "entity.group", "entity.ungroup", "entity.duplicate", "entity.reparent", "entity.delete",
           "collection.create", "collection.patch", "collection.membership.patch", "collection.reparent", "collection.delete",
-          "camera.frame", "layout.pattern", "geometry.edit",
+          "camera.frame", "layout.pattern", "modifier.create", "modifier.patch", "modifier.move", "modifier.delete", "modifier.stack.edit", "geometry.edit",
           "resource.create", "resource.patch", "resource.delete"
         ] },
         "sceneId": { "$ref": "#/$defs/reference" }, "entityId": { "$ref": "#/$defs/reference" }, "collectionId": { "$ref": "#/$defs/reference" }, "cameraId": { "oneOf": [{ "$ref": "#/$defs/reference" }, { "type": "null" }] },
-        "resourceId": { "$ref": "#/$defs/reference" },
+        "resourceId": { "$ref": "#/$defs/reference" }, "modifierId": { "$ref": "#/$defs/id" },
         "parentId": { "oneOf": [{ "$ref": "#/$defs/reference" }, { "type": "null" }] }, "newId": { "$ref": "#/$defs/reference" },
         "alias": { "type": "string", "pattern": "^\\$[a-z][a-z0-9_-]{0,63}$" },
         "expectedSceneHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }, "expectedSubtreeHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-        "expectedEntitySetHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }, "expectedMembershipHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "expectedEntitySetHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }, "expectedMembershipHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }, "expectedStackHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }, "expectedTopologyHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
         "index": { "type": "integer", "minimum": 0, "maximum": 20000 }, "deep": { "type": "boolean" }, "recursive": { "type": "boolean" },
         "name": { "type": "string", "minLength": 1, "maxLength": 240 },
         "resourceType": { "enum": ["geometries", "materials", "textures", "graphs", "animations", "prefabs", "audio", "assets", "geometry", "material", "texture", "graph", "animation", "prefab", "asset"] },
-        "scene": { "type": "object" }, "entity": { "type": "object" }, "group": { "type": "object" }, "collection": { "type": "object" }, "resource": { "type": "object" }, "patch": { "type": "object" },
+        "scene": { "type": "object" }, "entity": { "type": "object" }, "group": { "type": "object" }, "collection": { "type": "object" }, "modifier": { "$ref": "#/$defs/modifierDocument" }, "resource": { "type": "object" }, "patch": { "type": "object" },
         "entityIds": { "type": "array", "minItems": 1, "maxItems": 200, "uniqueItems": true, "items": { "$ref": "#/$defs/reference" } },
         "addEntityIds": { "type": "array", "maxItems": 200, "uniqueItems": true, "items": { "$ref": "#/$defs/reference" } },
         "removeEntityIds": { "type": "array", "maxItems": 200, "uniqueItems": true, "items": { "$ref": "#/$defs/reference" } },
@@ -326,9 +642,33 @@
           "type": "array", "minItems": 1, "maxItems": 64,
           "items": { "$ref": "#/$defs/geometryEditCommand" }
         },
+        "changes": {
+          "type": "array", "minItems": 1, "maxItems": 128,
+          "items": { "$ref": "#/$defs/modifierStackChange" }
+        },
         "idMap": { "type": "object", "additionalProperties": { "$ref": "#/$defs/reference" } }
       },
       "allOf": [
+        {
+          "if": { "properties": { "op": { "const": "modifier.create" } }, "required": ["op"] },
+          "then": { "required": ["entityId", "modifier", "expectedStackHash"], "properties": { "index": { "maximum": 63 } } }
+        },
+        {
+          "if": { "properties": { "op": { "const": "modifier.patch" } }, "required": ["op"] },
+          "then": { "required": ["entityId", "modifierId", "patch", "expectedStackHash"], "properties": { "patch": { "$ref": "#/$defs/modifierPatch" } } }
+        },
+        {
+          "if": { "properties": { "op": { "const": "modifier.move" } }, "required": ["op"] },
+          "then": { "required": ["entityId", "modifierId", "index", "expectedStackHash"], "properties": { "index": { "maximum": 63 } } }
+        },
+        {
+          "if": { "properties": { "op": { "const": "modifier.delete" } }, "required": ["op"] },
+          "then": { "required": ["entityId", "modifierId", "expectedStackHash"] }
+        },
+        {
+          "if": { "properties": { "op": { "const": "modifier.stack.edit" } }, "required": ["op"] },
+          "then": { "required": ["entityId", "changes", "expectedStackHash"] }
+        },
         {
           "if": { "properties": { "op": { "const": "entity.patchMany" } }, "required": ["op"] },
           "then": { "required": ["entityIds", "patch", "expectedEntitySetHash"] }
@@ -391,7 +731,7 @@
           "if": { "properties": { "op": { "const": "geometry.edit" } }, "required": ["op"] },
           "then": {
             "required": ["resourceId", "edits"],
-            "propertyNames": { "enum": ["op", "resourceId", "edits"] }
+            "propertyNames": { "enum": ["op", "resourceId", "edits", "expectedTopologyHash"] }
           }
         }
       ]

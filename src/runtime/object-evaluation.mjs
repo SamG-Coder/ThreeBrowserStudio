@@ -1,4 +1,5 @@
 import { RUNTIME_CONSTRAINT_TYPES, RUNTIME_MODIFIER_TYPES } from '../core/component-validation.mjs';
+import { isGeometryModifierType } from '../core/geometry-modifier-evaluator.mjs';
 import { MAX_LAYOUT_PATTERN_INSTANCES, normalizeLayoutPattern } from '../core/layout-patterns.mjs';
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -139,20 +140,22 @@ function patternMatrices(THREE, authoredPattern) {
  * matrices. Base geometry remains untouched, so the authored operation is
  * non-destructive and can be reordered or removed.
  */
-export function evaluateInstanceStack(THREE, entity, diagnostics = []) {
+export function evaluateInstanceStack(THREE, entity, diagnostics = [], modifierOverride) {
   const mesh = entity.components?.mesh ?? {};
   let matrices = Array.isArray(mesh.instances) && mesh.instances.length
     ? mesh.instances.slice(0, 8192).map(value => transformMatrix(THREE, value))
     : [new THREE.Matrix4()];
-  for (const modifier of entity.components?.modifiers ?? []) {
-    if (modifier.enabled === false || modifier.enabledViewport === false) continue;
+  for (const modifier of modifierOverride ?? entity.components?.modifiers ?? []) {
+    if (modifier.enabled === false || modifier.enabledViewport === false || modifier.showViewport === false) continue;
+    if (isGeometryModifierType(modifier.type)) continue;
     if (!RUNTIME_MODIFIER_TYPES.includes(modifier.type)) {
-      diagnostics.push(warning(
-        'runtime_modifier_bake_required',
-        entity.id,
-        `Modifier ${modifier.id} (${modifier.type}) is preserved but requires a geometry bake for WebGPU runtime evaluation.`,
-      ));
-      continue;
+      const error = new Error(
+        `Modifier ${modifier.id} (${modifier.type}) has no deterministic viewport evaluator and must be baked.`,
+      );
+      error.code = 'runtime_modifier_bake_required';
+      error.entityId = entity.id;
+      error.modifierId = modifier.id;
+      throw error;
     }
     if (modifier.type === 'array') {
       const count = clamp(Math.trunc(modifier.count ?? 1), 1, 256);

@@ -4,10 +4,17 @@ import { PROTOCOL_VERSION } from '../bridge/protocol.mjs';
 import {
   MAX_CONTROL_REQUEST_BYTES,
   MAX_INSPECT_RESPONSE_BYTES,
+  MAX_MATERIAL_SLOTS_PER_MESH,
   MAX_OPERATIONS_PER_TRANSACTION,
 } from '../core/constants.mjs';
 import { MESH_ELEMENT_KINDS, MESH_INSPECTION_LIMITS } from '../core/mesh-inspection.mjs';
 import { MAX_EXACT_ENTITY_SELECTION } from '../core/entity-selection.mjs';
+import {
+  BAKE_BOUNDARY_MODIFIER_TYPE,
+  MAX_MODIFIERS_PER_ENTITY,
+  normalizeModifierDocument,
+} from '../core/modifier-stack.mjs';
+import { BLENDER_MODIFIER_INVENTORY } from '../blender/modifier-inventory.mjs';
 
 const finite = z.number().finite().min(-1_000_000_000).max(1_000_000_000);
 const nonNegativeInteger = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
@@ -83,7 +90,7 @@ export const INSPECT_SLICES = Object.freeze([
 ]);
 
 export const INSPECT_QUERIES = Object.freeze([
-  'selector', 'sceneDigest', 'resourceDigest', 'meshElements', 'graphDigest', 'rtxDigest', 'changedSinceRevision',
+  'selector', 'sceneDigest', 'resourceDigest', 'meshElements', 'graphDigest', 'modifierDigest', 'rtxDigest', 'changedSinceRevision',
   'unresolvedResources', 'unusedResources', 'graphCatalog', 'playState',
   'latestEvidence', 'blenderCatalog',
 ]);
@@ -99,7 +106,7 @@ export const inspectSchema = z.object({
   cursor: cursor.optional(),
   limit: z.number().int().min(1).max(200).optional().default(50),
 }).strict().superRefine((value, context) => {
-  if (['meshElements', 'graphDigest'].includes(value.query) && value.selector?.ids?.length !== 1) {
+  if (['meshElements', 'graphDigest', 'modifierDigest'].includes(value.query) && value.selector?.ids?.length !== 1) {
     context.addIssue({
       code: 'custom',
       path: ['selector', 'ids'],
@@ -117,7 +124,9 @@ export const OPERATION_TYPES = Object.freeze([
   'entity.create', 'entity.patch', 'entity.patchMany', 'entity.transformMany',
   'entity.group', 'entity.ungroup', 'entity.duplicate', 'entity.reparent', 'entity.delete',
   'collection.create', 'collection.patch', 'collection.membership.patch', 'collection.reparent', 'collection.delete',
-  'camera.frame', 'layout.pattern', 'geometry.edit',
+  'camera.frame', 'layout.pattern',
+  'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
+  'geometry.edit',
   'resource.create', 'resource.patch', 'resource.delete',
 ]);
 
@@ -125,6 +134,7 @@ const alias = z.string().min(2).max(65).regex(/^\$[a-z][a-z0-9_-]{0,63}$/);
 const reference = z.union([identifier, alias]);
 const hash = z.string().length(64).regex(/^[a-f0-9]{64}$/);
 const insertionIndex = z.number().int().min(0).max(20_000);
+const modifierIndex = z.number().int().min(0).max(63);
 const exactEntityReferences = z.array(reference).min(1).max(200).refine(
   values => new Set(values).size === values.length,
   { message: 'Entity ID lists cannot contain duplicates.' },
@@ -224,8 +234,276 @@ export const layoutPatternSchema = layoutPatternUnion.superRefine((pattern, cont
   }
 });
 
+const modifierFlags = {
+  enabled: z.boolean().optional(),
+  enabledViewport: z.boolean().optional(),
+  enabledRender: z.boolean().optional(),
+};
+const modifierDocument = (type, fields = {}) => z.object({
+  id: identifier,
+  type: z.literal(type),
+  ...fields,
+  ...modifierFlags,
+}).strict();
+const patternModifierUnion = z.discriminatedUnion('mode', [
+  modifierDocument('pattern', {
+    mode: z.literal('linear'),
+    count: layoutCount,
+    offset: vec3,
+  }),
+  modifierDocument('pattern', {
+    mode: z.literal('grid'),
+    counts: layoutGridCounts,
+    spacing: vec3,
+  }),
+  modifierDocument('pattern', {
+    mode: z.literal('radial'),
+    count: layoutCount,
+    axis: z.enum(['x', 'y', 'z']),
+    center: vec3,
+    radius: z.number().finite().min(0).max(1_000_000_000),
+    startAngle: finite,
+    arc: finite,
+    closed: z.boolean(),
+    orientation: z.enum(['keep', 'radial', 'tangent']),
+  }),
+  modifierDocument('pattern', {
+    mode: z.literal('scatter'),
+    count: layoutCount,
+    seed: layoutScatterSeed,
+    bounds: bounds3,
+    rotationMin: vec3.optional(),
+    rotationMax: vec3.optional(),
+    scaleMin: layoutPositiveVec3.optional(),
+    scaleMax: layoutPositiveVec3.optional(),
+  }),
+]).superRefine((pattern, context) => {
+  if (pattern.mode === 'grid') {
+    const product = pattern.counts[0] * pattern.counts[1] * pattern.counts[2];
+    if (!Number.isSafeInteger(product) || product > 8192) {
+      context.addIssue({ code: 'custom', path: ['counts'], message: 'Grid count product must not exceed 8192.' });
+    }
+  }
+  if (pattern.mode === 'scatter') {
+    const ranges = [
+      ['bounds', pattern.bounds.min, pattern.bounds.max],
+      ['rotation', pattern.rotationMin ?? pattern.rotationMax ?? [0, 0, 0], pattern.rotationMax ?? pattern.rotationMin ?? [0, 0, 0]],
+      ['scale', pattern.scaleMin ?? pattern.scaleMax ?? [1, 1, 1], pattern.scaleMax ?? pattern.scaleMin ?? [1, 1, 1]],
+    ];
+    for (const [label, minimum, maximum] of ranges) {
+      minimum.forEach((value, index) => {
+        if (value <= maximum[index]) return;
+        context.addIssue({
+          code: 'custom',
+          path: label === 'bounds' ? ['bounds', 'min', index] : [`${label}Min`, index],
+          message: `${label} minimum must not exceed maximum on any axis.`,
+        });
+      });
+    }
+  }
+});
+const recalculateNormalsField = { recalculateNormals: z.boolean().optional() };
+const nonZeroThickness = z.union([
+  z.number().finite().min(-10_000).negative(),
+  z.number().finite().positive().max(10_000),
+]).describe('Pattern modifiers are further discriminated by mode; grid products and every final instance count are bounded to 8192.');
+const displacementSourceSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('constant'),
+    value: z.number().finite().min(0).max(1).optional(),
+  }).strict(),
+  z.object({
+    type: z.literal('wave'),
+    axis: vec3.refine(axis => axis.some(component => component !== 0), { message: 'axis must not be zero.' }).optional(),
+    frequency: z.number().finite().min(0).max(10_000).optional(),
+    phase: z.number().finite().min(-1_000_000).max(1_000_000).optional(),
+  }).strict(),
+  z.object({
+    type: z.literal('noise'),
+    seed: layoutScatterSeed.optional(),
+    frequency: z.number().finite().min(1e-6).max(10_000).optional(),
+    octaves: z.number().int().min(1).max(8).optional(),
+    persistence: z.number().finite().min(0).max(1).optional(),
+    lacunarity: z.number().finite().min(1).max(8).optional(),
+  }).strict(),
+]);
+const displacementDirectionSchema = z.union([
+  z.enum(['normal', 'x', 'y', 'z']),
+  vec3.refine(direction => direction.some(component => component !== 0), { message: 'direction must not be zero.' }),
+]);
+const bakeBoundaryModifierSchema = z.object({
+  id: identifier,
+  type: z.literal(BAKE_BOUNDARY_MODIFIER_TYPE),
+  operatorType: z.enum(BLENDER_MODIFIER_INVENTORY.entries.map(entry => entry.operatorType)),
+  parameters: jsonObjectSchema.optional(),
+  ...modifierFlags,
+}).strict();
+const decimateModifierSchema = modifierDocument('decimate', {
+  ratio: z.number().finite().min(0.001).max(1).optional(),
+  targetTriangles: z.number().int().min(1).max(2_000_000).optional(),
+  ...recalculateNormalsField,
+}).meta({
+  description: 'Live decimation by either ratio or target triangle count; the two controls are mutually exclusive.',
+  not: { required: ['ratio', 'targetTriangles'] },
+});
+export const modifierDocumentSchema = z.discriminatedUnion('type', [
+  modifierDocument('array', {
+    count: z.number().int().min(1).max(256),
+    offset: vec3.optional(),
+  }),
+  modifierDocument('mirror', { axis: z.enum(['x', 'y', 'z']).optional() }),
+  patternModifierUnion,
+  modifierDocument('triangulate'),
+  modifierDocument('weld', {
+    tolerance: z.number().finite().min(1e-9).max(1_000_000).optional(),
+  }),
+  modifierDocument('smooth', {
+    iterations: z.number().int().min(1).max(100).optional(),
+    factor: z.number().finite().min(0).max(1).optional(),
+    preserveBoundary: z.boolean().optional(),
+    ...recalculateNormalsField,
+  }),
+  modifierDocument('weightedNormal', {
+    weighting: z.enum(['area', 'cornerAngle', 'areaAngle']).optional(),
+    influence: z.number().finite().min(0).max(1).optional(),
+  }),
+  modifierDocument('edgeSplit', {
+    splitAngle: z.number().finite().min(0).max(Math.PI).optional(),
+    ...recalculateNormalsField,
+  }),
+  modifierDocument('solidify', {
+    thickness: nonZeroThickness.optional(),
+    offset: z.number().finite().min(-1).max(1).optional(),
+    ...recalculateNormalsField,
+  }),
+  modifierDocument('subdivision', {
+    levels: z.number().int().min(1).max(6).optional(),
+    scheme: z.enum(['simple', 'loop']).optional(),
+    ...recalculateNormalsField,
+  }),
+  decimateModifierSchema,
+  modifierDocument('displace', {
+    source: displacementSourceSchema.optional(),
+    direction: displacementDirectionSchema.optional(),
+    coordinateSpace: z.literal('local').optional(),
+    strength: z.number().finite().min(-10_000).max(10_000).optional(),
+    midlevel: z.number().finite().min(0).max(1).optional(),
+    ...recalculateNormalsField,
+  }),
+  bakeBoundaryModifierSchema,
+]).superRefine((modifier, context) => {
+  try {
+    normalizeModifierDocument(modifier);
+  } catch (error) {
+    context.addIssue({ code: 'custom', message: error.message });
+  }
+}).describe('Strict canonical modifier document. Objects reject unknown controls; types not listed here require bakeBoundary.');
+
+const patchable = schema => schema.nullable().optional();
+const modifierPatchFlags = {
+  enabled: patchable(z.boolean()),
+  enabledViewport: patchable(z.boolean()),
+  enabledRender: patchable(z.boolean()),
+};
+const modifierPatch = (target, fields) => z.object({ ...modifierPatchFlags, ...fields })
+  .strict()
+  .refine(value => Object.keys(value).length > 0, { message: 'modifier.patch requires at least one field.' })
+  .describe(`Strict partial controls for ${target}; inspect modifierDigest before patching because id and type are immutable.`)
+  .meta({ minProperties: 1 });
+const decimateModifierPatchSchema = modifierPatch('decimate', {
+  ratio: patchable(z.number().finite().min(0.001).max(1)),
+  targetTriangles: patchable(z.number().int().min(1).max(2_000_000)),
+  recalculateNormals: patchable(z.boolean()),
+}).superRefine((patch, context) => {
+  if (patch.ratio !== null && patch.ratio !== undefined
+      && patch.targetTriangles !== null && patch.targetTriangles !== undefined) {
+    context.addIssue({
+      code: 'custom',
+      message: 'Decimate accepts ratio or targetTriangles, not both; set the old control to null when switching.',
+    });
+  }
+}).meta({
+  description: 'Strict partial controls for decimate; ratio and targetTriangles cannot both be non-null.',
+  minProperties: 1,
+  not: {
+    required: ['ratio', 'targetTriangles'],
+    properties: { ratio: { type: 'number' }, targetTriangles: { type: 'integer' } },
+  },
+});
+export const modifierPatchSchema = z.union([
+  modifierPatch('triangulate or common visibility flags on any modifier', {}),
+  modifierPatch('array', { count: z.number().int().min(1).max(256).optional(), offset: patchable(vec3) }),
+  modifierPatch('mirror', { axis: patchable(z.enum(['x', 'y', 'z'])) }),
+  modifierPatch('pattern', {
+    count: layoutCount.optional(),
+    offset: vec3.optional(),
+    counts: layoutGridCounts.optional(),
+    spacing: vec3.optional(),
+    axis: z.enum(['x', 'y', 'z']).optional(),
+    center: vec3.optional(),
+    radius: z.number().finite().min(0).max(1_000_000_000).optional(),
+    startAngle: finite.optional(),
+    arc: finite.optional(),
+    closed: z.boolean().optional(),
+    orientation: z.enum(['keep', 'radial', 'tangent']).optional(),
+    seed: layoutScatterSeed.optional(),
+    bounds: bounds3.optional(),
+    rotationMin: patchable(vec3),
+    rotationMax: patchable(vec3),
+    scaleMin: patchable(layoutPositiveVec3),
+    scaleMax: patchable(layoutPositiveVec3),
+  }),
+  modifierPatch('weld', { tolerance: patchable(z.number().finite().min(1e-9).max(1_000_000)) }),
+  modifierPatch('smooth', {
+    iterations: patchable(z.number().int().min(1).max(100)),
+    factor: patchable(z.number().finite().min(0).max(1)),
+    preserveBoundary: patchable(z.boolean()),
+    recalculateNormals: patchable(z.boolean()),
+  }),
+  modifierPatch('weightedNormal', {
+    weighting: patchable(z.enum(['area', 'cornerAngle', 'areaAngle'])),
+    influence: patchable(z.number().finite().min(0).max(1)),
+  }),
+  modifierPatch('edgeSplit', {
+    splitAngle: patchable(z.number().finite().min(0).max(Math.PI)),
+    recalculateNormals: patchable(z.boolean()),
+  }),
+  modifierPatch('solidify', {
+    thickness: patchable(nonZeroThickness),
+    offset: patchable(z.number().finite().min(-1).max(1)),
+    recalculateNormals: patchable(z.boolean()),
+  }),
+  modifierPatch('subdivision', {
+    levels: patchable(z.number().int().min(1).max(6)),
+    scheme: patchable(z.enum(['simple', 'loop'])),
+    recalculateNormals: patchable(z.boolean()),
+  }),
+  decimateModifierPatchSchema,
+  modifierPatch('displace', {
+    source: patchable(displacementSourceSchema),
+    direction: patchable(displacementDirectionSchema),
+    coordinateSpace: patchable(z.literal('local')),
+    strength: patchable(z.number().finite().min(-10_000).max(10_000)),
+    midlevel: patchable(z.number().finite().min(0).max(1)),
+    recalculateNormals: patchable(z.boolean()),
+  }),
+  modifierPatch('bakeBoundary', {
+    operatorType: z.enum(BLENDER_MODIFIER_INVENTORY.entries.map(entry => entry.operatorType)).optional(),
+    parameters: patchable(jsonObjectSchema),
+  }),
+]);
+
+const modifierStackEditSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('create'), modifier: modifierDocumentSchema, index: modifierIndex.optional() }).strict(),
+  z.object({ type: z.literal('patch'), modifierId: identifier, patch: modifierPatchSchema }).strict(),
+  z.object({ type: z.literal('move'), modifierId: identifier, index: modifierIndex }).strict(),
+  z.object({ type: z.literal('delete'), modifierId: identifier }).strict(),
+]);
+export const modifierStackEditsSchema = z.array(modifierStackEditSchema).min(1).max(128);
+
 export const GEOMETRY_EDIT_COMMAND_TYPES = Object.freeze([
   'move', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
+  'subdivideFaces', 'insetFaces', 'extrudeFaces', 'bevelEdges', 'deleteFaces', 'mergeVertices',
 ]);
 export const MAX_GEOMETRY_EDIT_COMMANDS = 64;
 export const MAX_GEOMETRY_EDIT_VERTEX_SELECTION = 20_000;
@@ -242,6 +520,18 @@ const geometryVertexIndices = z.array(
   indices => new Set(indices).size === indices.length,
   { message: 'vertexIndices cannot contain duplicates.' },
 );
+const geometryFaceIndices = z.array(
+  z.number().int().min(0).max(999_999),
+).min(1).max(MAX_GEOMETRY_EDIT_VERTEX_SELECTION).refine(
+  indices => new Set(indices).size === indices.length,
+  { message: 'faceIndices cannot contain duplicates.' },
+);
+const geometryEdges = z.array(z.tuple([
+  z.number().int().min(0).max(999_999),
+  z.number().int().min(0).max(999_999),
+]).refine(([first, second]) => first !== second, {
+  message: 'An edge cannot reference the same vertex twice.',
+})).min(1).max(MAX_GEOMETRY_EDIT_VERTEX_SELECTION);
 const geometryScale = z.union([geometryFinite, geometryVec3]);
 const geometrySelectedVariants = (type, fields) => z.union([
   z.object({ type: z.literal(type), vertexIndices: geometryVertexIndices, ...fields }).strict(),
@@ -281,6 +571,37 @@ const geometryWeldEdit = z.object({
 const geometryTriangulateEdit = z.object({
   type: z.literal('triangulate'),
 }).strict();
+const geometryFaceSelectedVariants = (type, fields = {}) => z.union([
+  z.object({ type: z.literal(type), faceIndices: geometryFaceIndices, ...fields }).strict(),
+  z.object({ type: z.literal(type), selection: z.literal('all'), ...fields }).strict(),
+]);
+const geometrySubdivideFacesEdit = geometryFaceSelectedVariants('subdivideFaces');
+const geometryInsetFacesEdit = geometryFaceSelectedVariants('insetFaces', {
+  factor: z.number().finite().gt(0).lt(1).optional(),
+});
+const geometryExtrudeFields = {
+  mode: z.literal('individual').optional(),
+  offset: geometryVec3.optional(),
+  distance: geometryFinite.optional(),
+  sideMaterialIndex: z.number().int().min(0).max(MAX_MATERIAL_SLOTS_PER_MESH - 1).optional(),
+};
+const geometryExtrudeFacesEdit = geometryFaceSelectedVariants('extrudeFaces', geometryExtrudeFields)
+  .refine(value => value.offset === undefined || value.distance === undefined, {
+    message: 'extrudeFaces accepts offset or distance, not both.',
+  });
+const geometryBevelFields = {
+  factor: z.number().finite().gt(0).lt(0.5).optional(),
+  materialIndex: z.number().int().min(0).max(MAX_MATERIAL_SLOTS_PER_MESH - 1).optional(),
+};
+const geometryBevelEdgesEdit = z.union([
+  z.object({ type: z.literal('bevelEdges'), edges: geometryEdges, ...geometryBevelFields }).strict(),
+  z.object({ type: z.literal('bevelEdges'), edgeVertexIndices: geometryEdges, ...geometryBevelFields }).strict(),
+]);
+const geometryDeleteFacesEdit = geometryFaceSelectedVariants('deleteFaces');
+const geometryMergeVerticesEdit = geometrySelectedVariants('mergeVertices', {
+  targetVertexIndex: z.number().int().min(0).max(999_999).optional(),
+  position: z.enum(['average', 'target']).optional(),
+});
 
 export const geometryEditCommandSchema = z.union([
   geometryMoveEdit,
@@ -291,6 +612,12 @@ export const geometryEditCommandSchema = z.union([
   geometryRecalculateNormalsEdit,
   geometryWeldEdit,
   geometryTriangulateEdit,
+  geometrySubdivideFacesEdit,
+  geometryInsetFacesEdit,
+  geometryExtrudeFacesEdit,
+  geometryBevelEdgesEdit,
+  geometryDeleteFacesEdit,
+  geometryMergeVerticesEdit,
 ]);
 export const geometryEditsSchema = z.array(geometryEditCommandSchema)
   .min(1)
@@ -400,7 +727,22 @@ const directOperations = [
     lockPreviewAspect: z.boolean().optional().default(true),
   }),
   operation('layout.pattern', { entityId: reference, pattern: layoutPatternSchema }),
-  operation('geometry.edit', { resourceId: reference, edits: geometryEditsSchema }),
+  operation('modifier.create', {
+    entityId: reference, modifier: modifierDocumentSchema, expectedStackHash: hash, index: modifierIndex.optional(),
+  }),
+  operation('modifier.patch', {
+    entityId: reference, modifierId: identifier, patch: modifierPatchSchema, expectedStackHash: hash,
+  }),
+  operation('modifier.move', {
+    entityId: reference, modifierId: identifier, index: modifierIndex, expectedStackHash: hash,
+  }),
+  operation('modifier.delete', {
+    entityId: reference, modifierId: identifier, expectedStackHash: hash,
+  }),
+  operation('modifier.stack.edit', {
+    entityId: reference, changes: modifierStackEditsSchema, expectedStackHash: hash,
+  }),
+  operation('geometry.edit', { resourceId: reference, edits: geometryEditsSchema, expectedTopologyHash: hash.optional() }),
   operation('resource.create', { resourceType, resource: resourceJsonObjectSchema, alias: alias.optional() }),
   operation('resource.patch', { resourceType, resourceId: reference, patch: resourceJsonObjectSchema }),
   operation('resource.delete', { resourceType, resourceId: reference }),

@@ -1,4 +1,5 @@
 import { assertJsonValue, cloneJson, isPlainRecord } from './util.mjs';
+import { MAX_MATERIAL_SLOTS_PER_MESH } from './constants.mjs';
 
 const MAX_COORDINATE = 1_000_000;
 const MAX_VERTICES = 1_000_000;
@@ -86,6 +87,19 @@ function validateCanonicalRecipe(recipe) {
   }
   if (recipe.computeNormals !== undefined && typeof recipe.computeNormals !== 'boolean') {
     throw new TypeError('computeNormals must be a boolean when provided.');
+  }
+  if (recipe.triangleMaterialIndices !== undefined) {
+    const triangleCount = recipe.indices.length / 3;
+    if (!Array.isArray(recipe.triangleMaterialIndices)
+        || recipe.triangleMaterialIndices.length !== triangleCount) {
+      throw new RangeError(`triangleMaterialIndices must contain exactly ${triangleCount} material slots.`);
+    }
+    for (let index = 0; index < recipe.triangleMaterialIndices.length; index += 1) {
+      const slot = recipe.triangleMaterialIndices[index];
+      if (!Number.isInteger(slot) || slot < 0 || slot >= MAX_MATERIAL_SLOTS_PER_MESH) {
+        throw new RangeError(`triangleMaterialIndices[${index}] must be an integer from 0 to ${MAX_MATERIAL_SLOTS_PER_MESH - 1}.`);
+      }
+    }
   }
 
   return vertexCount;
@@ -473,6 +487,7 @@ export function weldVertices(recipe, options = {}) {
     }
   }
   const indices = [];
+  const triangleMaterialIndices = mesh.triangleMaterialIndices === undefined ? undefined : [];
   for (let index = 0; index < mesh.indices.length; index += 3) {
     const triangle = [
       remap[mesh.indices[index]],
@@ -481,11 +496,13 @@ export function weldVertices(recipe, options = {}) {
     ];
     if (triangle[0] === triangle[1] || triangle[1] === triangle[2] || triangle[2] === triangle[0]) continue;
     indices.push(...triangle);
+    if (triangleMaterialIndices) triangleMaterialIndices.push(mesh.triangleMaterialIndices[index / 3]);
   }
   if (indices.length === 0) throw new RangeError('Welding would remove every indexed triangle.');
 
   mesh.positions = positions;
   mesh.indices = indices;
+  if (triangleMaterialIndices) mesh.triangleMaterialIndices = triangleMaterialIndices;
   if (uvs !== undefined) mesh.uvs = uvs;
   if (colors !== undefined) mesh.colors = colors;
   delete mesh.normals;

@@ -54,6 +54,53 @@ function fakeThree() {
     constructor() { this.userData = {}; this.disposeCount = 0; }
     dispose() { this.disposeCount += 1; }
   }
+  class Float32BufferAttribute {
+    constructor(values, itemSize) {
+      this.array = Array.from(values);
+      this.itemSize = itemSize;
+      this.count = this.array.length / itemSize;
+    }
+    getX(index) { return this.array[index * this.itemSize]; }
+    getY(index) { return this.array[index * this.itemSize + 1]; }
+    getZ(index) { return this.array[index * this.itemSize + 2]; }
+    getW(index) { return this.array[index * this.itemSize + 3]; }
+  }
+  class BufferGeometry extends DisposableGeometry {
+    constructor() {
+      super();
+      this.attributes = {};
+      this.groups = [];
+      this.index = null;
+    }
+    setAttribute(name, value) { this.attributes[name] = value; return this; }
+    getAttribute(name) { return this.attributes[name]; }
+    setIndex(values) {
+      const array = Array.from(values);
+      this.index = { array, count: array.length, getX: index => array[index] };
+      return this;
+    }
+    getIndex() { return this.index; }
+    clearGroups() { this.groups = []; }
+    addGroup(start, count, materialIndex) { this.groups.push({ start, count, materialIndex }); }
+    computeVertexNormals() {
+      const positions = this.attributes.position;
+      this.attributes.normal = new Float32BufferAttribute(new Array(positions.count * 3).fill(0), 3);
+    }
+    computeBoundingBox() {
+      const position = this.attributes.position;
+      if (!position) return;
+      const axes = [
+        Array.from({ length: position.count }, (_, index) => position.getX(index)),
+        Array.from({ length: position.count }, (_, index) => position.getY(index)),
+        Array.from({ length: position.count }, (_, index) => position.getZ(index)),
+      ];
+      this.boundingBox = {
+        min: { x: Math.min(...axes[0]), y: Math.min(...axes[1]), z: Math.min(...axes[2]) },
+        max: { x: Math.max(...axes[0]), y: Math.max(...axes[1]), z: Math.max(...axes[2]) },
+      };
+    }
+    computeBoundingSphere() {}
+  }
   class Material {
     constructor() { this.userData = {}; this.disposeCount = 0; }
     dispose() { this.disposeCount += 1; }
@@ -110,6 +157,8 @@ function fakeThree() {
     PerspectiveCamera,
     OrthographicCamera,
     BoxGeometry: DisposableGeometry,
+    BufferGeometry,
+    Float32BufferAttribute,
     MeshStandardNodeMaterial: Material,
     FrontSide: 0,
     BackSide: 1,
@@ -174,18 +223,30 @@ test('scene compilation follows canonical root and child order', () => {
   ]);
 });
 
-test('unsupported multi-material and populated instancing produce explicit diagnostics', () => {
+test('multi-material meshes require complete authored face groups while populated instancing remains explicit', () => {
   const project = createProjectDocument({
     projectId: 'project/unsupported',
     resources: {
-      geometries: [{ id: 'geometry/box', recipe: { kind: 'box' } }],
+      geometries: [
+        { id: 'geometry/box', recipe: { kind: 'box' } },
+        { id: 'geometry/grouped', recipe: {
+          kind: 'indexedMesh',
+          positions: [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0],
+          indices: [0, 1, 2, 0, 2, 3],
+          triangleMaterialIndices: [0, 1],
+        } },
+      ],
       materials: [{ id: 'material/a' }, { id: 'material/b' }],
     },
     scenes: [{
       id: 'scene/main',
-      rootEntityIds: ['entity/multi', 'entity/instances'],
+      rootEntityIds: ['entity/multi', 'entity/ungrouped', 'entity/instances'],
       entities: [
         entity('entity/multi', 'mesh', { components: { mesh: {
+          geometryId: 'geometry/grouped',
+          materialIds: ['material/a', 'material/b'],
+        } } }),
+        entity('entity/ungrouped', 'mesh', { components: { mesh: {
           geometryId: 'geometry/box',
           materialIds: ['material/a', 'material/b'],
         } } }),
@@ -200,10 +261,13 @@ test('unsupported multi-material and populated instancing produce explicit diagn
   const compiled = compileSceneDocument({ THREE: fakeThree(), TSL: fakeTsl(), project });
 
   assert.deepEqual(compiled.diagnostics.map(item => item.code), [
-    'runtime_multi_material_unsupported',
+    'runtime_material_groups_missing',
     'runtime_instancing_unsupported',
   ]);
-  assert.equal(compiled.objects.has('entity/multi'), false);
+  assert.equal(compiled.objects.has('entity/multi'), true);
+  assert.equal(Array.isArray(compiled.objects.get('entity/multi').material), true);
+  assert.equal(compiled.objects.get('entity/multi').material.length, 2);
+  assert.equal(compiled.objects.has('entity/ungrouped'), false);
   assert.equal(compiled.objects.has('entity/instances'), false);
 });
 
@@ -267,6 +331,299 @@ test('ordered array and mirror modifiers lower to deterministic instance matrice
   assert.equal(subject.count, 6);
   assert.equal(subject.matrices.length, 6);
   assert.deepEqual(compiled.diagnostics, []);
+});
+
+test('derived geometry is cached by resource, exact stack hash, and viewport target', () => {
+  const sourcePositions = [0, 0, 0, 1, 0, 0, 0, 1, 0];
+  const project = createProjectDocument({
+    projectId: 'project/derived-geometry-cache',
+    resources: {
+      geometries: [{ id: 'geometry/triangle', recipe: {
+        kind: 'indexedMesh',
+        positions: sourcePositions,
+        indices: [0, 1, 2],
+      } }],
+      materials: [{ id: 'material/a' }],
+    },
+    scenes: [{
+      id: 'scene/main',
+      entities: [
+        entity('entity/first', 'mesh', { components: {
+          mesh: { geometryId: 'geometry/triangle', materialIds: ['material/a'] },
+          modifiers: [{ id: 'modifier/subdivide', type: 'subdivision', levels: 1, scheme: 'simple' }],
+        } }),
+        entity('entity/second', 'mesh', { components: {
+          mesh: { geometryId: 'geometry/triangle', materialIds: ['material/a'] },
+          modifiers: [{ id: 'modifier/subdivide', type: 'subdivision', levels: 1, scheme: 'simple' }],
+        } }),
+        entity('entity/third', 'mesh', { components: {
+          mesh: { geometryId: 'geometry/triangle', materialIds: ['material/a'] },
+          modifiers: [{ id: 'modifier/subdivide', type: 'subdivision', levels: 2, scheme: 'simple' }],
+        } }),
+      ],
+    }],
+  });
+
+  const compiled = compileSceneDocument({ THREE: fakeThree(), TSL: fakeTsl(), project });
+  const first = compiled.objects.get('entity/first');
+  const second = compiled.objects.get('entity/second');
+  const third = compiled.objects.get('entity/third');
+  assert.equal(first.geometry, second.geometry);
+  assert.notEqual(first.geometry, third.geometry);
+  assert.equal(first.geometry.getAttribute('position').count, 6);
+  assert.equal(first.geometry.getIndex().count, 12);
+  assert.equal(third.geometry.getIndex().count, 48);
+  assert.equal(first.geometry.userData.studioGeometryTarget, 'viewport');
+  assert.deepEqual(first.geometry.userData.studioAppliedGeometryModifiers, ['modifier/subdivide']);
+  assert.deepEqual(project.resources.geometries['geometry/triangle'].recipe.positions, sourcePositions);
+  assert.deepEqual(compiled.diagnostics, []);
+
+  compiled.dispose();
+  assert.equal(first.geometry.disposeCount, 1);
+  assert.equal(third.geometry.disposeCount, 1);
+});
+
+test('bake and order boundaries show only the exact evaluable modifier prefix', () => {
+  const project = createProjectDocument({
+    projectId: 'project/modifier-boundaries',
+    resources: {
+      geometries: [{ id: 'geometry/triangle', recipe: {
+        kind: 'indexedMesh', positions: [0, 0, 0, 1, 0, 0, 0, 1, 0], indices: [0, 1, 2],
+      } }],
+      materials: [{ id: 'material/a' }],
+    },
+    scenes: [{
+      id: 'scene/main',
+      entities: [
+        entity('entity/unsupported', 'mesh', { components: {
+          mesh: { geometryId: 'geometry/triangle', materialIds: ['material/a'] },
+          modifiers: [
+            { id: 'modifier/smooth', type: 'smooth', factor: 0.25 },
+            {
+              id: 'modifier/bevel',
+              type: 'bakeBoundary',
+              operatorType: 'BEVEL',
+              parameters: { width: 0.1 },
+            },
+            { id: 'modifier/displace', type: 'displace', strength: 2 },
+          ],
+        } }),
+        entity('entity/order', 'mesh', { components: {
+          mesh: { geometryId: 'geometry/triangle', materialIds: ['material/a'] },
+          modifiers: [
+            { id: 'modifier/array', type: 'array', count: 2, offset: [1, 0, 0] },
+            { id: 'modifier/subdivision', type: 'subdivision', levels: 1 },
+          ],
+        } }),
+      ],
+    }],
+  });
+
+  const compiled = compileSceneDocument({ THREE: fakeThree(), TSL: fakeTsl(), project });
+  assert.equal(compiled.objects.has('entity/unsupported'), true);
+  assert.equal(compiled.objects.has('entity/order'), true);
+  assert.deepEqual(
+    compiled.objects.get('entity/unsupported').geometry.userData.studioAppliedGeometryModifiers,
+    ['modifier/smooth'],
+  );
+  assert.equal(compiled.objects.get('entity/order').isInstancedMesh, true);
+  assert.equal(compiled.objects.get('entity/order').count, 2);
+  assert.deepEqual(compiled.diagnostics.map(item => item.code), [
+    'runtime_modifier_bake_required',
+    'runtime_modifier_order_unsupported',
+  ]);
+  assert.equal(compiled.diagnostics.every(item => item.severity === 'warning'), true);
+});
+
+test('indexed triangle material slots compile into real geometry groups', () => {
+  const project = createProjectDocument({
+    projectId: 'project/material-groups',
+    resources: {
+      geometries: [{ id: 'geometry/quad', recipe: {
+        kind: 'indexedMesh',
+        positions: [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0],
+        indices: [0, 1, 2, 0, 2, 3],
+        triangleMaterialIndices: [0, 1],
+      } }],
+      materials: [{ id: 'material/a' }, { id: 'material/b' }],
+    },
+    scenes: [{
+      id: 'scene/main',
+      entities: [entity('entity/quad', 'mesh', { components: { mesh: {
+        geometryId: 'geometry/quad', materialIds: ['material/a', 'material/b'],
+      } } })],
+    }],
+  });
+
+  const compiled = compileSceneDocument({ THREE: fakeThree(), TSL: fakeTsl(), project });
+  const subject = compiled.objects.get('entity/quad');
+  assert.deepEqual(subject.geometry.groups, [
+    { start: 0, count: 3, materialIndex: 0 },
+    { start: 3, count: 3, materialIndex: 1 },
+  ]);
+  assert.equal(subject.material.length, 2);
+  assert.deepEqual(compiled.diagnostics, []);
+});
+
+test('direct format-v1 indexed mesh resources still compile through the generic geometry envelope', () => {
+  const project = createProjectDocument({
+    projectId: 'project/direct-indexed-compatibility',
+    resources: {
+      geometries: [{
+        id: 'geometry/direct',
+        type: 'indexedMesh',
+        positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+        indices: [0, 1, 2],
+      }],
+      materials: [{ id: 'material/only' }],
+    },
+    scenes: [{
+      id: 'scene/main',
+      entities: [entity('entity/direct', 'mesh', { components: { mesh: {
+        geometryId: 'geometry/direct', materialIds: ['material/only'],
+      } } })],
+    }],
+  });
+  const compiled = compileSceneDocument({ THREE: fakeThree(), TSL: fakeTsl(), project });
+  assert.equal(compiled.objects.has('entity/direct'), true);
+  assert.equal(compiled.objects.get('entity/direct').geometry.getIndex().count, 3);
+  assert.deepEqual(compiled.diagnostics, []);
+});
+
+test('intrinsic procedural groups remain scalar-compatible before and after live geometry modifiers', () => {
+  const THREE = fakeThree();
+  THREE.BoxGeometry = class {
+    constructor() {
+      this.userData = {};
+      this.disposeCount = 0;
+      this.attributes = {
+        position: new THREE.Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3),
+      };
+      this.index = { array: [0, 1, 2], count: 3, getX: index => [0, 1, 2][index] };
+      this.groups = Array.from({ length: 6 }, (_, materialIndex) => ({
+        start: 0, count: 3, materialIndex,
+      }));
+    }
+    getAttribute(name) { return this.attributes[name]; }
+    setAttribute(name, value) { this.attributes[name] = value; return this; }
+    getIndex() { return this.index; }
+    computeVertexNormals() {
+      this.attributes.normal = new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1, 0, 0, 1], 3);
+    }
+    computeBoundingBox() {}
+    computeBoundingSphere() {}
+    dispose() { this.disposeCount += 1; }
+  };
+  const project = createProjectDocument({
+    projectId: 'project/intrinsic-groups',
+    resources: {
+      geometries: [{ id: 'geometry/box', recipe: { kind: 'box' } }],
+      materials: [{ id: 'material/only' }],
+    },
+    scenes: [{
+      id: 'scene/main',
+      entities: [
+        entity('entity/plain', 'mesh', { components: { mesh: {
+          geometryId: 'geometry/box', materialIds: ['material/only'],
+        } } }),
+        entity('entity/modified', 'mesh', { components: {
+          mesh: { geometryId: 'geometry/box', materialIds: ['material/only'] },
+          modifiers: [{ id: 'modifier/smooth', type: 'smooth', factor: 0.25 }],
+        } }),
+      ],
+    }],
+  });
+  const compiled = compileSceneDocument({ THREE, TSL: fakeTsl(), project });
+  assert.equal(compiled.objects.has('entity/plain'), true);
+  assert.equal(compiled.objects.has('entity/modified'), true);
+  assert.equal(compiled.objects.get('entity/plain').material, compiled.objects.get('entity/modified').material);
+  assert.deepEqual(compiled.diagnostics, []);
+});
+
+test('complete procedural material groups preserve exact slots through live topology evaluation', () => {
+  const THREE = fakeThree();
+  THREE.BoxGeometry = class {
+    constructor() {
+      this.userData = {};
+      this.disposeCount = 0;
+      this.attributes = {
+        position: new THREE.Float32BufferAttribute([
+          0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0,
+        ], 3),
+      };
+      const values = [0, 1, 2, 0, 2, 3];
+      this.index = { array: values, count: values.length, getX: index => values[index] };
+      this.groups = [
+        { start: 0, count: 3, materialIndex: 0 },
+        { start: 3, count: 3, materialIndex: 1 },
+      ];
+    }
+    getAttribute(name) { return this.attributes[name]; }
+    setAttribute(name, value) { this.attributes[name] = value; return this; }
+    getIndex() { return this.index; }
+    computeVertexNormals() {
+      this.attributes.normal = new THREE.Float32BufferAttribute(new Array(12).fill(0), 3);
+    }
+    computeBoundingBox() {}
+    computeBoundingSphere() {}
+    dispose() { this.disposeCount += 1; }
+  };
+  const project = createProjectDocument({
+    projectId: 'project/procedural-group-provenance',
+    resources: {
+      geometries: [{ id: 'geometry/box', recipe: { kind: 'box' } }],
+      materials: [{ id: 'material/a' }, { id: 'material/b' }],
+    },
+    scenes: [{
+      id: 'scene/main',
+      entities: [entity('entity/modified', 'mesh', { components: {
+        mesh: { geometryId: 'geometry/box', materialIds: ['material/a', 'material/b'] },
+        modifiers: [{ id: 'modifier/smooth', type: 'smooth', factor: 0.25 }],
+      } })],
+    }],
+  });
+  const compiled = compileSceneDocument({ THREE, TSL: fakeTsl(), project });
+  const geometry = compiled.objects.get('entity/modified').geometry;
+  assert.deepEqual(geometry.userData.studioTriangleMaterialIndices, [0, 1]);
+  assert.deepEqual(geometry.groups, [
+    { start: 0, count: 3, materialIndex: 0 },
+    { start: 3, count: 3, materialIndex: 1 },
+  ]);
+  assert.deepEqual(compiled.diagnostics, []);
+});
+
+test('face material slots fail closed when scalar or fallback materials cannot address them', () => {
+  const project = createProjectDocument({
+    projectId: 'project/material-slot-coverage',
+    resources: {
+      geometries: [{ id: 'geometry/slot-one', recipe: {
+        kind: 'indexedMesh',
+        positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+        indices: [0, 1, 2],
+        triangleMaterialIndices: [1],
+      } }],
+      materials: [{ id: 'material/only' }],
+    },
+    scenes: [{
+      id: 'scene/main',
+      entities: [
+        entity('entity/scalar', 'mesh', { components: { mesh: {
+          geometryId: 'geometry/slot-one', materialIds: ['material/only'],
+        } } }),
+        entity('entity/fallback', 'mesh', { components: { mesh: {
+          geometryId: 'geometry/slot-one', materialIds: [],
+        } } }),
+      ],
+    }],
+  });
+
+  const compiled = compileSceneDocument({ THREE: fakeThree(), TSL: fakeTsl(), project });
+  assert.equal(compiled.objects.has('entity/scalar'), false);
+  assert.equal(compiled.objects.has('entity/fallback'), false);
+  assert.deepEqual(compiled.diagnostics.map(item => item.code), [
+    'runtime_material_slot_missing',
+    'runtime_material_slot_missing',
+  ]);
 });
 
 test('a mesh with a live layout pattern compiles directly to InstancedMesh', () => {

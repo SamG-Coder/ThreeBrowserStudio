@@ -17,7 +17,8 @@ authority. In the current lean slice:
 - apply supports the declared scene/entity/resource operations, exact guarded
   bulk patch/transform, world-preserving transform groups, independent nested
   organizational collections, persistent `camera.frame`, bounded
-  `layout.pattern`, indexed `geometry.edit`, and canonical `scene.rtx.patch`;
+  `layout.pattern`, indexed-triangle and topology-guarded editable-polygon
+  `geometry.edit`, and canonical `scene.rtx.patch`;
 - validation is whole-project, interactive document/reference/hierarchy/graph
   validation with budgets;
 - rendering is WebGPU beauty capture through the same effective camera and
@@ -162,8 +163,9 @@ operations.
   duplicating it. Repetition amplifies silhouette and shading defects.
 - Use `resourceDigest` to verify indexed vertex/triangle counts, attributes,
   bounds, and references without requesting raw geometry arrays.
-- Use `meshElements` for exact vertices, unique edges, triangular faces, corner
-  attributes, and adjacency; continue only with its resource/topology-bound
+- Use `meshElements` for exact vertices, unique edges, authored triangular or
+  polygon faces, per-corner layers, material slots, annotations, and adjacency;
+  continue only with its resource/topology-bound
   cursor. Use `graphDigest` before graph edits and `rtxDigest` when geometry is
   unexpectedly missing from native lighting.
 - For whole-mesh transforms or smoothing, use `selection: "all"`; keep explicit

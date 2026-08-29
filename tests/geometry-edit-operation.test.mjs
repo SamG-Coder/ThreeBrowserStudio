@@ -51,7 +51,7 @@ function applyRequest(overrides = {}) {
   };
 }
 
-function mcpRequest(edits) {
+function mcpRequest(edits, expectedTopologyHash) {
   return {
     protocolVersion: 'three-studio/1',
     sessionId: 'live-session',
@@ -59,7 +59,12 @@ function mcpRequest(edits) {
     baseRevision: 0,
     idempotencyKey: 'geometry-edit-schema-0001',
     label: 'Edit indexed geometry',
-    operations: [{ op: 'geometry.edit', resourceId: 'geometry/editable', edits }],
+    operations: [{
+      op: 'geometry.edit',
+      resourceId: 'geometry/editable',
+      edits,
+      ...(expectedTopologyHash ? { expectedTopologyHash } : {}),
+    }],
   };
 }
 
@@ -248,6 +253,21 @@ test('geometry.edit canonicalizes a direct explicit type and rejects invalid tar
   assert.equal(strict.revision, 0);
 });
 
+test('geometry.edit preserves direct indexed triangle material slots during canonicalization', async () => {
+  const kernel = kernelWithGeometry({
+    id: 'geometry/editable',
+    type: 'indexedMesh',
+    positions: TRIANGLE_RECIPE.positions,
+    indices: TRIANGLE_RECIPE.indices,
+    triangleMaterialIndices: [7],
+  });
+  await kernel.apply(applyRequest());
+  assert.deepEqual(
+    kernel.document.resources.geometries['geometry/editable'].recipe.triangleMaterialIndices,
+    [7],
+  );
+});
+
 test('MCP geometry.edit exposes every strict bounded command shape', () => {
   const edits = [
     { type: 'move', selection: 'all', offset: [1, 2, 3] },
@@ -258,10 +278,17 @@ test('MCP geometry.edit exposes every strict bounded command shape', () => {
     { type: 'recalculateNormals' },
     { type: 'weld', tolerance: 1e-5 },
     { type: 'triangulate' },
+    { type: 'subdivideFaces', faceIndices: [0] },
+    { type: 'insetFaces', selection: 'all', factor: 0.2 },
+    { type: 'extrudeFaces', faceIndices: [0], mode: 'individual', distance: 0.25, sideMaterialIndex: 1 },
+    { type: 'bevelEdges', edges: [[0, 1]], factor: 0.1, materialIndex: 2 },
+    { type: 'deleteFaces', faceIndices: [1] },
+    { type: 'mergeVertices', vertexIndices: [0, 1], targetVertexIndex: 0, position: 'average' },
   ];
-  assert.equal(applySchema.safeParse(mcpRequest(edits)).success, true);
+  assert.equal(applySchema.safeParse(mcpRequest(edits, 'a'.repeat(64))).success, true);
   assert.deepEqual(GEOMETRY_EDIT_COMMAND_TYPES, [
     'move', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
+    'subdivideFaces', 'insetFaces', 'extrudeFaces', 'bevelEdges', 'deleteFaces', 'mergeVertices',
   ]);
 
   const parseEdit = edit => applySchema.safeParse(mcpRequest([edit])).success;
@@ -275,6 +302,13 @@ test('MCP geometry.edit exposes every strict bounded command shape', () => {
   assert.equal(parseEdit({ type: 'smooth', factor: 1.1 }), false);
   assert.equal(parseEdit({ type: 'weld', tolerance: 1e-10 }), false);
   assert.equal(parseEdit({ type: 'triangulate', typo: true }), false);
+  assert.equal(parseEdit({ type: 'subdivideFaces', faceIndices: [0], selection: 'all' }), false);
+  assert.equal(parseEdit({ type: 'insetFaces', faceIndices: [0], factor: 1 }), false);
+  assert.equal(parseEdit({ type: 'extrudeFaces', faceIndices: [0], offset: [0, 1, 0], distance: 1 }), false);
+  assert.equal(parseEdit({ type: 'bevelEdges', edges: [[0, 0]], factor: 0.1 }), false);
+  assert.equal(parseEdit({ type: 'deleteFaces' }), false);
+  assert.equal(parseEdit({ type: 'mergeVertices', vertexIndices: [0, 1], position: 'centroid' }), false);
+  assert.equal(applySchema.safeParse(mcpRequest([{ type: 'subdivideFaces', faceIndices: [0] }], 'bad')).success, false);
   assert.equal(applySchema.safeParse(mcpRequest([])).success, false);
   assert.equal(applySchema.safeParse(mcpRequest(
     Array.from({ length: MAX_GEOMETRY_EDIT_COMMANDS + 1 }, () => ({ type: 'triangulate' })),
@@ -289,6 +323,6 @@ test('checked-in geometry.edit schema mirrors MCP command names and bounds', asy
   assert.equal(contract.$defs.geometryVertexIndices.maxItems, MAX_GEOMETRY_EDIT_VERTEX_SELECTION);
   assert.equal(contract.$defs.geometryVertexIndices.uniqueItems, true);
   assert.equal(contract.$defs.operation.properties.edits.maxItems, MAX_GEOMETRY_EDIT_COMMANDS);
-  assert.deepEqual(contract.$defs.operation.allOf.at(-1).then.propertyNames.enum, ['op', 'resourceId', 'edits']);
+  assert.deepEqual(contract.$defs.operation.allOf.at(-1).then.propertyNames.enum, ['op', 'resourceId', 'edits', 'expectedTopologyHash']);
   assert.equal(editSchemas.every(schema => schema.additionalProperties === false), true);
 });

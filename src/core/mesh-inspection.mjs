@@ -1,4 +1,5 @@
 import { MAX_INSPECT_RESPONSE_BYTES } from './constants.mjs';
+import { editableMeshTopologyHash, normalizeEditableMeshRecipe } from './editable-mesh.mjs';
 import { StudioError } from './errors.mjs';
 import { contentHash } from './util.mjs';
 
@@ -13,16 +14,7 @@ export const MESH_INSPECTION_LIMITS = Object.freeze({
   maxDerivedEdges: MAX_DERIVED_EDGES,
 });
 
-function recipeFrom(resource) {
-  const recipe = resource?.recipe ?? resource?.parameters ?? resource;
-  const kind = recipe?.kind ?? recipe?.type ?? resource?.geometryKind;
-  if (!['indexedMesh', 'explicit'].includes(kind)) {
-    throw new StudioError(
-      'mesh_elements_unavailable',
-      `Mesh elements require an authored indexedMesh or explicit recipe; ${resource?.id ?? 'resource'} uses ${kind ?? 'unknown'}.`,
-      { resourceId: resource?.id ?? null, recipeKind: kind ?? null },
-    );
-  }
+function indexedRecipe(recipe, kind) {
   const positions = recipe.positions ?? recipe.attributes?.position;
   const sourceIndices = recipe.indices ?? recipe.index;
   if (!Array.isArray(positions) || positions.length < 9 || positions.length % 3 !== 0) {
@@ -42,12 +34,45 @@ function recipeFrom(resource) {
   }
   return {
     kind,
+    topologyKind: 'triangles',
     positions,
-    indices,
+    faceOffsets: Array.from({ length: indices.length / 3 + 1 }, (_, index) => index * 3),
+    cornerVertexIndices: indices,
     normals: recipe.normals ?? recipe.attributes?.normal,
     uvs: recipe.uvs ?? recipe.attributes?.uv,
     colors: recipe.colors ?? recipe.attributes?.color,
+    triangleMaterialIndices: recipe.triangleMaterialIndices,
+    topologyHash: contentHash({ vertexCount, indices }),
   };
+}
+
+function recipeFrom(resource) {
+  const enclosed = resource?.recipe !== undefined || resource?.parameters !== undefined;
+  const recipe = resource?.recipe ?? resource?.parameters ?? resource;
+  const directType = ['editableMesh', 'indexedMesh', 'explicit'].includes(resource?.type)
+    ? resource.type
+    : undefined;
+  const kind = enclosed
+    ? (recipe?.kind ?? recipe?.type ?? resource?.geometryKind)
+    : (directType ?? resource?.geometryKind ?? recipe?.kind ?? recipe?.type);
+  if (kind === 'editableMesh') {
+    try {
+      const mesh = normalizeEditableMeshRecipe({ ...recipe, kind: 'editableMesh' });
+      return {
+        ...mesh,
+        topologyKind: 'polygons',
+        topologyHash: editableMeshTopologyHash(mesh),
+      };
+    } catch (error) {
+      throw new StudioError('mesh_elements_invalid', `Editable mesh recipe is invalid: ${error.message}`);
+    }
+  }
+  if (['indexedMesh', 'explicit'].includes(kind)) return indexedRecipe(recipe, kind);
+  throw new StudioError(
+    'mesh_elements_unavailable',
+    `Mesh elements require an authored editableMesh, indexedMesh, or explicit recipe; ${resource?.id ?? 'resource'} uses ${kind ?? 'unknown'}.`,
+    { resourceId: resource?.id ?? null, recipeKind: kind ?? null },
+  );
 }
 
 function tuple(values, index, size) {
@@ -61,7 +86,8 @@ function colorStride(colors, vertexCount) {
   return stride === 3 || stride === 4 ? stride : 0;
 }
 
-function vertexAttributes(mesh, vertexIndex, stride) {
+function vertexAttributes(mesh, vertexIndex) {
+  const stride = colorStride(mesh.colors, mesh.positions.length / 3);
   return {
     position: tuple(mesh.positions, vertexIndex, 3),
     ...(tuple(mesh.normals, vertexIndex, 3) ? { normal: tuple(mesh.normals, vertexIndex, 3) } : {}),
@@ -70,97 +96,154 @@ function vertexAttributes(mesh, vertexIndex, stride) {
   };
 }
 
-function addEdge(edgeMap, first, second, faceIndex) {
-  if (first === second) return;
-  const vertices = first < second ? [first, second] : [second, first];
-  const key = `${vertices[0]}:${vertices[1]}`;
-  let edge = edgeMap.get(key);
-  if (!edge) {
-    if (edgeMap.size >= MAX_DERIVED_EDGES) {
-      throw new StudioError('mesh_inspect_budget_exceeded', `Derived edge count exceeds ${MAX_DERIVED_EDGES}.`);
-    }
-    edge = { vertices, faces: [] };
-    edgeMap.set(key, edge);
-  }
-  edge.faces.push(faceIndex);
+function cornerAttributes(mesh, cornerIndex) {
+  const vertexIndex = mesh.cornerVertexIndices[cornerIndex];
+  if (mesh.topologyKind !== 'polygons') return vertexAttributes(mesh, vertexIndex);
+  return {
+    position: tuple(mesh.positions, vertexIndex, 3),
+    uvLayers: Object.fromEntries(Object.entries(mesh.uvLayers).map(([name, values]) => [
+      name,
+      tuple(values, cornerIndex, 2),
+    ])),
+    colorLayers: Object.fromEntries(Object.entries(mesh.colorLayers).map(([name, values]) => [
+      name,
+      tuple(values, cornerIndex, 4),
+    ])),
+  };
 }
 
-function deriveEdges(indices) {
+function edgeKey(first, second) {
+  return first < second ? `${first}:${second}` : `${second}:${first}`;
+}
+
+function deriveEdges(mesh) {
   const edges = new Map();
-  for (let offset = 0; offset < indices.length; offset += 3) {
-    const faceIndex = offset / 3;
-    const [a, b, c] = indices.slice(offset, offset + 3);
-    addEdge(edges, a, b, faceIndex);
-    addEdge(edges, b, c, faceIndex);
-    addEdge(edges, c, a, faceIndex);
+  for (let faceIndex = 0; faceIndex < mesh.faceOffsets.length - 1; faceIndex += 1) {
+    const start = mesh.faceOffsets[faceIndex];
+    const end = mesh.faceOffsets[faceIndex + 1];
+    for (let corner = start; corner < end; corner += 1) {
+      const first = mesh.cornerVertexIndices[corner];
+      const second = mesh.cornerVertexIndices[corner + 1 === end ? start : corner + 1];
+      if (first === second) continue;
+      const vertices = first < second ? [first, second] : [second, first];
+      const key = edgeKey(first, second);
+      let edge = edges.get(key);
+      if (!edge) {
+        if (edges.size >= MAX_DERIVED_EDGES) {
+          throw new StudioError('mesh_inspect_budget_exceeded', `Derived edge count exceeds ${MAX_DERIVED_EDGES}.`);
+        }
+        edge = { key, vertices, faces: [] };
+        edges.set(key, edge);
+      }
+      edge.faces.push(faceIndex);
+    }
   }
   return [...edges.values()].sort((first, second) => (
     first.vertices[0] - second.vertices[0] || first.vertices[1] - second.vertices[1]
   ));
 }
 
-function vertexPage(mesh, offset, limit) {
+function vertexPage(mesh, edges, offset, limit) {
   const end = Math.min(mesh.positions.length / 3, offset + limit);
   const selected = new Map();
   for (let index = offset; index < end; index += 1) {
-    selected.set(index, { neighbours: new Map(), faces: [] });
+    selected.set(index, { neighbours: new Set(), faces: new Set(), boundary: false });
   }
-  for (let index = 0; index < mesh.indices.length; index += 3) {
-    const faceIndex = index / 3;
-    const face = mesh.indices.slice(index, index + 3);
-    for (let corner = 0; corner < 3; corner += 1) {
-      const vertexIndex = face[corner];
-      const state = selected.get(vertexIndex);
+  for (const edge of edges) {
+    for (let endpoint = 0; endpoint < 2; endpoint += 1) {
+      const state = selected.get(edge.vertices[endpoint]);
       if (!state) continue;
-      state.faces.push(faceIndex);
-      for (const neighbour of [face[(corner + 1) % 3], face[(corner + 2) % 3]]) {
-        state.neighbours.set(neighbour, (state.neighbours.get(neighbour) ?? 0) + 1);
-      }
+      state.neighbours.add(edge.vertices[1 - endpoint]);
+      for (const faceIndex of edge.faces) state.faces.add(faceIndex);
+      if (edge.faces.length === 1) state.boundary = true;
     }
   }
-  const stride = colorStride(mesh.colors, mesh.positions.length / 3);
   return [...selected].map(([index, state]) => {
-    const adjacentVertices = [...state.neighbours.keys()].sort((a, b) => a - b);
+    const adjacentVertices = [...state.neighbours].sort((a, b) => a - b);
+    const incidentFaces = [...state.faces].sort((a, b) => a - b);
     return {
       index,
-      ...vertexAttributes(mesh, index, stride),
+      ...vertexAttributes(mesh, index),
       adjacentVertexCount: adjacentVertices.length,
       adjacentVertices: adjacentVertices.slice(0, MAX_ADJACENCY_PER_ELEMENT),
-      incidentFaceCount: state.faces.length,
-      incidentFaces: state.faces.slice(0, MAX_ADJACENCY_PER_ELEMENT),
-      boundary: [...state.neighbours.values()].some(count => count === 1),
+      incidentFaceCount: incidentFaces.length,
+      incidentFaces: incidentFaces.slice(0, MAX_ADJACENCY_PER_ELEMENT),
+      boundary: state.boundary,
       truncatedAdjacency: adjacentVertices.length > MAX_ADJACENCY_PER_ELEMENT
-        || state.faces.length > MAX_ADJACENCY_PER_ELEMENT,
+        || incidentFaces.length > MAX_ADJACENCY_PER_ELEMENT,
     };
   });
 }
 
+function edgePage(mesh, edges, offset, limit) {
+  const sharp = new Set((mesh.sharpEdges ?? []).map(pair => edgeKey(pair[0], pair[1])));
+  const creases = new Map((mesh.edgeCreases ?? []).map(tupleValue => [
+    edgeKey(tupleValue[0], tupleValue[1]),
+    tupleValue[2],
+  ]));
+  return edges.slice(offset, offset + limit).map((edge, localIndex) => ({
+    index: offset + localIndex,
+    vertices: edge.vertices,
+    endpoints: edge.vertices.map(index => vertexAttributes(mesh, index)),
+    incidentFaceCount: edge.faces.length,
+    incidentFaces: edge.faces.slice(0, MAX_ADJACENCY_PER_ELEMENT),
+    boundary: edge.faces.length === 1,
+    nonManifold: edge.faces.length > 2,
+    ...(mesh.topologyKind === 'polygons' ? {
+      sharp: sharp.has(edge.key),
+      crease: creases.get(edge.key) ?? 0,
+    } : {}),
+    truncatedAdjacency: edge.faces.length > MAX_ADJACENCY_PER_ELEMENT,
+  }));
+}
+
 function facePage(mesh, offset, limit) {
-  const triangleCount = mesh.indices.length / 3;
-  const stride = colorStride(mesh.colors, mesh.positions.length / 3);
+  const faceCount = mesh.faceOffsets.length - 1;
   const records = [];
-  for (let faceIndex = offset; faceIndex < Math.min(triangleCount, offset + limit); faceIndex += 1) {
-    const vertices = mesh.indices.slice(faceIndex * 3, faceIndex * 3 + 3);
+  for (let faceIndex = offset; faceIndex < Math.min(faceCount, offset + limit); faceIndex += 1) {
+    const start = mesh.faceOffsets[faceIndex];
+    const end = mesh.faceOffsets[faceIndex + 1];
+    const vertices = mesh.cornerVertexIndices.slice(start, end);
     records.push({
       index: faceIndex,
       vertices,
-      corners: vertices.map(vertexIndex => vertexAttributes(mesh, vertexIndex, stride)),
+      ...(mesh.topologyKind === 'polygons'
+        ? { materialIndex: mesh.faceMaterialIndices[faceIndex] }
+        : (Array.isArray(mesh.triangleMaterialIndices)
+            ? { materialIndex: mesh.triangleMaterialIndices[faceIndex] }
+            : {})),
+      corners: vertices.map((vertexIndex, localCorner) => ({
+        ...(mesh.topologyKind === 'polygons' ? { vertexIndex } : {}),
+        ...cornerAttributes(mesh, start + localCorner),
+      })),
     });
   }
   return records;
 }
 
+function faceIndexForCorner(mesh, cornerIndex) {
+  let lower = 0;
+  let upper = mesh.faceOffsets.length - 1;
+  while (lower < upper - 1) {
+    const middle = Math.floor((lower + upper) / 2);
+    if (mesh.faceOffsets[middle] <= cornerIndex) lower = middle;
+    else upper = middle;
+  }
+  return lower;
+}
+
 function cornerPage(mesh, offset, limit) {
-  const stride = colorStride(mesh.colors, mesh.positions.length / 3);
   const records = [];
-  for (let cornerIndex = offset; cornerIndex < Math.min(mesh.indices.length, offset + limit); cornerIndex += 1) {
-    const vertexIndex = mesh.indices[cornerIndex];
+  const end = Math.min(mesh.cornerVertexIndices.length, offset + limit);
+  for (let cornerIndex = offset; cornerIndex < end; cornerIndex += 1) {
+    const faceIndex = faceIndexForCorner(mesh, cornerIndex);
+    const vertexIndex = mesh.cornerVertexIndices[cornerIndex];
     records.push({
       index: cornerIndex,
-      faceIndex: Math.floor(cornerIndex / 3),
-      faceCorner: cornerIndex % 3,
+      faceIndex,
+      faceCorner: cornerIndex - mesh.faceOffsets[faceIndex],
       vertexIndex,
-      ...vertexAttributes(mesh, vertexIndex, stride),
+      ...cornerAttributes(mesh, cornerIndex),
     });
   }
   return records;
@@ -168,9 +251,37 @@ function cornerPage(mesh, offset, limit) {
 
 function elementCount(mesh, element, edgeCount) {
   if (element === 'vertices') return mesh.positions.length / 3;
-  if (element === 'faces') return mesh.indices.length / 3;
-  if (element === 'corners') return mesh.indices.length;
+  if (element === 'faces') return mesh.faceOffsets.length - 1;
+  if (element === 'corners') return mesh.cornerVertexIndices.length;
   return edgeCount;
+}
+
+function attributeDigest(mesh) {
+  if (mesh.topologyKind === 'polygons') {
+    return {
+      position: { itemSize: 3, count: mesh.positions.length / 3, domain: 'vertex' },
+      uvLayers: Object.fromEntries(Object.keys(mesh.uvLayers).map(name => [
+        name,
+        { itemSize: 2, count: mesh.cornerVertexIndices.length, domain: 'corner' },
+      ])),
+      colorLayers: Object.fromEntries(Object.keys(mesh.colorLayers).map(name => [
+        name,
+        { itemSize: 4, count: mesh.cornerVertexIndices.length, domain: 'corner' },
+      ])),
+      faceMaterialIndex: { itemSize: 1, count: mesh.faceOffsets.length - 1, domain: 'face' },
+    };
+  }
+  const vertexCount = mesh.positions.length / 3;
+  const stride = colorStride(mesh.colors, vertexCount);
+  return {
+    position: { itemSize: 3, count: vertexCount },
+    ...(Array.isArray(mesh.normals) ? { normal: { itemSize: 3, count: mesh.normals.length / 3 } } : {}),
+    ...(Array.isArray(mesh.uvs) ? { uv: { itemSize: 2, count: mesh.uvs.length / 2 } } : {}),
+    ...(stride ? { color: { itemSize: stride, count: vertexCount } } : {}),
+    ...(Array.isArray(mesh.triangleMaterialIndices) ? {
+      triangleMaterialIndex: { itemSize: 1, count: mesh.triangleMaterialIndices.length, domain: 'face' },
+    } : {}),
+  };
 }
 
 /** Returns one deterministic, exact, byte-bounded page of authored mesh elements. */
@@ -180,13 +291,15 @@ export function buildMeshElements(resource, {
   limit = 50,
   responseByteBudget = MAX_INSPECT_RESPONSE_BYTES,
 } = {}) {
-  if (!MESH_ELEMENT_KINDS.includes(element)) throw new StudioError('mesh_element_kind_invalid', `Unknown mesh element kind ${element}.`);
+  if (!MESH_ELEMENT_KINDS.includes(element)) {
+    throw new StudioError('mesh_element_kind_invalid', `Unknown mesh element kind ${element}.`);
+  }
   const mesh = recipeFrom(resource);
   const resourceHash = contentHash(resource);
-  const topologyHash = contentHash({ vertexCount: mesh.positions.length / 3, indices: mesh.indices });
+  const topologyHash = mesh.topologyHash;
   let offset = 0;
   if (cursor !== undefined) {
-    const match = /^([a-f0-9]{64})\.([a-f0-9]{64})\.(\d+)$/.exec(cursor);
+    const match = /^([a-f0-9]{64})\.([a-f0-9]{64})\.(vertices|edges|faces|corners)\.(\d+)$/.exec(cursor);
     if (!match) throw new StudioError('inspect_cursor_invalid', 'Mesh cursor is malformed.');
     if (match[1] !== resourceHash || match[2] !== topologyHash) {
       throw new StudioError('inspect_cursor_stale', 'Mesh changed after this cursor was issued.', {
@@ -196,45 +309,41 @@ export function buildMeshElements(resource, {
         actualTopologyHash: topologyHash,
       });
     }
-    offset = Number(match[3]);
+    if (match[3] !== element) {
+      throw new StudioError('inspect_cursor_mismatch', `Mesh cursor belongs to ${match[3]}, not ${element}.`, {
+        cursorElement: match[3],
+        requestedElement: element,
+      });
+    }
+    offset = Number(match[4]);
   }
   const boundedLimit = Math.min(MAX_MESH_ELEMENTS_PER_PAGE, Math.max(1, limit));
-  const edges = element === 'edges' ? deriveEdges(mesh.indices) : null;
+  const edges = ['vertices', 'edges'].includes(element) ? deriveEdges(mesh) : null;
   const total = elementCount(mesh, element, edges?.length);
   let elements;
-  if (element === 'vertices') elements = vertexPage(mesh, offset, boundedLimit);
-  else if (element === 'edges') {
-    const stride = colorStride(mesh.colors, mesh.positions.length / 3);
-    elements = edges.slice(offset, offset + boundedLimit).map((edge, localIndex) => ({
-      index: offset + localIndex,
-      vertices: edge.vertices,
-      endpoints: edge.vertices.map(index => vertexAttributes(mesh, index, stride)),
-      incidentFaceCount: edge.faces.length,
-      incidentFaces: edge.faces.slice(0, MAX_ADJACENCY_PER_ELEMENT),
-      boundary: edge.faces.length === 1,
-      nonManifold: edge.faces.length > 2,
-      truncatedAdjacency: edge.faces.length > MAX_ADJACENCY_PER_ELEMENT,
-    }));
-  } else if (element === 'faces') elements = facePage(mesh, offset, boundedLimit);
+  if (element === 'vertices') elements = vertexPage(mesh, edges, offset, boundedLimit);
+  else if (element === 'edges') elements = edgePage(mesh, edges, offset, boundedLimit);
+  else if (element === 'faces') elements = facePage(mesh, offset, boundedLimit);
   else elements = cornerPage(mesh, offset, boundedLimit);
 
+  const faceCount = mesh.faceOffsets.length - 1;
   const base = {
     resourceId: resource.id,
     resourceHash,
     topologyHash,
     recipeKind: mesh.kind,
+    ...(mesh.topologyKind === 'polygons' ? { topologyKind: mesh.topologyKind } : {}),
     vertexCount: mesh.positions.length / 3,
-    triangleCount: mesh.indices.length / 3,
-    cornerCount: mesh.indices.length,
+    ...(mesh.topologyKind === 'triangles' ? { triangleCount: faceCount } : { faceCount }),
+    cornerCount: mesh.cornerVertexIndices.length,
     ...(edges ? { edgeCount: edges.length } : {}),
-    attributes: {
-      position: { itemSize: 3, count: mesh.positions.length / 3 },
-      ...(Array.isArray(mesh.normals) ? { normal: { itemSize: 3, count: mesh.normals.length / 3 } } : {}),
-      ...(Array.isArray(mesh.uvs) ? { uv: { itemSize: 2, count: mesh.uvs.length / 2 } } : {}),
-      ...(colorStride(mesh.colors, mesh.positions.length / 3)
-        ? { color: { itemSize: colorStride(mesh.colors, mesh.positions.length / 3), count: mesh.positions.length / 3 } }
-        : {}),
-    },
+    attributes: attributeDigest(mesh),
+    ...(mesh.topologyKind === 'polygons' ? {
+      activeUvLayer: mesh.activeUvLayer,
+      activeColorLayer: mesh.activeColorLayer,
+      sharpEdgeCount: mesh.sharpEdges.length,
+      creasedEdgeCount: mesh.edgeCreases.length,
+    } : {}),
     element,
     offset,
     total,
@@ -247,7 +356,7 @@ export function buildMeshElements(resource, {
       ...base,
       elements: [...accepted, record],
       nextCursor: candidateNextOffset < total
-        ? `${resourceHash}.${topologyHash}.${candidateNextOffset}`
+        ? `${resourceHash}.${topologyHash}.${element}.${candidateNextOffset}`
         : null,
       truncatedByByteBudget: candidateNextOffset < offset + elements.length,
     };
@@ -261,7 +370,7 @@ export function buildMeshElements(resource, {
   return {
     ...base,
     elements: accepted,
-    nextCursor: nextOffset < total ? `${resourceHash}.${topologyHash}.${nextOffset}` : null,
+    nextCursor: nextOffset < total ? `${resourceHash}.${topologyHash}.${element}.${nextOffset}` : null,
     truncatedByByteBudget: accepted.length < elements.length,
   };
 }

@@ -131,6 +131,38 @@ test('validation catches hierarchy cycles, zero scales, and missing resources', 
   assert.equal(codes.has('missing_resource'), true);
 });
 
+test('mesh component validation rejects ambiguous, malformed, and oversized material slots', () => {
+  const project = createProjectDocument({
+    projectId: 'project/invalid-mesh-materials',
+    scenes: [{
+      id: 'scene/main',
+      entities: [
+        { id: 'entity/ambiguous', kind: 'mesh', components: { mesh: {
+          geometryId: 'geometry/source',
+          materialId: 'material/one',
+          materialIds: ['material/one'],
+        } } },
+        { id: 'entity/non-array', kind: 'mesh', components: { mesh: {
+          geometryId: 'geometry/source', materialIds: 'material/one',
+        } } },
+        { id: 'entity/bad-id', kind: 'mesh', components: { mesh: {
+          geometryId: 'geometry/source', materialIds: ['Not Stable'],
+        } } },
+        { id: 'entity/too-many', kind: 'mesh', components: { mesh: {
+          geometryId: 'geometry/source',
+          materialIds: Array.from({ length: 257 }, () => 'material/one'),
+        } } },
+      ],
+    }],
+  });
+  const result = validateProjectDocument(project);
+  const codes = result.diagnostics.map(item => item.code);
+  assert.equal(result.valid, false);
+  assert.equal(codes.includes('ambiguous_mesh_materials'), true);
+  assert.equal(codes.includes('invalid_mesh_materials'), true);
+  assert.equal(codes.includes('invalid_mesh_material'), true);
+});
+
 test('project index gives exact stable lookup, references, and subtree hashes', () => {
   const project = createProjectDocument({
     projectId: 'project/indexed',

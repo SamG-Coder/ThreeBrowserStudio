@@ -51,7 +51,7 @@ because Blender itself documents operators separately from direct
 | Object | Entity document | Implemented for the declared entity kinds |
 | Mesh data | Shared geometry resource | Procedural and explicit indexed meshes |
 | Materials | Shared basic/standard/physical/toon resource | Scalar PBR plus supported live node graphs |
-| Modifier stack | `entity.components.modifiers[]` in authored order | Array and Mirror; other kinds stay bake boundaries |
+| Modifier stack | `entity.components.modifiers[]` in authored order | Array/Mirror/Pattern plus nine bounded geometry evaluators; all other Blender types use an explicit validated bake boundary |
 | Constraint stack | `entity.components.constraints[]` in authored order | Aim/copy/limit subset |
 | Action/F-curves | Animation resource with stable target/property tracks | Frame/second keyframes and four interpolations |
 | Geometry Nodes | Typed graph IR | Validation only |
@@ -77,17 +77,32 @@ Geometry resources currently compile these recipes:
 - lathe profiles;
 - Catmull–Rom tube paths;
 - 2D shapes with holes and beveled extrusion; and
-- explicit/indexed buffer geometry.
+- explicit/indexed buffer geometry; and
+- canonical editable polygon meshes with per-corner UV/color layers, material
+  slots, sharp edges, creases, and hash-guarded vertex/face/edge edits.
 
-This is enough to translate many beginner modeling exercises without inventing
-a fake Edit Mode. Topology operations such as arbitrary loop cuts, inset,
-dissolve and sculpting need a real editable mesh kernel or a bake job.
+Studio now has a bounded editable-mesh kernel for exact vertex transforms,
+smoothing, face subdivision/inset/individual extrusion/deletion, pairwise
+manifold edge bevels, and exact vertex merges. Region extrusion, arbitrary loop
+cuts/dissolve, sculpting, and adjacency-dependent live modifiers over split UV
+seams remain explicit bake boundaries rather than approximations.
 
 Blender defines modifiers as ordered, non-destructive operations evaluated
-top-to-bottom. Studio preserves that model in canonical data and currently
-executes bounded Array and single-axis Mirror stacks as deterministic instance
-matrices. Unsupported modifier kinds remain visible and produce a
-`runtime_modifier_bake_required` warning instead of being ignored. See
+top-to-bottom. Studio preserves that model in canonical data. Use
+`three_studio_inspect` with `query: "modifierDigest"` to obtain the exact
+`stackHash`, then apply guarded `modifier.create`, `modifier.patch`,
+`modifier.move`, `modifier.delete`, or one atomic `modifier.stack.edit` batch.
+The live canonical types are strict: Array, Mirror, Pattern, Triangulate, Weld,
+Smooth, Weighted Normal, Edge Split, Solidify, Subdivision, Decimate, and
+Displace. A misspelled type fails validation instead of falling through to a
+default.
+
+Unsupported Blender modifiers are represented as `type: "bakeBoundary"` with
+an `operatorType` validated against the complete 83-row Blender inventory and
+optional bounded opaque `parameters`. A bake boundary deliberately stops live
+downstream evaluation; it is never treated as approximate geometry. Authored
+viewport/render enable flags are preserved, but this does not claim separate
+render/evidence evaluation parity. See
 [Blender's modifier stack](https://docs.blender.org/manual/en/5.2/modeling/modifiers/introduction.html).
 
 ### Blender 5.2 modifier inventory
@@ -109,16 +124,17 @@ concise purpose, and one deliberately conservative execution status:
 
 | Status | Count | Meaning |
 |---|---:|---|
-| `live-runtime` | 2 | Executes non-destructively in the current modifier stack runtime: `ARRAY`, `MIRROR` |
-| `live-geometry` | 0 | Reserved for exact live geometry-resource implementations; none are claimed today |
-| `bake-required` | 44 | Bake evaluated mesh/curve/volume data in Blender before import |
+| `live-runtime` | 2 | Executes as non-destructive object/instance evaluation: `ARRAY`, `MIRROR` |
+| `live-geometry` | 9 | Bounded deterministic indexed-mesh subset: `DECIMATE`, `DISPLACE`, `EDGE_SPLIT`, `SMOOTH`, `SOLIDIFY`, `SUBSURF`, `TRIANGULATE`, `WEIGHTED_NORMAL`, `WELD` |
+| `bake-required` | 35 | Preserve a validated explicit boundary and bake evaluated data before expecting downstream live evaluation |
 | `planned` | 11 | Geometry Nodes plus the ten solver/physics stack types are catalogued but not executed |
 | `not-applicable` | 26 | Grease Pencil modifiers require a stroke/layer object model Studio does not have |
 
 This inventory is discovery and compatibility metadata, not a claim that all
-83 types execute. Array and Mirror are the only current live modifier types.
-The full list remains queryable even when a type is unsupported, so MCP clients
-can choose a bake workflow without guessing or silently degrading the scene.
+83 types execute or that the nine geometry subsets reproduce every Blender
+option. The full list remains queryable even when a type is unsupported, so MCP
+clients can author a validated bake workflow without guessing or silently
+degrading the scene.
 
 Constraint stacks use the same rule. `lookAt`/`trackTo`, copy location,
 rotation or scale, and limit location execute as derived transforms. More

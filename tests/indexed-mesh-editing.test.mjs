@@ -217,6 +217,26 @@ test('weldVertices keeps coincident vertices split across UV seams', () => {
   assert.notEqual(result.positions, recipe.positions);
 });
 
+test('indexed material slots validate and follow surviving triangles through welds', () => {
+  const recipe = {
+    kind: 'indexedMesh',
+    positions: [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0],
+    indices: [0, 1, 2, 3, 2, 1],
+    triangleMaterialIndices: [4, 9],
+  };
+  const welded = weldVertices(recipe, { tolerance: 1e-6 });
+  assert.deepEqual(welded.indices, [0, 1, 2, 0, 2, 1]);
+  assert.deepEqual(welded.triangleMaterialIndices, [4, 9]);
+  assert.throws(
+    () => validateIndexedMeshRecipe({ ...recipe, triangleMaterialIndices: [4] }),
+    /exactly 2 material slots/,
+  );
+  assert.throws(
+    () => validateIndexedMeshRecipe({ ...recipe, triangleMaterialIndices: [4, -1] }),
+    /integer from 0 to 255/,
+  );
+});
+
 test('triangulateIndexedMesh is a validating clone-only no-op for indexed triangles', () => {
   const recipe = quadRecipe();
   const result = triangulateIndexedMesh(recipe);

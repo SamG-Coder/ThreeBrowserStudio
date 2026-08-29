@@ -145,7 +145,13 @@ export function buildBlenderFundamentalsOperations() {
       transform: transform([0, 4, -5.1]),
       components: {
         mesh: { geometryId: 'geometry/fundamentals/backdrop', materialIds: ['material/fundamentals/matte'], receiveShadow: true, castShadow: false },
-        modifiers: [{ id: 'modifier/fundamentals/backdrop-bevel', type: 'bevel', width: 0.2, segments: 12, enabled: true }],
+        modifiers: [{
+          id: 'modifier/fundamentals/backdrop-bevel',
+          type: 'bakeBoundary',
+          operatorType: 'BEVEL',
+          parameters: { width: 0.2, segments: 12 },
+          enabled: true,
+        }],
       },
     }),
     entity({ id: 'entity/fundamentals/watering-can', kind: 'group', name: 'watering_can', tags: ['collection', 'hero', 'tutorial'] }),

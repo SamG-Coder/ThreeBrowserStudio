@@ -9,15 +9,21 @@ import {
   PROTOCOL_VERSION,
   StudioError,
   atomicWriteJson,
+  analyzeViewportModifierStack,
+  AUTHORABLE_MODIFIER_TYPES,
+  buildModifierDigest,
   contentHash,
   createProjectDocument,
   createResourceDocument,
   hashExactEntitySet,
+  LIVE_INSTANCE_MODIFIER_TYPES,
+  MAX_MODIFIERS_PER_ENTITY,
   normalizeGraphResourcePatch,
   normalizeResourceType,
   supportedOperationTypes,
   validateProjectDocument,
 } from '../core/index.mjs';
+import { GEOMETRY_MODIFIER_TYPES } from '../core/geometry-modifier-evaluator.mjs';
 import {
   createLiveBridgeServer,
   createSessionCredentials,
@@ -42,6 +48,7 @@ import { frameCameraToBounds } from '../viewport/camera-projection.mjs';
 import { describeEffectiveCamera } from '../viewport/camera-evidence.mjs';
 import { LAYOUT_PATTERN_MODES } from '../core/layout-patterns.mjs';
 import { RTX_SCENE_LIMITS } from './rtx-scene-collector.mjs';
+import { normalizeGeometryRecipe } from './resource-factories.mjs';
 
 const INSPECT_RESPONSE_ENVELOPE_RESERVE_BYTES = 2_048;
 
@@ -68,6 +75,7 @@ const DIRECT_CORE_OPERATIONS = new Set([
   'entity.patchMany', 'entity.transformMany', 'entity.group', 'entity.ungroup',
   'collection.create', 'collection.patch', 'collection.membership.patch', 'collection.reparent', 'collection.delete',
   'camera.frame', 'layout.pattern', 'geometry.edit',
+  'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
   'resource.create', 'resource.patch', 'resource.delete',
 ]);
 
@@ -899,16 +907,38 @@ export class StudioApplication {
           'perspectiveCamera', 'orthographicCamera', 'directionalLight',
           'pointLight', 'spotLight', 'ambientLight', 'areaLight', 'hemisphereLight',
         ],
-        geometryRecipes: ['box', 'plane', 'sphere', 'capsule', 'circle', 'cone', 'cylinder', 'torus', 'torusKnot', 'lathe', 'tube', 'shape', 'extrude', 'explicit', 'indexedMesh'],
+        geometryRecipes: ['box', 'plane', 'sphere', 'capsule', 'circle', 'cone', 'cylinder', 'torus', 'torusKnot', 'lathe', 'tube', 'shape', 'extrude', 'explicit', 'indexedMesh', 'editableMesh'],
         geometryEditing: true,
-        geometryEditCommands: ['move', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate'],
+        geometryEditCommands: [
+          'move', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
+          'subdivideFaces', 'insetFaces', 'extrudeFaces', 'bevelEdges', 'deleteFaces', 'mergeVertices',
+        ],
+        editableMesh: {
+          topology: 'polygon-corner-csr',
+          topologyHashGuards: true,
+          uvLayers: { storage: true, topologyPropagation: true, directEditing: false },
+          colorLayers: { storage: true, topologyPropagation: true, directEditing: false },
+          materialSlots: { storage: true, topologyPropagation: true, directEditing: false },
+          sharpEdges: { storage: true, topologyPropagation: true, directEditing: false },
+          edgeCreases: { storage: true, topologyPropagation: true, directEditing: false },
+          liveGeometryModifiers: 'indexed-mesh-only-until-seam-safe-lowering',
+        },
         maxGeometryEditCommands: 64,
         exactBulkEntityEditing: true,
         maxExactEntitySelection: 200,
         transformGrouping: true,
         organizationalCollections: true,
         materialRecipes: ['basic', 'standard', 'physical', 'toon'],
-        modifierRuntime: ['array', 'mirror', 'pattern'],
+        modifierRuntime: [...LIVE_INSTANCE_MODIFIER_TYPES],
+        geometryModifierRuntime: [...GEOMETRY_MODIFIER_TYPES],
+        modifierAuthoring: {
+          types: [...AUTHORABLE_MODIFIER_TYPES],
+          maxStackEntries: MAX_MODIFIERS_PER_ENTITY,
+          exactStackHashGuards: true,
+          atomicStackEditing: true,
+          bakeBoundary: 'validated-blender-operator-type',
+          renderEnableFlag: 'authored-only-no-render-parity-claim',
+        },
         layoutGenerators: true,
         layoutPatterns: [...LAYOUT_PATTERN_MODES],
         cameraFraming: true,
@@ -1058,6 +1088,61 @@ export class StudioApplication {
           edgeLimit: params.limit,
           maxResponseBytes: MAX_INSPECT_RESPONSE_BYTES - INSPECT_RESPONSE_ENVELOPE_RESERVE_BYTES,
         }),
+      };
+    }
+    if (params.query === 'modifierDigest') {
+      const entityId = params.selector.ids[0];
+      const { scene, entity } = new ProjectIndex(document).getEntity(entityId);
+      if (!['mesh', 'instancedMesh'].includes(entity.kind)) {
+        throw new StudioError('invalid_modifier_target', 'modifierDigest requires a mesh or instancedMesh entity.', {
+          entityId,
+          kind: entity.kind,
+        });
+      }
+      const geometryId = entity.components?.mesh?.geometryId ?? null;
+      const geometryResource = geometryId ? document.resources.geometries?.[geometryId] : null;
+      const sourceRecipe = geometryResource ? normalizeGeometryRecipe(geometryResource) : null;
+      const analysis = analyzeViewportModifierStack(entity, { sourceKind: sourceRecipe?.kind ?? null });
+      const digest = buildModifierDigest(entity);
+      const compiledGeometry = this.#compiled?.objects?.get(entityId)?.geometry ?? null;
+      const positionCount = compiledGeometry?.getAttribute?.('position')?.count;
+      const indexCount = compiledGeometry?.getIndex?.()?.count ?? compiledGeometry?.index?.count;
+      const sourceCounts = sourceRecipe?.kind === 'editableMesh'
+        ? {
+            vertices: sourceRecipe.positions.length / 3,
+            faces: sourceRecipe.faceOffsets.length - 1,
+            corners: sourceRecipe.cornerVertexIndices.length,
+          }
+        : (Array.isArray(sourceRecipe?.positions) ? {
+            vertices: sourceRecipe.positions.length / 3,
+            triangles: Array.isArray(sourceRecipe.indices)
+              ? sourceRecipe.indices.length / 3
+              : sourceRecipe.positions.length / 9,
+          } : null);
+      return {
+        success: true,
+        revision: document.revision,
+        projectId: document.projectId,
+        sceneId: scene.id,
+        ...digest,
+        sourceGeometryId: geometryId,
+        sourceRecipeKind: sourceRecipe?.kind ?? null,
+        viewportEvaluation: {
+          target: analysis.target,
+          status: analysis.status,
+          ...(analysis.blocked ? { blocked: analysis.blocked } : {}),
+          ...(sourceCounts ? { sourceCounts } : {}),
+          ...(Number.isFinite(positionCount) ? {
+            previewCounts: {
+              vertices: positionCount,
+              triangles: Number.isFinite(indexCount) ? indexCount / 3 : positionCount / 3,
+            },
+          } : {}),
+        },
+        modifiers: digest.modifiers.map((modifier, index) => ({
+          ...modifier,
+          viewport: analysis.entries[index],
+        })),
       };
     }
     const scene = document.scenes[params.sceneId ?? document.activeSceneId];

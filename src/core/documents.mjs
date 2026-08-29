@@ -12,6 +12,7 @@ import { assertStableId, isStableId } from './ids.mjs';
 import { assertJsonValue, cloneJson, isPlainRecord, mergePatch, nowIso, uniqueSorted } from './util.mjs';
 import { entityComponentReferences, validateEntityComponents } from './component-validation.mjs';
 import { validateIndexedMeshRecipe } from './indexed-mesh-editing.mjs';
+import { normalizeEditableMeshRecipe } from './editable-mesh.mjs';
 import { validateGraph } from '../graphs/validator.mjs';
 
 const PROJECT_KEYS = new Set([
@@ -33,7 +34,11 @@ const ENTITY_KEYS = new Set([
 const TRANSFORM_KEYS = new Set(['position', 'rotation', 'scale']);
 const FLAT_GRAPH_KEYS = Object.freeze(['formatVersion', 'domain', 'nodes', 'edges', 'outputs', 'settings']);
 const INDEXED_GEOMETRY_FIELDS = Object.freeze([
-  'positions', 'indices', 'normals', 'uvs', 'colors', 'computeNormals',
+  'positions', 'indices', 'normals', 'uvs', 'colors', 'computeNormals', 'triangleMaterialIndices',
+]);
+const EDITABLE_GEOMETRY_FIELDS = Object.freeze([
+  'positions', 'faceOffsets', 'cornerVertexIndices', 'uvLayers', 'colorLayers',
+  'activeUvLayer', 'activeColorLayer', 'faceMaterialIndices', 'sharpEdges', 'edgeCreases',
 ]);
 
 function validateGeometryResource(id, source) {
@@ -44,6 +49,37 @@ function validateGeometryResource(id, source) {
   const recipeKind = nested
     ? (candidate.kind ?? candidate.type)
     : (source.geometryKind ?? source.type ?? source.kind);
+  if (recipeKind === 'editableMesh') {
+    const editableCandidate = nested
+      ? { ...candidate, kind: 'editableMesh' }
+      : {
+        kind: 'editableMesh',
+        ...Object.fromEntries(EDITABLE_GEOMETRY_FIELDS
+          .filter(key => Object.hasOwn(candidate, key))
+          .map(key => [key, candidate[key]])),
+      };
+    delete editableCandidate.type;
+    try {
+      const recipe = normalizeEditableMeshRecipe(editableCandidate);
+      if (isPlainRecord(source.recipe)) {
+        source.recipe = recipe;
+      } else {
+        source.recipe = recipe;
+        delete source.parameters;
+        for (const field of EDITABLE_GEOMETRY_FIELDS) delete source[field];
+        if (source.type === 'editableMesh') delete source.type;
+        if (source.geometryKind === 'editableMesh') delete source.geometryKind;
+        if (source.kind === 'editableMesh') delete source.kind;
+      }
+      return;
+    } catch (error) {
+      throw new StudioError(
+        'invalid_geometry_resource',
+        `Geometry resource ${id} has an invalid editableMesh recipe: ${error.message}`,
+        { resourceId: id, recipeKind },
+      );
+    }
+  }
   if (!['explicit', 'indexedMesh'].includes(recipeKind)) return;
   const recipe = {
     kind: 'indexedMesh',

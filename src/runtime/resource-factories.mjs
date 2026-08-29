@@ -1,4 +1,6 @@
 import { compileShaderGraph, isCompiledSurface } from './shader-graph-compiler.mjs';
+import { triangulateEditableMesh } from '../core/editable-mesh.mjs';
+import { MAX_MATERIAL_SLOTS_PER_MESH } from '../core/constants.mjs';
 
 const GEOMETRY_PARAMETER_DEFAULTS = Object.freeze({
   box: { width: 1, height: 1, depth: 1, widthSegments: 1, heightSegments: 1, depthSegments: 1 },
@@ -51,6 +53,13 @@ const CONTROL_POINT_LIMITS = Object.freeze({
 });
 const MAX_SHAPE_HOLES = 64;
 const MAX_COORDINATE = 1_000_000;
+const MAX_RUNTIME_GEOMETRY_VERTICES = 1_000_000;
+const MAX_RUNTIME_GEOMETRY_TRIANGLES = 2_000_000;
+
+export const RUNTIME_GEOMETRY_LIMITS = Object.freeze({
+  maxVertices: MAX_RUNTIME_GEOMETRY_VERTICES,
+  maxTriangles: MAX_RUNTIME_GEOMETRY_TRIANGLES,
+});
 
 function finite(value, fallback) {
   return Number.isFinite(value) ? value : fallback;
@@ -64,16 +73,101 @@ function bool(value, fallback) {
   return typeof value === 'boolean' ? value : fallback;
 }
 
+function proceduralCountEstimate(recipe) {
+  const segment = (key, fallback = 1) => Math.max(1, Math.trunc(recipe[key] ?? fallback));
+  const pointCount = Array.isArray(recipe.points)
+    ? recipe.points.length + (Array.isArray(recipe.holes)
+        ? recipe.holes.reduce((count, hole) => count + (Array.isArray(hole) ? hole.length : 0), 0)
+        : 0)
+    : 0;
+  if (recipe.kind === 'box') {
+    const x = segment('widthSegments');
+    const y = segment('heightSegments');
+    const z = segment('depthSegments');
+    return {
+      vertices: 2 * ((x + 1) * (y + 1) + (x + 1) * (z + 1) + (y + 1) * (z + 1)),
+      triangles: 4 * (x * y + x * z + y * z),
+    };
+  }
+  if (recipe.kind === 'plane') {
+    const x = segment('widthSegments');
+    const y = segment('heightSegments');
+    return { vertices: (x + 1) * (y + 1), triangles: 2 * x * y };
+  }
+  if (recipe.kind === 'sphere') {
+    const x = segment('widthSegments', 32);
+    const y = segment('heightSegments', 16);
+    return { vertices: (x + 1) * (y + 1), triangles: 2 * x * y };
+  }
+  if (recipe.kind === 'capsule') {
+    const radial = segment('radialSegments', 16);
+    const rings = segment('capSegments', 8) * 2 + 2;
+    return { vertices: (radial + 1) * (rings + 1), triangles: 2 * radial * rings };
+  }
+  if (recipe.kind === 'circle') {
+    const segments = segment('segments', 32);
+    return { vertices: segments + 2, triangles: segments };
+  }
+  if (recipe.kind === 'cone' || recipe.kind === 'cylinder') {
+    const radial = segment('radialSegments', 32);
+    const height = segment('heightSegments');
+    const caps = recipe.openEnded === true ? 0 : 2;
+    return {
+      vertices: (radial + 1) * (height + 1) + caps * (2 * radial + 1),
+      triangles: 2 * radial * height + caps * radial,
+    };
+  }
+  if (recipe.kind === 'torus' || recipe.kind === 'torusKnot') {
+    const radial = segment('radialSegments', 16);
+    const tubular = segment('tubularSegments', 48);
+    return { vertices: (radial + 1) * (tubular + 1), triangles: 2 * radial * tubular };
+  }
+  if (recipe.kind === 'lathe') {
+    const segments = segment('segments', 24);
+    return { vertices: (segments + 1) * pointCount, triangles: 2 * segments * Math.max(0, pointCount - 1) };
+  }
+  if (recipe.kind === 'tube') {
+    const tubular = segment('tubularSegments', 64);
+    const radial = segment('radialSegments', 8);
+    return { vertices: (tubular + 1) * (radial + 1), triangles: 2 * tubular * radial };
+  }
+  if (recipe.kind === 'shape') return { vertices: pointCount, triangles: Math.max(0, pointCount * 2) };
+  if (recipe.kind === 'extrude') {
+    const layers = segment('steps') + 1 + (recipe.bevelEnabled ? 2 * (segment('bevelSegments', 3) + 1) : 0);
+    return { vertices: pointCount * layers * 4, triangles: pointCount * Math.max(1, layers - 1) * 8 };
+  }
+  return null;
+}
+
+function assertRuntimeGeometryBudget(recipe) {
+  const estimate = proceduralCountEstimate(recipe);
+  if (!estimate) return;
+  if (estimate.vertices <= MAX_RUNTIME_GEOMETRY_VERTICES
+      && estimate.triangles <= MAX_RUNTIME_GEOMETRY_TRIANGLES) return;
+  const error = new Error(
+    `Geometry ${recipe.kind} is estimated at ${estimate.vertices} vertices and ${estimate.triangles} triangles, `
+      + `exceeding the runtime budget of ${MAX_RUNTIME_GEOMETRY_VERTICES} vertices and ${MAX_RUNTIME_GEOMETRY_TRIANGLES} triangles.`,
+  );
+  error.code = 'geometry_budget_exceeded';
+  error.details = { kind: recipe.kind, estimated: estimate, limits: RUNTIME_GEOMETRY_LIMITS };
+  throw error;
+}
+
 function recipeOf(resource) {
   const enclosed = resource?.recipe !== undefined || resource?.parameters !== undefined;
   const recipe = resource?.recipe ?? resource?.parameters ?? resource ?? {};
-  const kind = recipe.kind ?? recipe.type ?? resource?.geometryKind ?? resource?.kind ?? 'box';
+  const directType = ['editableMesh', 'indexedMesh', 'explicit'].includes(resource?.type)
+    ? resource.type
+    : undefined;
+  const kind = enclosed
+    ? (recipe.kind ?? recipe.type ?? resource?.geometryKind ?? resource?.kind ?? 'box')
+    : (directType ?? resource?.geometryKind ?? recipe.kind ?? recipe.type ?? 'box');
   return enclosed ? { kind, ...recipe } : { ...recipe, kind };
 }
 
 export function normalizeGeometryRecipe(resource = {}) {
   const source = recipeOf(resource);
-  const defaults = GEOMETRY_PARAMETER_DEFAULTS[source.kind] ?? GEOMETRY_PARAMETER_DEFAULTS.box;
+  const defaults = GEOMETRY_PARAMETER_DEFAULTS[source.kind] ?? {};
   const recipe = { ...defaults, ...source };
   for (const key of Object.keys(recipe)) {
     if (key.endsWith('Segments') && !(source.kind === 'extrude' && key === 'bevelSegments')) {
@@ -278,6 +372,16 @@ function explicitGeometry(THREE, recipe) {
   if (!Array.isArray(positions) || positions.length < 3 || positions.length % 3 !== 0) {
     throw new Error('Explicit geometry requires a positions array divisible by three.');
   }
+  if (positions.length / 3 > MAX_RUNTIME_GEOMETRY_VERTICES) {
+    const error = new Error(`Explicit geometry exceeds ${MAX_RUNTIME_GEOMETRY_VERTICES} vertices.`);
+    error.code = 'geometry_budget_exceeded';
+    throw error;
+  }
+  if (Array.isArray(recipe.indices) && recipe.indices.length / 3 > MAX_RUNTIME_GEOMETRY_TRIANGLES) {
+    const error = new Error(`Explicit geometry exceeds ${MAX_RUNTIME_GEOMETRY_TRIANGLES} triangles.`);
+    error.code = 'geometry_budget_exceeded';
+    throw error;
+  }
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   const normals = recipe.normals ?? recipe.attributes?.normal;
   const uvs = recipe.uvs ?? recipe.attributes?.uv;
@@ -288,14 +392,157 @@ function explicitGeometry(THREE, recipe) {
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, colors.length / (positions.length / 3)));
   }
   if (Array.isArray(recipe.indices)) geometry.setIndex(recipe.indices);
+  applyTriangleMaterialGroups(geometry, recipe);
   if (!geometry.getAttribute('normal') && recipe.computeNormals !== false) geometry.computeVertexNormals();
   geometry.computeBoundingBox();
   geometry.computeBoundingSphere();
   return geometry;
 }
 
+function triangleCountForRecipe(recipe) {
+  if (Array.isArray(recipe.indices)) return recipe.indices.length / 3;
+  const positions = recipe.positions ?? recipe.attributes?.position;
+  return Array.isArray(positions) ? positions.length / 9 : 0;
+}
+
+function applyTriangleMaterialGroups(geometry, recipe) {
+  const materialIndices = recipe.triangleMaterialIndices;
+  if (materialIndices === undefined) return geometry;
+  const triangleCount = triangleCountForRecipe(recipe);
+  if (!Array.isArray(materialIndices) || materialIndices.length !== triangleCount) {
+    throw new Error(`triangleMaterialIndices must contain exactly ${triangleCount} material slots.`);
+  }
+  for (let index = 0; index < materialIndices.length; index += 1) {
+    const value = materialIndices[index];
+    if (!Number.isInteger(value) || value < 0 || value >= MAX_MATERIAL_SLOTS_PER_MESH) {
+      throw new Error(`triangleMaterialIndices[${index}] must be an integer from 0 to ${MAX_MATERIAL_SLOTS_PER_MESH - 1}.`);
+    }
+  }
+  geometry.clearGroups?.();
+  if (typeof geometry.addGroup === 'function' && materialIndices.length > 0) {
+    let startTriangle = 0;
+    let materialIndex = materialIndices[0];
+    for (let triangle = 1; triangle <= materialIndices.length; triangle += 1) {
+      const next = materialIndices[triangle];
+      if (triangle < materialIndices.length && next === materialIndex) continue;
+      geometry.addGroup(startTriangle * 3, (triangle - startTriangle) * 3, materialIndex);
+      startTriangle = triangle;
+      materialIndex = next;
+    }
+  }
+  geometry.userData = {
+    ...(geometry.userData ?? {}),
+    studioTriangleMaterialIndices: [...materialIndices],
+    studioMaterialSlotCount: materialIndices.length === 0 ? 0 : Math.max(...materialIndices) + 1,
+  };
+  return geometry;
+}
+
+function attributeValues(attribute, itemSize) {
+  if (!attribute || attribute.count < 1) return null;
+  const getters = ['getX', 'getY', 'getZ', 'getW'];
+  const result = [];
+  for (let index = 0; index < attribute.count; index += 1) {
+    for (let component = 0; component < itemSize; component += 1) {
+      const getter = attribute[getters[component]];
+      const value = typeof getter === 'function'
+        ? getter.call(attribute, index)
+        : attribute.array?.[index * (attribute.itemSize ?? itemSize) + component];
+      if (!Number.isFinite(value)) throw new Error('Buffer geometry contains a non-finite attribute value.');
+      result.push(value);
+    }
+  }
+  return result;
+}
+
+/**
+ * Captures a Three.js BufferGeometry as an immutable canonical indexed mesh.
+ * This is used only as a bounded bridge for applying pure geometry modifiers
+ * to procedural resources; the source BufferGeometry is never modified.
+ */
+export function indexedMeshRecipeFromBufferGeometry(geometry, { captureMaterialGroups = false } = {}) {
+  const position = geometry?.getAttribute?.('position');
+  if (!position || position.count < 3) throw new Error('Buffer geometry requires at least three positions.');
+  if (position.count > MAX_RUNTIME_GEOMETRY_VERTICES) {
+    const error = new Error(`Buffer geometry exceeds ${MAX_RUNTIME_GEOMETRY_VERTICES} vertices before attribute readback.`);
+    error.code = 'geometry_budget_exceeded';
+    throw error;
+  }
+  let indices;
+  const indexAttribute = geometry.getIndex?.() ?? geometry.index;
+  const triangleCount = indexAttribute ? indexAttribute.count / 3 : position.count / 3;
+  if (triangleCount > MAX_RUNTIME_GEOMETRY_TRIANGLES) {
+    const error = new Error(`Buffer geometry exceeds ${MAX_RUNTIME_GEOMETRY_TRIANGLES} triangles before index readback.`);
+    error.code = 'geometry_budget_exceeded';
+    throw error;
+  }
+  const positions = attributeValues(position, 3);
+  if (indexAttribute) {
+    indices = [];
+    for (let index = 0; index < indexAttribute.count; index += 1) {
+      const value = typeof indexAttribute.getX === 'function'
+        ? indexAttribute.getX(index)
+        : indexAttribute.array?.[index];
+      if (!Number.isInteger(value)) throw new Error('Buffer geometry index values must be integers.');
+      indices.push(value);
+    }
+  } else {
+    if (position.count % 3 !== 0) throw new Error('Non-indexed buffer geometry must contain complete triangles.');
+    indices = Array.from({ length: position.count }, (_, index) => index);
+  }
+  if (indices.length < 3 || indices.length % 3 !== 0) {
+    throw new Error('Buffer geometry index data must contain complete triangles.');
+  }
+  const recipe = { kind: 'indexedMesh', positions, indices, computeNormals: true };
+  const normal = geometry.getAttribute?.('normal');
+  const uv = geometry.getAttribute?.('uv');
+  const color = geometry.getAttribute?.('color');
+  if (normal?.count === position.count) recipe.normals = attributeValues(normal, 3);
+  if (uv?.count === position.count) recipe.uvs = attributeValues(uv, 2);
+  if (color?.count === position.count && [3, 4].includes(color.itemSize)) {
+    recipe.colors = attributeValues(color, color.itemSize);
+  }
+  const authoredMaterialIndices = geometry.userData?.studioTriangleMaterialIndices;
+  if (authoredMaterialIndices !== undefined) {
+    if (!Array.isArray(authoredMaterialIndices)
+        || authoredMaterialIndices.length !== indices.length / 3) {
+      throw new Error('Authored Studio material provenance must match the exact triangle count.');
+    }
+    recipe.triangleMaterialIndices = [...authoredMaterialIndices];
+  } else if (captureMaterialGroups && Array.isArray(geometry.groups) && geometry.groups.length > 0) {
+    const groups = [...geometry.groups].sort((left, right) => left.start - right.start);
+    const triangleMaterialIndices = [];
+    let cursor = 0;
+    for (const group of groups) {
+      const valid = Number.isInteger(group.start) && Number.isInteger(group.count)
+        && group.start === cursor && group.start % 3 === 0
+        && group.count > 0 && group.count % 3 === 0
+        && group.start + group.count <= indices.length
+        && Number.isInteger(group.materialIndex) && group.materialIndex >= 0
+        && group.materialIndex < MAX_MATERIAL_SLOTS_PER_MESH;
+      if (!valid) {
+        const error = new Error('Procedural material groups must cover the indexed draw range exactly with bounded slots.');
+        error.code = 'geometry_material_groups_invalid';
+        throw error;
+      }
+      for (let offset = 0; offset < group.count; offset += 3) {
+        triangleMaterialIndices.push(group.materialIndex);
+      }
+      cursor += group.count;
+    }
+    if (cursor !== indices.length) {
+      const error = new Error('Procedural material groups do not cover the complete indexed draw range.');
+      error.code = 'geometry_material_groups_incomplete';
+      throw error;
+    }
+    recipe.triangleMaterialIndices = triangleMaterialIndices;
+  }
+  return recipe;
+}
+
 export function createGeometry(THREE, resource = {}) {
   const p = normalizeGeometryRecipe(resource);
+  assertRuntimeGeometryBudget(p);
   switch (p.kind) {
     case 'box': return new THREE.BoxGeometry(finite(p.width, 1), finite(p.height, 1), finite(p.depth, 1), integer(p.widthSegments, 1), integer(p.heightSegments, 1), integer(p.depthSegments, 1));
     case 'plane': return new THREE.PlaneGeometry(finite(p.width, 1), finite(p.height, 1), integer(p.widthSegments, 1), integer(p.heightSegments, 1));
@@ -316,6 +563,13 @@ export function createGeometry(THREE, resource = {}) {
     case 'extrude': return extrudeGeometry(THREE, p);
     case 'explicit':
     case 'indexedMesh': return explicitGeometry(THREE, p);
+    case 'editableMesh': {
+      const compiled = triangulateEditableMesh(recipeOf(resource));
+      return explicitGeometry(THREE, {
+        ...compiled.recipe,
+        triangleMaterialIndices: compiled.triangleMaterialIndices,
+      });
+    }
     default: throw new Error(`Unsupported geometry recipe: ${p.kind}`);
   }
 }

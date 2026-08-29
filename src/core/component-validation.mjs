@@ -1,5 +1,6 @@
 import { isStableId } from './ids.mjs';
-import { normalizeLayoutPattern } from './layout-patterns.mjs';
+import { MAX_MATERIAL_SLOTS_PER_MESH } from './constants.mjs';
+import { normalizeModifierDocument } from './modifier-stack.mjs';
 import { isPlainRecord } from './util.mjs';
 
 export const RUNTIME_MODIFIER_TYPES = Object.freeze(['array', 'mirror', 'pattern']);
@@ -21,44 +22,17 @@ function validateModifier(modifier, index, path, diagnostics, ids) {
     diagnostic(diagnostics, 'invalid_modifier', at, 'Modifier must be an object');
     return;
   }
-  if (!isStableId(modifier.id)) diagnostic(diagnostics, 'invalid_modifier_id', `${at}.id`, 'Modifier requires a stable ID');
-  else if (ids.has(modifier.id)) diagnostic(diagnostics, 'duplicate_modifier_id', `${at}.id`, `Duplicate modifier ID ${modifier.id}`);
+  try {
+    // Format-v1 projects historically accepted arbitrary modifier types. Keep
+    // those documents loadable as explicit bake-required boundaries; ordinary
+    // authoring operations still validate newly supplied modifiers strictly.
+    normalizeModifierDocument(modifier, { allowLegacyUnknown: true });
+  } catch (error) {
+    diagnostic(diagnostics, error.code ?? 'invalid_modifier', at, error.message);
+    return;
+  }
+  if (ids.has(modifier.id)) diagnostic(diagnostics, 'duplicate_modifier_id', `${at}.id`, `Duplicate modifier ID ${modifier.id}`);
   else ids.add(modifier.id);
-  if (typeof modifier.type !== 'string' || modifier.type.length === 0) {
-    diagnostic(diagnostics, 'invalid_modifier_type', `${at}.type`, 'Modifier type is required');
-  }
-  if (modifier.enabled !== undefined && typeof modifier.enabled !== 'boolean') {
-    diagnostic(diagnostics, 'invalid_modifier_enabled', `${at}.enabled`, 'enabled must be boolean');
-  }
-  if (modifier.enabledViewport !== undefined && typeof modifier.enabledViewport !== 'boolean') {
-    diagnostic(diagnostics, 'invalid_modifier_enabled', `${at}.enabledViewport`, 'enabledViewport must be boolean');
-  }
-  if (modifier.enabledRender !== undefined && typeof modifier.enabledRender !== 'boolean') {
-    diagnostic(diagnostics, 'invalid_modifier_enabled', `${at}.enabledRender`, 'enabledRender must be boolean');
-  }
-  if (modifier.type === 'array') {
-    if (!Number.isInteger(modifier.count) || modifier.count < 1 || modifier.count > 256) {
-      diagnostic(diagnostics, 'invalid_array_count', `${at}.count`, 'Array count must be an integer from 1 to 256');
-    }
-    if (modifier.offset !== undefined && !vector3(modifier.offset)) {
-      diagnostic(diagnostics, 'invalid_array_offset', `${at}.offset`, 'Array offset must contain three finite numbers');
-    }
-  }
-  if (modifier.type === 'mirror' && !['x', 'y', 'z'].includes(modifier.axis ?? 'x')) {
-    diagnostic(diagnostics, 'invalid_mirror_axis', `${at}.axis`, 'Mirror axis must be x, y, or z');
-  }
-  if (modifier.type === 'pattern') {
-    try {
-      normalizeLayoutPattern(modifier, { modifier: true });
-    } catch (error) {
-      diagnostic(
-        diagnostics,
-        error.code ?? 'invalid_layout_pattern',
-        at,
-        error.message,
-      );
-    }
-  }
 }
 
 function validateConstraint(constraint, index, path, diagnostics, ids) {
@@ -93,6 +67,41 @@ function validateConstraint(constraint, index, path, diagnostics, ids) {
   }
 }
 
+function validateMeshComponent(mesh, path, diagnostics) {
+  const at = `${path}.components.mesh`;
+  if (!isPlainRecord(mesh)) {
+    diagnostic(diagnostics, 'invalid_mesh_component', at, 'mesh must be an object');
+    return;
+  }
+  if (mesh.geometryId !== undefined && !isStableId(mesh.geometryId)) {
+    diagnostic(diagnostics, 'invalid_mesh_geometry', `${at}.geometryId`, 'geometryId must be a stable ID');
+  }
+  const hasMaterialId = Object.hasOwn(mesh, 'materialId');
+  const hasMaterialIds = Object.hasOwn(mesh, 'materialIds');
+  if (hasMaterialId && hasMaterialIds) {
+    diagnostic(diagnostics, 'ambiguous_mesh_materials', at, 'Use materialId or materialIds, not both');
+  }
+  if (hasMaterialId && !isStableId(mesh.materialId)) {
+    diagnostic(diagnostics, 'invalid_mesh_material', `${at}.materialId`, 'materialId must be a stable ID');
+  }
+  if (hasMaterialIds) {
+    if (!Array.isArray(mesh.materialIds) || mesh.materialIds.length > MAX_MATERIAL_SLOTS_PER_MESH) {
+      diagnostic(
+        diagnostics,
+        'invalid_mesh_materials',
+        `${at}.materialIds`,
+        `materialIds must be an array with at most ${MAX_MATERIAL_SLOTS_PER_MESH} entries`,
+      );
+    } else {
+      mesh.materialIds.forEach((materialId, index) => {
+        if (!isStableId(materialId)) {
+          diagnostic(diagnostics, 'invalid_mesh_material', `${at}.materialIds.${index}`, 'Each materialIds entry must be a stable ID');
+        }
+      });
+    }
+  }
+}
+
 /**
  * Validates only the component contracts Studio understands. Unknown component
  * namespaces remain forward-compatible authored data and are capability-gated
@@ -101,6 +110,7 @@ function validateConstraint(constraint, index, path, diagnostics, ids) {
 export function validateEntityComponents(entity, path, diagnostics) {
   const components = entity.components;
   if (!isPlainRecord(components)) return;
+  if (components.mesh !== undefined) validateMeshComponent(components.mesh, path, diagnostics);
   if (components.modifiers !== undefined) {
     if (!Array.isArray(components.modifiers) || components.modifiers.length > 64) {
       diagnostic(diagnostics, 'invalid_modifiers', `${path}.components.modifiers`, 'modifiers must be an array with at most 64 entries');
@@ -137,10 +147,12 @@ export function entityComponentReferences(entity) {
     if (isStableId(targetId)) references.push({ targetId, kind, path });
   };
   const components = entity.components ?? {};
-  const mesh = components.mesh ?? {};
+  const mesh = isPlainRecord(components.mesh) ? components.mesh : {};
   add(mesh.geometryId, 'geometry', 'components.mesh.geometryId');
   add(mesh.materialId, 'material', 'components.mesh.materialId');
-  for (const id of mesh.materialIds ?? []) add(id, 'material', 'components.mesh.materialIds');
+  if (Array.isArray(mesh.materialIds)) {
+    mesh.materialIds.forEach((id, index) => add(id, 'material', `components.mesh.materialIds.${index}`));
+  }
   add(components.animation?.actionId, 'animation', 'components.animation.actionId');
   add(components.prefab?.prefabId, 'prefab', 'components.prefab.prefabId');
   add(components.audio?.audioId, 'audio', 'components.audio.audioId');

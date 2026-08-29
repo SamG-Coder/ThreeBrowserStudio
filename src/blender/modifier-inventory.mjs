@@ -59,7 +59,7 @@ const modifierRows = [
   ['MESH_CACHE', 'MeshCacheModifier', 'modify', 'Mesh Cache', 'Deform a mesh from an external frame-by-frame vertex cache.', 'bake-required'],
   ['MESH_SEQUENCE_CACHE', 'MeshSequenceCacheModifier', 'modify', 'Mesh Sequence Cache', 'Deform mesh or curve geometry from an external Alembic cache.', 'bake-required'],
   ['NORMAL_EDIT', 'NormalEditModifier', 'modify', 'Normal Edit', 'Change the direction of surface normals.', 'bake-required'],
-  ['WEIGHTED_NORMAL', 'WeightedNormalModifier', 'modify', 'Weighted Normal', 'Recalculate surface normals with weighted face influence.', 'bake-required'],
+  ['WEIGHTED_NORMAL', 'WeightedNormalModifier', 'modify', 'Weighted Normal', 'Recalculate surface normals with weighted face influence.', 'live-geometry', 'Studio evaluates area, corner-angle, or combined weighting on indexed meshes; sharp-edge and face-strength options remain a bake boundary.'],
   ['UV_PROJECT', 'UVProjectModifier', 'modify', 'UV Project', 'Project UV coordinates from one or more projector objects.', 'bake-required'],
   ['UV_WARP', 'UVWarpModifier', 'modify', 'UV Warp', 'Transform UV coordinates from the relative transforms of two objects.', 'bake-required'],
   ['VERTEX_WEIGHT_EDIT', 'VertexWeightEditModifier', 'modify', 'Vertex Weight Edit', 'Edit the weights of one vertex group procedurally.', 'bake-required'],
@@ -77,8 +77,8 @@ const modifierRows = [
   ['BEVEL', 'BevelModifier', 'generate', 'Bevel', 'Add geometry that creates sloped corners on edges or vertices.', 'bake-required'],
   ['BOOLEAN', 'BooleanModifier', 'generate', 'Boolean', 'Combine, intersect, or subtract geometry using another shape.', 'bake-required'],
   ['BUILD', 'BuildModifier', 'generate', 'Build', 'Reveal or hide mesh faces sequentially over time.', 'bake-required'],
-  ['DECIMATE', 'DecimateModifier', 'generate', 'Decimate', 'Reduce mesh density while approximating the original shape.', 'bake-required'],
-  ['EDGE_SPLIT', 'EdgeSplitModifier', 'generate', 'Edge Split', 'Split joined faces along selected or sharp edges.', 'bake-required'],
+  ['DECIMATE', 'DecimateModifier', 'generate', 'Decimate', 'Reduce mesh density while approximating the original shape.', 'live-geometry', 'Studio evaluates the bounded deterministic collapse subset with a ratio or exact triangle target.'],
+  ['EDGE_SPLIT', 'EdgeSplitModifier', 'generate', 'Edge Split', 'Split joined faces along selected or sharp edges.', 'live-geometry', 'Studio evaluates angle-based edge splitting; named sharp-edge attributes are not yet an input.'],
   ['NODES', 'NodesModifier', 'generate', 'Geometry Nodes', 'Evaluate a geometry node group as a modifier.', 'planned', 'Studio validates typed geometry graph IR, but does not yet evaluate Geometry Nodes graphs. Bundled modifier assets also resolve to this RNA type.'],
   ['MASK', 'MaskModifier', 'generate', 'Mask', 'Hide vertices dynamically from a vertex group or armature.', 'bake-required'],
   ['MIRROR', 'MirrorModifier', 'generate', 'Mirror', 'Mirror geometry across local axes or a mirror object.', 'live-runtime', 'Studio evaluates the supported single-axis mirror subset as non-destructive instance matrices.'],
@@ -87,11 +87,11 @@ const modifierRows = [
   ['REMESH', 'RemeshModifier', 'generate', 'Remesh', 'Generate new topology from the current shape.', 'bake-required'],
   ['SCREW', 'ScrewModifier', 'generate', 'Screw', 'Lathe a profile around an axis with optional screw translation.', 'bake-required'],
   ['SKIN', 'SkinModifier', 'generate', 'Skin', 'Create a solid branching surface from vertices and edges.', 'bake-required'],
-  ['SOLIDIFY', 'SolidifyModifier', 'generate', 'Solidify', 'Give a surface thickness.', 'bake-required'],
-  ['SUBSURF', 'SubsurfModifier', 'generate', 'Subdivision Surface', 'Subdivide faces for a denser, smoother surface.', 'bake-required'],
-  ['TRIANGULATE', 'TriangulateModifier', 'generate', 'Triangulate', 'Convert polygons to triangles.', 'bake-required'],
+  ['SOLIDIFY', 'SolidifyModifier', 'generate', 'Solidify', 'Give a surface thickness.', 'live-geometry', 'Studio evaluates bounded thickness and offset on indexed meshes; vertex-group controls require baking.'],
+  ['SUBSURF', 'SubsurfModifier', 'generate', 'Subdivision Surface', 'Subdivide faces for a denser, smoother surface.', 'live-geometry', 'Studio evaluates one to six bounded simple or Loop-style triangle subdivision levels.'],
+  ['TRIANGULATE', 'TriangulateModifier', 'generate', 'Triangulate', 'Convert polygons to triangles.', 'live-geometry', 'Studio preserves this explicit stack step; canonical indexed meshes are already triangulated.'],
   ['VOLUME_TO_MESH', 'VolumeToMeshModifier', 'generate', 'Volume to Mesh', 'Extract a mesh surface from a volume grid.', 'bake-required'],
-  ['WELD', 'WeldModifier', 'generate', 'Weld', 'Merge groups of vertices within a distance threshold.', 'bake-required'],
+  ['WELD', 'WeldModifier', 'generate', 'Weld', 'Merge groups of vertices within a distance threshold.', 'live-geometry', 'Studio welds positional duplicates while preserving UV and color seams.'],
   ['WIREFRAME', 'WireframeModifier', 'generate', 'Wireframe', 'Replace faces with thickened edge geometry.', 'bake-required'],
   ['GREASE_PENCIL_ARRAY', 'GreasePencilArrayModifier', 'generate', 'Array', 'Duplicate Grease Pencil strokes into an array.', 'not-applicable'],
   ['GREASE_PENCIL_BUILD', 'GreasePencilBuildModifier', 'generate', 'Build', 'Animate Grease Pencil strokes appearing or disappearing.', 'not-applicable'],
@@ -108,14 +108,14 @@ const modifierRows = [
   ['ARMATURE', 'ArmatureModifier', 'deform', 'Armature', 'Deform geometry using an armature object.', 'bake-required'],
   ['CAST', 'CastModifier', 'deform', 'Cast', 'Shift geometry toward a primitive shape.', 'bake-required'],
   ['CURVE', 'CurveModifier', 'deform', 'Curve', 'Bend geometry along a curve object.', 'bake-required'],
-  ['DISPLACE', 'DisplaceModifier', 'deform', 'Displace', 'Offset vertices using texture values.', 'bake-required'],
+  ['DISPLACE', 'DisplaceModifier', 'deform', 'Displace', 'Offset vertices using texture values.', 'live-geometry', 'Studio evaluates deterministic inline constant, wave, or seeded-noise sources in local space; texture and vertex-group inputs require baking.'],
   ['HOOK', 'HookModifier', 'deform', 'Hook', 'Deform selected points using another object.', 'bake-required'],
   ['LAPLACIANDEFORM', 'LaplacianDeformModifier', 'deform', 'Laplacian Deform', 'Deform a surface from a set of anchored vertices.', 'bake-required'],
   ['LATTICE', 'LatticeModifier', 'deform', 'Lattice', 'Deform geometry with a lattice object.', 'bake-required'],
   ['MESH_DEFORM', 'MeshDeformModifier', 'deform', 'Mesh Deform', 'Deform geometry using another mesh as a cage.', 'bake-required'],
   ['SHRINKWRAP', 'ShrinkwrapModifier', 'deform', 'Shrinkwrap', 'Project geometry onto target geometry.', 'bake-required'],
   ['SIMPLE_DEFORM', 'SimpleDeformModifier', 'deform', 'Simple Deform', 'Twist, bend, taper, or stretch geometry.', 'bake-required'],
-  ['SMOOTH', 'SmoothModifier', 'deform', 'Smooth', 'Relax vertex positions to flatten angles between faces.', 'bake-required'],
+  ['SMOOTH', 'SmoothModifier', 'deform', 'Smooth', 'Relax vertex positions to flatten angles between faces.', 'live-geometry', 'Studio evaluates bounded whole-mesh Laplacian smoothing with optional boundary preservation.'],
   ['CORRECTIVE_SMOOTH', 'CorrectiveSmoothModifier', 'deform', 'Smooth Corrective', 'Smooth deformations while preserving volume.', 'bake-required'],
   ['LAPLACIANSMOOTH', 'LaplacianSmoothModifier', 'deform', 'Smooth Laplacian', 'Reduce surface noise while preserving overall shape.', 'bake-required'],
   ['SURFACE_DEFORM', 'SurfaceDeformModifier', 'deform', 'Surface Deform', 'Transfer deformation from another mesh surface.', 'bake-required'],
@@ -207,6 +207,18 @@ const liveRuntimeTypes = entries
   .sort();
 if (liveRuntimeTypes.join(',') !== 'ARRAY,MIRROR') {
   throw new TypeError(`Unexpected live Blender modifier set: ${liveRuntimeTypes.join(',')}`);
+}
+
+export const BLENDER_LIVE_GEOMETRY_MODIFIER_TYPES = Object.freeze([
+  'DECIMATE', 'DISPLACE', 'EDGE_SPLIT', 'SMOOTH', 'SOLIDIFY', 'SUBSURF',
+  'TRIANGULATE', 'WEIGHTED_NORMAL', 'WELD',
+]);
+const liveGeometryTypes = entries
+  .filter((entry) => entry.status === 'live-geometry')
+  .map((entry) => entry.operatorType)
+  .sort();
+if (liveGeometryTypes.join(',') !== BLENDER_LIVE_GEOMETRY_MODIFIER_TYPES.join(',')) {
+  throw new TypeError(`Unexpected live Blender geometry-modifier set: ${liveGeometryTypes.join(',')}`);
 }
 
 const entryMap = Object.freeze(Object.fromEntries(entries.map((entry) => [entry.operatorType, entry])));

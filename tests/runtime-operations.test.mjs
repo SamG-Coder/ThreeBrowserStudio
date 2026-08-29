@@ -54,6 +54,23 @@ test('runtime forwards geometry.edit with its ordered typed commands unchanged',
   assert.notEqual(translated.edits, operation.edits);
 });
 
+test('runtime forwards guarded modifier stack batches unchanged', () => {
+  const project = createProjectDocument({ projectId: 'project/test' });
+  const operation = {
+    op: 'modifier.stack.edit',
+    entityId: 'entity/wall',
+    expectedStackHash: 'a'.repeat(64),
+    changes: [{
+      type: 'create',
+      modifier: { id: 'modifier/subdivision', type: 'subdivision', levels: 2 },
+    }],
+  };
+  const translated = translateToolOperation(operation, project);
+  assert.deepEqual(translated, operation);
+  assert.notEqual(translated, operation);
+  assert.notEqual(translated.changes, operation.changes);
+});
+
 test('runtime rejects reserved pipelines instead of silently accepting them', () => {
   const project = createProjectDocument({ projectId: 'project/test' });
   assert.throws(

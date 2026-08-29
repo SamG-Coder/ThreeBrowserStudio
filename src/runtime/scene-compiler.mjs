@@ -1,6 +1,17 @@
-import { createFallbackMaterial, createGeometry, createMaterial, ensureGeneratedCoordinateAttribute } from './resource-factories.mjs';
+import {
+  createFallbackMaterial,
+  createGeometry,
+  createMaterial,
+  ensureGeneratedCoordinateAttribute,
+  indexedMeshRecipeFromBufferGeometry,
+  normalizeGeometryRecipe,
+} from './resource-factories.mjs';
 import { applyConstraintStacks, evaluateInstanceStack } from './object-evaluation.mjs';
 import { createAnimationRuntime, validateAnimationResource } from './animation-runtime.mjs';
+import {
+  evaluateGeometryModifierStack,
+} from '../core/geometry-modifier-evaluator.mjs';
+import { analyzeViewportModifierStack } from '../core/modifier-stack.mjs';
 
 function colorFrom(THREE, value, fallback = [0.035, 0.045, 0.06]) {
   const color = new THREE.Color();
@@ -99,17 +110,61 @@ function canonicalEntities(document) {
   return ordered;
 }
 
+function viewportModifierPlan(entity, sourceKind, diagnostics) {
+  const plan = analyzeViewportModifierStack(entity, { sourceKind });
+  if (plan.blocked) {
+    diagnostics.push({
+      severity: 'warning',
+      code: plan.blocked.reasonCode,
+      id: entity.id,
+      modifierId: plan.blocked.modifierId,
+      message: `${plan.blocked.message} The viewport shows only the exact evaluable prefix of the stack.`,
+    });
+  }
+  return plan;
+}
+
+function assertCompleteMaterialGroups(geometry, materialCount, entityId) {
+  const groups = Array.isArray(geometry.groups) ? geometry.groups : [];
+  if (groups.length === 0) {
+    throw compileError(
+      'runtime_material_groups_missing',
+      `Entity ${entityId} assigns ${materialCount} materials, but its geometry has no face material groups.`,
+    );
+  }
+  const drawCount = geometry.getIndex?.()?.count
+    ?? geometry.index?.count
+    ?? geometry.getAttribute?.('position')?.count
+    ?? 0;
+  const ordered = [...groups].sort((left, right) => left.start - right.start);
+  let cursor = 0;
+  for (const group of ordered) {
+    const valid = Number.isInteger(group.start) && Number.isInteger(group.count)
+      && group.start === cursor && group.count > 0
+      && Number.isInteger(group.materialIndex) && group.materialIndex >= 0
+      && group.materialIndex < materialCount
+      && group.start + group.count <= drawCount;
+    if (!valid) {
+      throw compileError(
+        'runtime_material_groups_invalid',
+        `Entity ${entityId} geometry material groups must cover the draw range exactly with valid material slots.`,
+      );
+    }
+    cursor += group.count;
+  }
+  if (cursor !== drawCount) {
+    throw compileError(
+      'runtime_material_groups_incomplete',
+      `Entity ${entityId} geometry material groups cover ${cursor} of ${drawCount} draw elements.`,
+    );
+  }
+}
+
 function instantiateEntity(THREE, entity, context) {
   const meshValues = entity.components?.mesh ?? {};
   let object;
   if (entity.kind === 'mesh' || entity.kind === 'instancedMesh') {
     const materialIds = meshValues.materialIds ?? (meshValues.materialId ? [meshValues.materialId] : []);
-    if (materialIds.length > 1) {
-      throw compileError(
-        'runtime_multi_material_unsupported',
-        `Entity ${entity.id} uses ${materialIds.length} materials; the lean runtime currently supports one material per mesh.`,
-      );
-    }
     const requestedCount = Math.min(8192, Math.max(1, Math.trunc(Number(meshValues.count ?? 1) || 1)));
     const hasAuthoredInstances = Array.isArray(meshValues.instances) && meshValues.instances.length > 0;
     if (entity.kind === 'instancedMesh' && requestedCount > 1 && !hasAuthoredInstances) {
@@ -118,10 +173,38 @@ function instantiateEntity(THREE, entity, context) {
         `Entity ${entity.id} requests ${requestedCount} instances but does not provide mesh.instances transforms.`,
       );
     }
-    const geometry = context.geometry(meshValues.geometryId);
+    const geometryResult = context.geometry(meshValues.geometryId, entity);
+    const geometry = geometryResult.value;
     const materials = materialIds.map(context.material).filter(Boolean);
-    const material = materials[0] ?? context.fallbackMaterial();
-    const instanceMatrices = evaluateInstanceStack(THREE, entity, context.diagnostics);
+    const groupMaterialSlotCount = Array.isArray(geometry.groups) && geometry.groups.length > 0
+      ? Math.max(...geometry.groups.map(group => group.materialIndex ?? 0)) + 1
+      : 0;
+    // Procedural Three.js geometries may carry built-in groups for optional
+    // material arrays while still rendering correctly with one scalar
+    // material. Only authored face-slot provenance is binding in scalar mode.
+    const authoredMaterialSlotCount = Number.isInteger(geometry.userData?.studioMaterialSlotCount)
+      ? geometry.userData.studioMaterialSlotCount
+      : 0;
+    const materialSlotCount = materials.length > 1
+      ? Math.max(authoredMaterialSlotCount, groupMaterialSlotCount)
+      : authoredMaterialSlotCount;
+    const availableMaterialSlotCount = Math.max(1, materials.length);
+    if (materialSlotCount > availableMaterialSlotCount) {
+      throw compileError(
+        'runtime_material_slot_missing',
+        `Entity ${entity.id} geometry addresses ${materialSlotCount} material slots but only ${availableMaterialSlotCount} are available.`,
+      );
+    }
+    if (materials.length > 1) assertCompleteMaterialGroups(geometry, materials.length, entity.id);
+    const material = materials.length > 1
+      ? materials
+      : (materials[0] ?? context.fallbackMaterial());
+    const instanceMatrices = evaluateInstanceStack(
+      THREE,
+      entity,
+      context.diagnostics,
+      geometryResult.plan.previewModifiers,
+    );
     const shouldInstance = entity.kind === 'instancedMesh' || instanceMatrices.length > 1 || hasAuthoredInstances;
     if (shouldInstance) {
       object = new THREE.InstancedMesh(geometry, material, instanceMatrices.length);
@@ -210,15 +293,53 @@ export function compileSceneDocument({ THREE, TSL, project, sceneId = project.ac
   const geometries = new Map();
   const materials = new Map();
   let fallback = null;
-  const geometry = id => {
-    if (geometries.has(id)) return geometries.get(id);
+  const geometry = (id, entity) => {
+    const target = 'viewport';
     const resource = project.resources?.geometries?.[id];
     if (!resource) throw new Error(`Geometry resource ${id} does not exist.`);
-    const value = ensureGeneratedCoordinateAttribute(THREE, createGeometry(THREE, resource));
-    value.name = resource.name ?? id;
-    value.userData = { ...(value.userData ?? {}), studioResourceId: id };
-    geometries.set(id, value);
-    return value;
+    const sourceRecipe = normalizeGeometryRecipe(resource);
+    const plan = viewportModifierPlan(entity, sourceRecipe.kind, diagnostics);
+    const cacheKey = JSON.stringify([id, plan.stackHash, target]);
+    if (geometries.has(cacheKey)) return { ...geometries.get(cacheKey), plan };
+    let evaluation = null;
+    let value;
+    if (plan.hasActiveGeometryModifiers) {
+      let baseGeometry = null;
+      try {
+        baseGeometry = createGeometry(THREE, resource);
+        const authoredMaterialIds = entity.components?.mesh?.materialIds
+          ?? (entity.components?.mesh?.materialId ? [entity.components.mesh.materialId] : []);
+        const baseRecipe = indexedMeshRecipeFromBufferGeometry(baseGeometry, {
+          captureMaterialGroups: authoredMaterialIds.length > 1,
+        });
+        evaluation = evaluateGeometryModifierStack(baseRecipe, plan.geometryModifiers, {
+          target,
+          unsupported: 'error',
+        });
+        value = createGeometry(THREE, { recipe: evaluation.recipe });
+      } finally {
+        baseGeometry?.dispose?.();
+      }
+    } else {
+      value = createGeometry(THREE, resource);
+    }
+    try {
+      ensureGeneratedCoordinateAttribute(THREE, value);
+      value.name = resource.name ?? id;
+      value.userData = {
+        ...(value.userData ?? {}),
+        studioResourceId: id,
+        studioModifierStackHash: plan.stackHash,
+        studioGeometryTarget: target,
+        studioAppliedGeometryModifiers: evaluation?.applied.map(item => item.id) ?? [],
+      };
+    } catch (error) {
+      value?.dispose?.();
+      throw error;
+    }
+    const result = { value, evaluation, stackHash: plan.stackHash, target, plan };
+    geometries.set(cacheKey, result);
+    return result;
   };
   const material = id => {
     if (!id) return null;
@@ -385,7 +506,7 @@ export function compileSceneDocument({ THREE, TSL, project, sceneId = project.ac
       root.removeFromParent();
       root.clear();
       for (const value of ownedDisposableObjects) value.dispose?.();
-      for (const value of geometries.values()) value.dispose?.();
+      for (const value of geometries.values()) value.value.dispose?.();
       for (const value of ownedMaterials) value.dispose?.();
       ownedDisposableObjects.clear();
       ownedMaterials.clear();

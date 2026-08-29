@@ -38,11 +38,12 @@ The nine-tool shape is stable, but each tool advertises only its live slice:
 - `inspect`: scene digest or ID/name/kind/tag selection with summary, tree and
   delete-guard hashes, transform, component, compiled-bounds, and incoming-
   reference slices; bounded resource topology/component digests; exact
-  mesh-element pages, graph digests, and RTX collector diagnostics; changes,
+  mesh-element pages, exact modifier-stack hashes/execution classifications,
+  graph digests, and RTX collector diagnostics; changes,
   unresolved/unused resources, graph and Blender compatibility catalogs,
   Play/Action state, and latest evidence metadata;
-- `apply`: the live-refreshed atomic scene, camera, layout, indexed-geometry,
-  RTX, entity, and resource operation contract;
+- `apply`: the live-refreshed atomic scene, camera, layout, indexed-triangle and
+  hash-guarded editable-polygon geometry, RTX, entity, resource, and modifier-stack contract;
 - `validate`: whole-project interactive schema, reference, hierarchy, typed
   graph, Action/keyframe, and budget validation;
 - `render`: an exact animation frame, named camera, or explicit framing followed
@@ -250,6 +251,12 @@ The current native loop is functional, not a static design mock:
   not yet exposed as live MCP mutations;
 - procedural primitive/lathe/tube/shape/extrude geometry and PBR/physical
   material compilation into a persistent native WebGPU scene with shadows;
+- canonical polygon/corner meshes with exact topology guards, layered UV/color
+  attributes, material slots, sharp edges, creases, smoothing, inset, extrusion,
+  subdivision, bevel, deletion, merge, and polygon-native inspection;
+- exact modifier-stack inspection/editing, nine bounded live geometry modifiers,
+  explicit bake boundaries for the remaining Blender modifier inventory, and
+  multi-material runtime groups;
 - ordered Array/Mirror modifiers, aim/copy/limit constraints, and typed
   Action/keyframe playback with exact render-frame scrubbing;
 - deliberate GPU evidence capture to PNG; and
