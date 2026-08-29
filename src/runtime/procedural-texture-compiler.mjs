@@ -9,6 +9,12 @@ import {
   voronoi2D,
   wave2D,
 } from './procedural-texture-noise.mjs';
+import {
+  combineBlenderColor,
+  mixBlenderValues,
+  sampleBlenderColorRamp,
+  separateBlenderColor,
+} from './procedural-texture-color.mjs';
 
 export const PROCEDURAL_TEXTURE_LIMITS = Object.freeze({
   maxNodes: 256,
@@ -48,12 +54,13 @@ const CPU_VORONOI_FEATURES = new Set(['F1', 'F2', 'DISTANCE_TO_EDGE']);
 const BLENDER_VORONOI_METRICS = catalogModes('blender.voronoiTexture', 'distanceMetric');
 const CPU_VORONOI_METRICS = new Set(['EUCLIDEAN', 'MANHATTAN', 'CHEBYCHEV']);
 const BLENDER_RAMP_INTERPOLATIONS = catalogModes('blender.colorRamp', 'interpolation');
-const CPU_RAMP_INTERPOLATIONS = new Set(['CONSTANT', 'LINEAR', 'EASE']);
+const CPU_RAMP_INTERPOLATIONS = BLENDER_RAMP_INTERPOLATIONS;
 const BLENDER_RAMP_COLOR_MODES = catalogModes('blender.colorRamp', 'colorMode');
-const CPU_RAMP_COLOR_MODES = new Set(['RGB']);
+const CPU_RAMP_COLOR_MODES = BLENDER_RAMP_COLOR_MODES;
 const BLENDER_HUE_INTERPOLATIONS = catalogModes('blender.colorRamp', 'hueInterpolation');
 const BLENDER_MIX_MODES = catalogModes('blender.mix', 'blendMode');
-const CPU_MIX_MODES = new Set(['MIX', 'MULTIPLY', 'SCREEN', 'ADD', 'SUBTRACT']);
+const CPU_MIX_MODES = BLENDER_MIX_MODES;
+const BLENDER_COLOR_MODES = catalogModes('blender.separateColor', 'mode');
 const NUMERIC_VALUE_TYPES = new Set([...catalogModes('blender.mix', 'valueType')].map(value => value.toUpperCase()));
 
 const COMMON_NOISE_PARAMS = [
@@ -70,6 +77,8 @@ const NODE_SPECS = Object.freeze({
   reroute: spec([['input', 'value']], ['output', 'value'], ['valueType']),
   separate: spec([['vector', 'value']], ['x', 'y', 'z'], []),
   combine: spec([['x'], ['y'], ['z']], ['value', 'vector'], []),
+  separateColor: spec([['color']], ['red', 'green', 'blue', 'alpha'], ['mode']),
+  combineColor: spec([['red'], ['green'], ['blue']], ['color'], ['mode']),
   mapping: spec([['vector', 'coordinate']], ['vector', 'value'], [
     'location', 'translation', 'rotation', 'scale', 'vectorType',
   ]),
@@ -164,6 +173,8 @@ function classifyNode(node) {
   if (['nodereroute', 'blenderreroute'].includes(key)) return { kind: 'reroute', blenderDefaults: true };
   if (['separatexyz', 'vectorseparatexyz', 'shadernodeseparatexyz', 'blenderseparatexyz'].includes(key)) return { kind: 'separate', blenderDefaults: key.startsWith('shadernode') || key.startsWith('blender') };
   if (['vectorcombine3', 'combinexyz', 'shadernodecombinexyz', 'blendercombinexyz'].includes(key)) return { kind: 'combine', blenderDefaults: key.startsWith('shadernode') || key.startsWith('blender') };
+  if (['separatecolor', 'shadernodeseparatecolor', 'blenderseparatecolor'].includes(key)) return { kind: 'separateColor', blenderDefaults: true };
+  if (['combinecolor', 'shadernodecombinecolor', 'blendercombinecolor'].includes(key)) return { kind: 'combineColor', blenderDefaults: true };
   if (['mapping', 'vectormapping', 'shadernodemapping', 'blendermapping'].includes(key)) return { kind: 'mapping', blenderDefaults: key.startsWith('shadernode') || key.startsWith('blender') };
   if (['valuenoise', 'noisevalue'].includes(key)) return { kind: 'valueNoise' };
   if (['fbm', 'noisefbm', 'noisetexture', 'shadernodetexnoise', 'blendernoisetexture'].includes(key)) return { kind: 'fbm', blenderDefaults: key.startsWith('shadernode') || key.startsWith('blender') };
@@ -549,6 +560,13 @@ function validateCpuCapabilities(graph, runtimeNodes, diagnostics) {
       validateMode({ diagnostics, path, node, property: 'blendMode', value: blendMode, advertised: BLENDER_MIX_MODES, supported: CPU_MIX_MODES });
       if (!NUMERIC_VALUE_TYPES.has(valueType)) {
         invalidModeDiagnostic(diagnostics, path, node, 'valueType', valueType, NUMERIC_VALUE_TYPES);
+      }
+    }
+
+    if (['separateColor', 'combineColor'].includes(classification.kind)) {
+      const mode = modeValue(params.mode, 'RGB');
+      if (!BLENDER_COLOR_MODES.has(mode)) {
+        invalidModeDiagnostic(diagnostics, path, node, 'mode', mode, BLENDER_COLOR_MODES);
       }
     }
   }
@@ -1049,6 +1067,20 @@ function buildEvaluator(validation, options) {
         value: [scalar(input('x')), scalar(input('y')), scalar(input('z'))],
         vector: [scalar(input('x')), scalar(input('y')), scalar(input('z'))],
       }; break;
+      case 'separateColor': {
+        result = separateBlenderColor(input('color', [0.8, 0.8, 0.8, 1]), params.mode ?? 'RGB');
+        break;
+      }
+      case 'combineColor': {
+        result = { color: combineBlenderColor(
+          scalar(input('red', 0)),
+          scalar(input('green', 0)),
+          scalar(input('blue', 0)),
+          scalar(input('alpha', 1)),
+          params.mode ?? 'RGB',
+        ) };
+        break;
+      }
       case 'mapping': {
         const source = vector(input(['vector', 'coordinate'], [0, 0, 0]), 3);
         const scale = vector(input('scale', params.scale ?? [1, 1, 1]), 3, 1);
@@ -1118,7 +1150,15 @@ function buildEvaluator(validation, options) {
         break;
       }
       case 'ramp': {
-        const color = sampleColorRamp(params.stops, scalar(input(['value', 'fac', 'factor'], 0.5)), params.interpolation);
+        const color = blenderStyleRamp(descriptor)
+          ? sampleBlenderColorRamp(
+            params.stops,
+            scalar(input(['value', 'fac', 'factor'], 0.5)),
+            params.interpolation,
+            params.colorMode,
+            params.hueInterpolation,
+          )
+          : sampleColorRamp(params.stops, scalar(input(['value', 'fac', 'factor'], 0.5)), params.interpolation);
         result = { color: color.slice(0, 3), alpha: color[3] };
         break;
       }
@@ -1136,7 +1176,17 @@ function buildEvaluator(validation, options) {
       }
       case 'mix': {
         const factor = params.clampFactor === false ? scalar(input(['factor', 'fac'], 0.5)) : clamp01(scalar(input(['factor', 'fac'], 0.5)));
-        let value = mixValues(input(['a', 'color1'], 0.5), input(['b', 'color2'], 0.5), factor, params.blendMode ?? params.blendType ?? params.operation ?? 'mix');
+        const left = input(['a', 'color1'], 0.5);
+        const right = input(['b', 'color2'], 0.5);
+        let value = blenderStyleMix(descriptor)
+          ? mixBlenderValues(
+            left,
+            right,
+            factor,
+            params.blendMode ?? params.blendType ?? params.operation ?? 'MIX',
+            params.valueType ?? 'color',
+          )
+          : mixValues(left, right, factor, params.blendMode ?? params.blendType ?? params.operation ?? 'mix');
         if (params.clamp || params.clampResult) value = mapUnary(value, 'clamp');
         result = { value, result: value, color: vector(value, 3) };
         break;

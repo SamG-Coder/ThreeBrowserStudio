@@ -198,7 +198,7 @@ test('evaluates canonical Blender procedural aliases and socket defaults in a 2D
   assert.ok(bake.maps.normal.data.some((value, index) => index % 4 < 2 && value !== 128));
 });
 
-test('CPU bake rejects every catalogued Blender mode that would otherwise silently fall back', () => {
+test('CPU bake rejects every still-unimplemented Blender mode instead of silently falling back', () => {
   const cases = [
     ...['1D', '3D', '4D'].map(dimensions => ({
       label: `Noise ${dimensions}`,
@@ -245,39 +245,6 @@ test('CPU bake rejects every catalogued Blender mode that would otherwise silent
         port: 'distance',
       }),
     },
-    ...['CARDINAL', 'B_SPLINE'].map(interpolation => ({
-      label: `Ramp ${interpolation}`,
-      property: 'interpolation',
-      graph: singleNodeTextureGraph({
-        type: 'blender.colorRamp',
-        params: { interpolation, colorMode: 'RGB', hueInterpolation: 'NEAR' },
-        port: 'color',
-        output: 'albedo',
-      }),
-    })),
-    ...['HSV', 'HSL'].map(colorMode => ({
-      label: `Ramp ${colorMode}`,
-      property: 'colorMode',
-      graph: singleNodeTextureGraph({
-        type: 'blender.colorRamp',
-        params: { interpolation: 'LINEAR', colorMode, hueInterpolation: 'NEAR' },
-        port: 'color',
-        output: 'albedo',
-      }),
-    })),
-    ...[
-      'DARKEN', 'BURN', 'LIGHTEN', 'DODGE', 'OVERLAY', 'SOFT_LIGHT', 'LINEAR_LIGHT',
-      'DIFFERENCE', 'EXCLUSION', 'DIVIDE', 'HUE', 'SATURATION', 'COLOR', 'VALUE',
-    ].map(blendMode => ({
-      label: `Mix ${blendMode}`,
-      property: 'blendMode',
-      graph: singleNodeTextureGraph({
-        type: 'blender.mix',
-        params: { valueType: 'color', blendMode, clampFactor: true, clampResult: false },
-        port: 'result',
-        output: 'albedo',
-      }),
-    })),
   ];
 
   for (const { label, property, graph } of cases) {
@@ -326,18 +293,36 @@ test('CPU bake keeps its implemented Blender modes usable and rejects invalid al
       inputs: { detail: 0 },
       port: 'distance',
     })),
-    ...['CONSTANT', 'LINEAR', 'EASE'].map(interpolation => singleNodeTextureGraph({
+    ...['CONSTANT', 'LINEAR', 'EASE', 'CARDINAL', 'B_SPLINE'].map(interpolation => singleNodeTextureGraph({
       type: 'blender.colorRamp',
       params: { interpolation, colorMode: 'RGB', hueInterpolation: 'NEAR' },
       port: 'color',
       output: 'albedo',
     })),
-    ...['MIX', 'MULTIPLY', 'SCREEN', 'ADD', 'SUBTRACT'].map(blendMode => singleNodeTextureGraph({
+    ...['HSV', 'HSL'].map(colorMode => singleNodeTextureGraph({
+      type: 'blender.colorRamp',
+      params: { interpolation: 'LINEAR', colorMode, hueInterpolation: 'FAR' },
+      port: 'color',
+      output: 'albedo',
+    })),
+    ...[
+      'MIX', 'DARKEN', 'MULTIPLY', 'BURN', 'LIGHTEN', 'SCREEN', 'DODGE', 'ADD',
+      'OVERLAY', 'SOFT_LIGHT', 'LINEAR_LIGHT', 'DIFFERENCE', 'EXCLUSION', 'SUBTRACT',
+      'DIVIDE', 'HUE', 'SATURATION', 'COLOR', 'VALUE',
+    ].map(blendMode => singleNodeTextureGraph({
       type: 'blender.mix',
       params: { valueType: 'color', blendMode, clampFactor: true, clampResult: false },
       port: 'result',
       output: 'albedo',
     })),
+    ...['RGB', 'HSV', 'HSL'].flatMap(mode => [
+      singleNodeTextureGraph({
+        type: 'blender.separateColor', params: { mode }, port: 'red',
+      }),
+      singleNodeTextureGraph({
+        type: 'blender.combineColor', params: { mode }, port: 'color', output: 'albedo',
+      }),
+    ]),
   ];
   for (const graph of supported) {
     const validation = validateProceduralTextureGraph(graph);
@@ -356,6 +341,54 @@ test('CPU bake keeps its implemented Blender modes usable and rejects invalid al
     validation.errors.filter(error => error.code === 'procedural_invalid_node_mode').map(error => error.property).sort(),
     ['dimensions', 'noiseType'],
   );
+});
+
+test('CPU bake evaluates Blender colour nodes with live-compatible semantics', () => {
+  const combined = compileProceduralTextureGraph(singleNodeTextureGraph({
+    type: 'blender.combineColor',
+    params: { mode: 'HSV' },
+    inputs: { red: 1 / 3, green: 1, blue: 1, alpha: 0.4 },
+    port: 'color',
+    output: 'albedo',
+  })).sample([0.5, 0.5]).albedo;
+  assert.ok(Math.abs(combined[0]) < 1e-8);
+  assert.ok(Math.abs(combined[1] - 1) < 1e-8);
+  assert.ok(Math.abs(combined[2]) < 1e-8);
+  assert.ok(Math.abs(combined[3] - 0.4) < 1e-8);
+
+  const separated = compileProceduralTextureGraph(singleNodeTextureGraph({
+    type: 'blender.separateColor',
+    params: { mode: 'HSV' },
+    inputs: { color: [0, 1, 1, 0.25] },
+    port: 'red',
+  })).sample([0.5, 0.5]).roughness;
+  assert.ok(Math.abs(separated - 0.5) < 1e-8);
+
+  const hueStops = [
+    { position: 0, color: [1, 0, 0.3, 0.2] },
+    { position: 1, color: [1, 0.3, 0, 0.8] },
+  ];
+  const farRamp = compileProceduralTextureGraph(singleNodeTextureGraph({
+    type: 'blender.colorRamp',
+    params: { interpolation: 'B_SPLINE', colorMode: 'HSV', hueInterpolation: 'FAR', stops: hueStops },
+    inputs: { factor: 0.5 },
+    port: 'color',
+    output: 'albedo',
+  })).sample([0.5, 0.5]).albedo;
+  assert.ok(Math.abs(farRamp[0]) < 1e-8);
+  assert.ok(Math.abs(farRamp[1] - 1) < 1e-8);
+  assert.ok(Math.abs(farRamp[2] - 1) < 1e-8);
+
+  const colorMix = compileProceduralTextureGraph(singleNodeTextureGraph({
+    type: 'blender.mix',
+    params: { valueType: 'color', blendMode: 'COLOR', clampFactor: true, clampResult: false },
+    inputs: { factor: 1, a: [0.25, 0.25, 0.25, 1], b: [0, 0, 1, 1] },
+    port: 'result',
+    output: 'albedo',
+  })).sample([0.5, 0.5]).albedo;
+  assert.ok(Math.abs(colorMix[0]) < 1e-8);
+  assert.ok(Math.abs(colorMix[1]) < 1e-8);
+  assert.ok(Math.abs(colorMix[2] - 0.25) < 1e-8);
 });
 
 test('CPU bake exposes Detail limits and rejects exact over-budget Voronoi work', () => {
