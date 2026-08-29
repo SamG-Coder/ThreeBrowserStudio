@@ -88,6 +88,19 @@ function blenderUtilityNodes(stages = []) {
       outputs: [['color', blenderSocket('color', 'Color', { default: [0.5, 0.5, 0.5, 1] })]],
       params: [['value', param('color', { default: [0.5, 0.5, 0.5, 1] })]],
     })),
+    blenderNode('blender.inputVector', 'FunctionNodeInputVector', 'Vector', 'input', staged({
+      description: 'Blender constant vector with an authored 2D, 3D, or 4D socket dimension.',
+      outputs: [['vector', blenderSocket('dimensionVector', 'Vector')]],
+      params: [
+        ['dimensions', param('integer', { default: 3, min: 2, max: 4 })],
+        vectorValue(4),
+      ],
+    })),
+    blenderNode('blender.rgbToBw', 'ShaderNodeRGBToBW', 'RGB to BW', 'converter', staged({
+      description: 'Converts linear RGB to one luminance value in the project working colour space.',
+      inputs: [['color', blenderSocket('color', 'Color', { default: [0.5, 0.5, 0.5, 1] })]],
+      outputs: [['value', blenderSocket('float', 'Val')]],
+    })),
     blenderNode('blender.math', 'ShaderNodeMath', 'Math', 'converter', staged({
       cost: 3,
       description: 'Blender scalar Math operations with up to three value sockets.',

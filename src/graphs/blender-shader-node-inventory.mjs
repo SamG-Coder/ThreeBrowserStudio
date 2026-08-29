@@ -80,12 +80,13 @@ const CATEGORIES = Object.freeze({
 
 const LIVE_TSL_IDS = new Set([
   'NodeReroute',
+  'FunctionNodeInputVector',
   'ShaderNodeRGB', 'ShaderNodeValue', 'ShaderNodeAttribute',
   'ShaderNodeVertexColor', 'ShaderNodeFresnel', 'ShaderNodeLayerWeight',
   'ShaderNodeTexCoord', 'ShaderNodeOutputMaterial', 'ShaderNodeBsdfPrincipled',
   'ShaderNodeBump', 'ShaderNodeNormalMap', 'ShaderNodeBrightContrast',
   'ShaderNodeValToRGB', 'ShaderNodeGamma', 'ShaderNodeHueSaturation',
-  'ShaderNodeInvert', 'ShaderNodeMix', 'ShaderNodeCombineColor',
+  'ShaderNodeInvert', 'ShaderNodeMix', 'ShaderNodeRGBToBW', 'ShaderNodeCombineColor',
   'ShaderNodeSeparateColor', 'ShaderNodeTexNoise', 'ShaderNodeTexVoronoi',
   'ShaderNodeTexWave', 'ShaderNodeTexChecker', 'ShaderNodeTexGradient',
   'ShaderNodeTexWhiteNoise', 'ShaderNodeTexMagic', 'ShaderNodeTexBrick',

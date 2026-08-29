@@ -239,6 +239,9 @@ function validateParamValue(value, definition, allParams, path, errors) {
 function resolvedPortType(portDefinition, node) {
   if (portDefinition.type === 'sameNumeric') return NUMERIC_TYPES.includes(node.params.valueType) ? node.params.valueType : null;
   if (portDefinition.type === 'sameValue') return VALUE_TYPES.includes(node.params.valueType) ? node.params.valueType : null;
+  if (portDefinition.type === 'dimensionVector') {
+    return ({ 2: 'vec2', 3: 'vec3', 4: 'vec4' })[node.params.dimensions] ?? null;
+  }
   if (portDefinition.type === 'entityProperty') return node.params.property === 'visible' ? 'boolean' : ['position', 'rotation', 'scale'].includes(node.params.property) ? 'vec3' : null;
   return portDefinition.type;
 }

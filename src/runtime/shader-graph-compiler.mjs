@@ -4,6 +4,8 @@ import { assertValidGraph } from '../graphs/validator.mjs';
 const TYPE_ALIASES = Object.freeze({
   ShaderNodeValue: 'blender.value',
   ShaderNodeRGB: 'blender.rgb',
+  FunctionNodeInputVector: 'blender.inputVector',
+  ShaderNodeRGBToBW: 'blender.rgbToBw',
   NodeReroute: 'blender.reroute',
   ShaderNodeTexCoord: 'blender.textureCoordinate',
   ShaderNodeSeparateXYZ: 'blender.separateXYZ',
@@ -1052,6 +1054,17 @@ function compileNodeFactory({ TSL, graph, parameters, textureResolver, featureTr
     if (type === 'constant.vec2') return { value: vector2(TSL, p.value) };
     if (type === 'constant.vec3') return { value: vector3(TSL, p.value) };
     if (type === 'constant.color' || type === 'blender.rgb') return { value: color3(TSL, p.value ?? p.color, [1, 1, 1]), color: color3(TSL, p.value ?? p.color, [1, 1, 1]) };
+    if (type === 'blender.inputVector') {
+      const value = array(p.value, 4);
+      if (p.dimensions === 2) return { vector: TSL.vec2(value[0], value[1]) };
+      if (p.dimensions === 3) return { vector: TSL.vec3(value[0], value[1], value[2]) };
+      if (p.dimensions === 4) return { vector: TSL.vec4(value[0], value[1], value[2], value[3]) };
+      fail('shader_node_mode_unsupported', `Vector Input dimensions ${p.dimensions} are not compiled live.`, { dimensions: p.dimensions });
+    }
+    if (type === 'blender.rgbToBw') {
+      const color = input.get(node, 'color', [0.5, 0.5, 0.5, 1], 'color');
+      return { value: TSL.dot(color.xyz, TSL.vec3(0.2126, 0.7152, 0.0722)) };
+    }
     if (type === 'blender.reroute') {
       const valueType = String(p.valueType ?? 'float').toLowerCase();
       if (!['integer', 'float', 'vec2', 'vec3', 'vec4', 'color'].includes(valueType)) {
