@@ -1094,8 +1094,8 @@ export const TOOL_SCHEMAS = Object.freeze({
 
 export const STUDIO_TOOL_NAMES = Object.freeze(Object.keys(TOOL_SCHEMAS));
 
-export const MCP_SERVER_VERSION = '0.2.2';
-export const TOOL_CONTRACT_VERSION = 'three-studio-tools/5';
+export const MCP_SERVER_VERSION = '0.2.3';
+export const TOOL_CONTRACT_VERSION = 'three-studio-tools/6';
 export const TOOL_INPUT_SCHEMAS = Object.freeze(Object.fromEntries(
   STUDIO_TOOL_NAMES.map(name => [name, z.toJSONSchema(TOOL_SCHEMAS[name], { io: 'input' })]),
 ));
@@ -1163,6 +1163,9 @@ const TOOL_CONTRACT_FEATURES = Object.freeze({
   transformGrouping: true,
   organizationalCollections: true,
   liveSchemaRefresh: true,
+  viewportReviewMode: true,
+  overlayInvalidation: true,
+  studioSidePanel: true,
 });
 const TOOL_CONTRACT_SUMMARY_FIELDS = Object.freeze({
   contractVersion: TOOL_CONTRACT_VERSION,

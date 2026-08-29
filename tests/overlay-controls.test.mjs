@@ -1,0 +1,230 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+import { createFontRunCache } from '../src/viewport/overlay-fonts.mjs';
+import { intersectRect, unionRect } from '../src/viewport/overlay-geometry.mjs';
+import {
+  Button,
+  Label,
+  OverlayHost,
+  VirtualList,
+} from '../src/viewport/overlay-controls.mjs';
+import {
+  createReviewSession,
+  operationsSnapFollowShot,
+  resolveVisibleCamera,
+} from '../src/viewport/view-mode.mjs';
+
+class FakeContext {
+  constructor() {
+    this.fills = [];
+    this.texts = [];
+    this.blits = [];
+    this.clips = [];
+    this.font = '';
+    this.fillStyle = '';
+    this.saves = 0;
+  }
+
+  setTransform() {}
+  save() { this.saves += 1; }
+  restore() {}
+  beginPath() {}
+  moveTo() {}
+  lineTo() {}
+  quadraticCurveTo() {}
+  closePath() {}
+  fill() {}
+  rect(x, y, width, height) { this.clips.push({ x, y, width, height }); }
+  clip() {}
+  clearRect() {}
+  fillRect(x, y, width, height) { this.fills.push({ x, y, width, height, fillStyle: this.fillStyle }); }
+  fillText(text) { this.texts.push(String(text)); }
+  measureText(text) {
+    return { width: String(text).length * 7, actualBoundingBoxAscent: 10, actualBoundingBoxDescent: 3 };
+  }
+  drawImage(image, x, y, width = image?.width, height = image?.height) {
+    this.blits.push({ x, y, width, height: height ?? image?.height });
+  }
+}
+
+class FakeCanvas {
+  constructor() {
+    this.width = 0;
+    this.height = 0;
+    this.context = new FakeContext();
+  }
+
+  getContext(kind) {
+    return kind === '2d' ? this.context : null;
+  }
+}
+
+function hostFixture() {
+  const canvases = [];
+  const createCanvas = () => {
+    const canvas = new FakeCanvas();
+    canvases.push(canvas);
+    return canvas;
+  };
+  const canvas = createCanvas();
+  const fonts = createFontRunCache({ createCanvas });
+  const host = new OverlayHost({
+    canvas,
+    context: canvas.context,
+    fonts,
+    schedulePaint: callback => callback(),
+    backColor: '#000',
+  });
+  host.setBacking(200, 160, 2);
+  return { host, canvas, fonts };
+}
+
+test('update regions union and only the dirty clip is painted', () => {
+  const { host } = hostFixture();
+  const label = host.add(new Label({ text: 'hello', x: 10, y: 80, width: 80, height: 20 }));
+  const before = host.paintGeneration;
+  host.paintedRects = [];
+  label.setText('hello');
+  assert.equal(host.paintGeneration, before, 'unchanged text must not invalidate');
+
+  label.setText('world');
+  assert.equal(host.paintGeneration, before + 1);
+  const clip = host.paintedRects.at(-1);
+  assert.ok(clip.width <= 90 && clip.height <= 24);
+  assert.ok(clip.y >= 80);
+});
+
+test('virtual list item invalidation does not repaint the header', () => {
+  const { host } = hostFixture();
+  host.add(new Label({ name: 'header', text: 'HEADER', x: 0, y: 0, width: 200, height: 24 }));
+  const painted = [];
+  const list = host.add(new VirtualList({
+    x: 0,
+    y: 40,
+    width: 200,
+    height: 80,
+    itemHeight: 20,
+    itemCount: 8,
+    paintItem(_context, _fonts, { index }) { painted.push(index); },
+  }));
+  host.paintedRects = [];
+  painted.length = 0;
+  list.invalidateItem(2);
+  const clip = host.paintedRects.at(-1);
+  assert.ok(clip.y >= 40, 'header y=0 must stay outside the update region');
+  assert.deepEqual(painted, [2]);
+});
+
+test('font runs rasterize once and then blit', () => {
+  const canvases = [];
+  const fonts = createFontRunCache({
+    createCanvas: () => {
+      const canvas = new FakeCanvas();
+      canvases.push(canvas);
+      return canvas;
+    },
+  });
+  const dest = new FakeContext();
+  fonts.blit(dest, 'Follow shot', 0, 10, { font: '13px sans-serif', fillStyle: '#fff' });
+  fonts.blit(dest, 'Follow shot', 0, 30, { font: '13px sans-serif', fillStyle: '#fff' });
+  assert.equal(fonts.rasterCount, 1);
+  assert.equal(fonts.blitCount, 2);
+  assert.equal(dest.blits.length, 2);
+  fonts.setScale(2);
+  fonts.blit(dest, 'Follow shot', 0, 50, { font: '13px sans-serif', fillStyle: '#fff' });
+  assert.equal(fonts.rasterCount, 2, 'device-pixel scale is a distinct cached run');
+  assert.ok(dest.blits.at(-1).width >= dest.blits[0].width);
+});
+
+test('virtual list pointer down activates the visible row', () => {
+  const { host } = hostFixture();
+  let activated = null;
+  const list = host.add(new VirtualList({
+    x: 0,
+    y: 40,
+    width: 200,
+    height: 80,
+    itemHeight: 20,
+    itemCount: 8,
+    onActivate(index) { activated = index; },
+  }));
+  list.setScrollIndex(2, { notify: false });
+  assert.equal(list.onPointerDown({}, { y: 55 }), true);
+  assert.equal(activated, 2);
+  assert.equal(list.onPointerDown({}, { y: 200 }), false);
+});
+
+test('button click only invalidates the button bounds', () => {
+  const { host } = hostFixture();
+  let clicks = 0;
+  const button = host.add(new Button({
+    text: 'Review',
+    x: 40,
+    y: 100,
+    width: 80,
+    height: 24,
+    onClick() { clicks += 1; },
+  }));
+  host.paintedRects = [];
+  const hit = host.hitTest(50, 110);
+  assert.equal(hit, button);
+  button.onPointerDown();
+  button.onPointerUp({}, { inside: true });
+  assert.equal(clicks, 1);
+  const clip = host.paintedRects.at(-1);
+  assert.ok(clip.y >= 100);
+});
+
+test('camera.frame snaps follow-shot; review keeps the free camera', () => {
+  assert.equal(operationsSnapFollowShot([{ op: 'camera.frame' }]), true);
+  assert.equal(operationsSnapFollowShot([{ type: 'entity.patch' }]), false);
+  const authored = { id: 'authored' };
+  const review = { id: 'review' };
+  assert.equal(resolveVisibleCamera({
+    viewMode: 'follow-shot',
+    authoredCamera: authored,
+    reviewCamera: review,
+  }), authored);
+  assert.equal(resolveVisibleCamera({
+    viewMode: 'review',
+    authoredCamera: authored,
+    reviewCamera: review,
+  }), review);
+});
+
+test('rect union/intersect stay conservative for WM_PAINT coalescing', () => {
+  const united = unionRect({ x: 0, y: 0, width: 10, height: 10 }, { x: 8, y: 8, width: 10, height: 10 });
+  assert.deepEqual(united, { x: 0, y: 0, width: 18, height: 18 });
+  const hit = intersectRect({ x: 0, y: 0, width: 10, height: 10 }, { x: 8, y: 0, width: 10, height: 4 });
+  assert.deepEqual(hit, { x: 8, y: 0, width: 2, height: 4 });
+});
+
+test('a clean host update is a no-op and review mode does not re-seed', () => {
+  const { host } = hostFixture();
+  assert.equal(host.update(), false);
+
+  let seeded = 0;
+  const authored = {
+    position: { x: 1, y: 2, z: 3 },
+    quaternion: { x: 0, y: 0, z: 0, w: 1 },
+    getWorldPosition(target) { return Object.assign(target, this.position); },
+    getWorldDirection(target) { return Object.assign(target, { x: 0, y: 0, z: -1 }); },
+  };
+  const review = { position: { copy() { return this; } }, quaternion: { copy() { return this; } } };
+  const session = createReviewSession({
+    THREE: { Vector3: class { constructor(x = 0, y = 0, z = 0) { this.x = x; this.y = y; this.z = z; } } },
+    reviewCamera: review,
+    controls: {
+      target: { copy() { seeded += 1; return { addScaledVector() { return this; } }; } },
+    },
+  });
+  session.setAuthoredCamera(authored);
+  assert.equal(session.followShot(), 'follow-shot');
+  session.enterReview({ seedFromAuthored: true });
+  assert.equal(session.viewMode, 'review');
+  assert.equal(seeded, 1);
+  session.enterReview({ seedFromAuthored: true });
+  session.setViewMode('review');
+  assert.equal(seeded, 1, 'already reviewing must not re-seed the free camera');
+});

@@ -146,12 +146,14 @@ The authenticated connection marker is kept outside the repository at
 `%LOCALAPPDATA%\ThreeBrowserStudio\live-session.json` with a current-user-only
 Windows ACL.
 
-Press **Ctrl+Shift+M** in the native window to toggle the MCP Live Feed. It is
-a read-only, Twitch-chat-style activity drawer for the real authenticated
-`three_studio_*` command stream: tool, lifecycle state, elapsed time, revision,
-and a compact redacted summary. It is visible by default, excludes bridge pings,
-never displays raw arguments or results, and is not a second editor or chat UI;
-the shortcut hides it when an unobstructed viewport is needed.
+Press **Ctrl+Shift+M** in the native window to hide the side panel. The panel
+is retained 2D chrome (Log + Explorer + Settings), not an inspector: a
+virtualized, redacted MCP command log with a visible scrollbar, a read-only
+scene tree of objects and groups, and Follow shot / Review camera settings.
+Follow shot is the authored camera; the first drag on the view enters a
+session-only Review look/fly camera that never writes that camera.
+Evidence stays on the authored shot. The log excludes bridge pings and never
+displays raw arguments or results.
 
 While the window is running, the thin CLI is useful for diagnostics without
 starting an MCP client:

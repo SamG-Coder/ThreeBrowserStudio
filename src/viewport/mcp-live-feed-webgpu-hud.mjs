@@ -1,16 +1,37 @@
 import { sanitizeLiveFeedText } from '../runtime/mcp-live-feed-telemetry.mjs';
+import { createFontRunCache } from './overlay-fonts.mjs';
+import { pointInRect } from './overlay-geometry.mjs';
+import {
+  Button,
+  Control,
+  Label,
+  OverlayHost,
+  RadioOption,
+  ScrollBar,
+  TabStrip,
+  VirtualList,
+  eventPoint,
+} from './overlay-controls.mjs';
+import { defaultExpandedIds, flattenExplorerRows } from './scene-explorer.mjs';
+import { VIEW_MODE_FOLLOW_SHOT, VIEW_MODE_REVIEW } from './view-mode.mjs';
 
 const ACTIVE_REFRESH_MS = 250;
-const DEFAULT_MAX_VISIBLE_ROWS = 10;
-const PANEL_MARGIN = 18;
-const HEADER_HEIGHT = 58;
-const ROW_HEIGHT = 44;
+const DEFAULT_MAX_VISIBLE_ROWS = 16;
+const PANEL_MARGIN = 12;
+const ROW_HEIGHT = 40;
+const EXPLORER_ROW_HEIGHT = 22;
+const HEADER_HEIGHT = 48;
+const TAB_HEIGHT = 30;
+const SCROLL_WIDTH = 10;
 const MAX_RETAINED_SOURCE_ENTRIES = 256;
 const STAGE_COLORS = Object.freeze({
   started: '#f2b45c',
   completed: '#58dc90',
   failed: '#ff657d',
 });
+const UI_FONT = '13px "Segoe UI", Arial, sans-serif';
+const UI_FONT_BOLD = '600 13px "Segoe UI", Arial, sans-serif';
+const MONO_FONT = '12px "Cascadia Mono", Consolas, monospace';
 
 function finite(value, fallback) {
   return Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -76,10 +97,25 @@ function setVector(vector, x, y, z) {
   }
 }
 
+function logLine(entry, now) {
+  const stage = safeStage(entry.stage);
+  const elapsed = stage === 'started'
+    ? Math.max(0, now - finite(entry.startedAtMs, now))
+    : finite(entry.elapsedMs, 0);
+  const timestamp = sanitizeLiveFeedText(entry.timestamp, { maximum: 16, fallback: '--:--:--.---' });
+  const tool = sanitizeLiveFeedText(entry.tool, { maximum: 48, fallback: 'three_studio_unknown' });
+  const revision = Number.isSafeInteger(entry.revision) && entry.revision >= 0 ? `r${entry.revision}` : 'r\u2014';
+  const summary = sanitizeLiveFeedText(entry.summary, { maximum: 160, fallback: 'Studio command' });
+  return {
+    stage,
+    headline: `${timestamp}  ${tool}  ${stage.toUpperCase()}  ${formatElapsed(elapsed)}  ${revision}`,
+    summary,
+  };
+}
+
 /**
- * A WebGPU-composited activity HUD. Telemetry is rasterized into a private
- * canvas and uploaded through CanvasTexture; no DOM overlay is required for
- * capture. Call render(renderer) after the main scene render.
+ * Side panel composited through CanvasTexture. Controls are retained and
+ * only the invalidated update region is painted.
  */
 export function createMcpLiveFeedWebGpuHud({
   THREE,
@@ -94,6 +130,9 @@ export function createMcpLiveFeedWebGpuHud({
   now = () => Date.now(),
   setIntervalFn = globalThis.setInterval?.bind(globalThis),
   clearIntervalFn = globalThis.clearInterval?.bind(globalThis),
+  schedulePaint,
+  onViewModeChange,
+  viewMode: initialViewMode = VIEW_MODE_FOLLOW_SHOT,
 } = {}) {
   const document = suppliedDocument ?? globalThis.document;
   const keyboard = eventTarget ?? globalThis;
@@ -114,14 +153,22 @@ export function createMcpLiveFeedWebGpuHud({
     : DEFAULT_MAX_VISIBLE_ROWS;
   const canvas = document.createElement('canvas');
   const context = canvas.getContext?.('2d', { alpha: true });
-  if (!context) throw new Error('A 2D canvas context is required for the MCP HUD');
+  if (!context) throw new Error('A 2D canvas context is required for the Studio side panel');
 
+  const fonts = createFontRunCache({
+    createCanvas: () => document.createElement('canvas'),
+  });
   const texture = new THREE.CanvasTexture(canvas);
   if (THREE.SRGBColorSpace !== undefined) texture.colorSpace = THREE.SRGBColorSpace;
-  if (THREE.LinearFilter !== undefined) {
-    texture.minFilter = THREE.LinearFilter;
-    texture.magFilter = THREE.LinearFilter;
-  }
+  const applyTextureFilter = ratio => {
+    const nearest = Number.isInteger(ratio) && THREE.NearestFilter !== undefined;
+    const filter = nearest ? THREE.NearestFilter : THREE.LinearFilter;
+    if (filter !== undefined) {
+      texture.minFilter = filter;
+      texture.magFilter = filter;
+    }
+  };
+  applyTextureFilter(1);
   texture.generateMipmaps = false;
   const material = new SpriteMaterial({
     map: texture,
@@ -136,7 +183,7 @@ export function createMcpLiveFeedWebGpuHud({
   material.toneMapped = false;
 
   const sprite = new THREE.Sprite(material);
-  sprite.name = 'Three Studio MCP Live Feed HUD';
+  sprite.name = 'Three Studio side panel';
   sprite.frustumCulled = false;
   sprite.renderOrder = 2_147_483_000;
   sprite.center?.set?.(0.5, 0.5);
@@ -145,17 +192,27 @@ export function createMcpLiveFeedWebGpuHud({
 
   let viewportWidth = 1;
   let viewportHeight = 1;
-  let backingRatio = 1;
-  let panelWidth = 1;
-  let panelHeight = 1;
-  let capacity = 1;
+  let originLeft = PANEL_MARGIN;
+  let originTop = PANEL_MARGIN;
   let latest = Object.freeze([]);
   let visible = true;
   let disposed = false;
   let timer = null;
-  let drawRevision = 0;
-  let scrollIndex = 0;
-  let layoutCached = false;
+  let viewMode = initialViewMode === VIEW_MODE_REVIEW ? VIEW_MODE_REVIEW : VIEW_MODE_FOLLOW_SHOT;
+  let captured = null;
+  let tab = 'log';
+  let explorerOutline = Object.freeze({
+    revision: 0,
+    sceneId: null,
+    sceneName: 'No scene',
+    rootEntityIds: Object.freeze([]),
+    entities: Object.freeze({}),
+    rootCollectionIds: Object.freeze([]),
+    collections: Object.freeze({}),
+  });
+  let explorerExpanded = new Set();
+  let explorerKnownIds = new Set();
+  let explorerRows = Object.freeze([]);
 
   const timeNow = () => {
     try {
@@ -166,77 +223,285 @@ export function createMcpLiveFeedWebGpuHud({
     }
   };
 
-  const draw = () => {
-    if (disposed) return;
-    const maximumScroll = Math.max(0, latest.length - capacity);
-    scrollIndex = clamp(scrollIndex, 0, maximumScroll);
-    const entries = latest.slice(scrollIndex, scrollIndex + capacity);
-    const activeCount = latest.filter(entry => entry.stage === 'started').length;
-    const firstVisible = entries.length > 0 ? scrollIndex + 1 : 0;
-    const lastVisible = entries.length > 0 ? scrollIndex + entries.length : 0;
-    context.setTransform?.(backingRatio, 0, 0, backingRatio, 0, 0);
-    context.imageSmoothingEnabled = true;
-    context.imageSmoothingQuality = 'high';
-    context.clearRect(0, 0, panelWidth, panelHeight);
-    context.fillStyle = 'rgba(8, 13, 22, 0.90)';
-    context.fillRect(0, 0, panelWidth, panelHeight);
-    context.fillStyle = 'rgba(135, 176, 224, 0.34)';
-    context.fillRect(0, 0, panelWidth, 1);
-    context.fillRect(0, HEADER_HEIGHT - 1, panelWidth, 1);
-    context.textBaseline = 'middle';
-    context.font = '600 15px "Segoe UI", Arial, sans-serif';
-    context.fillStyle = '#9fc6f2';
-    context.fillText('MCP LIVE FEED', 12, 15, panelWidth - 24);
-    context.font = '12px "Segoe UI", Arial, sans-serif';
-    context.fillStyle = activeCount > 0 ? '#f2b45c' : '#7f94ad';
-    const activity = activeCount > 0 ? `${activeCount} ACTIVE` : 'IDLE';
-    context.fillText(
-      `${activity}  \u00b7  ${latest.length} EVENTS  \u00b7  ${firstVisible}\u2013${lastVisible} / ${latest.length}`,
-      12,
-      34,
-      panelWidth - 160,
-    );
-    context.fillStyle = '#70859e';
-    context.textAlign = 'right';
-    context.fillText('WHEEL  \u00b7  Ctrl+Shift+M', panelWidth - 12, 34, 150);
-    context.textAlign = 'left';
+  const host = new OverlayHost({
+    canvas,
+    context,
+    fonts,
+    ...(schedulePaint ? { schedulePaint } : {}),
+    backColor: 'rgba(8, 13, 22, 0.92)',
+    onPainted() {
+      texture.needsUpdate = true;
+    },
+  });
 
-    if (entries.length === 0) {
-      context.font = '13px "Segoe UI", Arial, sans-serif';
-      context.fillStyle = '#7f94ad';
-      context.fillText('Waiting for Three Studio MCP activity\u2026', 12, HEADER_HEIGHT + 21, panelWidth - 24);
-    }
+  const title = host.add(new Label({
+    name: 'title',
+    text: 'STUDIO',
+    font: UI_FONT_BOLD,
+    color: '#9fc6f2',
+  }));
+  const status = host.add(new Label({
+    name: 'status',
+    text: 'IDLE',
+    font: '12px "Segoe UI", Arial, sans-serif',
+    color: '#7f94ad',
+  }));
+  const modeButton = host.add(new Button({
+    name: 'view-mode',
+    text: 'Follow shot',
+    onClick() {
+      const next = viewMode === VIEW_MODE_FOLLOW_SHOT ? VIEW_MODE_REVIEW : VIEW_MODE_FOLLOW_SHOT;
+      setViewMode(next, { fromUi: true });
+    },
+  }));
+  const tabs = host.add(new TabStrip({
+    name: 'tabs',
+    tabs: [
+      { id: 'log', label: 'Log' },
+      { id: 'explorer', label: 'Explorer' },
+      { id: 'settings', label: 'Settings' },
+    ],
+    selected: 'log',
+    onChange(id) {
+      tab = id;
+      logPage.visible = id === 'log';
+      explorerPage.visible = id === 'explorer';
+      settingsPage.visible = id === 'settings';
+      syncStatus();
+      host.invalidate();
+    },
+  }));
 
-    entries.forEach((entry, index) => {
-      const stage = safeStage(entry.stage);
-      const y = HEADER_HEIGHT + (index * ROW_HEIGHT);
-      const elapsed = stage === 'started'
-        ? Math.max(0, timeNow() - finite(entry.startedAtMs, timeNow()))
-        : finite(entry.elapsedMs, 0);
-      const timestamp = sanitizeLiveFeedText(entry.timestamp, { maximum: 16, fallback: '--:--:--.---' });
-      const tool = sanitizeLiveFeedText(entry.tool, { maximum: 48, fallback: 'three_studio_unknown' });
-      const revision = Number.isSafeInteger(entry.revision) && entry.revision >= 0 ? `r${entry.revision}` : 'r\u2014';
-      const summary = sanitizeLiveFeedText(entry.summary, { maximum: 160, fallback: 'Studio command' });
-      context.fillStyle = STAGE_COLORS[stage];
-      context.fillRect(0, y + 3, 3, ROW_HEIGHT - 6);
-      context.font = '12px "Cascadia Mono", Consolas, monospace';
-      context.fillStyle = '#dce8f7';
-      context.fillText(
-        `${timestamp}  ${tool}  ${stage.toUpperCase()}  ${formatElapsed(elapsed)}  ${revision}`,
-        10,
-        y + 12,
-        panelWidth - 20,
-      );
-      context.fillStyle = stage === 'failed' ? '#ffadba' : '#9fb1c6';
-      context.font = '12px "Segoe UI", Arial, sans-serif';
-      context.fillText(summary, 10, y + 28, panelWidth - 20);
-      context.fillStyle = 'rgba(135, 176, 224, 0.10)';
-      context.fillRect(8, y + ROW_HEIGHT - 1, panelWidth - 16, 1);
-    });
-
-    texture.needsUpdate = true;
-    drawRevision += 1;
+  const logPage = host.add(new Control({ name: 'log-page', backColor: 'rgba(8, 13, 22, 0.92)' }));
+  const list = logPage.add(new VirtualList({
+    name: 'log-list',
+    itemHeight: ROW_HEIGHT,
+    paintItem(drawContext, drawFonts, { index, bounds }) {
+      const entry = latest[index];
+      if (!entry) return;
+      const line = logLine(entry, timeNow());
+      drawContext.fillStyle = STAGE_COLORS[line.stage];
+      drawContext.fillRect(bounds.x, bounds.y + 4, 3, bounds.height - 8);
+      drawFonts.blit(drawContext, line.headline, bounds.x + 10, bounds.y + 14, {
+        font: MONO_FONT,
+        fillStyle: '#dce8f7',
+        maxWidth: bounds.width - 16,
+      });
+      drawFonts.blit(drawContext, line.summary, bounds.x + 10, bounds.y + 30, {
+        font: UI_FONT,
+        fillStyle: line.stage === 'failed' ? '#ffadba' : '#9fb1c6',
+        maxWidth: bounds.width - 16,
+      });
+      drawContext.fillStyle = 'rgba(135, 176, 224, 0.10)';
+      drawContext.fillRect(bounds.x + 8, bounds.y + bounds.height - 1, bounds.width - 16, 1);
+    },
+  }));
+  const scrollBar = logPage.add(new ScrollBar({
+    name: 'log-scroll',
+    onScroll(value) {
+      list.setScrollIndex(value, { notify: false });
+    },
+  }));
+  list.onScroll = value => {
+    scrollBar.setScroll(value, { notify: false });
   };
+
+  const explorerPage = host.add(new Control({
+    name: 'explorer-page',
+    visible: false,
+    backColor: 'rgba(8, 13, 22, 0.92)',
+  }));
+  const explorerList = explorerPage.add(new VirtualList({
+    name: 'explorer-list',
+    itemHeight: EXPLORER_ROW_HEIGHT,
+    paintItem(drawContext, drawFonts, { index, bounds }) {
+      const row = explorerRows[index];
+      if (!row) return;
+      const indent = bounds.x + 8 + (row.depth * 14);
+      const muted = row.visible === false || row.kind === 'section';
+      if (row.expandable) {
+        const cx = indent + 4;
+        const cy = bounds.y + (bounds.height * 0.5);
+        drawContext.beginPath();
+        if (row.expanded) {
+          drawContext.moveTo(cx - 3, cy - 2);
+          drawContext.lineTo(cx + 3, cy - 2);
+          drawContext.lineTo(cx, cy + 3);
+        } else {
+          drawContext.moveTo(cx - 2, cy - 3);
+          drawContext.lineTo(cx + 3, cy);
+          drawContext.lineTo(cx - 2, cy + 3);
+        }
+        drawContext.closePath();
+        drawContext.fillStyle = '#8eb4dc';
+        drawContext.fill();
+      }
+      const nameX = indent + (row.expandable ? 14 : 4);
+      const meta = row.kind === 'collection' && Number.isInteger(row.memberCount)
+        ? String(row.memberCount)
+        : row.kindLabel;
+      drawFonts.blit(drawContext, row.name, nameX, bounds.y + 15, {
+        font: row.kind === 'scene' || row.kind === 'group' ? UI_FONT_BOLD : UI_FONT,
+        fillStyle: muted ? '#6d8299' : '#dce8f7',
+        maxWidth: Math.max(40, bounds.width - (nameX - bounds.x) - 58),
+      });
+      drawFonts.blit(drawContext, meta, bounds.x + bounds.width - 54, bounds.y + 15, {
+        font: '11px "Segoe UI", Arial, sans-serif',
+        fillStyle: '#6d8299',
+        maxWidth: 48,
+      });
+      drawContext.fillStyle = 'rgba(135, 176, 224, 0.08)';
+      drawContext.fillRect(bounds.x + 8, bounds.y + bounds.height - 1, bounds.width - 16, 1);
+    },
+    onActivate(index) {
+      const row = explorerRows[index];
+      if (!row?.expandable) return;
+      if (explorerExpanded.has(row.id)) explorerExpanded.delete(row.id);
+      else explorerExpanded.add(row.id);
+      refreshExplorer();
+    },
+  }));
+  const explorerScroll = explorerPage.add(new ScrollBar({
+    name: 'explorer-scroll',
+    onScroll(value) {
+      explorerList.setScrollIndex(value, { notify: false });
+    },
+  }));
+  explorerList.onScroll = value => {
+    explorerScroll.setScroll(value, { notify: false });
+  };
+
+  const settingsPage = host.add(new Control({
+    name: 'settings-page',
+    visible: false,
+    backColor: 'rgba(8, 13, 22, 0.92)',
+  }));
+  const cameraLabel = settingsPage.add(new Label({
+    text: 'Camera',
+    font: UI_FONT_BOLD,
+    color: '#9fc6f2',
+  }));
+  const followOption = settingsPage.add(new RadioOption({
+    name: 'follow-shot',
+    text: 'Follow shot',
+    selected: viewMode === VIEW_MODE_FOLLOW_SHOT,
+    onSelect() { setViewMode(VIEW_MODE_FOLLOW_SHOT, { fromUi: true }); },
+  }));
+  const reviewOption = settingsPage.add(new RadioOption({
+    name: 'review',
+    text: 'Review  ·  look / fly',
+    selected: viewMode === VIEW_MODE_REVIEW,
+    onSelect() { setViewMode(VIEW_MODE_REVIEW, { fromUi: true }); },
+  }));
+  const cameraHint = settingsPage.add(new Label({
+    text: 'Review never writes the authored camera. Evidence stays on the shot.',
+    color: '#7f94ad',
+  }));
+  const panelHint = settingsPage.add(new Label({
+    text: 'Drag looks. WASD moves. Space up, Ctrl down. Ctrl+Shift+M hides this panel.',
+    color: '#7f94ad',
+  }));
+
+  function layoutPages() {
+    const contentY = HEADER_HEIGHT + TAB_HEIGHT;
+    const contentHeight = Math.max(40, host.height - contentY);
+    title.setBounds(10, 8, host.width - 132, 18);
+    status.setBounds(10, 26, host.width - 132, 16);
+    modeButton.setBounds(host.width - 118, 10, 108, 28);
+    tabs.setBounds(0, HEADER_HEIGHT, host.width, TAB_HEIGHT);
+    logPage.setBounds(0, contentY, host.width, contentHeight);
+    explorerPage.setBounds(0, contentY, host.width, contentHeight);
+    settingsPage.setBounds(0, contentY, host.width, contentHeight);
+    list.setBounds(0, 0, Math.max(40, logPage.width - SCROLL_WIDTH), logPage.height);
+    scrollBar.setBounds(logPage.width - SCROLL_WIDTH, 0, SCROLL_WIDTH, logPage.height);
+    explorerList.setBounds(0, 0, Math.max(40, explorerPage.width - SCROLL_WIDTH), explorerPage.height);
+    explorerScroll.setBounds(explorerPage.width - SCROLL_WIDTH, 0, SCROLL_WIDTH, explorerPage.height);
+    cameraLabel.setBounds(12, 10, settingsPage.width - 24, 20);
+    followOption.setBounds(8, 34, settingsPage.width - 16, 28);
+    reviewOption.setBounds(8, 64, settingsPage.width - 16, 28);
+    cameraHint.setBounds(12, 100, settingsPage.width - 24, 36);
+    panelHint.setBounds(12, 138, settingsPage.width - 24, 36);
+    syncScroll();
+  }
+
+  function syncLogScroll() {
+    list.setItems(latest.length, { followTail: list.scrollIndex >= list.maxScroll });
+    scrollBar.minimum = 0;
+    scrollBar.maximum = list.maxScroll;
+    scrollBar.viewportSize = list.capacity;
+    scrollBar.setScroll(list.scrollIndex, { notify: false });
+    scrollBar.visible = list.maxScroll > 0;
+  }
+
+  function syncExplorerScroll() {
+    explorerList.setItems(explorerRows.length);
+    explorerScroll.minimum = 0;
+    explorerScroll.maximum = explorerList.maxScroll;
+    explorerScroll.viewportSize = explorerList.capacity;
+    explorerScroll.setScroll(explorerList.scrollIndex, { notify: false });
+    explorerScroll.visible = explorerList.maxScroll > 0;
+  }
+
+  function syncScroll() {
+    syncLogScroll();
+    syncExplorerScroll();
+  }
+
+  function refreshExplorer() {
+    explorerRows = flattenExplorerRows(explorerOutline, explorerExpanded);
+    syncExplorerScroll();
+    if (tab === 'explorer') syncStatus();
+  }
+
+  function setExplorerOutline(outline) {
+    explorerOutline = outline && typeof outline === 'object' ? outline : explorerOutline;
+    const expandable = defaultExpandedIds(explorerOutline);
+    const next = new Set();
+    for (const id of expandable) {
+      if (!explorerKnownIds.has(id) || explorerExpanded.has(id)) next.add(id);
+    }
+    explorerKnownIds = new Set([
+      explorerOutline.sceneId,
+      'section/collections',
+      ...Object.keys(explorerOutline.entities ?? {}),
+      ...Object.keys(explorerOutline.collections ?? {}),
+    ].filter(Boolean));
+    explorerExpanded = next;
+    refreshExplorer();
+  }
+
+  function syncStatus() {
+    const activeCount = latest.filter(entry => entry.stage === 'started').length;
+    const first = latest.length > 0 ? list.scrollIndex + 1 : 0;
+    const last = latest.length > 0 ? Math.min(latest.length, list.scrollIndex + list.capacity) : 0;
+    const explorerFirst = explorerRows.length > 0 ? explorerList.scrollIndex + 1 : 0;
+    const explorerLast = explorerRows.length > 0
+      ? Math.min(explorerRows.length, explorerList.scrollIndex + explorerList.capacity)
+      : 0;
+    const objectCount = Object.keys(explorerOutline.entities ?? {}).length;
+    status.setText(tab === 'log'
+      ? `${activeCount > 0 ? `${activeCount} ACTIVE` : 'IDLE'}  ·  ${latest.length} events  ·  ${first}–${last}`
+      : tab === 'explorer'
+        ? `Explorer  ·  ${objectCount} objects  ·  ${explorerFirst}–${explorerLast}`
+        : 'Settings');
+    status.color = activeCount > 0 && tab === 'log' ? '#f2b45c' : '#7f94ad';
+    status.invalidate();
+  }
+
+  function setViewMode(mode, { fromUi = false } = {}) {
+    const next = mode === VIEW_MODE_REVIEW ? VIEW_MODE_REVIEW : VIEW_MODE_FOLLOW_SHOT;
+    if (next === viewMode) return;
+    viewMode = next;
+    modeButton.text = next === VIEW_MODE_FOLLOW_SHOT ? 'Follow shot' : 'Review';
+    modeButton.invalidate();
+    followOption.setSelected(next === VIEW_MODE_FOLLOW_SHOT);
+    reviewOption.setSelected(next === VIEW_MODE_REVIEW);
+    if (fromUi) onViewModeChange?.(next);
+  }
+
+  function paintLogItem(index) {
+    list.invalidateItem(index);
+  }
 
   const stopTimer = () => {
     if (timer === null) return;
@@ -257,41 +522,41 @@ export function createMcpLiveFeedWebGpuHud({
     if (timer !== null) return;
     timer = setIntervalFn(() => {
       try {
-        draw();
+        latest.forEach((entry, index) => {
+          if (entry?.stage === 'started') paintLogItem(index);
+        });
+        syncStatus();
       } catch {
         // The presentation sink is isolated from command execution.
       }
     }, ACTIVE_REFRESH_MS);
   };
 
-  const resize = (nextWidth, nextHeight, nextPixelRatio = backingRatio) => {
-    if (disposed) return;
-    const safeWidth = Math.max(1, Math.round(finite(nextWidth, viewportWidth)));
-    const safeHeight = Math.max(1, Math.round(finite(nextHeight, viewportHeight)));
-    viewportWidth = safeWidth;
-    viewportHeight = safeHeight;
-    if (layoutCached) return;
-
-    const followedTail = scrollIndex >= Math.max(0, latest.length - capacity);
-    const safeRatio = clamp(Math.max(3, finite(nextPixelRatio, backingRatio)), 3, 3);
-    backingRatio = safeRatio;
-    const availableWidth = Math.max(120, viewportWidth - (PANEL_MARGIN * 2));
-    const availableHeight = Math.max(90, viewportHeight - (PANEL_MARGIN * 2));
-    panelWidth = Math.round(Math.min(700, availableWidth, Math.max(520, viewportWidth * 0.44)));
-    const desiredHeight = HEADER_HEIGHT + (ROW_HEIGHT * rowLimit);
-    panelHeight = Math.round(Math.min(availableHeight, desiredHeight));
-    capacity = Math.max(1, Math.min(rowLimit, Math.floor((panelHeight - HEADER_HEIGHT) / ROW_HEIGHT)));
-    scrollIndex = followedTail
-      ? Math.max(0, latest.length - capacity)
-      : clamp(scrollIndex, 0, Math.max(0, latest.length - capacity));
-    canvas.width = Math.max(1, Math.round(panelWidth * backingRatio));
-    canvas.height = Math.max(1, Math.round(panelHeight * backingRatio));
-    layoutCached = true;
-    draw();
+  host.performLayout = () => {
+    Control.prototype.performLayout.call(host);
+    layoutPages();
   };
 
-  // Keep the cached sprite in the primary scene so the native host receives
-  // exactly one render submission/swap per animation frame.
+  const resize = (nextWidth, nextHeight, nextPixelRatio = host.backingRatio) => {
+    if (disposed) return;
+    viewportWidth = Math.max(1, Math.round(finite(nextWidth, viewportWidth)));
+    viewportHeight = Math.max(1, Math.round(finite(nextHeight, viewportHeight)));
+    const safeRatio = clamp(finite(nextPixelRatio, host.backingRatio), 1, 2);
+    const availableWidth = Math.max(160, viewportWidth - (PANEL_MARGIN * 2));
+    const availableHeight = Math.max(160, viewportHeight - (PANEL_MARGIN * 2));
+    const panelWidth = Math.round(Math.min(380, availableWidth, Math.max(300, viewportWidth * 0.30)));
+    const desiredRows = Math.min(rowLimit, Math.max(6, Math.floor((availableHeight - HEADER_HEIGHT - TAB_HEIGHT) / ROW_HEIGHT)));
+    const panelHeight = Math.round(Math.min(availableHeight, HEADER_HEIGHT + TAB_HEIGHT + (ROW_HEIGHT * desiredRows)));
+    originLeft = PANEL_MARGIN;
+    originTop = PANEL_MARGIN;
+    if (host.width === panelWidth && host.height === panelHeight && host.backingRatio === safeRatio) {
+      return;
+    }
+    applyTextureFilter(safeRatio);
+    host.setBacking(panelWidth, panelHeight, safeRatio);
+    syncStatus();
+  };
+
   const updateCamera = renderCamera => {
     if (disposed || !renderCamera) return false;
     const aspect = viewportWidth / Math.max(1, viewportHeight);
@@ -313,8 +578,8 @@ export function createMcpLiveFeedWebGpuHud({
       viewHeight = 2 * Math.tan(radians * 0.5) * distance / zoom;
       viewWidth = viewHeight * aspect;
     }
-    const centrePixelsX = PANEL_MARGIN + (panelWidth * 0.5);
-    const centrePixelsY = PANEL_MARGIN + (panelHeight * 0.5);
+    const centrePixelsX = originLeft + (host.width * 0.5);
+    const centrePixelsY = originTop + (host.height * 0.5);
     const ndcX = (centrePixelsX / viewportWidth) * 2 - 1;
     const ndcY = 1 - (centrePixelsY / viewportHeight) * 2;
     localPosition.set(
@@ -328,8 +593,8 @@ export function createMcpLiveFeedWebGpuHud({
     setVector(sprite.position, localPosition.x, localPosition.y, localPosition.z);
     setVector(
       sprite.scale,
-      (panelWidth / viewportWidth) * viewWidth,
-      (panelHeight / viewportHeight) * viewHeight,
+      (host.width / viewportWidth) * viewWidth,
+      (host.height / viewportHeight) * viewHeight,
       1,
     );
     return true;
@@ -339,7 +604,8 @@ export function createMcpLiveFeedWebGpuHud({
     if (disposed || visible) return;
     visible = true;
     sprite.visible = true;
-    draw();
+    host.visible = true;
+    host.invalidate();
     syncTimer();
   };
 
@@ -347,12 +613,28 @@ export function createMcpLiveFeedWebGpuHud({
     if (disposed || !visible) return;
     visible = false;
     sprite.visible = false;
+    host.visible = false;
     stopTimer();
   };
 
   const toggle = () => {
     if (visible) hide();
     else show();
+  };
+
+  const contentPoint = event => {
+    const point = eventPoint(event);
+    return { x: point.x - originLeft, y: point.y - originTop };
+  };
+
+  const containsEvent = event => {
+    const point = eventPoint(event);
+    return pointInRect(point.x, point.y, {
+      x: originLeft,
+      y: originTop,
+      width: host.width,
+      height: host.height,
+    });
   };
 
   const onKeyDown = event => {
@@ -365,46 +647,66 @@ export function createMcpLiveFeedWebGpuHud({
     toggle();
   };
 
-  const onWheel = event => {
-    if (disposed || !visible || latest.length <= capacity) return;
-    const x = finite(event?.clientX, -1);
-    const y = finite(event?.clientY, -1);
-    const left = PANEL_MARGIN;
-    const top = PANEL_MARGIN;
-    if (x < left || x > left + panelWidth || y < top || y > top + panelHeight) return;
-    const modeScale = event?.deltaMode === 1 ? 16 : event?.deltaMode === 2 ? panelHeight : 1;
-    const delta = finite(event?.deltaY, 0) * modeScale;
-    if (delta === 0) return;
-    const steps = Math.max(1, Math.ceil(Math.abs(delta) / ROW_HEIGHT));
-    const maximumScroll = Math.max(0, latest.length - capacity);
-    const next = clamp(scrollIndex + (delta > 0 ? steps : -steps), 0, maximumScroll);
+  const stealEvent = event => {
     try {
       event.preventDefault?.();
       event.stopPropagation?.();
+      event.stopImmediatePropagation?.();
     } catch {
-      // Synthetic wheel events may not support cancellation.
+      // Synthetic events may not support cancellation.
     }
-    if (next === scrollIndex) return;
-    scrollIndex = next;
-    draw();
+  };
+
+  const onPointerDown = event => {
+    if (disposed || !visible || !containsEvent(event)) return false;
+    const point = contentPoint(event);
+    const hit = host.hitTest(point.x, point.y);
+    captured = hit;
+    hit?.onPointerDown?.(event, point);
+    stealEvent(event);
+    return true;
+  };
+
+  const onPointerMove = event => {
+    if (disposed || !captured) return false;
+    const point = contentPoint(event);
+    return captured.onPointerMove?.(event, point) === true;
+  };
+
+  const onPointerUp = event => {
+    if (disposed || !captured) return false;
+    const point = contentPoint(event);
+    const inside = containsEvent(event);
+    const handled = captured.onPointerUp?.(event, { ...point, inside }) === true;
+    captured = null;
+    return handled;
+  };
+
+  const onWheel = event => {
+    if (disposed || !visible || !containsEvent(event)) return false;
+    const point = contentPoint(event);
+    const modeScale = event?.deltaMode === 1 ? 16 : event?.deltaMode === 2 ? host.height : 1;
+    const delta = finite(event?.deltaY, 0) * modeScale;
+    const hit = host.hitTest(point.x, point.y);
+    const handled = hit?.onWheel?.(event, { ...point, delta }) === true
+      || (tab === 'log' && list.onWheel(event, { delta }))
+      || (tab === 'explorer' && explorerList.onWheel(event, { delta }));
+    if (handled) {
+      syncScroll();
+      syncStatus();
+    }
+    stealEvent(event);
+    return true;
   };
 
   const acceptSnapshot = entries => {
-    const followedTail = scrollIndex >= Math.max(0, latest.length - capacity);
     latest = boundedEntries(entries);
-    scrollIndex = followedTail
-      ? Math.max(0, latest.length - capacity)
-      : clamp(scrollIndex, 0, Math.max(0, latest.length - capacity));
-    try {
-      if (visible) draw();
-      syncTimer();
-    } catch {
-      stopTimer();
-    }
+    syncScroll();
+    syncStatus();
+    syncTimer();
   };
 
   latest = boundedEntries(safeSnapshot(source));
-  scrollIndex = Math.max(0, latest.length - capacity);
   resize(width, height, pixelRatio);
   sprite.visible = true;
   let unsubscribe = () => {};
@@ -414,6 +716,10 @@ export function createMcpLiveFeedWebGpuHud({
     // The HUD remains as an inert, visible status panel.
   }
   keyboard?.addEventListener?.('keydown', onKeyDown);
+  keyboard?.addEventListener?.('pointerdown', onPointerDown, { capture: true });
+  keyboard?.addEventListener?.('pointermove', onPointerMove, { capture: true });
+  keyboard?.addEventListener?.('pointerup', onPointerUp, { capture: true });
+  keyboard?.addEventListener?.('pointercancel', onPointerUp, { capture: true });
   keyboard?.addEventListener?.('wheel', onWheel, { passive: false, capture: true });
   syncTimer();
 
@@ -429,10 +735,15 @@ export function createMcpLiveFeedWebGpuHud({
       // Subscription disposal is presentation-only.
     }
     keyboard?.removeEventListener?.('keydown', onKeyDown);
+    keyboard?.removeEventListener?.('pointerdown', onPointerDown, { capture: true });
+    keyboard?.removeEventListener?.('pointermove', onPointerMove, { capture: true });
+    keyboard?.removeEventListener?.('pointerup', onPointerUp, { capture: true });
+    keyboard?.removeEventListener?.('pointercancel', onPointerUp, { capture: true });
     keyboard?.removeEventListener?.('wheel', onWheel, { capture: true });
     targetScene.remove(sprite);
     material.dispose?.();
     texture.dispose?.();
+    fonts.clear();
     canvas.width = 1;
     canvas.height = 1;
     latest = Object.freeze([]);
@@ -444,22 +755,43 @@ export function createMcpLiveFeedWebGpuHud({
     material,
     texture,
     canvas,
+    host,
     show,
     hide,
     toggle,
     resize,
     updateCamera,
+    setViewMode,
+    setExplorerOutline,
+    handlePointerDown: onPointerDown,
+    get tab() { return tab; },
+    get viewMode() { return viewMode; },
     get visible() { return visible; },
-    get drawRevision() { return drawRevision; },
-    get scrollIndex() { return scrollIndex; },
-    get visibleRowCount() { return Math.min(capacity, latest.length); },
+    get drawRevision() { return host.paintGeneration; },
+    get scrollIndex() { return list.scrollIndex; },
+    get visibleRowCount() { return Math.min(list.capacity, latest.length); },
+    get visibleLogText() {
+      return latest.slice(list.scrollIndex, list.scrollIndex + list.capacity).map(entry => {
+        const line = logLine(entry, timeNow());
+        return `${line.headline}\n${line.summary}`;
+      }).join('\n');
+    },
+    get explorerRowCount() {
+      return explorerRows.length;
+    },
+    get visibleExplorerText() {
+      return explorerRows
+        .slice(explorerList.scrollIndex, explorerList.scrollIndex + explorerList.capacity)
+        .map(row => `${'  '.repeat(row.depth)}${row.name}  ${row.kindLabel}`)
+        .join('\n');
+    },
     get panelBounds() {
       return Object.freeze({
-        left: PANEL_MARGIN,
-        top: PANEL_MARGIN,
-        width: panelWidth,
-        height: panelHeight,
-        pixelRatio: backingRatio,
+        left: originLeft,
+        top: originTop,
+        width: host.width,
+        height: host.height,
+        pixelRatio: host.backingRatio,
       });
     },
     dispose,

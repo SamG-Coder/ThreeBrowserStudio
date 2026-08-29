@@ -120,17 +120,19 @@ is a thin adapter.
 
 The current launch opens the explicitly configured project, otherwise the last
 successfully opened project, otherwise managed `projects/live`. It restores
-named-save/recovery document state plus the review/render camera and latest
-evidence metadata, creates a fresh authenticated pipe, presents the viewport,
-and publishes a heartbeat marker. Selection and transient Play state are not
+named-save/recovery document state plus the session review camera, Follow
+shot / Review view mode, authored-camera reference, and latest evidence
+metadata, creates a fresh authenticated pipe, presents the viewport, and
+publishes a heartbeat marker. Selection and transient Play state are not
 restored yet.
 
 On launch the viewport:
 
 1. Reads private machine-local Studio state, never the previous bearer marker.
 2. Reopens the last explicit project and authored active scene.
-3. Restores the review/render camera and latest evidence metadata; selection,
-   mode, and Play state remain a later capability.
+3. Restores the session review camera, view mode, authored-camera reference,
+   and latest evidence metadata; selection, Author/Play mode, and Play state
+   remain a later capability.
 4. Restores a newer recovery revision as dirty rather than overwriting the
    named project.
 5. Creates a random local pipe and a 256-bit ownership token.
@@ -446,7 +448,8 @@ strong contracts rather than dozens of micro-tools.
 
 Returns the session, active project/scene/revision, dirty/saved state, entity
 and scene counts, undo/redo availability, transient mode/counters, viewport
-camera, latest evidence metadata, and explicit capability flags. Capabilities
+authored camera, `viewMode` (`follow-shot` | `review`), window camera, latest
+evidence metadata, and explicit capability flags. Capabilities
 are authoritative; an architecture section mentioning RTX or jobs does not
 make them available.
 
@@ -590,10 +593,11 @@ document.
 
 Currently frames exact target IDs or explicit bounds, or uses a named compiled
 camera, then captures WebGPU beauty evidence at the committed revision to an
-offscreen target. Capture does not change the authoring document or the visible
-review camera. An optional `timelineFrame` evaluates and captures an exact
-Action frame before restoring the prior runtime time. Diagnostic passes and
-RTX/hybrid rendering are not exposed.
+offscreen target. Capture uses the authored shot, not a human Review orbit, and
+does not change the authoring document or the window camera. An optional
+`timelineFrame` evaluates and captures an exact Action frame before restoring
+the prior runtime time. Diagnostic passes and RTX/hybrid rendering are not
+exposed.
 
 ### 8. `three_studio_history`
 
@@ -706,27 +710,30 @@ allowing deliberate procedural bake workflows.
 
 The scene is the interface. The viewport occupies the window.
 
-The only persistent chrome is a small retained overlay showing project/scene,
-revision, saved/dirty state, Author/Play/Capture mode, latest operation, and
-diagnostic count. A selection chip appears only when needed. An evidence drawer
-may show before/after/diff targets and compile errors, but is closed by default
-and never resizes the viewport.
+The only persistent chrome is a left side panel composited through one
+`CanvasTexture` sprite: Log (virtualized MCP command feed plus a visible
+scrollbar), Explorer (a read-only tree of the active scene's objects, groups,
+and collections), and Settings (Follow shot / Review). It is not an inspector.
+A Follow-shot chip is the camera control; first drag on the view enters Review.
+Ctrl+Shift+M hides the panel.
 
-Before/after/diff views remain persistent GPU render targets. Readback happens
-only for an explicit evidence request. Text uses a retained bitmap glyph atlas
-and fixed-capacity geometry. Static chrome is painted once, converted to a
-DataTexture, pre-uploaded, and detached from Canvas2D. Progress, hover, preview
-wipe, and status transitions change transforms, buffer ranges, or uniforms,
-not full-screen canvas textures.
+Controls are retained and WinForms-like: `invalidate` coalesces an update
+region, and `update` paints only that clip. Text uses a 2D font-run cache
+(`measureText` LRU, rasterize once, `drawImage` blit). Camera anchoring must
+not invalidate the canvas. One swap per frame remains; the HUD never calls
+`render()`.
 
-One final render presents to the swapchain. World and transparent overlay are
-composited offscreen so no helper render accidentally presents a second frame.
+The window has two cameras. Follow shot shows the authored / AI camera. Review
+is a session-only look/fly camera seeded from that shot; it never writes
+the authored camera. `camera.frame` and `scene.setActiveCamera` snap back to
+Follow shot. Evidence and `status.viewport.effectiveCamera` stay on the
+authored shot even while the window is in Review. Read `status.viewport.viewMode`.
 
 The current project save persists the active scene and authored active-camera
-reference. Session recovery also restores the transient review camera and
-latest evidence metadata. Selection and Play mode do not persist across
-process restarts. A render request is an offscreen evidence capture and leaves
-the visible camera unchanged.
+reference. Session recovery also restores the transient review camera, view
+mode, and latest evidence metadata. Selection and Play mode do not persist
+across process restarts. A render request is an offscreen evidence capture and
+leaves the window camera unchanged.
 
 ## RTX and WebGPU policy
 

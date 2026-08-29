@@ -1,43 +1,49 @@
 import * as THREE from "three/webgpu";
+import { applyLookDelta, clampPitch, flyStep } from "./review-fly.mjs";
 
-const UP = new THREE.Vector3(0, 1, 0);
+function keyName(event) {
+  return String(event?.code || event?.key || '');
+}
 
-/** One-instance orbit/pan/dolly controls for the persistent review camera. */
+/** First-person look / fly. Drag looks, WASD moves, Space/Ctrl fly up/down. */
 export function createReviewControls(camera, domElement, {
   target = new THREE.Vector3(),
-  minDistance = 1.2,
-  maxDistance = 800,
-  damping = 0.16,
+  keyboard = globalThis,
+  onBeginInteract = null,
 } = {}) {
-  const current = new THREE.Spherical();
-  const desired = new THREE.Spherical();
-  const offset = new THREE.Vector3();
-  const right = new THREE.Vector3();
-  const up = new THREE.Vector3();
-  const pan = new THREE.Vector3();
+  const look = new THREE.Euler(0, 0, 0, 'YXZ');
+  const forward = new THREE.Vector3();
   const desiredTarget = target.clone();
-  const currentTarget = target.clone();
+  const keys = new Set();
+  let yaw = 0;
+  let pitch = 0;
   let dragging = false;
   let pointerId = 0;
-  let mode = "orbit";
   let previousX = 0;
   let previousY = 0;
   let disposed = false;
+  let enabled = true;
+
+  function applyLook() {
+    look.set(pitch, yaw, 0, 'YXZ');
+    camera.quaternion.setFromEuler(look);
+    forward.set(0, 0, -1).applyQuaternion(camera.quaternion);
+    desiredTarget.copy(camera.position).addScaledVector(forward, 4);
+  }
 
   function syncFromCamera() {
-    offset.copy(camera.position).sub(desiredTarget);
-    desired.setFromVector3(offset);
-    desired.radius = THREE.MathUtils.clamp(desired.radius, minDistance, maxDistance);
-    desired.phi = THREE.MathUtils.clamp(desired.phi, 0.04, Math.PI - 0.04);
-    current.copy(desired);
-    currentTarget.copy(desiredTarget);
+    look.setFromQuaternion(camera.quaternion, 'YXZ');
+    yaw = look.y;
+    pitch = clampPitch(look.x);
+    applyLook();
   }
 
   function onPointerDown(event) {
     if (disposed || dragging) return;
+    onBeginInteract?.(event);
+    if (!enabled) return;
     dragging = true;
     pointerId = Number(event.pointerId ?? 1);
-    mode = event.button === 1 || event.button === 2 || event.shiftKey ? "pan" : "orbit";
     previousX = Number(event.clientX || 0);
     previousY = Number(event.clientY || 0);
     domElement.setPointerCapture?.(pointerId);
@@ -52,18 +58,10 @@ export function createReviewControls(camera, domElement, {
     const dy = y - previousY;
     previousX = x;
     previousY = y;
-    if (mode === "orbit") {
-      desired.theta -= dx * 0.006;
-      desired.phi = THREE.MathUtils.clamp(desired.phi - dy * 0.006, 0.04, Math.PI - 0.04);
-    } else {
-      camera.getWorldDirection(offset);
-      right.crossVectors(offset, UP).normalize();
-      up.crossVectors(right, offset).normalize();
-      const worldPerPixel = Math.max(0.0005, desired.radius * 0.00155);
-      pan.copy(right).multiplyScalar(-dx * worldPerPixel)
-        .addScaledVector(up, dy * worldPerPixel);
-      desiredTarget.add(pan);
-    }
+    const next = applyLookDelta(yaw, pitch, dx, dy);
+    yaw = next.yaw;
+    pitch = next.pitch;
+    applyLook();
     event.preventDefault?.();
   }
 
@@ -74,13 +72,37 @@ export function createReviewControls(camera, domElement, {
   }
 
   function onWheel(event) {
-    if (disposed) return;
-    desired.radius = THREE.MathUtils.clamp(
-      desired.radius * Math.exp(Number(event.deltaY || 0) * 0.0012),
-      minDistance,
-      maxDistance,
-    );
+    if (disposed || !enabled) return;
+    forward.set(0, 0, -1).applyQuaternion(camera.quaternion);
+    camera.position.addScaledVector(forward, -Number(event.deltaY || 0) * 0.004);
+    applyLook();
     event.preventDefault?.();
+  }
+
+  function onKeyDown(event) {
+    if (disposed || !enabled) return;
+    const code = keyName(event);
+    if (code === 'Space' || code === ' ') {
+      keys.add('Space');
+      event.preventDefault?.();
+      return;
+    }
+    if (code === 'ControlLeft' || code === 'ControlRight' || code === 'KeyC') {
+      keys.add('Down');
+      event.preventDefault?.();
+      return;
+    }
+    if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ShiftRight'].includes(code)) {
+      keys.add(code);
+      event.preventDefault?.();
+    }
+  }
+
+  function onKeyUp(event) {
+    const code = keyName(event);
+    if (code === 'Space' || code === ' ') keys.delete('Space');
+    if (code === 'ControlLeft' || code === 'ControlRight' || code === 'KeyC') keys.delete('Down');
+    keys.delete(code);
   }
 
   domElement.addEventListener("pointerdown", onPointerDown);
@@ -89,31 +111,41 @@ export function createReviewControls(camera, domElement, {
   domElement.addEventListener("pointercancel", finishPointer);
   domElement.addEventListener("lostpointercapture", finishPointer);
   domElement.addEventListener("wheel", onWheel, { passive: false });
+  keyboard.addEventListener?.("keydown", onKeyDown);
+  keyboard.addEventListener?.("keyup", onKeyUp);
   syncFromCamera();
 
   return {
     target: desiredTarget,
+    get enabled() { return enabled; },
+    set enabled(value) { enabled = value === true; },
+    set onBeginInteract(value) { onBeginInteract = typeof value === 'function' ? value : null; },
     syncFromCamera,
     update(delta = 1 / 60) {
-      if (disposed) return;
-      const blend = 1 - Math.exp(-Math.max(0, delta) * (damping > 0 ? 1 / damping : 1000));
-      current.radius = THREE.MathUtils.lerp(current.radius, desired.radius, blend);
-      current.phi = THREE.MathUtils.lerp(current.phi, desired.phi, blend);
-      current.theta = THREE.MathUtils.lerp(current.theta, desired.theta, blend);
-      currentTarget.lerp(desiredTarget, blend);
-      offset.setFromSpherical(current);
-      camera.position.copy(currentTarget).add(offset);
-      camera.lookAt(currentTarget);
+      if (disposed || !enabled) return;
+      if (keys.size === 0) return;
+      const move = flyStep(keys, delta, {
+        yaw,
+        pitch,
+        fast: keys.has('ShiftLeft') || keys.has('ShiftRight'),
+      });
+      camera.position.x += move.x;
+      camera.position.y += move.y;
+      camera.position.z += move.z;
+      applyLook();
     },
     dispose() {
       if (disposed) return;
       disposed = true;
+      keys.clear();
       domElement.removeEventListener("pointerdown", onPointerDown);
       domElement.removeEventListener("pointermove", onPointerMove);
       domElement.removeEventListener("pointerup", finishPointer);
       domElement.removeEventListener("pointercancel", finishPointer);
       domElement.removeEventListener("lostpointercapture", finishPointer);
       domElement.removeEventListener("wheel", onWheel);
+      keyboard.removeEventListener?.("keydown", onKeyDown);
+      keyboard.removeEventListener?.("keyup", onKeyUp);
     },
   };
 }

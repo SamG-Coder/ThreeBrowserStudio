@@ -158,6 +158,11 @@ before commit.
 - Use metres, radians, and seconds.
 - Place dependent objects only after inspecting compiled bounds.
 - Frame evidence from an exact camera or explicit subject bounds.
+- Read `status.viewport.viewMode`. The window may be in Review (human look/fly)
+  while evidence, `effectiveCamera`, and `cameraId` stay on the authored shot.
+  `camera.frame` and `scene.setActiveCamera` snap the window back to Follow
+  shot. Do not treat the window pose as the evidence camera while
+  `viewMode` is `review`.
 - Create animation resources through MCP, validate them, then use
   `three_studio_play` to enter, seek, or step. Report only the behavior actually
   exposed by status.

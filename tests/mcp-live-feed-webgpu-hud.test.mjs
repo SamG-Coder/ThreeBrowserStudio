@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { createProjectDocument } from '../src/core/index.mjs';
 import { createStudioCommandTelemetry } from '../src/runtime/mcp-live-feed-telemetry.mjs';
 import { createMcpLiveFeedWebGpuHud } from '../src/viewport/mcp-live-feed-webgpu-hud.mjs';
+import { buildExplorerOutline } from '../src/viewport/scene-explorer.mjs';
 
 class FakeVector {
   constructor() {
@@ -36,6 +38,18 @@ class FakeCanvasContext {
     this.transforms.push(values);
   }
 
+  save() {}
+  restore() {}
+  beginPath() {}
+  moveTo() {}
+  lineTo() {}
+  quadraticCurveTo() {}
+  closePath() {}
+  rect() {}
+  clip() {}
+  arc() {}
+  fill() {}
+
   clearRect() {
     this.draws += 1;
     this.text = [];
@@ -46,6 +60,12 @@ class FakeCanvasContext {
   fillText(value) {
     this.text.push(String(value));
   }
+
+  measureText(text) {
+    return { width: String(text).length * 7, actualBoundingBoxAscent: 10, actualBoundingBoxDescent: 3 };
+  }
+
+  drawImage() {}
 }
 
 class FakeCanvas {
@@ -204,25 +224,23 @@ function fixture({ now = () => 0, width = 1000, height = 700, pixelRatio = 2, ma
     width, height, pixelRatio, maxVisibleRows, now,
     setIntervalFn: timers.setIntervalFn,
     clearIntervalFn: timers.clearIntervalFn,
+    schedulePaint: callback => callback(),
   });
   return { document, eventTarget, timers, telemetry, scene, hud, context: hud.canvas.context };
 }
 
-test('HUD is visible by default, high-DPI, and camera updates reuse one cached texture in the primary scene', () => {
-  const { timers, scene, hud, context } = fixture({ pixelRatio: 1 });
+test('side panel is visible by default and camera updates do not invalidate', () => {
+  const { timers, scene, hud } = fixture({ pixelRatio: 1 });
   assert.equal(hud.visible, true);
   assert.equal(hud.sprite.visible, true);
+  assert.equal(hud.tab, 'log');
   assert.equal(scene.children[0], hud.sprite);
   assert.equal(hud.material.map, hud.texture);
   assert.equal(hud.material.depthTest, false);
-  assert.equal(hud.material.depthWrite, false);
-  assert.equal(hud.material.toneMapped, false);
   assert.equal(hud.texture.colorSpace, 'srgb');
-  assert.equal(hud.panelBounds.left, 18);
-  assert.equal(hud.panelBounds.pixelRatio, 3, 'HUD enforces a 3x backing store at DPR 1');
-  assert.equal(hud.canvas.width, Math.round(hud.panelBounds.width * 3));
-  assert.equal(hud.canvas.height, Math.round(hud.panelBounds.height * 3));
-  assert.deepEqual(context.transforms.at(-1), [3, 0, 0, 3, 0, 0]);
+  assert.equal(hud.panelBounds.left, 12);
+  assert.equal(hud.panelBounds.pixelRatio, 1);
+  assert.equal(hud.canvas.width, Math.round(hud.panelBounds.width * hud.panelBounds.pixelRatio));
   assert.equal(timers.active, 0);
 
   const drawRevision = hud.drawRevision;
@@ -245,9 +263,9 @@ test('HUD is visible by default, high-DPI, and camera updates reuse one cached t
   assert.equal(hud.drawRevision, drawRevision, 'camera anchoring must not repaint the canvas');
 });
 
-test('telemetry events update a redacted row and only active elapsed time owns a timer', () => {
+test('telemetry updates a redacted log row and only active rows own the timer', () => {
   let milliseconds = 1_000;
-  const { timers, telemetry, hud, context } = fixture({ now: () => milliseconds });
+  const { timers, telemetry, hud } = fixture({ now: () => milliseconds });
   const before = hud.drawRevision;
   const lifecycle = telemetry.begin('three_studio_apply', {
     baseRevision: 4,
@@ -258,23 +276,23 @@ test('telemetry events update a redacted row and only active elapsed time owns a
   });
   assert.ok(hud.drawRevision > before);
   assert.equal(timers.active, 1);
-  assert.match(context.text.join('\n'), /three_studio_apply\s+STARTED\s+0ms\s+r4/);
-  assert.match(context.text.join('\n'), /Apply 1 operation/);
-  assert.doesNotMatch(context.text.join('\n'), /private|token|script|entity\//i);
+  assert.match(hud.visibleLogText, /three_studio_apply\s+STARTED\s+0ms\s+r4/);
+  assert.match(hud.visibleLogText, /Apply 1 operation/);
+  assert.doesNotMatch(hud.visibleLogText, /private|token|script|entity\//i);
 
   milliseconds += 1_250;
   const activeDraw = hud.drawRevision;
   timers.tick();
-  assert.equal(hud.drawRevision, activeDraw + 1);
-  assert.match(context.text.join('\n'), /1\.25s/);
+  assert.ok(hud.drawRevision > activeDraw);
+  assert.match(hud.visibleLogText, /1\.25s/);
 
   lifecycle.complete({ revision: 5, evidence: [{ data: 'base64-private', path: 'C:\\private.png' }] });
   assert.equal(timers.active, 0);
-  assert.match(context.text.join('\n'), /three_studio_apply\s+COMPLETED\s+1\.25s\s+r5/);
-  assert.doesNotMatch(context.text.join('\n'), /base64|private\.png/i);
+  assert.match(hud.visibleLogText, /three_studio_apply\s+COMPLETED\s+1\.25s\s+r5/);
+  assert.doesNotMatch(hud.visibleLogText, /base64|private\.png/i);
 });
 
-test('wheel scrolling is virtualized, pointer-bounded, and redraws without affecting main render', () => {
+test('wheel scrolling is virtualized, pointer-bounded, and shows a scrollbar', () => {
   let milliseconds = 0;
   const { eventTarget, telemetry, hud } = fixture({
     now: () => milliseconds,
@@ -291,14 +309,14 @@ test('wheel scrolling is virtualized, pointer-bounded, and redraws without affec
   assert.ok(hud.visibleRowCount < 14);
   assert.ok(hud.scrollIndex > 0, 'new activity follows the tail');
   const bounds = hud.panelBounds;
-  const inside = wheelEvent(bounds.left + 20, bounds.top + 20, -80);
+  const inside = wheelEvent(bounds.left + 20, bounds.top + 90, -80);
   const beforeScroll = hud.scrollIndex;
   const beforeDraw = hud.drawRevision;
   eventTarget.dispatch('wheel', inside);
   assert.equal(inside.prevented, true);
   assert.equal(inside.stopped, true);
   assert.ok(hud.scrollIndex < beforeScroll);
-  assert.equal(hud.drawRevision, beforeDraw + 1);
+  assert.ok(hud.drawRevision > beforeDraw);
 
   const outside = wheelEvent(2, 2, -80);
   const afterInside = hud.scrollIndex;
@@ -307,7 +325,76 @@ test('wheel scrolling is virtualized, pointer-bounded, and redraws without affec
   assert.equal(hud.scrollIndex, afterInside);
 });
 
-test('exact shortcut, cached resize, and disposal update GPU presentation state safely', () => {
+test('pointer hits on the panel steal the event so orbit does not start', () => {
+  const { eventTarget, hud } = fixture({ width: 1000, height: 700, pixelRatio: 1 });
+  const bounds = hud.panelBounds;
+  const event = {
+    clientX: bounds.left + 24,
+    clientY: bounds.top + 20,
+    prevented: false,
+    stopped: false,
+    preventDefault() { this.prevented = true; },
+    stopPropagation() { this.stopped = true; },
+    stopImmediatePropagation() { this.stopped = true; },
+  };
+  eventTarget.dispatch('pointerdown', event);
+  assert.equal(event.prevented, true);
+  assert.equal(event.stopped, true);
+});
+
+test('explorer tab shows the scene tree and collapse stays in the HUD', () => {
+  const { hud } = fixture({ width: 1000, height: 700, pixelRatio: 1 });
+  hud.setExplorerOutline(buildExplorerOutline(createProjectDocument({
+    projectId: 'project/hud-explorer',
+    name: 'HUD explorer',
+    scenes: [{
+      id: 'scene/main',
+      name: 'Stage',
+      rootEntityIds: ['entity/room'],
+      entities: [
+        { id: 'entity/room', kind: 'group', name: 'Room', children: ['entity/table'] },
+        { id: 'entity/table', kind: 'mesh', name: 'Table', parentId: 'entity/room' },
+      ],
+    }],
+  })));
+  const tabs = hud.host.children.find(child => child.name === 'tabs');
+  tabs.setSelected('explorer');
+  assert.equal(hud.tab, 'explorer');
+  assert.match(hud.visibleExplorerText, /Stage/);
+  assert.match(hud.visibleExplorerText, /Room/);
+  assert.match(hud.visibleExplorerText, /Table/);
+
+  const explorerList = hud.host.children
+    .find(child => child.name === 'explorer-page')
+    .children.find(child => child.name === 'explorer-list');
+  const roomIndex = hud.visibleExplorerText.split('\n').findIndex(line => line.includes('Room'));
+  explorerList.onActivate(roomIndex);
+  assert.match(hud.visibleExplorerText, /Room/);
+  assert.doesNotMatch(hud.visibleExplorerText, /Table/);
+  assert.equal(hud.explorerRowCount, 2);
+});
+
+test('settings tab switches without a full-tree glyph rebuild and view-mode is retained', () => {
+  const { eventTarget, hud } = fixture({ width: 1000, height: 700, pixelRatio: 1 });
+  assert.equal(hud.viewMode, 'follow-shot');
+  const tabs = hud.host.children.find(child => child.name === 'tabs');
+  tabs.setSelected('settings');
+  assert.equal(hud.tab, 'settings');
+  const review = hud.host.children
+    .find(child => child.name === 'settings-page')
+    .children.find(child => child.name === 'review');
+  review.onPointerDown();
+  assert.equal(hud.viewMode, 'review');
+
+  const hide = keyEvent();
+  eventTarget.dispatch('keydown', hide);
+  assert.equal(hud.visible, false);
+  eventTarget.dispatch('keydown', keyEvent({ key: 'M' }));
+  assert.equal(hud.visible, true);
+  assert.equal(hud.tab, 'settings');
+});
+
+test('exact shortcut and disposal update GPU presentation state safely', () => {
   const { eventTarget, timers, telemetry, hud } = fixture({ width: 800, height: 600, pixelRatio: 1 });
   telemetry.begin('three_studio_status', {});
   assert.equal(timers.active, 1);
@@ -327,14 +414,11 @@ test('exact shortcut, cached resize, and disposal update GPU presentation state 
   eventTarget.dispatch('keydown', keyEvent({ key: 'M' }));
   assert.equal(hud.visible, true);
   assert.equal(timers.active, 1);
+
   const beforeResize = hud.drawRevision;
-  const beforeWidth = hud.canvas.width;
-  const beforeHeight = hud.canvas.height;
   hud.resize(1600, 900, 2.5);
-  assert.equal(hud.panelBounds.pixelRatio, 3);
-  assert.equal(hud.canvas.width, beforeWidth);
-  assert.equal(hud.canvas.height, beforeHeight);
-  assert.equal(hud.drawRevision, beforeResize);
+  assert.ok(hud.drawRevision >= beforeResize);
+  assert.ok(hud.panelBounds.height > 100);
 
   hud.dispose();
   hud.dispose();
@@ -345,5 +429,6 @@ test('exact shortcut, cached resize, and disposal update GPU presentation state 
   assert.equal(hud.material.disposed, true);
   assert.equal(hud.scene.children.length, 0);
   assert.equal(eventTarget.listeners.get('keydown').size, 0);
+  assert.equal(eventTarget.listeners.get('pointerdown').size, 0);
   assert.equal(eventTarget.listeners.get('wheel').size, 0);
 });

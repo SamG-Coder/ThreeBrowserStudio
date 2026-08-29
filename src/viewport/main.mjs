@@ -2,13 +2,10 @@ import * as THREE from "three/webgpu";
 import * as TSL from "three/tsl";
 import { createBootstrapScene } from "./bootstrap-scene.mjs";
 import { createFrameCapture } from "./frame-capture.mjs";
-import {
-  cameraPresentationAspect,
-  fitPresentationViewport,
-  updateCameraAspect,
-} from "./camera-projection.mjs";
+import { updateCameraAspect } from "./camera-projection.mjs";
 import { applyStudioRenderState, STUDIO_RENDER_STATE } from "./render-state.mjs";
 import { createReviewControls } from "./review-controls.mjs";
+import { createReviewSession, VIEW_MODE_FOLLOW_SHOT } from "./view-mode.mjs";
 import { createMcpLiveFeedWebGpuHud } from "./mcp-live-feed-webgpu-hud.mjs";
 import { createStudioCommandTelemetry } from "../runtime/mcp-live-feed-telemetry.mjs";
 import { collectRtxScene } from "../runtime/rtx-scene-collector.mjs";
@@ -60,13 +57,28 @@ async function main() {
 
   const controls = createReviewControls(camera, renderer.domElement, {
     target: new THREE.Vector3(0, 1.8, 0),
-    minDistance: 1.2,
-    maxDistance: 800,
   });
+  const reviewSession = createReviewSession({
+    THREE,
+    reviewCamera: camera,
+    controls,
+    onChange() {
+      controls.enabled = reviewSession.viewMode !== VIEW_MODE_FOLLOW_SHOT;
+      liveFeed?.setViewMode?.(reviewSession.viewMode);
+      const width = Math.max(1, Number(innerWidth) || 1);
+      const height = Math.max(1, Number(innerHeight) || 1);
+      updateCameraAspect(reviewSession.renderCamera, width / height);
+    },
+  });
+  controls.enabled = false;
+  controls.onBeginInteract = () => {
+    if (reviewSession.viewMode === VIEW_MODE_FOLLOW_SHOT) {
+      reviewSession.enterReview({ seedFromAuthored: true });
+    }
+  };
 
   const bootstrap = createBootstrapScene();
   scene.add(bootstrap.root);
-  let renderCamera = camera;
   const commandTelemetry = createStudioCommandTelemetry({
     onSinkError: error => console.warn("[ThreeBrowser Studio live feed]", error?.message || error),
   });
@@ -77,6 +89,9 @@ async function main() {
     width: Math.max(1, innerWidth),
     height: Math.max(1, innerHeight),
     pixelRatio: Math.max(1, Number(globalThis.devicePixelRatio || 1)),
+    onViewModeChange(mode) {
+      reviewSession.setViewMode(mode);
+    },
   });
   const rtxLighting = createRtxLightingController({
     THREE,
@@ -89,7 +104,7 @@ async function main() {
   const capture = createFrameCapture({
     renderer,
     scene,
-    getCamera: () => renderCamera,
+    getCamera: () => reviewSession.renderCamera,
     excludedObjects: [liveFeed.sprite],
     async renderFrame({ target, camera: activeCamera, width, height, pass }) {
       if (pass !== "objectId") {
@@ -108,16 +123,41 @@ async function main() {
   const started = performance.now() * 0.001;
   let application = null;
 
+  let lastPresentation = '';
+  let gpuResizeTimer = null;
+  function applyGpuSize(width, height, pixelRatio) {
+    const key = `${width}x${height}@${pixelRatio}`;
+    const bufferWidth = Math.max(1, Math.round(width * pixelRatio));
+    const bufferHeight = Math.max(1, Math.round(height * pixelRatio));
+    if (key === lastPresentation
+        && renderer.domElement.width === bufferWidth
+        && renderer.domElement.height === bufferHeight) {
+      return;
+    }
+    lastPresentation = key;
+    renderer.setPixelRatio(pixelRatio);
+    renderer.setSize(width, height, false);
+    renderer.domElement.style.left = '0';
+    renderer.domElement.style.top = '0';
+  }
+
   function resize() {
     const width = Math.max(1, Number(innerWidth) || 1);
     const height = Math.max(1, Number(innerHeight) || 1);
-    const presentationAspect = cameraPresentationAspect(renderCamera, width / height);
-    const content = fitPresentationViewport(width, height, presentationAspect);
-    updateCameraAspect(renderCamera, presentationAspect);
-    renderer.setSize(content.width, content.height);
-    renderer.domElement.style.left = `${content.x}px`;
-    renderer.domElement.style.top = `${content.y}px`;
-    liveFeed.resize(content.width, content.height, Math.max(1, Number(globalThis.devicePixelRatio || 1)));
+    const pixelRatio = Math.max(1, Number(globalThis.devicePixelRatio || 1));
+    updateCameraAspect(reviewSession.renderCamera, width / height);
+    liveFeed.resize(width, height, pixelRatio);
+    if (lastPresentation === '') {
+      applyGpuSize(width, height, pixelRatio);
+      return;
+    }
+    if (gpuResizeTimer !== null) {
+      try { clearTimeout(gpuResizeTimer); } catch { /* ignore */ }
+    }
+    gpuResizeTimer = setTimeout(() => {
+      gpuResizeTimer = null;
+      applyGpuSize(width, height, pixelRatio);
+    }, 140);
   }
 
   let disposed = false;
@@ -143,11 +183,25 @@ async function main() {
     camera,
     controls,
     get renderCamera() {
-      return renderCamera;
+      return reviewSession.renderCamera;
+    },
+    get authoredCamera() {
+      return reviewSession.authoredCamera;
+    },
+    get viewMode() {
+      return reviewSession.viewMode;
     },
     setRenderCamera(nextCamera) {
-      renderCamera = nextCamera ?? camera;
-      resize();
+      reviewSession.setAuthoredCamera(nextCamera ?? camera);
+    },
+    setAuthoredCamera(nextCamera) {
+      reviewSession.setAuthoredCamera(nextCamera ?? null);
+    },
+    followShot() {
+      return reviewSession.followShot();
+    },
+    enterReview(options) {
+      return reviewSession.enterReview(options);
     },
     setAppearance({ background = null, backgroundNode = null, fog = null } = {}) {
       // Scene colours belong to the scene background path. Keeping the colour
@@ -189,10 +243,13 @@ async function main() {
       camera.far = Math.max(200, radius * 40);
       camera.updateProjectionMatrix();
       controls.syncFromCamera();
-      renderCamera = camera;
+      reviewSession.enterReview({ seedFromAuthored: false });
     },
     setTitle({ project = "waiting for project", scene: sceneName = "", revision = 0, dirty = false } = {}) {
       document.title = `ThreeBrowser Studio — ${project}${sceneName ? ` / ${sceneName}` : ""} — r${revision}${dirty ? " *" : ""}`;
+    },
+    setExplorerOutline(outline) {
+      liveFeed.setExplorerOutline?.(outline);
     },
     dispose,
   });
@@ -228,18 +285,19 @@ async function main() {
       previousFrame = now;
       if (bootstrap.root.parent) bootstrap.update(elapsed);
       application?.update(delta);
-      if (renderCamera === camera) controls.update(delta);
+      if (reviewSession.viewMode !== VIEW_MODE_FOLLOW_SHOT) controls.update(delta);
       renderer.setRenderTarget(null);
       renderer.setMRT(null);
-      liveFeed.updateCamera(renderCamera);
+      const activeCamera = reviewSession.renderCamera;
+      liveFeed.updateCamera(activeCamera);
       const renderedWithRtx = await rtxLighting.render({
         scene,
-        camera: renderCamera,
+        camera: activeCamera,
         width: renderer.domElement.width,
         height: renderer.domElement.height,
         outputTarget: null,
       });
-      if (!renderedWithRtx) renderer.render(scene, renderCamera);
+      if (!renderedWithRtx) renderer.render(scene, activeCamera);
     } finally {
       renderingFrame = false;
     }

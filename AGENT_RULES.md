@@ -25,10 +25,12 @@ authority. In the current lean slice:
   `scene.rtx.patch`;
 - validation is whole-project, interactive document/reference/hierarchy/graph
   validation with budgets;
-- rendering is WebGPU beauty capture through the same effective camera and
-  presentation aspect as the live viewport, plus an optional `objectId` pass
-  for probe entity IDs and projection occlusion; native ray-query lighting
-  augments beauty only while the explicit RTX status is active;
+- rendering is WebGPU beauty capture through the authored shot and its
+  presentation aspect, plus an optional `objectId` pass for probe entity IDs
+  and projection occlusion; the native window may be in Review (`viewMode`)
+  while evidence and `status.viewport.effectiveCamera` stay on that authored
+  shot; native ray-query lighting augments beauty only while the explicit RTX
+  status is active;
 - Play changes and reports transient counters/input state but executes no game
   behaviour; and
 - jobs, asset import, script authoring/execution, layout modes beyond the live
@@ -174,7 +176,13 @@ operations.
 ## Rendering rules
 
 - Treat the visible native viewport as shared progress with the user; inspect
-  the returned offscreen capture as the actual render evidence.
+  the returned offscreen capture as the actual render evidence. The Explorer
+  tab is a read-only outline of objects and groups, not a property inspector.
+- Read `status.viewport.viewMode`. `follow-shot` is the authored / AI camera.
+  `review` means the human is flying a session-only camera that does not
+  write the document. Evidence, `effectiveCamera`, and `cameraId` stay on the
+  authored shot. `camera.frame` and `scene.setActiveCamera` snap the window
+  back to Follow shot.
 - Use `camera.frame` when a shot must persist, including its target bounds and
   presentation aspect; transient render framing remains evidence-only.
 - Current evidence is beauty-only. Use semantic scene inspection and deliberate

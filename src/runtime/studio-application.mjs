@@ -59,6 +59,8 @@ import { compileSceneDocument } from './scene-compiler.mjs';
 import { validateAnimationResource } from './animation-runtime.mjs';
 import { frameCameraToBounds } from '../viewport/camera-projection.mjs';
 import { describeEffectiveCamera } from '../viewport/camera-evidence.mjs';
+import { operationsSnapFollowShot } from '../viewport/view-mode.mjs';
+import { buildExplorerOutline } from '../viewport/scene-explorer.mjs';
 import { LAYOUT_PATTERN_MODES } from '../core/layout-patterns.mjs';
 import { RTX_SCENE_LIMITS } from './rtx-scene-collector.mjs';
 import { normalizeGeometryRecipe } from './resource-factories.mjs';
@@ -729,7 +731,11 @@ export class StudioApplication {
       this.#viewport.scene.backgroundNode = next.backgroundNode;
       this.#viewport.scene.fog = next.fog;
     }
-    this.#viewport.setRenderCamera(next.activeCamera ?? this.#viewport.camera);
+    if (typeof this.#viewport.setAuthoredCamera === 'function') {
+      this.#viewport.setAuthoredCamera(next.activeCamera ?? this.#viewport.camera);
+    } else {
+      this.#viewport.setRenderCamera(next.activeCamera ?? this.#viewport.camera);
+    }
     const previous = this.#compiled;
     this.#compiled = next;
     if (this.#mode !== 'play') {
@@ -748,6 +754,7 @@ export class StudioApplication {
     }
     previous?.dispose();
     this.#viewport.setTitle({ project: document.name, scene: scene?.name, revision: document.revision, dirty: this.#kernel.dirty });
+    this.#viewport.setExplorerOutline?.(buildExplorerOutline(document));
     if (this.#bridge) await this.#writeMarker(true);
   }
 
@@ -763,7 +770,10 @@ export class StudioApplication {
         quaternion: reviewCamera.quaternion.toArray(),
         target: this.#viewport.controls.target.toArray(),
       },
-      renderCameraId: this.#viewport.renderCamera?.userData?.studioEntityId ?? 'review-camera',
+      viewMode: this.#viewport.viewMode ?? 'follow-shot',
+      renderCameraId: this.#viewport.authoredCamera?.userData?.studioEntityId
+        ?? this.#viewport.renderCamera?.userData?.studioEntityId
+        ?? 'review-camera',
       latestEvidence: this.#latestEvidence,
     };
   }
@@ -794,7 +804,12 @@ export class StudioApplication {
     const authoredCamera = view.renderCameraId === 'review-camera'
       ? this.#viewport.camera
       : this.#compiled?.objects.get(view.renderCameraId);
-    if (authoredCamera?.isCamera) this.#viewport.setRenderCamera(authoredCamera);
+    if (authoredCamera?.isCamera) {
+      if (typeof this.#viewport.setAuthoredCamera === 'function') this.#viewport.setAuthoredCamera(authoredCamera);
+      else this.#viewport.setRenderCamera(authoredCamera);
+    }
+    if (view.viewMode === 'review') this.#viewport.enterReview?.({ seedFromAuthored: false });
+    else this.#viewport.followShot?.();
     if (isRecord(view.latestEvidence)) this.#latestEvidence = view.latestEvidence;
     this.#viewHash = contentHash(view);
   }
@@ -891,12 +906,15 @@ export class StudioApplication {
   status() {
     const status = this.#kernel.status();
     const canvas = this.#viewport.renderer.domElement;
-    const cameraId = this.#viewport.renderCamera?.userData?.studioEntityId ?? 'review-camera';
+    const authoredCamera = this.#viewport.authoredCamera ?? this.#viewport.renderCamera;
+    const cameraId = authoredCamera?.userData?.studioEntityId ?? 'review-camera';
+    const windowCamera = this.#viewport.renderCamera;
+    const windowCameraId = windowCamera?.userData?.studioEntityId ?? 'review-camera';
     const width = Math.max(1, Number(canvas?.clientWidth || canvas?.width || 1));
     const height = Math.max(1, Number(canvas?.clientHeight || canvas?.height || 1));
     const effectiveCamera = describeEffectiveCamera(
-      this.#viewport.renderCamera,
-      authoredCameraEvidenceOptions(this.#kernel.document, this.#viewport.renderCamera, cameraId),
+      authoredCamera,
+      authoredCameraEvidenceOptions(this.#kernel.document, authoredCamera, cameraId),
     );
     const rtx = this.#viewport.getRtxStatus?.() ?? {
       supported: false,
@@ -926,6 +944,8 @@ export class StudioApplication {
         ready: true,
         renderer: 'webgpu',
         cameraId,
+        viewMode: this.#viewport.viewMode ?? 'follow-shot',
+        windowCameraId,
         width,
         height,
         aspect: width / height,
@@ -1052,6 +1072,8 @@ export class StudioApplication {
         animationLoops: ['once', 'repeat', 'pingpong'],
         renderers: ['webgpu'],
         renderPasses: ['beauty', 'objectId'],
+        viewportReviewMode: true,
+        overlayInvalidation: true,
         applyPixelForecast: true,
         compileHeavyRpcTimeoutMs: 120_000,
         validationChecks: ['schemas', 'references', 'hierarchy', 'graphs', 'animations', 'budgets'],
@@ -1445,6 +1467,9 @@ export class StudioApplication {
       dryRun: params.dryRun ?? false,
       operations,
     }, { signal: context.signal });
+    if (response.success && params.dryRun !== true && operationsSnapFollowShot(operations)) {
+      this.#viewport.followShot?.();
+    }
     return {
       ...response,
       sessionId: this.sessionId,
@@ -1577,7 +1602,7 @@ export class StudioApplication {
       this.#compiled?.setAnimationTime(seconds);
     }
     try {
-      let captureCamera = this.#viewport.renderCamera;
+      let captureCamera = this.#viewport.authoredCamera ?? this.#viewport.renderCamera;
       let evidenceTargetIds;
       let evidenceTargetBounds;
       if (params.cameraId) {

@@ -199,11 +199,30 @@ function fakeViewport() {
       userData: {},
     },
     titles: [],
+    outlines: [],
+    viewMode: 'follow-shot',
+    authoredCamera: camera,
     setRenderCamera(next) {
+      this.authoredCamera = next;
       this.renderCamera = next;
+    },
+    setAuthoredCamera(next) {
+      this.authoredCamera = next;
+      if (this.viewMode === 'follow-shot') this.renderCamera = next ?? this.camera;
+    },
+    followShot() {
+      this.viewMode = 'follow-shot';
+      this.renderCamera = this.authoredCamera ?? this.camera;
+    },
+    enterReview() {
+      this.viewMode = 'review';
+      this.renderCamera = this.camera;
     },
     setTitle(title) {
       this.titles.push(structuredClone(title));
+    },
+    setExplorerOutline(outline) {
+      this.outlines.push(outline);
     },
   };
   return viewport;
@@ -875,6 +894,7 @@ test('scene swaps retain the authored linear background for the viewport present
   });
 
   assert.equal(result.success, true);
+  assert.ok(viewport.outlines.at(-1)?.entities['entity/background-swap']);
   assert.equal(viewport.scene.backgroundNode, null);
   assert.notEqual(viewport.scene.background, initialBackground);
   assert.deepEqual(viewport.scene.background.value, [0.035, 0.045, 0.06]);
@@ -907,6 +927,9 @@ test('a project switch compile failure preserves the active project and live sce
   const status = application.status();
   assert.equal(status.projectId, 'project/active');
   assert.equal(status.projectPath, path.join(studioRoot, 'projects', 'active'));
+  assert.equal(status.viewport.viewMode, 'follow-shot');
+  assert.equal(status.capabilities.viewportReviewMode, true);
+  assert.equal(status.capabilities.overlayInvalidation, true);
   assert.equal(status.capabilities.layoutGenerators, true);
   assert.deepEqual(status.capabilities.layoutPatterns, [...LAYOUT_PATTERN_MODES]);
   assert.equal(status.capabilities.modifierRuntime.includes('pattern'), true);
