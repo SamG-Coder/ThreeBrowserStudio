@@ -136,6 +136,48 @@ const STYLE_TEXT = `
   white-space: pre-wrap;
   word-break: break-word;
 }
+#${DOCK_ID} textarea,
+#${MODAL_ID} .tbs-dialog,
+#${MODAL_ID} .tbs-log {
+  scrollbar-width: thin;
+  scrollbar-color: #6d8aab rgba(12, 20, 32, 0.92);
+}
+#${DOCK_ID} textarea::-webkit-scrollbar,
+#${MODAL_ID} .tbs-dialog::-webkit-scrollbar,
+#${MODAL_ID} .tbs-log::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+#${DOCK_ID} textarea::-webkit-scrollbar-track,
+#${MODAL_ID} .tbs-dialog::-webkit-scrollbar-track,
+#${MODAL_ID} .tbs-log::-webkit-scrollbar-track {
+  background: rgba(8, 13, 22, 0.96);
+  border-radius: 8px;
+}
+#${DOCK_ID} textarea::-webkit-scrollbar-thumb,
+#${MODAL_ID} .tbs-dialog::-webkit-scrollbar-thumb,
+#${MODAL_ID} .tbs-log::-webkit-scrollbar-thumb {
+  background: #6d8aab;
+  border: 2px solid rgba(8, 13, 22, 0.96);
+  border-radius: 8px;
+}
+#${DOCK_ID} textarea::-webkit-scrollbar-thumb:hover,
+#${MODAL_ID} .tbs-dialog::-webkit-scrollbar-thumb:hover,
+#${MODAL_ID} .tbs-log::-webkit-scrollbar-thumb:hover {
+  background: #8eb4dc;
+}
+#${DOCK_ID} textarea::-webkit-scrollbar-button,
+#${MODAL_ID} .tbs-dialog::-webkit-scrollbar-button,
+#${MODAL_ID} .tbs-log::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+#${DOCK_ID} textarea::-webkit-scrollbar-corner,
+#${MODAL_ID} .tbs-dialog::-webkit-scrollbar-corner,
+#${MODAL_ID} .tbs-log::-webkit-scrollbar-corner {
+  background: transparent;
+}
 @media (max-width: 760px) {
   #${DOCK_ID} .tbs-dock-bar {
     grid-template-columns: 1fr auto auto;
