@@ -76,8 +76,9 @@ tests.
 The runtime root is resolved in this order:
 
 1. `THREEBROWSER_RUNTIME_ROOT`;
-2. the configured path in `.studio-local.json`; or
-3. a sibling checkout at `<parent>/ThreeBrowser/ThreeBrowserRuntime`.
+2. the configured path in `.studio-local.json`;
+3. a packaged `host` folder beside the Studio app (release layout); or
+4. a sibling checkout at `<parent>/ThreeBrowser/ThreeBrowserRuntime`.
 
 Local machine paths never enter a saved Studio project.
 
@@ -106,7 +107,36 @@ projects       local user projects (ignored by Git)
 
 ## Run the live Studio
 
-The current native path targets Windows x64. It requires Node 24+, .NET 10,
+### Windows release
+
+The first Windows release is a lean zip: `ThreeBrowserStudio.exe`, Studio,
+and only the compiled host binaries the viewport needs. It does not ship
+Node.js, ThreeC++ / threepp source, CMake trees, samples, games, or the
+NVIDIA DLSS / Streamline stack. The compiled `three_native.dll` is included
+because the current host addon links it; that is the built library, not the
+source tree.
+
+Build the pack from a machine that already has a built ThreeBrowser Runtime
+and Node 24:
+
+```powershell
+npm run release:pack
+```
+
+That writes `dist/ThreeBrowserStudio-<version>-win-x64/` and a zip beside it.
+The launcher is a Release win-x64 .NET 10 single-file trimmed executable.
+Extract the zip and double-click `ThreeBrowserStudio.exe`. The first launch
+uses Node.js 24+ from PATH, or asks to download the official Windows x64
+`node.exe` from nodejs.org into `%LOCALAPPDATA%\ThreeBrowserStudio\node`.
+User projects go to `%LOCALAPPDATA%\ThreeBrowserStudio\projects`. After the
+window is open, point an MCP client at `node` with `app\src\mcp\server.mjs`
+and working directory `app` (see `mcp.example.toml` in the zip). Pass
+`--with-node` to `release:pack` only when you want an air-gapped zip that
+still embeds `node.exe`.
+
+### Development checkout
+
+The checkout path targets Windows x64. It requires Node 24+, .NET 10,
 CMake, and the MSYS2 UCRT64 toolchain described by the
 [ThreeBrowser Runtime](https://github.com/SamG-Coder/threepp/tree/master/ThreeBrowserRuntime).
 Clone and build that runtime beside Studio, then install Studio deterministically:
@@ -132,11 +162,12 @@ For a terminal launch, use the shorter alias `npm start`. `npm run launch`
 continues to work unchanged, and either command accepts a project path after
 `--`, for example `npm start -- projects/my-project`.
 
-By default Studio finds the sibling checkout at
-`..\ThreeBrowser\ThreeBrowserRuntime`. For another location, set
-`THREEBROWSER_RUNTIME_ROOT` to the absolute `ThreeBrowserRuntime` directory, or
-put `{ "runtimeRoot": "C:\\path\\to\\ThreeBrowserRuntime" }` in the ignored
-`.studio-local.json` file.
+By default Studio finds a packaged `host` folder beside the app, then the
+sibling checkout at `..\ThreeBrowser\ThreeBrowserRuntime`. For another
+location, set `THREEBROWSER_RUNTIME_ROOT` to the absolute
+`ThreeBrowserRuntime` directory, or put
+`{ "runtimeRoot": "C:\\path\\to\\ThreeBrowserRuntime" }` in the ignored
+`.studio-local.json` file. Machine-local paths never enter a saved project.
 
 `npm run launch` opens one native WebGPU window and restores the last opened
 project (falling back to `projects/live`). The first launch seeds a 13.6 KB,
@@ -309,10 +340,8 @@ reserves them without pretending they work today.
 
 ## License
 
-This repository is currently unlicensed. Public visibility does not grant
-permission to copy, modify, or redistribute the source. Add an explicit
-open-source license before accepting third-party redistribution. Compatibility
-references and dependency acknowledgements are recorded in
+ThreeBrowser Studio is released under the [MIT License](./LICENSE).
+Compatibility references and dependency acknowledgements are recorded in
 [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md).
 
 See [`CONTRIBUTING.md`](./CONTRIBUTING.md) before proposing a change. Report

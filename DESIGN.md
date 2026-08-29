@@ -119,7 +119,10 @@ The viewport process owns the live document and GPU resources. The MCP process
 is a thin adapter.
 
 The current launch opens the explicitly configured project, otherwise the last
-successfully opened project, otherwise managed `projects/live`. It restores
+successfully opened project, otherwise managed `projects/live`. A packaged
+Windows build may set `THREE_STUDIO_PROJECTS` so that managed projects live
+under the per-user Studio data directory instead of beside the executable.
+It restores
 named-save/recovery document state plus the session review camera, Follow
 shot / Review view mode, authored-camera reference, and latest evidence
 metadata, creates a fresh authenticated pipe, presents the viewport, and
@@ -836,6 +839,9 @@ guardrails, not claims about the maximum hardware capability.
 - asset import and provenance;
 - glTF/PBR baking and project export;
 - debounced RTX preview and instance-group updates;
+- a lean Windows release pack (`npm run release:pack`) that ships Studio, bundled
+  Node, and only the compiled host binaries the viewport needs — not ThreeC++
+  source, samples, games, or the DLSS stack;
 - packaging through the existing ThreeBrowser executable exporter; and
 - headless validation/playtest mode for CI.
 

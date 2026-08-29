@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "description": "LLM-first Three.js WebGPU scene and animation authoring runtime with a persistent native viewport and typed MCP editing",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/SamG-Coder/ThreeBrowserStudio.git"
@@ -29,6 +29,7 @@
     "mcp": "node src/mcp/server.mjs",
     "call": "node scripts/studio-call.mjs",
     "launch": "node scripts/launch.mjs",
+    "release:pack": "node scripts/package-release.mjs",
     "obs:setup": "node scripts/obs-showcase.mjs setup",
     "obs:status": "node scripts/obs-showcase.mjs status",
     "tutorial:blender": "node scripts/run-blender-fundamentals.mjs",

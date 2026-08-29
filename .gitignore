@@ -19,12 +19,15 @@ artifacts/
 coverage/
 dist/
 build/
+packaging/win-launcher/bin/
+packaging/win-launcher/obj/
 *.tgz
 *.log
 *.tmp
 
 # Editor and operating-system metadata
 .vscode/
+.vs/
 .idea/
 .DS_Store
 Thumbs.db

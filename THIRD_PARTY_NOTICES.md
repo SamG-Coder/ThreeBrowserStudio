@@ -1,5 +1,8 @@
 # Third-party notices
 
+ThreeBrowser Studio itself is MIT licensed. This file records third-party
+notices that still apply when those works are referenced or redistributed.
+
 ThreeBrowser Studio is an independent JavaScript implementation. It does not
 redistribute Blender binaries, Blender source files, Blender artwork, Blender
 Studio media, or Blender `.blend` files.

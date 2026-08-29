@@ -48,3 +48,20 @@ test("runtime resolver accepts a machine-local configuration", async () => {
   assert.equal(result.source, ".studio-local.json");
   assert.equal(result.root, path.resolve(runtimeRoot));
 });
+
+test("runtime resolver finds a packaged host beside the app folder", async () => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), "three-studio-packaged-"));
+  const folder = path.join(temporary, "ThreeBrowserStudio-pack");
+  const studioRoot = path.join(folder, "app");
+  const runtimeRoot = path.join(folder, "host");
+  await mkdir(studioRoot, { recursive: true });
+  const launcher = await fakeRuntime(runtimeRoot);
+  const result = await resolveRuntimeRoot({
+    studioRoot,
+    environment: {},
+    fallback: path.join(temporary, "missing"),
+  });
+  assert.equal(result.source, "packaged host");
+  assert.equal(result.root, path.resolve(runtimeRoot));
+  assert.equal(result.launcher, launcher);
+});

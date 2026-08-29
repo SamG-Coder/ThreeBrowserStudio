@@ -620,17 +620,19 @@ export class StudioApplication {
   #viewHash = null;
   #beginCommand = null;
 
-  constructor({ THREE, TSL, viewport, bootstrap, markerPath, credentials, beginCommand } = {}) {
+  constructor({ THREE, TSL, viewport, bootstrap, markerPath, credentials, beginCommand, environment = process.env, projectsRoot } = {}) {
     this.#THREE = THREE;
     this.#TSL = TSL;
     this.#viewport = viewport;
     this.#bootstrap = bootstrap;
     this.#credentials = credentials ?? createSessionCredentials();
     this.#beginCommand = typeof beginCommand === 'function' ? beginCommand : null;
-    const studioRoot = process.env.THREE_STUDIO_ROOT ?? process.cwd();
+    const env = environment ?? process.env;
+    const studioRoot = env.THREE_STUDIO_ROOT ?? process.cwd();
     this.studioRoot = path.resolve(studioRoot);
-    this.projectsRoot = path.join(this.studioRoot, 'projects');
-    this.#markerPath = path.resolve(markerPath ?? process.env.THREE_STUDIO_SESSION_MARKER ?? defaultSessionMarkerPath());
+    const configuredProjects = String(projectsRoot ?? env.THREE_STUDIO_PROJECTS ?? '').trim();
+    this.projectsRoot = path.resolve(configuredProjects || path.join(this.studioRoot, 'projects'));
+    this.#markerPath = path.resolve(markerPath ?? env.THREE_STUDIO_SESSION_MARKER ?? defaultSessionMarkerPath({ env }));
     this.#localStatePath = path.join(path.dirname(this.#markerPath), 'studio-state.json');
   }
 

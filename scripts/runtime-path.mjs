@@ -36,6 +36,8 @@ export async function resolveRuntimeRoot({
     }
   }
 
+  const packaged = path.resolve(studioRoot, "..", "host");
+  candidates.push({ source: "packaged host", root: packaged });
   const sibling = path.resolve(studioRoot, "..", "ThreeBrowser", "ThreeBrowserRuntime");
   candidates.push({ source: "sibling checkout", root: sibling });
   const fallbackRoot = cleanRoot(fallback);

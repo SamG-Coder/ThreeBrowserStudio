@@ -1,10 +1,9 @@
 # Contributing
 
-ThreeBrowser Studio is public source but is not currently open source. Public
-visibility does not grant a license to copy, modify, or redistribute the code.
-Discuss licensing with the maintainer before preparing a contribution.
+ThreeBrowser Studio is released under the MIT License. By contributing, you
+agree that your changes are licensed under the same terms.
 
-If a contribution has been invited:
+Before proposing a change:
 
 1. Read `AGENTS.md`, `AGENT_RULES.md`, and the relevant architecture section in
    `DESIGN.md` before editing.

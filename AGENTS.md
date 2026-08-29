@@ -5,7 +5,9 @@ the native WebGPU window is the shared live viewport. Preserve that product
 shape: do not grow a conventional inspector-heavy browser UI.
 
 - Keep this repository standalone and lean. Never copy ThreeBrowser Runtime,
-  Three.js, GTA, Secret River, or sample-game source/assets into it.
+  Three.js, GTA, Secret River, or sample-game source/assets into it. The Windows
+  release pack may copy already-built host binaries only; it must not vendor
+  Runtime, ThreeC++, or sample source.
 - Resolve and launch the external ThreeBrowser Runtime through
   `scripts/runtime-path.mjs`; machine-local paths do not belong in projects.
 - The project-owned typed document is canonical. Three.js objects, UUIDs,
