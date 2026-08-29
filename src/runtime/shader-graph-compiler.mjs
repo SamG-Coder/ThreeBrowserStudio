@@ -130,6 +130,76 @@ function addSeed(TSL, coordinate, seed) {
   return coordinate.add(TSL.vec3(...offset));
 }
 
+function combineStaticSeeds(...seeds) {
+  let value = 0x811c9dc5;
+  for (const seed of seeds) {
+    value ^= Number(seed) >>> 0;
+    value = Math.imul(value, 0x01000193);
+    value ^= value >>> 16;
+  }
+  return value >>> 0;
+}
+
+function coordinateComponent(coordinate, index) {
+  return coordinate[['x', 'y', 'z', 'w'][index]];
+}
+
+function hashFloatCoordinates(TSL, coordinate, dimensions, seed = 0) {
+  let value = TSL.uint(0x811c9dc5);
+  const mixWord = word => {
+    value = value.bitXor(TSL.uint(word)).mul(TSL.uint(0x01000193));
+    value = value.bitXor(value.shiftRight(16));
+  };
+  mixWord(seed >>> 0);
+  for (let index = 0; index < dimensions; index += 1) {
+    mixWord(TSL.floatBitsToUint(coordinateComponent(coordinate, index)));
+  }
+  return TSL.float(value).div(0xffffffff);
+}
+
+function signedGradient4(TSL, lattice, seed) {
+  const gradient = TSL.vec4(
+    hashFloatCoordinates(TSL, lattice, 4, combineStaticSeeds(seed, 0x68bc21eb)).mul(2).sub(1),
+    hashFloatCoordinates(TSL, lattice, 4, combineStaticSeeds(seed, 0x02e5be93)).mul(2).sub(1),
+    hashFloatCoordinates(TSL, lattice, 4, combineStaticSeeds(seed, 0x967a889b)).mul(2).sub(1),
+    hashFloatCoordinates(TSL, lattice, 4, combineStaticSeeds(seed, 0x368cc8b7)).mul(2).sub(1),
+  );
+  return gradient.div(TSL.max(TSL.length(gradient), 1e-7));
+}
+
+function gradientNoise4D(TSL, coordinate, seed = 0) {
+  const lattice = TSL.floor(coordinate);
+  const fraction = TSL.fract(coordinate);
+  const fade = fraction.mul(fraction).mul(fraction)
+    .mul(fraction.mul(fraction.mul(6).sub(15)).add(10));
+  const samples = [];
+  for (let corner = 0; corner < 16; corner += 1) {
+    const offset = TSL.vec4(corner & 1, (corner >> 1) & 1, (corner >> 2) & 1, (corner >> 3) & 1);
+    const delta = fraction.sub(offset);
+    samples.push(TSL.dot(signedGradient4(TSL, lattice.add(offset), seed), delta));
+  }
+  const mixPairs = (values, amount) => {
+    const mixed = [];
+    for (let index = 0; index < values.length; index += 2) mixed.push(TSL.mix(values[index], values[index + 1], amount));
+    return mixed;
+  };
+  return mixPairs(mixPairs(mixPairs(mixPairs(samples, fade.x), fade.y), fade.z), fade.w)[0];
+}
+
+function fractalNoise4D(TSL, coordinate, octaves, lacunarity, roughness, seed) {
+  let sampleCoordinate = coordinate;
+  let amplitude = TSL.float(1);
+  let amplitudeTotal = TSL.float(0);
+  let value = TSL.float(0);
+  for (let octave = 0; octave < octaves; octave += 1) {
+    value = value.add(gradientNoise4D(TSL, sampleCoordinate, combineStaticSeeds(seed, octave)).mul(amplitude));
+    amplitudeTotal = amplitudeTotal.add(amplitude);
+    sampleCoordinate = sampleCoordinate.mul(lacunarity);
+    amplitude = amplitude.mul(roughness);
+  }
+  return value.div(TSL.max(amplitudeTotal, 1e-7)).mul(0.5).add(0.5);
+}
+
 function blenderNoiseChannel(TSL, coordinate, {
   mode,
   octaves,
@@ -138,12 +208,43 @@ function blenderNoiseChannel(TSL, coordinate, {
   offset,
   gain,
   normalize,
+  sampleNoise = value => TSL.mx_noise_float(value),
+  fractalNoise = null,
 }) {
   if (mode === 'FBM') {
     // Keep the original FBM lowering byte-for-byte equivalent so existing
     // authored materials retain their appearance.
+    if (fractalNoise) return fractalNoise(coordinate);
     return TSL.mx_fractal_noise_float(coordinate, octaves, lacunarity, roughness)
       .mul(0.5).add(0.5);
+  }
+
+  if (mode === 'MULTIFRACTAL') {
+    let sampleCoordinate = coordinate;
+    let power = TSL.float(1);
+    let result = TSL.float(1);
+    for (let octave = 0; octave < octaves; octave += 1) {
+      result = result.mul(TSL.float(1).add(sampleNoise(sampleCoordinate).mul(power)));
+      sampleCoordinate = sampleCoordinate.mul(lacunarity);
+      power = power.mul(roughness);
+    }
+    return result;
+  }
+
+  if (mode === 'HYBRID_MULTIFRACTAL') {
+    let sampleCoordinate = coordinate;
+    let power = TSL.float(1);
+    let result = TSL.float(0);
+    let weight = TSL.float(1);
+    for (let octave = 0; octave < octaves; octave += 1) {
+      weight = TSL.clamp(weight, 0, 1);
+      const signal = sampleNoise(sampleCoordinate).add(offset).mul(power);
+      result = result.add(weight.mul(signal));
+      weight = weight.mul(gain).mul(signal);
+      sampleCoordinate = sampleCoordinate.mul(lacunarity);
+      power = power.mul(roughness);
+    }
+    return result;
   }
 
   if (mode === 'RIDGED_MULTIFRACTAL') {
@@ -153,7 +254,7 @@ function blenderNoiseChannel(TSL, coordinate, {
     let result = TSL.float(0);
     let weight = TSL.float(1);
     for (let octave = 0; octave < octaves; octave += 1) {
-      let ridge = TSL.float(1).sub(TSL.abs(TSL.mx_noise_float(sampleCoordinate)));
+      let ridge = TSL.float(1).sub(TSL.abs(sampleNoise(sampleCoordinate)));
       ridge = ridge.mul(ridge).mul(weight);
       result = result.add(ridge.mul(amplitude));
       amplitudeTotal = amplitudeTotal.add(amplitude);
@@ -166,11 +267,11 @@ function blenderNoiseChannel(TSL, coordinate, {
 
   if (mode === 'HETERO_TERRAIN') {
     let sampleCoordinate = coordinate;
-    let value = TSL.mx_noise_float(sampleCoordinate).mul(0.5).add(0.5).add(offset);
+    let value = sampleNoise(sampleCoordinate).mul(0.5).add(0.5).add(offset);
     let amplitude = roughness;
     for (let octave = 1; octave < octaves; octave += 1) {
       sampleCoordinate = sampleCoordinate.mul(lacunarity);
-      const signal = TSL.mx_noise_float(sampleCoordinate).mul(0.5).add(0.5).add(offset);
+      const signal = sampleNoise(sampleCoordinate).mul(0.5).add(0.5).add(offset);
       value = value.add(signal.mul(amplitude).mul(value).mul(gain));
       amplitude = amplitude.mul(roughness);
     }
@@ -573,6 +674,18 @@ function gradientTexture(TSL, coordinate, gradientType) {
 
 function whiteNoiseTexture(TSL, vector, w, dimensions) {
   const mode = String(dimensions ?? '3D').toUpperCase();
+  if (mode === '4D') {
+    const coordinate = TSL.vec4(vector, w);
+    const value = hashFloatCoordinates(TSL, coordinate, 4, 0);
+    return {
+      value,
+      color: TSL.vec3(
+        value,
+        hashFloatCoordinates(TSL, coordinate, 4, combineStaticSeeds(0, 0x68bc21eb)),
+        hashFloatCoordinates(TSL, coordinate, 4, combineStaticSeeds(0, 0x02e5be93)),
+      ),
+    };
+  }
   let coordinate;
   if (mode === '1D') coordinate = TSL.vec3(w, 0, 0);
   else if (mode === '2D') coordinate = TSL.vec3(vector.x, vector.y, 0);
@@ -963,25 +1076,44 @@ function compileNodeFactory({ TSL, graph, parameters, textureResolver, featureTr
     }
     if (type === 'blender.noiseTexture') {
       const noiseType = String(p.noiseType ?? 'FBM').toUpperCase();
-      if (!['FBM', 'RIDGED_MULTIFRACTAL', 'HETERO_TERRAIN'].includes(noiseType)) {
+      if (!['FBM', 'MULTIFRACTAL', 'HYBRID_MULTIFRACTAL', 'RIDGED_MULTIFRACTAL', 'HETERO_TERRAIN'].includes(noiseType)) {
         fail(
           'shader_node_mode_unsupported',
-          `Noise Texture mode ${p.noiseType} is catalogued for interchange but not compiled live yet.`,
+          `Noise Texture mode ${p.noiseType} is not compiled live.`,
           { mode: noiseType },
         );
       }
-      if (String(p.dimensions ?? '3D').toUpperCase() === '4D') fail('shader_node_mode_unsupported', 'Live TSL Noise Texture does not yet implement Blender 4D noise.');
-      let coordinate = input.get(node, ['vector', 'w'], [0, 0, 0], 'vec3');
-      if (String(p.dimensions).toUpperCase() === '1D') coordinate = TSL.vec3(input.get(node, 'w', 0), 0, 0);
-      else if (String(p.dimensions).toUpperCase() === '2D') coordinate = TSL.vec3(coordinate.x, coordinate.y, 0);
-      coordinate = addSeed(TSL, coordinate.mul(input.get(node, 'scale', 5)), p.seed);
+      const dimensions = String(p.dimensions ?? '3D').toUpperCase();
+      const vector = input.get(node, 'vector', [0, 0, 0], 'vec3');
+      const scale = input.get(node, 'scale', 5);
+      let coordinate;
+      if (dimensions === '4D') coordinate = TSL.vec4(vector, input.get(node, 'w', 0)).mul(scale);
+      else {
+        coordinate = vector;
+        if (dimensions === '1D') coordinate = TSL.vec3(input.get(node, 'w', 0), 0, 0);
+        else if (dimensions === '2D') coordinate = TSL.vec3(coordinate.x, coordinate.y, 0);
+        coordinate = addSeed(TSL, coordinate.mul(scale), p.seed);
+      }
       const octaves = Math.max(1, Math.min(8, Math.round(finite(input.static(node, 'detail', 2), 2))));
       const lacunarity = input.get(node, 'lacunarity', 2);
       const roughness = input.get(node, 'roughness', 0.5);
       const offset = input.get(node, 'offset', 0);
       const gain = input.get(node, 'gain', 1);
       const distortion = input.get(node, 'distortion', 0);
-      const distortedCoordinate = coordinate.add(TSL.mx_noise_vec3(coordinate).mul(distortion));
+      let distortedCoordinate;
+      if (dimensions === '4D') {
+        const staticDistortion = input.connected(node, 'distortion') ? null : finite(input.static(node, 'distortion', 0), 0);
+        if (staticDistortion === 0) distortedCoordinate = coordinate;
+        else {
+          const warp = TSL.vec4(
+            gradientNoise4D(TSL, coordinate, combineStaticSeeds(p.seed, 0xa341316c)),
+            gradientNoise4D(TSL, coordinate, combineStaticSeeds(p.seed, 0xc8013ea4)),
+            gradientNoise4D(TSL, coordinate, combineStaticSeeds(p.seed, 0xad90777d)),
+            gradientNoise4D(TSL, coordinate, combineStaticSeeds(p.seed, 0x7e95761e)),
+          );
+          distortedCoordinate = coordinate.add(warp.mul(distortion));
+        }
+      } else distortedCoordinate = coordinate.add(TSL.mx_noise_vec3(coordinate).mul(distortion));
       const channelOptions = {
         mode: noiseType,
         octaves,
@@ -991,6 +1123,10 @@ function compileNodeFactory({ TSL, graph, parameters, textureResolver, featureTr
         gain,
         normalize: p.normalize !== false,
       };
+      if (dimensions === '4D') {
+        channelOptions.sampleNoise = value => gradientNoise4D(TSL, value, p.seed);
+        channelOptions.fractalNoise = value => fractalNoise4D(TSL, value, octaves, lacunarity, roughness, p.seed);
+      }
       let factor = blenderNoiseChannel(TSL, distortedCoordinate, channelOptions);
       if (p.normalize !== false) factor = factor.saturate();
       const color = TSL.vec3(

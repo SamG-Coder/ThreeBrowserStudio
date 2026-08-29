@@ -4,7 +4,6 @@ import test from 'node:test';
 import { GRAPH_CATALOGS, GraphValidationError, validateGraph } from '../src/graphs/index.mjs';
 import {
   BLENDER_SHADER_NODE_ALIASES,
-  ShaderGraphCompileError,
   compileShaderGraph,
 } from '../src/runtime/shader-graph-compiler.mjs';
 
@@ -18,16 +17,20 @@ class TraceNode {
   sub(value) { return new TraceNode('sub', [this, value]); }
   mul(value) { return new TraceNode('mul', [this, value]); }
   div(value) { return new TraceNode('div', [this, value]); }
+  bitXor(value) { return new TraceNode('bitXor', [this, value]); }
+  shiftRight(value) { return new TraceNode('shiftRight', [this, value]); }
   saturate() { return new TraceNode('saturate', [this]); }
   negate() { return new TraceNode('negate', [this]); }
   get x() { return new TraceNode('x', [this]); }
   get y() { return new TraceNode('y', [this]); }
   get z() { return new TraceNode('z', [this]); }
+  get w() { return new TraceNode('w', [this]); }
 }
 
 const trace = operation => (...arguments_) => new TraceNode(operation, arguments_);
 const TRACE_TSL = Object.freeze({
   float: trace('float'),
+  uint: trace('uint'),
   vec2: trace('vec2'),
   vec3: trace('vec3'),
   vec4: trace('vec4'),
@@ -37,6 +40,8 @@ const TRACE_TSL = Object.freeze({
   abs: trace('abs'),
   min: trace('min'),
   max: trace('max'),
+  clamp: trace('clamp'),
+  dot: trace('dot'),
   mix: trace('mix'),
   smoothstep: trace('smoothstep'),
   step: trace('step'),
@@ -46,6 +51,7 @@ const TRACE_TSL = Object.freeze({
   cos: trace('cos'),
   select: trace('select'),
   lessThan: trace('lessThan'),
+  floatBitsToUint: trace('floatBitsToUint'),
   mx_cell_noise_float: trace('mx_cell_noise_float'),
   mx_noise_float: trace('mx_noise_float'),
   mx_noise_vec3: trace('mx_noise_vec3'),
@@ -139,7 +145,7 @@ test('compiles Checker, Gradient, White Noise, Magic, and Brick into one live TS
   assert.ok(countOperations(compilation.outputs.opacity, 'smoothstep') > 0);
 });
 
-test('all declared Gradient modes lower live while unsupported White Noise 4D fails the candidate', () => {
+test('all declared Gradient modes and White Noise dimensions lower live', () => {
   for (const gradientType of [
     'LINEAR', 'QUADRATIC', 'EASING', 'DIAGONAL', 'SPHERICAL', 'QUADRATIC_SPHERE', 'RADIAL',
   ]) {
@@ -150,16 +156,17 @@ test('all declared Gradient modes lower live while unsupported White Noise 4D fa
     assert.equal(compilation.nodesCompiled, 1, gradientType);
   }
 
-  assert.throws(
-    () => compileShaderGraph({
+  for (const dimensions of ['1D', '2D', '3D', '4D']) {
+    const compilation = compileShaderGraph({
       TSL: TRACE_TSL,
-      graph: singleNodeGraph('ShaderNodeTexWhiteNoise', { dimensions: '4D' }, 'value'),
-    }),
-    error => error instanceof ShaderGraphCompileError
-      && error.code === 'shader_node_mode_unsupported'
-      && error.details.nodeId === 'texture'
-      && /4D coordinates/.test(error.message),
-  );
+      graph: singleNodeGraph('ShaderNodeTexWhiteNoise', { dimensions }, 'value'),
+    });
+    assert.equal(compilation.nodesCompiled, 1, dimensions);
+    if (dimensions === '4D') {
+      assert.ok(countOperations(compilation.outputs.roughness, 'floatBitsToUint') >= 4);
+      assert.ok(countOperations(compilation.outputs.roughness, 'bitXor') > 0);
+    }
+  }
 });
 
 test('Noise Texture distortion perturbs coordinates without replacing the fractal noise', () => {
@@ -210,23 +217,23 @@ test('Noise Texture compiles deterministic ridged and hetero terrain channels fo
   }
 });
 
-test('Noise Texture still rejects catalogued multifractal modes without live lowering', () => {
-  for (const noiseType of ['MULTIFRACTAL', 'HYBRID_MULTIFRACTAL']) {
-    assert.throws(
-      () => compileShaderGraph({
-        TSL: TRACE_TSL,
-        graph: singleNodeGraph('ShaderNodeTexNoise', {
-          dimensions: '3D',
-          noiseType,
-          normalize: true,
-          seed: 9,
-        }),
-      }),
-      error => error instanceof ShaderGraphCompileError
-        && error.code === 'shader_node_mode_unsupported'
-        && error.details.nodeId === 'texture'
-        && error.details.mode === noiseType,
-    );
+test('Noise Texture compiles multifractal modes and every mode in true 4D', () => {
+  for (const noiseType of ['FBM', 'MULTIFRACTAL', 'HYBRID_MULTIFRACTAL', 'RIDGED_MULTIFRACTAL', 'HETERO_TERRAIN']) {
+    for (const dimensions of ['3D', '4D']) {
+      const graph = singleNodeGraph('ShaderNodeTexNoise', {
+        dimensions,
+        noiseType,
+        normalize: true,
+        seed: 9,
+      });
+      graph.nodes[0].inputs = { detail: 2, distortion: 0, w: 0.37 };
+      const compilation = compileShaderGraph({ TSL: TRACE_TSL, graph });
+      assert.equal(compilation.nodesCompiled, 1, `${noiseType} ${dimensions}`);
+      if (dimensions === '4D') {
+        assert.ok(countOperations(compilation.outputs.roughness, 'floatBitsToUint') > 0, noiseType);
+        assert.ok(countOperations(compilation.outputs.roughness, 'w') > 0, noiseType);
+      }
+    }
   }
 });
 

@@ -4,7 +4,6 @@ import test from 'node:test';
 import { GraphValidationError, validateGraph } from '../src/graphs/index.mjs';
 import { createMaterial } from '../src/runtime/resource-factories.mjs';
 import {
-  ShaderGraphCompileError,
   compileShaderGraph,
   isCompiledSurface,
 } from '../src/runtime/shader-graph-compiler.mjs';
@@ -409,7 +408,7 @@ test('authored Principled specular, anisotropy, and thin-film sockets compile li
   assert.equal(material.iridescence, 1);
 });
 
-test('unsupported Blender nodes and modes fail explicitly instead of flattening', () => {
+test('unsupported Blender nodes and invalid catalog modes fail explicitly instead of flattening', () => {
   const unsupportedNode = {
     formatVersion: 1,
     id: 'shader/unsafe-script',
@@ -424,23 +423,21 @@ test('unsupported Blender nodes and modes fail explicitly instead of flattening'
       && error.diagnostics.some((entry) => entry.code === 'unknown_node_type' && entry.nodeId === 'script'),
   );
 
-  const unsupportedMode = {
+  const invalidMode = {
     formatVersion: 1,
-    id: 'shader/unsupported-noise-mode',
+    id: 'shader/invalid-noise-mode',
     domain: 'shader',
     nodes: [{
       id: 'noise',
       type: 'ShaderNodeTexNoise',
-      params: { dimensions: '4D' },
+      params: { dimensions: '5D' },
     }],
     edges: [],
     outputs: { roughness: { nodeId: 'noise', port: 'factor' } },
   };
   assert.throws(
-    () => compileShaderGraph({ TSL: FAKE_TSL, graph: unsupportedMode }),
-    (error) => error instanceof ShaderGraphCompileError
-      && error.code === 'shader_node_mode_unsupported'
-      && error.details.nodeId === 'noise'
-      && /4D noise/.test(error.message),
+    () => compileShaderGraph({ TSL: FAKE_TSL, graph: invalidMode }),
+    (error) => error instanceof GraphValidationError
+      && error.diagnostics.some(entry => entry.path.endsWith('/params/dimensions')),
   );
 });
