@@ -30,6 +30,7 @@
     "call": "node scripts/studio-call.mjs",
     "launch": "node scripts/launch.mjs",
     "release:pack": "node scripts/package-release.mjs",
+    "pages:prepare": "node scripts/prepare-pages.mjs",
     "obs:setup": "node scripts/obs-showcase.mjs setup",
     "obs:status": "node scripts/obs-showcase.mjs status",
     "tutorial:blender": "node scripts/run-blender-fundamentals.mjs",

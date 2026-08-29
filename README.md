@@ -12,6 +12,11 @@ The project is intentionally standalone. It uses an installed ThreeBrowser
 Runtime as its renderer/host instead of copying runtime, RTX, game, or sample
 code into this repository.
 
+A browser WebGPU preview is on
+[GitHub Pages](https://samg-coder.github.io/ThreeBrowserStudio/). It shares the
+viewport code with the desktop host and only starts the Node/MCP kernel when
+ThreeRuntime is attached. See [`docs/users/github-pages.md`](./docs/users/github-pages.md).
+
 The target architecture and phased authoring-pipeline contract are in
 [`DESIGN.md`](./DESIGN.md). User guides and AI MCP patterns are in
 [`docs/`](./docs/README.md). Model operating rules are in

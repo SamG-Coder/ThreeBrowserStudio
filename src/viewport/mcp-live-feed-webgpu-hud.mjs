@@ -140,6 +140,7 @@ export function createMcpLiveFeedWebGpuHud({
   clearIntervalFn = globalThis.clearInterval?.bind(globalThis),
   schedulePaint,
   onViewModeChange,
+  typeface = null,
   viewMode: initialViewMode = VIEW_MODE_FOLLOW_SHOT,
 } = {}) {
   const document = suppliedDocument ?? globalThis.document;
@@ -165,6 +166,7 @@ export function createMcpLiveFeedWebGpuHud({
 
   const fonts = createFontRunCache({
     createCanvas: () => document.createElement('canvas'),
+    typeface,
   });
   const texture = new THREE.CanvasTexture(canvas);
   if (THREE.SRGBColorSpace !== undefined) texture.colorSpace = THREE.SRGBColorSpace;

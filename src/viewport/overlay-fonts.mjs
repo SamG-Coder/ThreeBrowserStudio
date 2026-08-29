@@ -1,5 +1,3 @@
-import { getSystemTypeface } from './system-typeface.mjs';
-
 const DEFAULT_MAX_RUNS = 256;
 const DEFAULT_MAX_MEASURES = 512;
 
@@ -38,7 +36,7 @@ function drawText(context, typeface, text, font, fillStyle, maxWidth) {
  */
 export function createFontRunCache({
   createCanvas,
-  typeface = getSystemTypeface(),
+  typeface = null,
   maxRuns = DEFAULT_MAX_RUNS,
   maxMeasures = DEFAULT_MAX_MEASURES,
 } = {}) {

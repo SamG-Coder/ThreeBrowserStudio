@@ -8,18 +8,19 @@ import { createReviewControls } from "./review-controls.mjs";
 import { createReviewSession, VIEW_MODE_FOLLOW_SHOT } from "./view-mode.mjs";
 import { createMcpLiveFeedWebGpuHud } from "./mcp-live-feed-webgpu-hud.mjs";
 import { createStudioCommandTelemetry } from "../runtime/mcp-live-feed-telemetry.mjs";
+import { detectStudioHost } from "../runtime/host-environment.mjs";
 import { collectRtxScene } from "../runtime/rtx-scene-collector.mjs";
-import { startStudioApplication } from "../runtime/studio-application.mjs";
 import { createRtxLightingController } from "./rtx-lighting-controller.mjs";
 import { adaptSceneRtxSettings } from "./rtx-settings-adapter.mjs";
 
 document.title = "ThreeBrowser Studio — waiting for project";
 
 async function main() {
+  const host = detectStudioHost();
   const renderer = new THREE.WebGPURenderer({
     antialias: true,
     powerPreference: "high-performance",
-    trackTimestamp: true,
+    ...(host.attached ? { trackTimestamp: true } : {}),
   });
   renderer.setPixelRatio(Math.max(1, Number(globalThis.devicePixelRatio || 1)));
   renderer.setSize(Math.max(1, innerWidth), Math.max(1, innerHeight));
@@ -33,7 +34,9 @@ async function main() {
   await renderer.init();
 
   if (!renderer.backend?.isWebGPUBackend) {
-    throw new Error("Studio could not initialize the native WebGPU backend.");
+    throw new Error(host.attached
+      ? "Studio could not initialize the native WebGPU backend."
+      : "Studio could not initialize WebGPU in this browser.");
   }
   renderer.backend.device?.addEventListener?.("uncapturederror", event => {
     console.error("[ThreeBrowser Studio WebGPU]", event.error?.message || event.error || event);
@@ -82,6 +85,11 @@ async function main() {
   const commandTelemetry = createStudioCommandTelemetry({
     onSinkError: error => console.warn("[ThreeBrowser Studio live feed]", error?.message || error),
   });
+  let typeface = null;
+  if (host.attached) {
+    const { getSystemTypeface } = await import("./system-typeface.mjs");
+    typeface = getSystemTypeface();
+  }
   const liveFeed = createMcpLiveFeedWebGpuHud({
     THREE,
     scene,
@@ -89,6 +97,7 @@ async function main() {
     width: Math.max(1, innerWidth),
     height: Math.max(1, innerHeight),
     pixelRatio: Math.max(1, Number(globalThis.devicePixelRatio || 1)),
+    typeface,
     onViewModeChange(mode) {
       reviewSession.setViewMode(mode);
     },
@@ -256,18 +265,24 @@ async function main() {
   globalThis.__THREE_STUDIO_VIEWPORT__ = viewportApi;
 
   try {
-    application = await startStudioApplication({
-      THREE,
-      TSL,
-      viewport: viewportApi,
-      bootstrap,
-      beginCommand: commandTelemetry.begin,
-    });
+    if (host.attached) {
+      const { startStudioApplication } = await import("../runtime/studio-application.mjs");
+      application = await startStudioApplication({
+        THREE,
+        TSL,
+        viewport: viewportApi,
+        bootstrap,
+        beginCommand: commandTelemetry.begin,
+      });
+    } else {
+      document.title = "ThreeBrowser Studio — browser preview";
+      console.log("[ThreeBrowser Studio] browser host: MCP pipe and project kernel stay on the desktop runtime");
+    }
   } catch (error) {
     await dispose();
     throw error;
   }
-  globalThis.__THREE_STUDIO_APPLICATION__ = application;
+  if (application) globalThis.__THREE_STUDIO_APPLICATION__ = application;
   globalThis.__THREE_STUDIO_LIVE_FEED__ = liveFeed;
 
   globalThis.addEventListener("resize", resize);

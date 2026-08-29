@@ -12,6 +12,7 @@ Start here by role.
 2. [Connect Cursor, Grok Build, or Codex](./users/connect-mcp.md)
 3. [Viewport, camera, and the MCP log](./users/viewport.md)
 4. [Projects, saves, and where files live](./users/projects.md)
+5. [GitHub Pages preview](./users/github-pages.md)
 
 ## For models using Studio
 

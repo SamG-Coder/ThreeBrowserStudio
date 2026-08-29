@@ -18,6 +18,7 @@ projects/
 artifacts/
 coverage/
 dist/
+dist-pages/
 build/
 packaging/win-launcher/bin/
 packaging/win-launcher/obj/
