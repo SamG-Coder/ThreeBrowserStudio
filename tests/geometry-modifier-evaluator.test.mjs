@@ -57,10 +57,14 @@ test('modifier evaluator exposes a bounded deterministic geometry subset', () =>
     'subdivision',
     'decimate',
     'displace',
+    'ocean',
   ]);
   assert.equal(GEOMETRY_MODIFIER_LIMITS.maxModifiers, 64);
   assert.equal(GEOMETRY_MODIFIER_LIMITS.maxSubdivisionLevels, 6);
   assert.equal(GEOMETRY_MODIFIER_LIMITS.maxOutputVertices, 1_000_000);
+  assert.equal(GEOMETRY_MODIFIER_LIMITS.maxOceanWaveCount, 32);
+  assert.equal(GEOMETRY_MODIFIER_LIMITS.maxOceanTimelineSamples, 131_072);
+  assert.equal(GEOMETRY_MODIFIER_LIMITS.maxOceanSamples, 8_000_000);
 });
 
 test('ordered stacks honor viewport and render flags without mutating authored data', () => {
@@ -237,6 +241,92 @@ test('noise displacement is seeded, reproducible, and changes with its seed', ()
   assert.deepEqual(first, repeated);
   assert.notDeepEqual(first.positions, different.positions);
   assert.ok(first.positions.every(Number.isFinite));
+});
+
+test('ocean displacement is seeded, timeline-driven, topology-preserving, and locally choppy', () => {
+  const source = triangleRecipe();
+  const modifier = {
+    id: 'modifier/ocean',
+    type: 'ocean',
+    mode: 'displace',
+    seed: 73,
+    time: 1,
+    timelineScale: 1.5,
+    spatialSize: 12,
+    waveScaleMin: 0.25,
+    waveScale: 0.8,
+    windVelocity: 24,
+    waveDirection: Math.PI / 5,
+    waveAlignment: 0.65,
+    choppiness: 1.4,
+    damping: 0.4,
+    depth: 80,
+    waveCount: 12,
+  };
+  const snapshot = structuredClone({ source, modifier });
+  const first = applyGeometryModifier(source, modifier, { timeSeconds: 0 });
+  const repeated = applyGeometryModifier(source, modifier, { timeSeconds: 0 });
+  const later = applyGeometryModifier(source, modifier, { timeSeconds: 1.25 });
+  const otherSeed = applyGeometryModifier(source, { ...modifier, seed: 74 }, { timeSeconds: 0 });
+
+  assert.deepEqual(first, repeated);
+  assert.notDeepEqual(first.positions, later.positions);
+  assert.notDeepEqual(first.positions, otherSeed.positions);
+  assert.deepEqual(first.indices, source.indices);
+  assert.deepEqual(first.uvs, source.uvs);
+  assert.deepEqual(first.colors, source.colors);
+  assert.ok(first.positions.some((value, index) => value !== source.positions[index]));
+  assert.ok(first.positions.filter((_, index) => index % 3 === 2).some(value => Math.abs(value) > 1e-6));
+  assert.ok(first.normals.every(Number.isFinite));
+  assert.deepEqual({ source, modifier }, snapshot);
+});
+
+test('ocean displacement fails closed outside its strict live subset', () => {
+  assert.throws(
+    () => applyGeometryModifier(triangleRecipe(), {
+      id: 'modifier/ocean-generate', type: 'ocean', mode: 'generate',
+    }),
+    error => error.code === 'geometry_modifier_mode_unsupported',
+  );
+  assert.throws(
+    () => applyGeometryModifier(triangleRecipe(), {
+      id: 'modifier/ocean-range', type: 'ocean', mode: 'displace',
+      spatialSize: 1, waveScaleMin: 2,
+    }),
+    error => error.code === 'invalid_geometry_modifier',
+  );
+  assert.throws(
+    () => applyGeometryModifier(triangleRecipe(), {
+      id: 'modifier/ocean-dense', type: 'ocean', mode: 'displace', waveCount: 33,
+    }),
+    error => error.code === 'invalid_geometry_modifier',
+  );
+  const sampleLimited = triangleRecipe();
+  sampleLimited.positions = new Array(((GEOMETRY_MODIFIER_LIMITS.maxOceanSamples / 32) + 1) * 3).fill(0);
+  delete sampleLimited.normals;
+  delete sampleLimited.uvs;
+  delete sampleLimited.colors;
+  assert.throws(
+    () => applyGeometryModifier(sampleLimited, {
+      id: 'modifier/ocean-sample-budget', type: 'ocean', mode: 'displace',
+      waveCount: 32, timelineScale: 0,
+    }),
+    error => error.code === 'geometry_modifier_complexity_limit'
+      && error.details.limit === GEOMETRY_MODIFIER_LIMITS.maxOceanSamples,
+  );
+  const timelineLimited = triangleRecipe();
+  timelineLimited.positions = new Array(((GEOMETRY_MODIFIER_LIMITS.maxOceanTimelineSamples / 32) + 1) * 3).fill(0);
+  delete timelineLimited.normals;
+  delete timelineLimited.uvs;
+  delete timelineLimited.colors;
+  assert.throws(
+    () => applyGeometryModifier(timelineLimited, {
+      id: 'modifier/ocean-timeline-budget', type: 'ocean', mode: 'displace', waveCount: 32,
+    }),
+    error => error.code === 'geometry_modifier_complexity_limit'
+      && error.details.limit === GEOMETRY_MODIFIER_LIMITS.maxOceanTimelineSamples
+      && error.details.timelineDriven === true,
+  );
 });
 
 test('recalculateNormals false preserves valid authored normals and never triggers deferred recomputation', () => {

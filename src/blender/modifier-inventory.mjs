@@ -138,7 +138,7 @@ const modifierRows = [
   ['DYNAMIC_PAINT', 'DynamicPaintModifier', 'simulate', 'Dynamic Paint', 'Evaluate canvas and brush interactions into color, image, or displacement data.', 'planned'],
   ['EXPLODE', 'ExplodeModifier', 'simulate', 'Explode', 'Break mesh faces apart and drive them with particles.', 'planned'],
   ['FLUID', 'FluidModifier', 'simulate', 'Fluid', 'Mark and evaluate geometry for liquid, fire, smoke, or gas simulation.', 'planned'],
-  ['OCEAN', 'OceanModifier', 'simulate', 'Ocean', 'Generate an animated ocean surface.', 'planned'],
+  ['OCEAN', 'OceanModifier', 'simulate', 'Ocean', 'Generate an animated ocean surface.', 'live-geometry', 'Studio evaluates a bounded deterministic Phillips/Gerstner displacement subset on existing local-XY geometry. Generated grids, alternate spectra, caches, foam, and spray remain bake boundaries; timeline-driven oceans are excluded from the static RTX triangle scene.'],
   ['PARTICLE_INSTANCE', 'ParticleInstanceModifier', 'simulate', 'Particle Instance', 'Duplicate geometry at particle locations.', 'planned'],
   ['PARTICLE_SYSTEM', 'ParticleSystemModifier', 'simulate', 'Particle System', 'Mark the stack position and evaluated emitter input for particles.', 'planned'],
   ['SOFT_BODY', 'SoftBodyModifier', 'simulate', 'Soft Body', 'Simulate deformable soft-body geometry.', 'planned'],
@@ -210,7 +210,7 @@ if (liveRuntimeTypes.join(',') !== 'ARRAY,MIRROR') {
 }
 
 export const BLENDER_LIVE_GEOMETRY_MODIFIER_TYPES = Object.freeze([
-  'DECIMATE', 'DISPLACE', 'EDGE_SPLIT', 'SMOOTH', 'SOLIDIFY', 'SUBSURF',
+  'DECIMATE', 'DISPLACE', 'EDGE_SPLIT', 'OCEAN', 'SMOOTH', 'SOLIDIFY', 'SUBSURF',
   'TRIANGULATE', 'WEIGHTED_NORMAL', 'WELD',
 ]);
 const liveGeometryTypes = entries

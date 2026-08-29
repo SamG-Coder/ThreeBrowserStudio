@@ -16,7 +16,7 @@ export const MAX_MODIFIER_DOCUMENT_BYTES = 32 * 1024;
 export const MAX_BAKE_BOUNDARY_PARAMETER_BYTES = 24 * 1024;
 export const LIVE_INSTANCE_MODIFIER_TYPES = Object.freeze(['array', 'mirror', 'pattern']);
 export const LIVE_EDITABLE_MESH_GEOMETRY_MODIFIERS = Object.freeze([
-  'triangulate', 'smooth', 'weightedNormal', 'displace', 'edgeSplit',
+  'triangulate', 'smooth', 'weightedNormal', 'displace', 'ocean', 'edgeSplit',
 ]);
 const BLOCKED_EDITABLE_MESH_GEOMETRY_MODIFIERS = new Set([
   'weld', 'subdivision', 'solidify', 'decimate',
@@ -41,6 +41,11 @@ const GEOMETRY_KEYS = Object.freeze({
   subdivision: ['levels', 'scheme', 'recalculateNormals'],
   decimate: ['ratio', 'targetTriangles', 'recalculateNormals'],
   displace: ['source', 'direction', 'coordinateSpace', 'strength', 'midlevel', 'recalculateNormals'],
+  ocean: [
+    'mode', 'seed', 'time', 'timelineScale', 'spatialSize', 'waveScale',
+    'waveScaleMin', 'windVelocity', 'waveDirection', 'waveAlignment',
+    'choppiness', 'damping', 'depth', 'waveCount', 'recalculateNormals',
+  ],
 });
 
 export const LIVE_GEOMETRY_OPERATOR_TYPES = Object.freeze({
@@ -53,6 +58,7 @@ export const LIVE_GEOMETRY_OPERATOR_TYPES = Object.freeze({
   subdivision: 'SUBSURF',
   decimate: 'DECIMATE',
   displace: 'DISPLACE',
+  ocean: 'OCEAN',
 });
 
 function fail(code, message, modifier, details = {}) {
@@ -196,6 +202,36 @@ function validateGeometryModifier(modifier) {
     optionalFinite(modifier, 'strength', -10_000, 10_000);
     optionalFinite(modifier, 'midlevel', 0, 1);
   }
+  if (modifier.type === 'ocean') {
+    if (modifier.mode !== 'displace') {
+      fail(
+        'invalid_geometry_modifier',
+        "Ocean mode must be 'displace'; generated grids, caches, foam, and spray are not live.",
+        modifier,
+      );
+    }
+    optionalInteger(modifier, 'seed', 0, 0x7fffffff);
+    optionalFinite(modifier, 'time', 0, 1_000_000);
+    optionalFinite(modifier, 'timelineScale', -64, 64);
+    optionalFinite(modifier, 'spatialSize', 0.01, 1_000_000);
+    optionalFinite(modifier, 'waveScale', 0, 10_000);
+    optionalFinite(modifier, 'waveScaleMin', 0.001, 1_000_000);
+    optionalFinite(modifier, 'windVelocity', 0, 1_000);
+    optionalFinite(modifier, 'waveDirection', -1_000_000, 1_000_000);
+    optionalFinite(modifier, 'waveAlignment', 0, 1);
+    optionalFinite(modifier, 'choppiness', 0, 10);
+    optionalFinite(modifier, 'damping', 0, 1);
+    optionalFinite(modifier, 'depth', 0.01, 1_000_000);
+    optionalInteger(modifier, 'waveCount', 1, 32);
+    const spatialSize = modifier.spatialSize ?? 50;
+    const waveScaleMin = modifier.waveScaleMin ?? 0.01;
+    if (waveScaleMin > spatialSize) {
+      fail('invalid_geometry_modifier', 'waveScaleMin must not exceed spatialSize.', modifier, {
+        waveScaleMin,
+        spatialSize,
+      });
+    }
+  }
 }
 
 function validateLiveInstanceModifier(modifier) {
@@ -323,6 +359,7 @@ export function analyzeViewportModifierStack(entity, { sourceKind = null } = {})
   const previewModifiers = [];
   const geometryModifiers = [];
   let encounteredInstanceModifier = false;
+  let timelineGeometryModifier = null;
   let blocked = null;
   for (let index = 0; index < modifiers.length; index += 1) {
     const modifier = modifiers[index];
@@ -351,7 +388,15 @@ export function analyzeViewportModifierStack(entity, { sourceKind = null } = {})
       continue;
     }
     if (GEOMETRY_TYPE_SET.has(modifier.type)) {
-      if (encounteredInstanceModifier) {
+      if (timelineGeometryModifier) {
+        blocked = {
+          index,
+          modifierId: modifier.id,
+          modifierType: modifier.type,
+          reasonCode: 'runtime_dynamic_modifier_order_unsupported',
+          message: `Geometry modifier ${modifier.id} (${modifier.type}) follows timeline-driven Ocean modifier ${timelineGeometryModifier.id}; move Ocean to the end of the live geometry stack.`,
+        };
+      } else if (encounteredInstanceModifier) {
         blocked = {
           index,
           modifierId: modifier.id,
@@ -375,6 +420,9 @@ export function analyzeViewportModifierStack(entity, { sourceKind = null } = {})
       previewModifiers.push(modifier);
       geometryModifiers.push(modifier);
       entries.push({ index, modifierId: modifier.id, status: 'live', execution: 'live-geometry' });
+      if (modifier.type === 'ocean' && (modifier.timelineScale ?? 1) !== 0) {
+        timelineGeometryModifier = modifier;
+      }
       continue;
     }
     blocked = {

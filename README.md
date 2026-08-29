@@ -5,8 +5,9 @@
 ThreeBrowser Studio is a persistent Three.js WebGPU authoring runtime for
 Codex and ChatGPT. MCP is the editor. The native window is a live viewport
 where a user can watch a project being created and review the same visual
-evidence as the model. Play evaluates deterministic Action/keyframe animation;
-game behaviour execution is a later capability.
+evidence as the model. Play evaluates deterministic Action/keyframe animation
+and timeline-driven Ocean displacement; game behaviour execution is a later
+capability.
 
 The project is intentionally standalone. It uses an installed ThreeBrowser
 Runtime as its renderer/host instead of copying runtime, RTX, game, or sample
@@ -56,8 +57,9 @@ The nine-tool shape is stable, but each tool advertises only its live slice:
   graph, Action/keyframe, and budget validation;
 - `render`: an exact animation frame, named camera, or explicit framing followed
   by offscreen WebGPU beauty capture without changing canonical state;
-- `play`: deterministic Action animation enter/stop/pause/resume/seek/step plus
-  recorded input, without script, blueprint, physics, or game-logic execution;
+- `play`: deterministic Action animation and timeline-driven Ocean displacement
+  enter/stop/pause/resume/seek/step plus recorded input, without script,
+  blueprint, physics, or game-logic execution;
 - `project`: list, create, open, and atomic save; and
 - `history`: list, inspect, undo, and redo.
 
@@ -287,9 +289,9 @@ The current native loop is functional, not a static design mock:
   Principled-to-Material-Output flow, live TSL/WebGPU compilation, an official
   115-node Add-menu inventory plus all 100 direct ShaderNode API subclasses,
   and explicit unsupported-node failures;
-- 36 live Blender RNA nodes, including Noise, Voronoi, Wave, Checker, all
-  Gradient modes, White Noise, Magic, Brick, Color Ramp, Mix/Map Range, Bump,
-  Principled, Material Output, and numeric Reroute;
+- 38 live Blender RNA nodes, including Vector Input, RGB to BW, Noise, Voronoi,
+  Wave, Checker, all Gradient modes, White Noise, Magic, Brick, Color Ramp,
+  Mix/Map Range, Bump, Principled, Material Output, and numeric Reroute;
 - Blender-style node positions, dimensions, labels, collapsed state, frame
   parenting, frame-cycle checks, and stable socket-name/RNA aliases;
 - deterministic bounded CPU albedo/roughness/normal/height texture baking;
@@ -328,13 +330,14 @@ The current native loop is functional, not a static design mock:
   defaults keep texture data visible instead of multiplying it by a legacy
   zero: this includes white base/emissive/sheen/specular colors, sheen and
   specular intensity 1, unit normal scales, and displacement scale 1/bias 0;
-- exact modifier-stack inspection/editing, nine bounded live geometry modifiers,
+- exact modifier-stack inspection/editing, ten bounded live geometry modifiers,
   explicit bake boundaries for the remaining Blender modifier inventory, and
   multi-material runtime groups;
 - ordered Array/Mirror modifiers, aim/copy/limit constraints, and typed
   Action/keyframe playback with exact render-frame scrubbing;
 - deliberate GPU evidence capture to PNG; and
-- an animation-only Author/Play boundary ready for a future behaviour runtime.
+- an Actions-and-timeline-modifiers Author/Play boundary ready for a future
+  behaviour runtime.
 
 Native acceptance has exercised live create → inspect → visual swap → undo →
 GPU capture → named save → close → reopen without touching the window.

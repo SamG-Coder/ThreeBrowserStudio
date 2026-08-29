@@ -218,7 +218,13 @@ Never claim a visual result without a capture from the committed revision.
 
 Create animation resources through apply, validate them, then
 `three_studio_play` enter / pause / resume / seek / step. Play evaluates
-deterministic Action animation only.
+deterministic Action animation and timeline-driven Ocean geometry even when a
+scene has no Actions. Ocean is displacement-only: apply it to a sufficiently
+subdivided local-XY surface and keep a moving Ocean last among live geometry
+modifiers. Dynamic Ocean geometry renders through raster WebGPU and is excluded
+from the static RTX triangle scene; set `timelineScale: 0` only when a static
+Ocean result is intended. Keep the sum of `evaluated vertices × waveCount`
+within `capabilities.timelineGeometryMaxSamples` across distinct moving oceans.
 
 `behaviorRuntime` is false today. Scripts, blueprints, physics, and game
 logic do not run. Do not send script operations through apply. Do not claim

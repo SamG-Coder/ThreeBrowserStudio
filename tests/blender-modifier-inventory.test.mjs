@@ -85,9 +85,9 @@ test('modifier execution classifications are conservative and internally consist
   });
   assert.deepEqual(BLENDER_MODIFIER_INVENTORY_SUMMARY.byStatus, {
     'live-runtime': 2,
-    'live-geometry': 9,
+    'live-geometry': 10,
     'bake-required': 35,
-    planned: 11,
+    planned: 10,
     'not-applicable': 26,
   });
   assert.deepEqual(
@@ -107,6 +107,7 @@ test('modifier execution classifications are conservative and internally consist
   assert.equal(BLENDER_MODIFIER_INVENTORY.byType.NODES.status, 'planned');
   assert.equal(BLENDER_MODIFIER_INVENTORY.byType.BEVEL.status, 'bake-required');
   assert.equal(BLENDER_MODIFIER_INVENTORY.byType.CLOTH.status, 'planned');
+  assert.equal(BLENDER_MODIFIER_INVENTORY.byType.OCEAN.status, 'live-geometry');
   assert.equal(BLENDER_MODIFIER_INVENTORY.byType.LINEART.status, 'not-applicable');
   assert.equal(summarizeBlenderModifierInventory(), BLENDER_MODIFIER_INVENTORY_SUMMARY);
   assert.ok(Object.isFrozen(BLENDER_MODIFIER_INVENTORY_SUMMARY));

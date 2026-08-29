@@ -15,6 +15,7 @@ import {
 } from '../core/editable-mesh-attributes.mjs';
 import { DATA_TEXTURE_LIMITS } from '../core/image-texture.mjs';
 import { MATERIAL_TEXTURE_BINDINGS } from '../core/material-textures.mjs';
+import { GEOMETRY_MODIFIER_LIMITS } from '../core/geometry-modifier-evaluator.mjs';
 import {
   BAKE_BOUNDARY_MODIFIER_TYPE,
   MAX_MODIFIERS_PER_ENTITY,
@@ -403,6 +404,23 @@ const displacementDirectionSchema = z.union([
   z.enum(['normal', 'x', 'y', 'z']),
   vec3.refine(direction => direction.some(component => component !== 0), { message: 'direction must not be zero.' }),
 ]);
+const oceanModifierFields = {
+  mode: z.literal('displace'),
+  seed: z.number().int().min(0).max(0x7fffffff).optional(),
+  time: z.number().finite().min(0).max(1_000_000).optional(),
+  timelineScale: z.number().finite().min(-64).max(64).optional(),
+  spatialSize: z.number().finite().min(0.01).max(1_000_000).optional(),
+  waveScale: z.number().finite().min(0).max(10_000).optional(),
+  waveScaleMin: z.number().finite().min(0.001).max(1_000_000).optional(),
+  windVelocity: z.number().finite().min(0).max(1_000).optional(),
+  waveDirection: z.number().finite().min(-1_000_000).max(1_000_000).optional(),
+  waveAlignment: z.number().finite().min(0).max(1).optional(),
+  choppiness: z.number().finite().min(0).max(10).optional(),
+  damping: z.number().finite().min(0).max(1).optional(),
+  depth: z.number().finite().min(0.01).max(1_000_000).optional(),
+  waveCount: z.number().int().min(1).max(32).optional(),
+  ...recalculateNormalsField,
+};
 const bakeBoundaryModifierSchema = z.object({
   id: identifier,
   type: z.literal(BAKE_BOUNDARY_MODIFIER_TYPE),
@@ -462,6 +480,7 @@ export const modifierDocumentSchema = z.discriminatedUnion('type', [
     midlevel: z.number().finite().min(0).max(1).optional(),
     ...recalculateNormalsField,
   }),
+  modifierDocument('ocean', oceanModifierFields),
   bakeBoundaryModifierSchema,
 ]).superRefine((modifier, context) => {
   try {
@@ -557,6 +576,22 @@ export const modifierPatchSchema = z.union([
     coordinateSpace: patchable(z.literal('local')),
     strength: patchable(z.number().finite().min(-10_000).max(10_000)),
     midlevel: patchable(z.number().finite().min(0).max(1)),
+    recalculateNormals: patchable(z.boolean()),
+  }),
+  modifierPatch('ocean', {
+    seed: patchable(z.number().int().min(0).max(0x7fffffff)),
+    time: patchable(z.number().finite().min(0).max(1_000_000)),
+    timelineScale: patchable(z.number().finite().min(-64).max(64)),
+    spatialSize: patchable(z.number().finite().min(0.01).max(1_000_000)),
+    waveScale: patchable(z.number().finite().min(0).max(10_000)),
+    waveScaleMin: patchable(z.number().finite().min(0.001).max(1_000_000)),
+    windVelocity: patchable(z.number().finite().min(0).max(1_000)),
+    waveDirection: patchable(z.number().finite().min(-1_000_000).max(1_000_000)),
+    waveAlignment: patchable(z.number().finite().min(0).max(1)),
+    choppiness: patchable(z.number().finite().min(0).max(10)),
+    damping: patchable(z.number().finite().min(0).max(1)),
+    depth: patchable(z.number().finite().min(0.01).max(1_000_000)),
+    waveCount: patchable(z.number().int().min(1).max(32)),
     recalculateNormals: patchable(z.boolean()),
   }),
   modifierPatch('bakeBoundary', {
@@ -1094,8 +1129,8 @@ export const TOOL_SCHEMAS = Object.freeze({
 
 export const STUDIO_TOOL_NAMES = Object.freeze(Object.keys(TOOL_SCHEMAS));
 
-export const MCP_SERVER_VERSION = '0.2.3';
-export const TOOL_CONTRACT_VERSION = 'three-studio-tools/6';
+export const MCP_SERVER_VERSION = '0.2.4';
+export const TOOL_CONTRACT_VERSION = 'three-studio-tools/7';
 export const TOOL_INPUT_SCHEMAS = Object.freeze(Object.fromEntries(
   STUDIO_TOOL_NAMES.map(name => [name, z.toJSONSchema(TOOL_SCHEMAS[name], { io: 'input' })]),
 ));
@@ -1154,8 +1189,11 @@ const TOOL_CONTRACT_FEATURES = Object.freeze({
   compileHeavyRpcTimeoutMs: 120_000,
   editableMeshRecalculateNormals: true,
   editableMeshLiveGeometryModifiers: Object.freeze([
-    'triangulate', 'smooth', 'weightedNormal', 'displace', 'edgeSplit',
+    'triangulate', 'smooth', 'weightedNormal', 'displace', 'ocean', 'edgeSplit',
   ]),
+  timelineGeometryModifiers: Object.freeze(['ocean']),
+  maxTimelineGeometrySamples: GEOMETRY_MODIFIER_LIMITS.maxOceanTimelineSamples,
+  dynamicRtxGeometry: 'excluded-from-static-scene',
   principledSpecularAnisotropyIridescence: true,
   modifierDigestGroups: true,
   rtxDigest: true,

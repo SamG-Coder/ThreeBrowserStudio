@@ -935,6 +935,11 @@ test('a project switch compile failure preserves the active project and live sce
   assert.deepEqual(status.capabilities.layoutPatterns, [...LAYOUT_PATTERN_MODES]);
   assert.equal(status.capabilities.modifierRuntime.includes('pattern'), true);
   assert.equal(status.capabilities.geometryModifierRuntime.includes('subdivision'), true);
+  assert.equal(status.capabilities.geometryModifierRuntime.includes('ocean'), true);
+  assert.equal(status.capabilities.timelineGeometryRuntime, true);
+  assert.deepEqual(status.capabilities.timelineGeometryModifierTypes, ['ocean']);
+  assert.equal(status.capabilities.timelineGeometryMaxSamples, 131_072);
+  assert.equal(status.capabilities.dynamicRtxGeometry, 'excluded-from-static-scene');
   assert.equal(status.capabilities.modifierAuthoring.exactStackHashGuards, true);
   assert.equal(status.capabilities.modifierAuthoring.atomicStackEditing, true);
   assert.equal(status.capabilities.modifierAuthoring.renderEnableFlag, 'authored-only-no-render-parity-claim');

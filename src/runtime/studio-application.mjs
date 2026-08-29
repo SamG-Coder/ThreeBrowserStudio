@@ -40,7 +40,10 @@ import {
   parseProjectPack,
   projectImportFolderName,
 } from '../core/project-pack.mjs';
-import { GEOMETRY_MODIFIER_TYPES } from '../core/geometry-modifier-evaluator.mjs';
+import {
+  GEOMETRY_MODIFIER_LIMITS,
+  GEOMETRY_MODIFIER_TYPES,
+} from '../core/geometry-modifier-evaluator.mjs';
 import {
   MAX_REQUEST_TIMEOUT_MS,
   createLiveBridgeServer,
@@ -974,8 +977,10 @@ export class StudioApplication {
       mode: this.#mode,
       play: {
         ...this.#play,
-        simulation: 'animation-only',
+        simulation: 'actions-and-timeline-modifiers',
         actions: this.#compiled?.animationStates() ?? [],
+        timelineGeometryModifierIds: this.#compiled?.timelineGeometryModifierIds ?? [],
+        timelineGeometrySampleCount: this.#compiled?.timelineGeometrySampleCount ?? 0,
       },
       viewport: {
         ready: true,
@@ -1008,6 +1013,10 @@ export class StudioApplication {
         blenderCatalogSummary: BLENDER_CATALOG_SUMMARY,
         animationRuntime: Boolean(this.#compiled?.animationRuntime),
         animationActions: this.#compiled?.animationActions ?? [],
+        timelineGeometryRuntime: true,
+        timelineGeometryModifierTypes: ['ocean'],
+        timelineGeometryMaxSamples: GEOMETRY_MODIFIER_LIMITS.maxOceanTimelineSamples,
+        dynamicRtxGeometry: 'excluded-from-static-scene',
         jobs: false,
         graphDomains: ['shader', 'texture', 'blueprint'],
         entityKinds: [
@@ -1116,7 +1125,7 @@ export class StudioApplication {
         validationChecks: ['schemas', 'references', 'hierarchy', 'graphs', 'animations', 'budgets'],
         projectActions: ['list', 'create', 'open', 'save'],
         historyActions: ['list', 'inspect', 'undo', 'redo'],
-        playSimulation: 'animation-only',
+        playSimulation: 'actions-and-timeline-modifiers',
         maxShadowLights: 16,
         maxOperations: 128,
         implementedOperations: supportedOperationTypes(),
@@ -1415,10 +1424,12 @@ export class StudioApplication {
       success: true,
       revision: document.revision,
       mode: this.#mode,
-      simulation: 'animation-only',
+      simulation: 'actions-and-timeline-modifiers',
       ...this.#play,
       timeline: scene.settings.timeline,
       actions: this.#compiled?.animationStates() ?? [],
+      timelineGeometryModifierIds: this.#compiled?.timelineGeometryModifierIds ?? [],
+      timelineGeometrySampleCount: this.#compiled?.timelineGeometrySampleCount ?? 0,
     };
     if (params.query === 'unresolvedResources') {
       const diagnostics = validateProjectDocument(document).diagnostics.filter(item => item.code === 'missing_resource');
@@ -1753,11 +1764,13 @@ export class StudioApplication {
     const animationState = () => ({
       timeline,
       actions: this.#compiled?.animationStates() ?? [],
+      timelineGeometryModifierIds: this.#compiled?.timelineGeometryModifierIds ?? [],
+      timelineGeometrySampleCount: this.#compiled?.timelineGeometrySampleCount ?? 0,
     });
     if (params.action === 'query') return {
       success: true,
       mode: this.#mode,
-      simulation: 'animation-only',
+      simulation: 'actions-and-timeline-modifiers',
       ...this.#play,
       ...animationState(),
     };
@@ -1797,7 +1810,7 @@ export class StudioApplication {
     return {
       success: true,
       mode: this.#mode,
-      simulation: 'animation-only',
+      simulation: 'actions-and-timeline-modifiers',
       ...this.#play,
       ...animationState(),
       revision: this.#kernel.revision,

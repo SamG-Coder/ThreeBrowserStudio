@@ -58,6 +58,42 @@ test('modifier stack validation rejects malformed IDs, types, flags, duplicates,
   assert.throws(() => assertExpectedModifierStackHash(entity, 'bad'), error => error.code === 'invalid_modifier_stack_hash');
 });
 
+test('ocean modifier normalization exposes only the strict live displacement subset', () => {
+  const ocean = normalizeModifierDocument({
+    id: 'modifier/ocean',
+    type: 'ocean',
+    mode: 'displace',
+    seed: 7,
+    timelineScale: 0.5,
+    spatialSize: 60,
+    waveScaleMin: 0.2,
+    waveScale: 1.5,
+    waveCount: 24,
+  });
+  assert.equal(ocean.type, 'ocean');
+  const digest = buildModifierDigest({ id: 'entity/ocean', components: { modifiers: [ocean] } });
+  assert.equal(digest.modifiers[0].execution, 'live-geometry');
+  assert.equal(digest.modifiers[0].blender.operatorType, 'OCEAN');
+  assert.equal(digest.modifiers[0].blender.compatibilityStatus, 'live-geometry');
+
+  assert.throws(
+    () => normalizeModifierDocument({ id: 'modifier/generate', type: 'ocean', mode: 'generate' }),
+    error => error.code === 'invalid_geometry_modifier',
+  );
+  assert.throws(
+    () => normalizeModifierDocument({
+      id: 'modifier/foam', type: 'ocean', mode: 'displace', useFoam: true,
+    }),
+    error => error.code === 'unknown_modifier_property',
+  );
+  assert.throws(
+    () => normalizeModifierDocument({
+      id: 'modifier/range', type: 'ocean', mode: 'displace', spatialSize: 1, waveScaleMin: 2,
+    }),
+    error => error.code === 'invalid_geometry_modifier',
+  );
+});
+
 test('legacy unknown modifier documents remain inspectable as explicit bake boundaries', () => {
   const legacy = {
     id: 'entity/legacy',
@@ -117,4 +153,22 @@ test('viewport stack analysis exposes exact source and ordering boundaries', () 
   }, { sourceKind: 'editableMesh' });
   assert.equal(editableBlocked.blocked.reasonCode, 'runtime_editable_modifier_bake_required');
   assert.deepEqual(editableBlocked.geometryModifiers, []);
+
+  const editableOcean = analyzeViewportModifierStack({
+    id: 'entity/editable-ocean',
+    components: { modifiers: [{ id: 'modifier/ocean', type: 'ocean', mode: 'displace' }] },
+  }, { sourceKind: 'editableMesh' });
+  assert.equal(editableOcean.status, 'live');
+  assert.deepEqual(editableOcean.geometryModifiers.map(modifier => modifier.id), ['modifier/ocean']);
+
+  const dynamicOrder = analyzeViewportModifierStack({
+    id: 'entity/ocean-then-smooth',
+    components: { modifiers: [
+      { id: 'modifier/ocean', type: 'ocean', mode: 'displace' },
+      { id: 'modifier/smooth', type: 'smooth' },
+    ] },
+  }, { sourceKind: 'indexedMesh' });
+  assert.equal(dynamicOrder.status, 'partial-preview');
+  assert.equal(dynamicOrder.blocked.reasonCode, 'runtime_dynamic_modifier_order_unsupported');
+  assert.deepEqual(dynamicOrder.geometryModifiers.map(modifier => modifier.id), ['modifier/ocean']);
 });

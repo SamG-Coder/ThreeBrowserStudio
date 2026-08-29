@@ -245,7 +245,15 @@ operations.
   stacks. Editable-mesh `recalculateNormals` is accepted (normals are derived
   at compile) and forecasts `will-not-move` when it is the only edit.
   Seam-safe live modifiers on editableMesh are triangulate,
-  smooth, weightedNormal, displace, and edgeSplit.
+  smooth, weightedNormal, displace, ocean, and edgeSplit. Ocean is a strict
+  displacement-only subset: start from a sufficiently subdivided local-XY
+  surface, keep a timeline-driven Ocean last among live geometry modifiers,
+  and use its seeded wave controls instead of claiming Blender generated-grid,
+  cache, foam, or spray parity. A timeline-driven Ocean remains live in raster
+  WebGPU but is deliberately excluded from the static RTX triangle scene;
+  `timelineScale: 0` produces static geometry that may enter RTX. Read the
+  published timeline sample limit before choosing grid density and wave count;
+  it is accumulated across distinct moving Ocean geometries in the scene.
 - For whole-mesh transforms or smoothing, use `selection: "all"`; keep explicit
   vertex-index lists for genuinely local edits.
 - Treat realism as the combination of silhouette, bevel/profile detail,

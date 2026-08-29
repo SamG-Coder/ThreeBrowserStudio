@@ -176,7 +176,7 @@ test('checked-in JSON contract mirrors the lean capability enums', async () => {
 test('modifier schemas expose every strict per-type control and mirror the checked-in contract', async () => {
   const runtimeDocument = z.toJSONSchema(modifierDocumentSchema, { io: 'input' });
   const runtimeBranches = modifierDocumentBranches(runtimeDocument);
-  assert.equal(runtimeDocument.oneOf.length, 13, 'array, mirror, nested pattern, nine geometry types, and bakeBoundary');
+  assert.equal(runtimeDocument.oneOf.length, 14, 'array, mirror, nested pattern, ten geometry types, and bakeBoundary');
   assert.deepEqual(
     [...new Set(runtimeBranches.map(branch => branch.properties.type.const))],
     [...AUTHORABLE_MODIFIER_TYPES],
@@ -198,6 +198,9 @@ test('modifier schemas expose every strict per-type control and mirror the check
     byType('displace').properties.source.oneOf.map(source => source.properties.type.const),
     ['constant', 'wave', 'noise'],
   );
+  assert.equal(byType('ocean').properties.mode.const, 'displace');
+  assert.equal(byType('ocean').properties.waveCount.maximum, 32);
+  assert.equal(byType('ocean').properties.timelineScale.minimum, -64);
   assert.equal(
     byType('bakeBoundary').properties.operatorType.enum.length,
     BLENDER_MODIFIER_INVENTORY.entries.length,
@@ -241,6 +244,7 @@ test('modifier patch schemas expose bounded partial controls without permitting 
     { levels: 3, scheme: 'loop' },
     { ratio: 0.5 },
     { source: { type: 'noise', seed: 42, octaves: 4 }, strength: 0.2 },
+    { waveScale: 1.5, windVelocity: 28, waveCount: 24, timelineScale: 0.8 },
     { operatorType: 'BEVEL', parameters: { width: 0.04 } },
     { enabled: null },
   ]) assert.equal(modifierPatchSchema.safeParse(patch).success, true, JSON.stringify(patch));
@@ -254,6 +258,7 @@ test('modifier patch schemas expose bounded partial controls without permitting 
     { ratio: 0.5, targetTriangles: 100 },
     { splitAngle: Math.PI + 0.01 },
     { source: { type: 'noise', octaves: 9 } },
+    { waveCount: 33 },
   ]) assert.equal(modifierPatchSchema.safeParse(patch).success, false, JSON.stringify(patch));
 
   const emitted = z.toJSONSchema(modifierPatchSchema, { io: 'input' });

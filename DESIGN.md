@@ -395,8 +395,19 @@ and typed property paths rather than raw Three.js `PropertyBinding` strings.
 The current runtime supports position, Euler rotation, scale, and visibility;
 scalar/vector keyframes; constant, linear, smooth, and cubic Bezier
 interpolation; once, repeat, and ping-pong loops; autoplay; speed; and exact
-frame/seconds seeking. `three_studio_play` advances or scrubs Actions, while
+frame/seconds seeking. `three_studio_play` advances or scrubs Actions and the
+strict timeline-driven Ocean displacement subset, while
 `three_studio_render.timelineFrame` captures a deterministic authored frame.
+
+Ocean evaluates a seeded, bounded Phillips/Gerstner-style wave set over an
+existing local-XY mesh. It preserves topology and supports timeline time,
+direction, alignment, choppiness, damping, depth, and wave-count controls.
+Generated grids, alternate spectra, caches, foam, and spray are not claimed.
+Moving Ocean geometry is raster-WebGPU-only and is excluded with an explicit
+diagnostic from the static RTX triangle scene; `timelineScale: 0` remains a
+static RTX-eligible displacement. The runtime evaluates the static modifier
+prefix once and applies only Ocean while the timeline moves. Distinct moving
+Ocean geometries share one published 131,072 vertex-wave-sample scene budget.
 
 The runtime resolves stable IDs only after scene instantiation, snapshots the
 authored pose, evaluates Actions, then reapplies the supported constraint
@@ -587,10 +598,10 @@ Validation never mutates the project.
 ### 6. `three_studio_play`
 
 Currently enters/stops a transient Play mode, pauses/resumes deterministic
-Actions, seeks to an exact time or frame, advances by bounded ticks, records
-the latest named input, and reports Action states. It does not run scripts,
-blueprints, physics, events, or game logic. It never mutates the authoring
-document.
+Actions and timeline-driven Ocean geometry, seeks to an exact time or frame,
+advances by bounded ticks, records the latest named input, and reports Action
+states plus timeline-geometry modifier IDs. It does not run scripts, blueprints,
+physics, events, or game logic. It never mutates the authoring document.
 
 ### 7. `three_studio_render`
 
@@ -598,9 +609,9 @@ Currently frames exact target IDs or explicit bounds, or uses a named compiled
 camera, then captures WebGPU beauty evidence at the committed revision to an
 offscreen target. Capture uses the authored shot, not a human Review orbit, and
 does not change the authoring document or the window camera. An optional
-`timelineFrame` evaluates and captures an exact Action frame before restoring
-the prior runtime time. Diagnostic passes and RTX/hybrid rendering are not
-exposed.
+`timelineFrame` evaluates and captures an exact Action/Ocean timeline frame
+before restoring the prior runtime time. Diagnostic passes and RTX/hybrid
+rendering are not exposed.
 
 ### 8. `three_studio_history`
 

@@ -183,6 +183,41 @@ test('individual modifier operations share exact index, patch, move, and delete 
   assert.deepEqual(wall(kernel).components.modifiers.map(item => item.id), ['modifier/weld']);
 });
 
+test('guarded modifier operations create and patch the live Ocean displacement subset', async () => {
+  const kernel = fixture();
+  await kernel.apply(request(0, 'ocean-create-0001', [{
+    type: 'modifier.create',
+    entityId: 'entity/wall',
+    expectedStackHash: modifierStackHash(wall(kernel)),
+    modifier: {
+      id: 'modifier/ocean', type: 'ocean', mode: 'displace',
+      seed: 12, waveScale: 0.8, waveCount: 16, timelineScale: 1,
+    },
+  }]));
+  assert.equal(buildModifierDigest(wall(kernel)).modifiers[0].blender.operatorType, 'OCEAN');
+
+  await kernel.apply(request(1, 'ocean-patch-0001', [{
+    type: 'modifier.patch',
+    entityId: 'entity/wall',
+    modifierId: 'modifier/ocean',
+    expectedStackHash: modifierStackHash(wall(kernel)),
+    patch: { waveScale: 1.4, windVelocity: 35, timelineScale: 0.5 },
+  }]));
+  assert.deepEqual(wall(kernel).components.modifiers[0], {
+    id: 'modifier/ocean', type: 'ocean', mode: 'displace',
+    seed: 12, waveScale: 1.4, waveCount: 16, timelineScale: 0.5, windVelocity: 35,
+  });
+
+  await assert.rejects(kernel.apply(request(2, 'ocean-patch-invalid-0001', [{
+    type: 'modifier.patch',
+    entityId: 'entity/wall',
+    modifierId: 'modifier/ocean',
+    expectedStackHash: modifierStackHash(wall(kernel)),
+    patch: { waveScaleMin: 80, spatialSize: 40 },
+  }])), error => error.code === 'invalid_geometry_modifier');
+  assert.equal(kernel.revision, 2);
+});
+
 test('generic scene and entity operations cannot author legacy-unknown modifier types', async () => {
   const kernel = legacyFixture();
   const legacyModifiers = [{ id: 'modifier/new-bevel', type: 'bevel', width: 0.1 }];

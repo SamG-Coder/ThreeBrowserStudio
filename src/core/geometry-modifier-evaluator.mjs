@@ -17,6 +17,11 @@ const MAX_DECIMATE_TRIANGLES = 250_000;
 const MAX_NOISE_OCTAVES = 8;
 const MAX_DISPLACEMENT_STRENGTH = 10_000;
 const MAX_FREQUENCY = 10_000;
+const MAX_OCEAN_WAVE_COUNT = 32;
+const MAX_OCEAN_SAMPLES = 8_000_000;
+const MAX_OCEAN_TIMELINE_SAMPLES = 131_072;
+const MAX_OCEAN_TIME = 1_000_000;
+const MAX_TIMELINE_TIME = 1_000_000_000;
 
 export const GEOMETRY_MODIFIER_LIMITS = Object.freeze({
   maxModifiers: MAX_MODIFIERS,
@@ -27,6 +32,9 @@ export const GEOMETRY_MODIFIER_LIMITS = Object.freeze({
   maxNoiseOctaves: MAX_NOISE_OCTAVES,
   maxDisplacementStrength: MAX_DISPLACEMENT_STRENGTH,
   maxFrequency: MAX_FREQUENCY,
+  maxOceanWaveCount: MAX_OCEAN_WAVE_COUNT,
+  maxOceanSamples: MAX_OCEAN_SAMPLES,
+  maxOceanTimelineSamples: MAX_OCEAN_TIMELINE_SAMPLES,
 });
 
 export const GEOMETRY_MODIFIER_TYPES = Object.freeze([
@@ -39,6 +47,7 @@ export const GEOMETRY_MODIFIER_TYPES = Object.freeze([
   'subdivision',
   'decimate',
   'displace',
+  'ocean',
 ]);
 
 const TYPE_ALIASES = Object.freeze({
@@ -56,6 +65,7 @@ const TYPE_ALIASES = Object.freeze({
   subsurf: 'subdivision',
   decimate: 'decimate',
   displace: 'displace',
+  ocean: 'ocean',
 });
 
 export function canonicalGeometryModifierType(type) {
@@ -915,6 +925,173 @@ function valueNoise(position, seed) {
   );
 }
 
+const OCEAN_GRAVITY = 9.80665;
+const OCEAN_TAU = Math.PI * 2;
+
+function oceanWaveComponents(modifier) {
+  if (modifier.mode !== 'displace') {
+    throw modifierError(
+      'geometry_modifier_mode_unsupported',
+      `Ocean modifier ${modifier.id} supports only mode 'displace'; generated grids, caches, foam, and spray are not live.`,
+      modifier,
+      { supportedModes: ['displace'] },
+    );
+  }
+  const seed = boundedInteger(modifier.seed, 'seed', 0, 0, 0x7fffffff, modifier);
+  const spatialSize = finiteNumber(
+    modifier.spatialSize ?? 50,
+    'spatialSize',
+    0.01,
+    1_000_000,
+    modifier,
+  );
+  const waveScaleMin = finiteNumber(
+    modifier.waveScaleMin ?? 0.01,
+    'waveScaleMin',
+    0.001,
+    1_000_000,
+    modifier,
+  );
+  if (waveScaleMin > spatialSize) {
+    throw modifierError(
+      'invalid_geometry_modifier',
+      'waveScaleMin must not exceed spatialSize.',
+      modifier,
+      { waveScaleMin, spatialSize },
+    );
+  }
+  const waveScale = finiteNumber(modifier.waveScale ?? 1, 'waveScale', 0, 10_000, modifier);
+  const windVelocity = finiteNumber(modifier.windVelocity ?? 30, 'windVelocity', 0, 1_000, modifier);
+  const waveDirection = finiteNumber(
+    modifier.waveDirection ?? 0,
+    'waveDirection',
+    -1_000_000,
+    1_000_000,
+    modifier,
+  );
+  const waveAlignment = finiteNumber(modifier.waveAlignment ?? 0, 'waveAlignment', 0, 1, modifier);
+  const choppiness = finiteNumber(modifier.choppiness ?? 1, 'choppiness', 0, 10, modifier);
+  const damping = finiteNumber(modifier.damping ?? 0.5, 'damping', 0, 1, modifier);
+  const depth = finiteNumber(modifier.depth ?? 200, 'depth', 0.01, 1_000_000, modifier);
+  const waveCount = boundedInteger(
+    modifier.waveCount,
+    'waveCount',
+    16,
+    1,
+    MAX_OCEAN_WAVE_COUNT,
+    modifier,
+  );
+  const windLength = Math.max(1e-6, (windVelocity * windVelocity) / OCEAN_GRAVITY);
+  const wavelengthRatio = spatialSize / waveScaleMin;
+  const raw = [];
+  let energySum = 0;
+  for (let index = 0; index < waveCount; index += 1) {
+    const wavelengthJitter = hashLattice(index, 17, 31, seed);
+    const directionJitter = hashLattice(index, 47, 73, seed);
+    const phaseJitter = hashLattice(index, 101, 151, seed);
+    const stratum = (index + wavelengthJitter) / waveCount;
+    const wavelength = waveScaleMin * (wavelengthRatio ** stratum);
+    const waveNumber = OCEAN_TAU / wavelength;
+    const direction = waveDirection
+      + (directionJitter * 2 - 1) * Math.PI * (1 - waveAlignment);
+    const directionVector = [Math.cos(direction), Math.sin(direction)];
+    const counterWind = Math.cos(direction - waveDirection) < 0 ? 1 - damping : 1;
+    const largeWaveCutoff = Math.exp(-1 / Math.max(1e-12, (waveNumber * windLength) ** 2));
+    const smallWaveCutoff = Math.exp(-((waveNumber * waveScaleMin) ** 2));
+    const phillips = largeWaveCutoff * smallWaveCutoff * counterWind
+      / Math.max(1e-12, waveNumber ** 4);
+    const energy = Math.sqrt(Math.max(0, phillips));
+    const angularFrequency = Math.sqrt(
+      OCEAN_GRAVITY * waveNumber * Math.tanh(waveNumber * depth),
+    );
+    raw.push({
+      direction: directionVector,
+      waveNumber,
+      angularFrequency,
+      phase: phaseJitter * OCEAN_TAU,
+      energy,
+    });
+    energySum += energy;
+  }
+  const windAmplitude = Math.min(4, windVelocity / 30);
+  const amplitudeScale = energySum > 1e-12
+    ? waveScale * windAmplitude / energySum
+    : 0;
+  return raw.map(component => ({
+    ...component,
+    amplitude: component.energy * amplitudeScale,
+  }));
+}
+
+function applyOcean(mesh, modifier, options = {}) {
+  const waveCount = boundedInteger(
+    modifier.waveCount,
+    'waveCount',
+    16,
+    1,
+    MAX_OCEAN_WAVE_COUNT,
+    modifier,
+  );
+  const vertexCount = mesh.positions.length / 3;
+  const sampleCount = vertexCount * waveCount;
+  const timelineDriven = (modifier.timelineScale ?? 1) !== 0;
+  const sampleLimit = timelineDriven ? MAX_OCEAN_TIMELINE_SAMPLES : MAX_OCEAN_SAMPLES;
+  if (!Number.isSafeInteger(sampleCount) || sampleCount > sampleLimit) {
+    throw modifierError(
+      'geometry_modifier_complexity_limit',
+      `Ocean modifier ${modifier.id} requests ${sampleCount} vertex-wave samples; the ${timelineDriven ? 'timeline' : 'static'} live limit is ${sampleLimit}.`,
+      modifier,
+      { vertexCount, waveCount, sampleCount, limit: sampleLimit, timelineDriven },
+    );
+  }
+  const authoredTime = finiteNumber(modifier.time ?? 1, 'time', 0, MAX_OCEAN_TIME, modifier);
+  const timelineScale = finiteNumber(modifier.timelineScale ?? 1, 'timelineScale', -64, 64, modifier);
+  const timelineSeconds = finiteNumber(
+    options.timeSeconds ?? 0,
+    'timeSeconds',
+    -MAX_TIMELINE_TIME,
+    MAX_TIMELINE_TIME,
+    modifier,
+  );
+  const time = authoredTime + timelineSeconds * timelineScale;
+  const choppiness = finiteNumber(modifier.choppiness ?? 1, 'choppiness', 0, 10, modifier);
+  const components = oceanWaveComponents(modifier);
+  const positions = [...mesh.positions];
+  for (let vertexIndex = 0; vertexIndex < vertexCount; vertexIndex += 1) {
+    const offset = vertexIndex * 3;
+    const x = mesh.positions[offset];
+    const y = mesh.positions[offset + 1];
+    let horizontalX = 0;
+    let horizontalY = 0;
+    let vertical = 0;
+    for (const component of components) {
+      if (component.amplitude === 0) continue;
+      const travelled = (component.angularFrequency * time) % OCEAN_TAU;
+      const phase = component.waveNumber
+        * (component.direction[0] * x + component.direction[1] * y)
+        - travelled
+        + component.phase;
+      const sine = Math.sin(phase);
+      const cosine = Math.cos(phase);
+      vertical += component.amplitude * sine;
+      const foldSafeChoppiness = Math.min(
+        choppiness,
+        0.85 / Math.max(
+          1e-12,
+          component.waveNumber * component.amplitude * components.length,
+        ),
+      );
+      const horizontal = foldSafeChoppiness * component.amplitude * cosine;
+      horizontalX += component.direction[0] * horizontal;
+      horizontalY += component.direction[1] * horizontal;
+    }
+    positions[offset] = x + horizontalX;
+    positions[offset + 1] = y + horizontalY;
+    positions[offset + 2] = mesh.positions[offset + 2] + vertical;
+  }
+  return recalculateIfRequested({ ...mesh, positions }, modifier, true);
+}
+
 function scalarSource(modifier) {
   const source = modifier.source ?? { type: 'constant', value: 1 };
   if (!isPlainRecord(source)) {
@@ -1041,6 +1218,7 @@ const EVALUATORS = Object.freeze({
   subdivision: applySubdivision,
   decimate: applyDecimate,
   displace: (mesh, modifier, budget) => applyDisplace(mesh, modifier, budget),
+  ocean: (mesh, modifier, budget, options) => applyOcean(mesh, modifier, options),
 });
 
 function sourceTriangleMaterials(mesh, modifier) {
@@ -1078,7 +1256,7 @@ function preserveTriangleMaterials(source, result, type, modifier) {
     result.triangleMaterialIndices = new Array(outputTriangles).fill(materials[0] ?? 0);
     return result;
   }
-  if (['triangulate', 'smooth', 'weightedNormal', 'edgeSplit', 'displace'].includes(type)) {
+  if (['triangulate', 'smooth', 'weightedNormal', 'edgeSplit', 'displace', 'ocean'].includes(type)) {
     if (outputTriangles !== materials.length) {
       throw modifierError(
         'geometry_modifier_material_groups_unsupported',
@@ -1143,7 +1321,7 @@ export function applyGeometryModifier(recipe, modifier, options = {}) {
       { supportedTypes: GEOMETRY_MODIFIER_TYPES },
     );
   }
-  const result = EVALUATORS[type](mesh, modifier, budget);
+  const result = EVALUATORS[type](mesh, modifier, budget, options);
   assertBudget(meshCounts(result), budget, modifier);
   preserveTriangleMaterials(mesh, result, type, modifier);
   try {
@@ -1249,7 +1427,10 @@ export function evaluateGeometryModifierStack(recipe, modifiers, options = {}) {
       break;
     }
     const before = meshCounts(output);
-    output = applyGeometryModifier(output, modifier, budget);
+    output = applyGeometryModifier(output, modifier, {
+      ...budget,
+      ...(options.timeSeconds === undefined ? {} : { timeSeconds: options.timeSeconds }),
+    });
     const after = meshCounts(output);
     applied.push({ id: modifier.id, type, authoredType: modifier.type, before, after });
   }

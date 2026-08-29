@@ -10,6 +10,7 @@ import { createDataTexture } from './image-texture-resources.mjs';
 import { applyConstraintStacks, evaluateInstanceStack } from './object-evaluation.mjs';
 import { createAnimationRuntime, validateAnimationResource } from './animation-runtime.mjs';
 import {
+  GEOMETRY_MODIFIER_LIMITS,
   evaluateGeometryModifierStack,
 } from '../core/geometry-modifier-evaluator.mjs';
 import { analyzeViewportModifierStack } from '../core/modifier-stack.mjs';
@@ -89,9 +90,10 @@ function applyShadowSettings(object, values = {}) {
   }
 }
 
-function compileError(code, message) {
+function compileError(code, message, details) {
   const error = new Error(message);
   error.code = code;
+  if (details !== undefined) error.details = details;
   return error;
 }
 
@@ -300,11 +302,29 @@ function sceneAppearance(THREE, _TSL, settings = {}) {
 export function compileSceneDocument({ THREE, TSL, project, sceneId = project.activeSceneId, aspect = 16 / 9 }) {
   const document = project.scenes?.[sceneId];
   if (!document) throw new Error(`Scene ${sceneId} does not exist.`);
+  const timeline = document.settings?.timeline ?? {};
+  const timelineFps = Number.isFinite(timeline.framesPerSecond) ? timeline.framesPerSecond : 24;
+  const initialAnimationTime = ((timeline.currentFrame ?? timeline.frameStart ?? 1) - (timeline.frameStart ?? 1)) / timelineFps;
+  let animationTime = initialAnimationTime;
   const diagnostics = [];
   const geometries = new Map();
   const materials = new Map();
   const textures = new Map();
+  const dynamicRtxDiagnosticEntities = new Set();
+  const maxTimelineGeometrySamples = GEOMETRY_MODIFIER_LIMITS.maxOceanTimelineSamples;
+  let timelineGeometrySampleCount = 0;
   let fallback = null;
+  const reportDynamicRtxExclusion = (entity, modifierIds) => {
+    if (dynamicRtxDiagnosticEntities.has(entity.id)) return;
+    dynamicRtxDiagnosticEntities.add(entity.id);
+    diagnostics.push({
+      severity: 'warning',
+      code: 'runtime_dynamic_geometry_rtx_excluded',
+      id: entity.id,
+      modifierIds: [...modifierIds],
+      message: `Entity ${entity.id} has timeline-driven geometry and is excluded from the static RTX triangle scene. Raster WebGPU rendering remains live.`,
+    });
+  };
   const geometry = (id, entity) => {
     const target = 'viewport';
     const resource = project.resources?.geometries?.[id];
@@ -312,8 +332,17 @@ export function compileSceneDocument({ THREE, TSL, project, sceneId = project.ac
     const sourceRecipe = normalizeGeometryRecipe(resource);
     const plan = viewportModifierPlan(entity, sourceRecipe.kind, diagnostics);
     const cacheKey = JSON.stringify([id, plan.stackHash, target]);
-    if (geometries.has(cacheKey)) return { ...geometries.get(cacheKey), plan };
+    if (geometries.has(cacheKey)) {
+      const cached = geometries.get(cacheKey);
+      if (cached.dynamicModifierIds?.length > 0) {
+        reportDynamicRtxExclusion(entity, cached.dynamicModifierIds);
+      }
+      return { ...cached, plan };
+    }
     let evaluation = null;
+    let dynamicBaseRecipe = null;
+    let dynamicModifiers = [];
+    let dynamicSampleCount = 0;
     let value;
     if (plan.hasActiveGeometryModifiers) {
       let baseGeometry = null;
@@ -324,10 +353,52 @@ export function compileSceneDocument({ THREE, TSL, project, sceneId = project.ac
         const baseRecipe = indexedMeshRecipeFromBufferGeometry(baseGeometry, {
           captureMaterialGroups: authoredMaterialIds.length > 1,
         });
-        evaluation = evaluateGeometryModifierStack(baseRecipe, plan.geometryModifiers, {
-          target,
-          unsupported: 'error',
-        });
+        const dynamicIndex = plan.geometryModifiers.findIndex(
+          modifier => modifier.type === 'ocean' && (modifier.timelineScale ?? 1) !== 0,
+        );
+        if (dynamicIndex >= 0) {
+          const prefixEvaluation = evaluateGeometryModifierStack(
+            baseRecipe,
+            plan.geometryModifiers.slice(0, dynamicIndex),
+            { target, unsupported: 'error' },
+          );
+          dynamicBaseRecipe = prefixEvaluation.recipe;
+          dynamicModifiers = plan.geometryModifiers.slice(dynamicIndex);
+          dynamicSampleCount = dynamicModifiers.reduce((total, modifier) => (
+            total + (dynamicBaseRecipe.positions.length / 3) * (modifier.waveCount ?? 16)
+          ), 0);
+          const requestedTimelineSamples = timelineGeometrySampleCount + dynamicSampleCount;
+          if (requestedTimelineSamples > maxTimelineGeometrySamples) {
+            throw compileError(
+              'runtime_timeline_geometry_budget_exceeded',
+              `Timeline geometry requests ${requestedTimelineSamples} vertex-wave samples per update; the scene limit is ${maxTimelineGeometrySamples}.`,
+              {
+                entityId: entity.id,
+                modifierIds: dynamicModifiers.map(modifier => modifier.id),
+                requested: requestedTimelineSamples,
+                maximum: maxTimelineGeometrySamples,
+              },
+            );
+          }
+          const dynamicEvaluation = evaluateGeometryModifierStack(
+            dynamicBaseRecipe,
+            dynamicModifiers,
+            { target, unsupported: 'error', timeSeconds: animationTime },
+          );
+          evaluation = {
+            ...dynamicEvaluation,
+            applied: [...prefixEvaluation.applied, ...dynamicEvaluation.applied],
+            skipped: [...prefixEvaluation.skipped, ...dynamicEvaluation.skipped],
+            blocked: [...prefixEvaluation.blocked, ...dynamicEvaluation.blocked],
+            diagnostics: [...prefixEvaluation.diagnostics, ...dynamicEvaluation.diagnostics],
+          };
+        } else {
+          evaluation = evaluateGeometryModifierStack(baseRecipe, plan.geometryModifiers, {
+            target,
+            unsupported: 'error',
+            timeSeconds: animationTime,
+          });
+        }
         value = createGeometry(THREE, { recipe: evaluation.recipe });
       } finally {
         baseGeometry?.dispose?.();
@@ -337,6 +408,10 @@ export function compileSceneDocument({ THREE, TSL, project, sceneId = project.ac
     }
     try {
       ensureGeneratedCoordinateAttribute(THREE, value);
+      const dynamicModifierIds = plan.geometryModifiers
+        .filter(modifier => modifier.type === 'ocean' && (modifier.timelineScale ?? 1) !== 0)
+        .map(modifier => modifier.id);
+      timelineGeometrySampleCount += dynamicSampleCount;
       value.name = resource.name ?? id;
       value.userData = {
         ...(value.userData ?? {}),
@@ -344,14 +419,33 @@ export function compileSceneDocument({ THREE, TSL, project, sceneId = project.ac
         studioModifierStackHash: plan.stackHash,
         studioGeometryTarget: target,
         studioAppliedGeometryModifiers: evaluation?.applied.map(item => item.id) ?? [],
+        ...(dynamicModifierIds.length > 0 ? {
+          studioTimelineGeometryModifierIds: [...dynamicModifierIds],
+          studioRtxExclusionReason: 'timeline-driven geometry is not representable by the static RTX triangle scene',
+          rtxIgnore: true,
+        } : {}),
       };
+      if (dynamicModifierIds.length > 0) reportDynamicRtxExclusion(entity, dynamicModifierIds);
+      const result = {
+        value,
+        evaluation,
+        stackHash: plan.stackHash,
+        target,
+        plan,
+        dynamicModifierIds,
+        ...(dynamicModifierIds.length > 0 ? {
+          dynamic: {
+            baseRecipe: dynamicBaseRecipe,
+            modifiers: dynamicModifiers,
+          },
+        } : {}),
+      };
+      geometries.set(cacheKey, result);
+      return result;
     } catch (error) {
       value?.dispose?.();
       throw error;
     }
-    const result = { value, evaluation, stackHash: plan.stackHash, target, plan };
-    geometries.set(cacheKey, result);
-    return result;
   };
   const texture = id => {
     if (!id) return null;
@@ -464,10 +558,6 @@ export function compileSceneDocument({ THREE, TSL, project, sceneId = project.ac
     }];
     diagnostics.push(...animationDiagnostics.map(item => ({ ...item, severity: 'error' })));
   }
-  const timeline = document.settings?.timeline ?? {};
-  const timelineFps = Number.isFinite(timeline.framesPerSecond) ? timeline.framesPerSecond : 24;
-  const initialAnimationTime = ((timeline.currentFrame ?? timeline.frameStart ?? 1) - (timeline.frameStart ?? 1)) / timelineFps;
-  let animationTime = initialAnimationTime;
   const authoredPose = new Map(entities.map(entity => [entity.id, {
     transform: entity.transform,
     visible: entity.visible,
@@ -489,6 +579,53 @@ export function compileSceneDocument({ THREE, TSL, project, sceneId = project.ac
   restoreAuthoredPose();
   if (animationRuntime) animationRuntime.setTime(animationTime);
   evaluateConstraints();
+  const timelineGeometryModifierIds = [...new Set(
+    [...geometries.values()].flatMap(entry => entry.dynamicModifierIds ?? []),
+  )];
+  const updateFloatAttribute = (geometryValue, name, values, itemSize) => {
+    if (!Array.isArray(values)) {
+      geometryValue.deleteAttribute?.(name);
+      return;
+    }
+    const current = geometryValue.getAttribute?.(name);
+    if (!current || current.itemSize !== itemSize || current.array?.length !== values.length) {
+      geometryValue.setAttribute(name, new THREE.Float32BufferAttribute(values, itemSize));
+      return;
+    }
+    if (typeof current.array.set === 'function') current.array.set(values);
+    else for (let index = 0; index < values.length; index += 1) current.array[index] = values[index];
+    current.needsUpdate = true;
+  };
+  const updateTimelineGeometry = (timeSeconds) => {
+    const evaluations = [];
+    for (const entry of geometries.values()) {
+      if (!entry.dynamic) continue;
+      const evaluation = evaluateGeometryModifierStack(
+        entry.dynamic.baseRecipe,
+        entry.dynamic.modifiers,
+        { target: entry.target, unsupported: 'error', timeSeconds },
+      );
+      const currentIndexCount = entry.value.getIndex?.()?.count ?? entry.value.index?.count ?? 0;
+      if (currentIndexCount !== evaluation.recipe.indices.length) {
+        throw compileError(
+          'runtime_dynamic_geometry_topology_changed',
+          `Timeline-driven modifiers changed topology for ${entry.dynamicModifierIds.join(', ')}; Ocean must be the final live geometry modifier.`,
+        );
+      }
+      updateFloatAttribute(entry.value, 'position', evaluation.recipe.positions, 3);
+      updateFloatAttribute(entry.value, 'normal', evaluation.recipe.normals, 3);
+      entry.value.computeBoundingBox?.();
+      entry.value.computeBoundingSphere?.();
+      entry.value.userData.studioTimelineTime = timeSeconds;
+      entry.evaluation = evaluation;
+      evaluations.push({
+        modifierIds: [...entry.dynamicModifierIds],
+        timeSeconds,
+        vertices: evaluation.recipe.positions.length / 3,
+      });
+    }
+    return evaluations;
+  };
   const appearance = sceneAppearance(THREE, TSL, document.settings);
   const activeCamera = objects.get(document.settings?.activeCameraId) ?? null;
   const ownedMaterials = new Set([...materials.values(), ...(fallback ? [fallback] : [])]);
@@ -505,21 +642,30 @@ export function compileSceneDocument({ THREE, TSL, project, sceneId = project.ac
     fog: appearance.fog,
     diagnostics,
     animationRuntime,
+    timelineGeometryModifierIds,
+    timelineGeometrySampleCount,
+    maxTimelineGeometrySamples,
     get animationTime() { return animationTime; },
     animationActions: animationRuntime ? [...animationRuntime.actions.keys()] : [],
     setAnimationTime(timeSeconds) {
-      if (!animationRuntime) return [];
+      if (!Number.isFinite(timeSeconds) || Math.abs(timeSeconds) > 1_000_000_000) {
+        throw compileError('runtime_animation_time_invalid', 'Timeline time must be a finite number with magnitude at most 1000000000 seconds.');
+      }
       animationTime = timeSeconds;
       restoreAuthoredPose();
-      const evaluations = animationRuntime.setTime(timeSeconds);
+      const evaluations = animationRuntime?.setTime(timeSeconds) ?? [];
+      updateTimelineGeometry(timeSeconds);
       evaluateConstraints();
       return evaluations;
     },
     advanceAnimation(deltaSeconds) {
-      if (!animationRuntime) return [];
+      if (!Number.isFinite(deltaSeconds) || Math.abs(deltaSeconds) > 1_000_000_000) {
+        throw compileError('runtime_animation_delta_invalid', 'Timeline delta must be a finite number with magnitude at most 1000000000 seconds.');
+      }
       animationTime += deltaSeconds;
       restoreAuthoredPose();
-      const evaluations = animationRuntime.advance(deltaSeconds);
+      const evaluations = animationRuntime?.advance(deltaSeconds) ?? [];
+      updateTimelineGeometry(animationTime);
       evaluateConstraints();
       return evaluations;
     },

@@ -936,6 +936,137 @@ test('compiled Blender-style Actions scrub exact frames and remain derived state
   assert.deepEqual(compiled.diagnostics, []);
 });
 
+test('timeline-driven Ocean geometry scrubs without Actions and is explicitly excluded from static RTX', () => {
+  const project = createProjectDocument({
+    projectId: 'project/ocean-timeline',
+    resources: {
+      geometries: [{
+        id: 'geometry/ocean-grid',
+        recipe: {
+          kind: 'indexedMesh',
+          positions: [-2, -2, 0, 2, -2, 0, 2, 2, 0, -2, 2, 0],
+          indices: [0, 1, 2, 0, 2, 3],
+          uvs: [0, 0, 1, 0, 1, 1, 0, 1],
+        },
+      }],
+    },
+    scenes: [{
+      id: 'scene/main',
+      settings: { timeline: { frameStart: 1, frameEnd: 48, currentFrame: 1, framesPerSecond: 24 } },
+      entities: [entity('entity/ocean', 'mesh', { components: {
+        mesh: { geometryId: 'geometry/ocean-grid' },
+        modifiers: [
+          { id: 'modifier/ocean-prefix-subdivision', type: 'subdivision', scheme: 'simple', levels: 1 },
+          {
+            id: 'modifier/ocean', type: 'ocean', mode: 'displace', seed: 9,
+            spatialSize: 20, waveScaleMin: 0.2, waveScale: 0.7,
+            windVelocity: 25, choppiness: 1.2, waveCount: 12,
+          },
+        ],
+      } })],
+    }],
+  });
+
+  const compiled = compileSceneDocument({ THREE: fakeThree(), TSL: fakeTsl(), project });
+  const geometry = compiled.objects.get('entity/ocean').geometry;
+  const atStart = [...geometry.getAttribute('position').array];
+  assert.equal(compiled.animationRuntime.actions.size, 0);
+  assert.deepEqual(compiled.timelineGeometryModifierIds, ['modifier/ocean']);
+  assert.equal(compiled.timelineGeometrySampleCount, (atStart.length / 3) * 12);
+  assert.equal(compiled.maxTimelineGeometrySamples, 131_072);
+  assert.deepEqual(geometry.userData.studioAppliedGeometryModifiers, [
+    'modifier/ocean-prefix-subdivision',
+    'modifier/ocean',
+  ]);
+  assert.equal(geometry.userData.rtxIgnore, true);
+  const rtxDiagnostic = compiled.diagnostics.find(
+    item => item.code === 'runtime_dynamic_geometry_rtx_excluded',
+  );
+  assert.equal(rtxDiagnostic?.id, 'entity/ocean');
+  assert.deepEqual(rtxDiagnostic?.modifierIds, ['modifier/ocean']);
+
+  assert.deepEqual(compiled.setAnimationTime(1), []);
+  const atOneSecond = [...geometry.getAttribute('position').array];
+  assert.notDeepEqual(atOneSecond, atStart);
+  compiled.setAnimationTime(0);
+  assert.deepEqual([...geometry.getAttribute('position').array], atStart);
+});
+
+test('timeline-driven Ocean geometry enforces one accumulated scene update budget', () => {
+  const vertexCount = 2_050;
+  const project = createProjectDocument({
+    projectId: 'project/ocean-scene-budget',
+    resources: { geometries: [{
+      id: 'geometry/ocean-grid',
+      recipe: {
+        kind: 'indexedMesh',
+        positions: new Array(vertexCount * 3).fill(0),
+        indices: [0, 1, 2],
+      },
+    }] },
+    scenes: [{
+      id: 'scene/main',
+      entities: [
+        entity('entity/ocean-a', 'mesh', { components: {
+          mesh: { geometryId: 'geometry/ocean-grid' },
+          modifiers: [{
+            id: 'modifier/ocean-a', type: 'ocean', mode: 'displace', waveCount: 32,
+          }],
+        } }),
+        entity('entity/ocean-b', 'mesh', { components: {
+          mesh: { geometryId: 'geometry/ocean-grid' },
+          modifiers: [{
+            id: 'modifier/ocean-b', type: 'ocean', mode: 'displace', waveCount: 32,
+          }],
+        } }),
+      ],
+    }],
+  });
+
+  const compiled = compileSceneDocument({ THREE: fakeThree(), TSL: fakeTsl(), project });
+  assert.equal(compiled.timelineGeometrySampleCount, vertexCount * 32);
+  assert.equal(compiled.objects.has('entity/ocean-a'), true);
+  assert.equal(compiled.objects.has('entity/ocean-b'), false);
+  assert.equal(
+    compiled.diagnostics.some(item => (
+      item.severity === 'error'
+      && item.code === 'runtime_timeline_geometry_budget_exceeded'
+      && item.id === 'entity/ocean-b'
+    )),
+    true,
+  );
+});
+
+test('static Ocean displacement remains eligible for static RTX registration', () => {
+  const project = createProjectDocument({
+    projectId: 'project/ocean-static',
+    resources: { geometries: [{
+      id: 'geometry/ocean-grid',
+      recipe: {
+        kind: 'indexedMesh',
+        positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+        indices: [0, 1, 2],
+      },
+    }] },
+    scenes: [{
+      id: 'scene/main',
+      entities: [entity('entity/ocean', 'mesh', { components: {
+        mesh: { geometryId: 'geometry/ocean-grid' },
+        modifiers: [{
+          id: 'modifier/ocean', type: 'ocean', mode: 'displace', timelineScale: 0,
+        }],
+      } })],
+    }],
+  });
+  const compiled = compileSceneDocument({ THREE: fakeThree(), TSL: fakeTsl(), project });
+  assert.deepEqual(compiled.timelineGeometryModifierIds, []);
+  assert.equal(compiled.objects.get('entity/ocean').geometry.userData.rtxIgnore, undefined);
+  assert.equal(
+    compiled.diagnostics.some(item => item.code === 'runtime_dynamic_geometry_rtx_excluded'),
+    false,
+  );
+});
+
 test('authored linear color backgrounds become an opaque WebGPU background node', () => {
   const THREE = fakeThree();
   const TSL = fakeTsl();

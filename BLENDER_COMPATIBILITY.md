@@ -51,7 +51,7 @@ because Blender itself documents operators separately from direct
 | Object | Entity document | Implemented for the declared entity kinds |
 | Mesh data | Shared geometry resource | Procedural, explicit indexed, and canonical editable polygon/corner meshes |
 | Materials | Shared basic/standard/physical/toon resource | Scalar PBR, supported bounded raster maps, and supported live node graphs |
-| Modifier stack | `entity.components.modifiers[]` in authored order | Array/Mirror/Pattern plus nine bounded geometry evaluators; all other Blender types use an explicit validated bake boundary |
+| Modifier stack | `entity.components.modifiers[]` in authored order | Array/Mirror/Pattern plus ten bounded geometry evaluators; all other Blender types use an explicit validated bake boundary |
 | Constraint stack | `entity.components.constraints[]` in authored order | Aim/copy/limit subset |
 | Action/F-curves | Animation resource with stable target/property tracks | Frame/second keyframes and four interpolations |
 | Geometry Nodes | Typed graph IR | Validation only |
@@ -101,9 +101,12 @@ top-to-bottom. Studio preserves that model in canonical data. Use
 `stackHash`, then apply guarded `modifier.create`, `modifier.patch`,
 `modifier.move`, `modifier.delete`, or one atomic `modifier.stack.edit` batch.
 The live canonical types are strict: Array, Mirror, Pattern, Triangulate, Weld,
-Smooth, Weighted Normal, Edge Split, Solidify, Subdivision, Decimate, and
-Displace. A misspelled type fails validation instead of falling through to a
-default.
+Smooth, Weighted Normal, Edge Split, Solidify, Subdivision, Decimate, Displace,
+and Ocean. Ocean is a deterministic, bounded displacement-only subset over an
+existing local-XY surface. It supports seeded timeline motion, but not generated
+grids, alternate spectra, caches, foam, or spray; timeline-driven Ocean meshes
+stay in raster WebGPU and are excluded from the static RTX triangle scene. A
+misspelled type fails validation instead of falling through to a default.
 
 Unsupported Blender modifiers are represented as `type: "bakeBoundary"` with
 an `operatorType` validated against the complete 83-row Blender inventory and
@@ -133,13 +136,13 @@ concise purpose, and one deliberately conservative execution status:
 | Status | Count | Meaning |
 |---|---:|---|
 | `live-runtime` | 2 | Executes as non-destructive object/instance evaluation: `ARRAY`, `MIRROR` |
-| `live-geometry` | 9 | Bounded deterministic indexed-mesh subset: `DECIMATE`, `DISPLACE`, `EDGE_SPLIT`, `SMOOTH`, `SOLIDIFY`, `SUBSURF`, `TRIANGULATE`, `WEIGHTED_NORMAL`, `WELD` |
+| `live-geometry` | 10 | Bounded deterministic indexed-mesh subset: `DECIMATE`, `DISPLACE`, `EDGE_SPLIT`, `OCEAN`, `SMOOTH`, `SOLIDIFY`, `SUBSURF`, `TRIANGULATE`, `WEIGHTED_NORMAL`, `WELD` |
 | `bake-required` | 35 | Preserve a validated explicit boundary and bake evaluated data before expecting downstream live evaluation |
-| `planned` | 11 | Geometry Nodes plus the ten solver/physics stack types are catalogued but not executed |
+| `planned` | 10 | Geometry Nodes plus the remaining nine solver/physics stack types are catalogued but not executed |
 | `not-applicable` | 26 | Grease Pencil modifiers require a stroke/layer object model Studio does not have |
 
 This inventory is discovery and compatibility metadata, not a claim that all
-83 types execute or that the nine geometry subsets reproduce every Blender
+83 types execute or that the ten geometry subsets reproduce every Blender
 option. The full list remains queryable even when a type is unsupported, so MCP
 clients can author a validated bake workflow without guessing or silently
 degrading the scene.
@@ -197,7 +200,7 @@ white `sheenColor`) and preserves white `specularColor`/unit
 Authored controls override these neutral defaults.
 
 The pinned Blender 5.2 inventory distinguishes 115 current Add-menu entries,
-100 direct `ShaderNode` API subclasses, API-only and legacy nodes, and 36 live
+100 direct `ShaderNode` API subclasses, API-only and legacy nodes, and 38 live
 TSL nodes. `NodeFrame` plus bounded node layout metadata preserve tutorial
 organization; numeric `NodeReroute` executes as a typed pass-through. Engine
 closures, world/volume outputs, and context-specific nodes remain catalogued
