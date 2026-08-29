@@ -96,6 +96,19 @@ function blenderUtilityNodes(stages = []) {
         vectorValue(4),
       ],
     })),
+    blenderNode('blender.inputInt', 'FunctionNodeInputInt', 'Integer', 'input', staged({
+      description: 'Blender constant integer input with an exact signed 32-bit value.',
+      outputs: [['integer', blenderSocket('integer', 'Integer')]],
+      params: [['value', param('integer', { default: 0, min: -2147483648, max: 2147483647 })]],
+    })),
+    blenderNode('blender.cameraData', 'ShaderNodeCameraData', 'Camera Data', 'input', staged({
+      description: 'Camera-space view direction, positive view depth, and Euclidean camera distance.',
+      outputs: [
+        ['viewVector', blenderSocket('vec3', 'View Vector')],
+        ['viewZDepth', blenderSocket('float', 'View Z Depth')],
+        ['viewDistance', blenderSocket('float', 'View Distance')],
+      ],
+    })),
     blenderNode('blender.rgbToBw', 'ShaderNodeRGBToBW', 'RGB to BW', 'converter', staged({
       description: 'Converts linear RGB to one luminance value in the project working colour space.',
       inputs: [['color', blenderSocket('color', 'Color', { default: [0.5, 0.5, 0.5, 1] })]],
@@ -204,6 +217,53 @@ function blenderUtilityNodes(stages = []) {
         ['uvMap', param('string', { default: '' })],
       ],
     }),
+    blenderNode('blender.normal', 'ShaderNodeNormal', 'Normal', 'vector', staged({
+      description: 'Normalizes an authored direction and returns its dot product with the live world-space shading normal.',
+      inputs: [['normal', blenderSocket('vec3', 'Normal', { default: [0, 0, 1] })]],
+      outputs: [
+        ['normal', blenderSocket('vec3', 'Normal')],
+        ['dot', blenderSocket('float', 'Dot')],
+      ],
+    })),
+    blenderNode('blender.vectorRotate', 'ShaderNodeVectorRotate', 'Vector Rotate', 'vector', staged({
+      cost: 5,
+      description: 'Rotates a vector around a center using Blender axis-angle, principal-axis, or XYZ Euler modes.',
+      inputs: [
+        ['vector', blenderSocket('vec3', 'Vector', { default: [0, 0, 0] })],
+        ['center', blenderSocket('vec3', 'Center', { default: [0, 0, 0] })],
+        ['axis', blenderSocket('vec3', 'Axis', { default: [0, 0, 1] })],
+        ['angle', blenderSocket('float', 'Angle', { default: 0, unit: 'radians' })],
+        ['rotation', blenderSocket('vec3', 'Rotation', { default: [0, 0, 0], unit: 'radians' })],
+      ],
+      outputs: [['vector', blenderSocket('vec3', 'Vector')]],
+      params: [
+        ['rotationType', param('enum', { values: ['AXIS_ANGLE', 'X_AXIS', 'Y_AXIS', 'Z_AXIS', 'EULER_XYZ'], default: 'AXIS_ANGLE' })],
+        ['invert', param('boolean', { default: false })],
+      ],
+    })),
+    blenderNode('blender.displacement', 'ShaderNodeDisplacement', 'Displacement', 'displacement', staged({
+      cost: 2,
+      description: 'Converts scalar height to a local-space displacement vector. World-space conversion remains an explicit boundary.',
+      inputs: [
+        ['height', blenderSocket('float', 'Height', { default: 0 })],
+        ['midlevel', blenderSocket('float', 'Midlevel', { default: 0.5 })],
+        ['scale', blenderSocket('float', 'Scale', { default: 1 })],
+        ['normal', blenderSocket('vec3', 'Normal')],
+      ],
+      outputs: [['displacement', blenderSocket('vec3', 'Displacement')]],
+      params: [['space', param('enum', { values: ['OBJECT'], default: 'OBJECT' })]],
+    })),
+    blenderNode('blender.vectorDisplacement', 'ShaderNodeVectorDisplacement', 'Vector Displacement', 'displacement', staged({
+      cost: 2,
+      description: 'Converts a vector field to a local-space displacement vector. Tangent and world spaces remain explicit boundaries.',
+      inputs: [
+        ['vector', blenderSocket('vec3', 'Vector', { default: [0, 0, 0] })],
+        ['midlevel', blenderSocket('float', 'Midlevel', { default: 0 })],
+        ['scale', blenderSocket('float', 'Scale', { default: 1 })],
+      ],
+      outputs: [['displacement', blenderSocket('vec3', 'Displacement')]],
+      params: [['space', param('enum', { values: ['OBJECT'], default: 'OBJECT' })]],
+    })),
   ];
 }
 

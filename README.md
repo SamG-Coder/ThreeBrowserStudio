@@ -289,9 +289,10 @@ The current native loop is functional, not a static design mock:
   Principled-to-Material-Output flow, live TSL/WebGPU compilation, an official
   115-node Add-menu inventory plus all 100 direct ShaderNode API subclasses,
   and explicit unsupported-node failures;
-- 38 live Blender RNA nodes, including Vector Input, RGB to BW, Noise, Voronoi,
-  Wave, Checker, all Gradient modes, White Noise, Magic, Brick, Color Ramp,
-  Mix/Map Range, Bump, Principled, Material Output, and numeric Reroute;
+- 44 live Blender RNA nodes, including Integer/Vector Input, Camera Data, Normal,
+  Vector Rotate, object-space scalar/vector Displacement, RGB to BW, Noise,
+  Voronoi, Wave, Checker, all Gradient modes, White Noise, Magic, Brick, Color
+  Ramp, Mix/Map Range, Bump, Principled, Material Output, and numeric Reroute;
 - Blender-style node positions, dimensions, labels, collapsed state, frame
   parenting, frame-cycle checks, and stable socket-name/RNA aliases;
 - deterministic bounded CPU albedo/roughness/normal/height texture baking;

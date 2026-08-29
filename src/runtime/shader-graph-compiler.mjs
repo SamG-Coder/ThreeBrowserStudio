@@ -5,6 +5,8 @@ const TYPE_ALIASES = Object.freeze({
   ShaderNodeValue: 'blender.value',
   ShaderNodeRGB: 'blender.rgb',
   FunctionNodeInputVector: 'blender.inputVector',
+  FunctionNodeInputInt: 'blender.inputInt',
+  ShaderNodeCameraData: 'blender.cameraData',
   ShaderNodeRGBToBW: 'blender.rgbToBw',
   NodeReroute: 'blender.reroute',
   ShaderNodeTexCoord: 'blender.textureCoordinate',
@@ -29,6 +31,10 @@ const TYPE_ALIASES = Object.freeze({
   ShaderNodeVertexColor: 'blender.colorAttribute',
   ShaderNodeBump: 'blender.bump',
   ShaderNodeNormalMap: 'blender.normalMap',
+  ShaderNodeNormal: 'blender.normal',
+  ShaderNodeVectorRotate: 'blender.vectorRotate',
+  ShaderNodeDisplacement: 'blender.displacement',
+  ShaderNodeVectorDisplacement: 'blender.vectorDisplacement',
   ShaderNodeFresnel: 'blender.fresnel',
   ShaderNodeLayerWeight: 'blender.layerWeight',
   ShaderNodeHueSaturation: 'blender.hueSaturation',
@@ -825,6 +831,17 @@ function rotateXYZ(TSL, vector, rotation) {
   return TSL.vec3(x2.mul(cz).sub(y2.mul(sz)), x2.mul(sz).add(y2.mul(cz)), z2);
 }
 
+function rotateAxisAngle(TSL, vector, axis, angle) {
+  const axisLength = TSL.length(axis);
+  const safeAxis = axis.div(TSL.max(axisLength, 1e-7));
+  const cosine = TSL.cos(angle);
+  const sine = TSL.sin(angle);
+  const rotated = vector.mul(cosine)
+    .add(TSL.cross(safeAxis, vector).mul(sine))
+    .add(safeAxis.mul(TSL.dot(safeAxis, vector)).mul(TSL.float(1).sub(cosine)));
+  return TSL.select(TSL.lessThan(axisLength, 1e-7), vector, rotated);
+}
+
 function gradientTexture(TSL, coordinate, gradientType) {
   const x = component(coordinate, 'x', scalar(TSL, 0));
   const y = component(coordinate, 'y', scalar(TSL, 0));
@@ -1060,6 +1077,15 @@ function compileNodeFactory({ TSL, graph, parameters, textureResolver, featureTr
       if (p.dimensions === 3) return { vector: TSL.vec3(value[0], value[1], value[2]) };
       if (p.dimensions === 4) return { vector: TSL.vec4(value[0], value[1], value[2], value[3]) };
       fail('shader_node_mode_unsupported', `Vector Input dimensions ${p.dimensions} are not compiled live.`, { dimensions: p.dimensions });
+    }
+    if (type === 'blender.inputInt') return { integer: TSL.int(p.value ?? 0) };
+    if (type === 'blender.cameraData') {
+      const viewPosition = TSL.positionView;
+      return {
+        viewVector: TSL.normalize(viewPosition),
+        viewZDepth: TSL.abs(viewPosition.z),
+        viewDistance: TSL.length(viewPosition),
+      };
     }
     if (type === 'blender.rgbToBw') {
       const color = input.get(node, 'color', [0.5, 0.5, 0.5, 1], 'color');
@@ -1423,6 +1449,58 @@ function compileNodeFactory({ TSL, graph, parameters, textureResolver, featureTr
       const color = input.get(node, 'color', [0.5, 0.5, 1], 'color');
       const strength = input.get(node, 'strength', 1);
       return { normal: normalMapBySpace(TSL, color, strength, p.space) };
+    }
+    if (type === 'blender.normal') {
+      const normal = TSL.normalize(input.get(node, 'normal', [0, 0, 1], 'vec3'));
+      return { normal, dot: TSL.dot(normal, TSL.normalWorld) };
+    }
+    if (type === 'blender.vectorRotate') {
+      const center = input.get(node, 'center', [0, 0, 0], 'vec3');
+      const vector = input.get(node, 'vector', [0, 0, 0], 'vec3').sub(center);
+      const sign = p.invert === true ? -1 : 1;
+      const mode = String(p.rotationType ?? 'AXIS_ANGLE').toUpperCase();
+      let rotated;
+      if (mode === 'EULER_XYZ') {
+        const rotation = input.get(node, 'rotation', [0, 0, 0], 'vec3');
+        rotated = p.invert === true
+          ? rotateAxisAngle(
+            TSL,
+            rotateAxisAngle(
+              TSL,
+              rotateAxisAngle(TSL, vector, TSL.vec3(0, 0, 1), rotation.z.mul(-1)),
+              TSL.vec3(0, 1, 0),
+              rotation.y.mul(-1),
+            ),
+            TSL.vec3(1, 0, 0),
+            rotation.x.mul(-1),
+          )
+          : rotateXYZ(TSL, vector, rotation);
+      } else {
+        const angle = input.get(node, 'angle', 0).mul(sign);
+        const axis = mode === 'X_AXIS' ? TSL.vec3(1, 0, 0)
+          : mode === 'Y_AXIS' ? TSL.vec3(0, 1, 0)
+            : mode === 'Z_AXIS' ? TSL.vec3(0, 0, 1)
+              : mode === 'AXIS_ANGLE' ? input.get(node, 'axis', [0, 0, 1], 'vec3')
+                : null;
+        if (!axis) fail('shader_node_mode_unsupported', `Vector Rotate mode ${p.rotationType} is not compiled live.`, { rotationType: mode });
+        rotated = rotateAxisAngle(TSL, vector, axis, angle);
+      }
+      return { vector: rotated.add(center) };
+    }
+    if (type === 'blender.displacement') {
+      if (p.space !== 'OBJECT') fail('shader_node_mode_unsupported', `Displacement space ${p.space} is not compiled live.`, { space: p.space });
+      const amount = input.get(node, 'height', 0)
+        .sub(input.get(node, 'midlevel', 0.5))
+        .mul(input.get(node, 'scale', 1));
+      const normal = TSL.normalize(input.get(node, 'normal', TSL.normalLocal, 'vec3'));
+      return { displacement: normal.mul(amount) };
+    }
+    if (type === 'blender.vectorDisplacement') {
+      if (p.space !== 'OBJECT') fail('shader_node_mode_unsupported', `Vector Displacement space ${p.space} is not compiled live.`, { space: p.space });
+      const vector = input.get(node, 'vector', [0, 0, 0], 'vec3');
+      return {
+        displacement: vector.sub(input.get(node, 'midlevel', 0)).mul(input.get(node, 'scale', 1)),
+      };
     }
     if (type === 'blender.fresnel' || type === 'blender.layerWeight') {
       const normal = TSL.normalize(input.get(node, 'normal', TSL.normalWorld));

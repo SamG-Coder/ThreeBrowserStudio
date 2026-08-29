@@ -200,11 +200,14 @@ white `sheenColor`) and preserves white `specularColor`/unit
 Authored controls override these neutral defaults.
 
 The pinned Blender 5.2 inventory distinguishes 115 current Add-menu entries,
-100 direct `ShaderNode` API subclasses, API-only and legacy nodes, and 38 live
+100 direct `ShaderNode` API subclasses, API-only and legacy nodes, and 44 live
 TSL nodes. `NodeFrame` plus bounded node layout metadata preserve tutorial
-organization; numeric `NodeReroute` executes as a typed pass-through. Engine
-closures, world/volume outputs, and context-specific nodes remain catalogued
-with explicit candidate-compile failure until their runtime contract exists.
+organization; numeric `NodeReroute` executes as a typed pass-through. The live
+numeric/vector tranche includes Integer Input, Camera Data, Normal, Vector
+Rotate, and object-space scalar/vector Displacement; world/tangent displacement
+remains explicitly rejected. Engine closures, world/volume outputs, and
+context-specific nodes remain catalogued with explicit candidate-compile
+failure until their runtime contract exists.
 
 The native viewport and evidence renderer use ThreeBrowser's external
 `three/webgpu` runtime. Authored WebGPU materials and shadows stay active.
