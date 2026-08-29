@@ -22,7 +22,7 @@ shot. Do not treat the Review pose as the camera the model is rendering.
 Switch modes from the header button or Settings.
 
 On the GitHub Pages preview only, a **Prompt** dock sits at the bottom of the
-window for connecting chat APIs. The native window does not show it.
+window for Gemini or an HTTP chat API. The native window does not show it.
 
 ## Explorer
 

@@ -9,6 +9,12 @@ export {
   resolveChatCompletionsUrl,
 } from './llm-providers.mjs';
 export {
+  GEMINI_DEFAULT_BASE_URL,
+  GEMINI_DEFAULT_MODEL,
+  normalizeGeminiCompletion,
+  resolveGeminiGenerateUrl,
+} from './llm-gemini.mjs';
+export {
   STUDIO_BROWSER_TOOLS,
   STUDIO_TOOL_NAMES,
   createBrowserMcpHarness,

@@ -78,3 +78,28 @@ test('runPrompt uses the active provider and the MCP harness', async () => {
   assert.equal(result.finishReason, 'stop');
   assert.equal(result.text, 'status first');
 });
+
+test('prompt session can save and run a Gemini connection', async () => {
+  const session = sessionWithFetch(async (url, options) => {
+    assert.match(String(url), /:generateContent$/);
+    assert.equal(options.headers['x-goog-api-key'], 'AIza-test');
+    return {
+      ok: true,
+      async json() {
+        return { candidates: [{ content: { parts: [{ text: 'kernel is offline' }] } }] };
+      },
+    };
+  });
+  await session.createVault('1234');
+  const saved = await session.saveConnection({
+    kind: 'gemini',
+    label: 'Gemini',
+    config: { model: 'gemini-2.5-flash' },
+    secret: 'AIza-test',
+  });
+  assert.equal(saved.kind, 'gemini');
+  assert.equal('secret' in saved, false);
+  const result = await session.runPrompt('What is the scene?');
+  assert.equal(result.finishReason, 'stop');
+  assert.equal(result.text, 'kernel is offline');
+});

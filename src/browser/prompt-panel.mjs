@@ -1,3 +1,5 @@
+import { GEMINI_DEFAULT_BASE_URL, GEMINI_DEFAULT_MODEL } from './llm-gemini.mjs';
+
 const DOCK_ID = 'tbs-prompt-dock';
 const MODAL_ID = 'tbs-prompt-modal';
 const STYLE_ID = 'tbs-prompt-dock-style';
@@ -262,10 +264,8 @@ export function createBrowserPromptPanel({
   const closeButton = el(document, 'button', { type: 'button', className: 'secondary' }, 'Close');
   const head = el(document, 'div', { className: 'tbs-dialog-head' });
   const titleBlock = el(document, 'div');
-  titleBlock.append(
-    el(document, 'h2', { id: 'tbs-models-title' }, 'Models'),
-    el(document, 'p', { className: 'tbs-lead' }, 'Connect an HTTP chat API. Tokens stay PIN-encrypted in this browser.'),
-  );
+  const lead = el(document, 'p', { className: 'tbs-lead', id: 'tbs-models-lead' }, 'Connect Gemini or an HTTP chat API. Tokens stay PIN-encrypted in this browser.');
+  titleBlock.append(el(document, 'h2', { id: 'tbs-models-title' }, 'Models'), lead);
   head.append(titleBlock, closeButton);
 
   const pin = field(document, { label: 'PIN', name: 'tbs-pin', type: 'password' });
@@ -313,16 +313,38 @@ export function createBrowserPromptPanel({
     transcript.scrollTop = transcript.scrollHeight;
   }
 
+  function applyKindDefaults({ seedValues = false } = {}) {
+    const kinds = session.listProviderKinds();
+    const kind = kinds.find(entry => entry.id === kindSelect.value) ?? kinds[0];
+    const gemini = kind?.id === 'gemini';
+    lead.textContent = gemini
+      ? 'Gemini generateContent. The API key stays PIN-encrypted. If the browser blocks Google CORS, put a same-origin proxy in Base URL.'
+      : 'HTTP chat completions. Tokens stay PIN-encrypted in this browser.';
+    url.input.placeholder = gemini ? GEMINI_DEFAULT_BASE_URL : 'https://api.openai.com/v1/chat/completions';
+    model.input.placeholder = gemini ? GEMINI_DEFAULT_MODEL : 'gpt-4.1-mini';
+    token.wrap.querySelector('label').textContent = gemini ? 'API key' : 'Token';
+    if (!token.input.placeholder.startsWith('Saved')) {
+      token.input.placeholder = gemini ? 'Gemini API key' : 'API token';
+    }
+    url.input.disabled = kind?.id !== 'http-chat' && kind?.id !== 'gemini';
+    if (seedValues) {
+      url.input.value = gemini ? GEMINI_DEFAULT_BASE_URL : '';
+      model.input.value = gemini ? GEMINI_DEFAULT_MODEL : '';
+    }
+  }
+
   function fillEditor(connection) {
     if (!connection) {
+      applyKindDefaults();
       label.input.value = '';
       url.input.value = '';
       model.input.value = '';
       token.input.value = '';
-      token.input.placeholder = '';
+      token.input.placeholder = kindSelect.value === 'gemini' ? 'Gemini API key' : 'API token';
       return;
     }
     kindSelect.value = connection.kind;
+    applyKindDefaults();
     label.input.value = connection.label;
     url.input.value = connection.config.baseUrl ?? '';
     model.input.value = connection.config.model ?? '';
@@ -353,7 +375,7 @@ export function createBrowserPromptPanel({
     confirm.wrap.hidden = session.exists();
     lockHint.textContent = session.exists()
       ? 'Enter your PIN to use the tokens saved in this browser.'
-      : 'Create a PIN. Bearer tokens are encrypted here and never written into the page.';
+      : 'Create a PIN. API keys stay encrypted here and are never written into the page.';
     unlockButton.hidden = !session.exists();
     createButton.hidden = session.exists();
     if (unlocked) {
@@ -460,6 +482,7 @@ export function createBrowserPromptPanel({
     setStatus('Removed connection.');
     render();
   }));
+  kindSelect.addEventListener('change', () => applyKindDefaults({ seedValues: true }));
   connectionSelect.addEventListener('change', () => withBusy(async () => {
     if (!connectionSelect.value) return;
     await session.setActiveConnection(connectionSelect.value);

@@ -8,10 +8,11 @@ import {
   resolveChatCompletionsUrl,
 } from '../src/browser/llm-providers.mjs';
 
-test('provider catalog keeps http-chat live and Gemini planned', () => {
+test('provider catalog keeps http-chat and Gemini live', () => {
   const live = listLiveProviderKinds();
-  assert.deepEqual(live.map(kind => kind.id), ['http-chat']);
+  assert.deepEqual(live.map(kind => kind.id), ['http-chat', 'gemini']);
   assert.equal(live[0].auth, 'bearer');
+  assert.equal(live[1].auth, 'api-key');
 });
 
 test('http-chat posts OpenAI-shaped tools and never echoes the bearer token in errors', async () => {

@@ -12,9 +12,9 @@ https://samg-coder.github.io/ThreeBrowserStudio/
 - The same canvas viewport, bootstrap stage, Follow shot / Review, and HUD
 - Stock browser WebGPU (Chrome / Edge)
 - Three.js loaded from a CDN import map (`three@0.184.0`)
-- A bottom **Prompt** dock (browser only) for connecting HTTP chat APIs
-  through an abstract provider catalog. Bearer tokens live in `localStorage`
-  only as AES-GCM ciphertext; a PIN unlocks them.
+- A bottom **Prompt** dock (browser only) for Gemini or an HTTP chat API
+  through an abstract provider catalog. API keys live in `localStorage` only
+  as AES-GCM ciphertext; a PIN unlocks them.
 
 ## What stays desktop-only
 
@@ -25,8 +25,11 @@ https://samg-coder.github.io/ThreeBrowserStudio/
 The browser Prompt dock talks to the nine `three_studio_*` names through a
 generic in-page harness. Until an in-process kernel is attached, tool calls
 return `kernel_unavailable`. The page never stores a PIN, and it never puts
-API keys in the published HTML. The chat endpoint must allow CORS from this
-origin.
+API keys in the published HTML. Gemini uses `x-goog-api-key` against
+`generativelanguage.googleapis.com`. Stock browsers usually block that origin
+with CORS; if Test fails, put a same-origin proxy URL in Base URL, or use
+HTTP chat through a CORS-friendly host. Do not paste a key into the page
+source.
 
 The page detects the host in JavaScript. It attaches the desktop kernel only
 when ThreeRuntime is present (`__threeBrowserNativeRuntime`, the RTX bridge,

@@ -1,4 +1,10 @@
 import { StudioError } from '../core/errors.mjs';
+import {
+  GEMINI_DEFAULT_BASE_URL,
+  GEMINI_DEFAULT_MODEL,
+  createGeminiProvider,
+  resolveGeminiGenerateUrl,
+} from './llm-gemini.mjs';
 
 const HTTP_CHAT_FIELDS = Object.freeze([
   Object.freeze({ id: 'baseUrl', label: 'Base URL', kind: 'url', required: true, placeholder: 'https://api.example.com/v1' }),
@@ -8,7 +14,7 @@ const HTTP_CHAT_FIELDS = Object.freeze([
   Object.freeze({ id: 'secret', label: 'Token', kind: 'secret', required: true }),
 ]);
 
-/** Provider kinds stay declarative so Gemini, OAuth, or a local server can be added without changing the harness. */
+/** Provider kinds stay declarative so a new adapter can register without changing the harness. */
 export const PROVIDER_KINDS = Object.freeze([
   Object.freeze({
     id: 'http-chat',
@@ -21,10 +27,28 @@ export const PROVIDER_KINDS = Object.freeze([
   Object.freeze({
     id: 'gemini',
     label: 'Google Gemini',
-    status: 'planned',
-    auth: 'oauth-pkce',
-    description: 'Planned first-party adapter. Do not put a Gemini key in the page; OAuth belongs on a later hosted origin.',
-    fields: Object.freeze([]),
+    status: 'live',
+    auth: 'api-key',
+    description: 'Gemini generateContent. Store the API key in the PIN vault. Google may block browser CORS; a same-origin proxy URL still works.',
+    fields: Object.freeze([
+      Object.freeze({
+        id: 'baseUrl',
+        label: 'Base URL',
+        kind: 'url',
+        required: false,
+        defaultValue: GEMINI_DEFAULT_BASE_URL,
+        placeholder: GEMINI_DEFAULT_BASE_URL,
+      }),
+      Object.freeze({
+        id: 'model',
+        label: 'Model',
+        kind: 'text',
+        required: true,
+        defaultValue: GEMINI_DEFAULT_MODEL,
+        placeholder: GEMINI_DEFAULT_MODEL,
+      }),
+      Object.freeze({ id: 'secret', label: 'API key', kind: 'secret', required: true }),
+    ]),
   }),
 ]);
 
@@ -67,6 +91,7 @@ function normalizeConfig(kind, config = {}) {
     if (value) next[field.id] = value;
   }
   if (kind.id === 'http-chat') resolveChatCompletionsUrl(next.baseUrl);
+  if (kind.id === 'gemini') resolveGeminiGenerateUrl(next.baseUrl, next.model);
   return next;
 }
 
@@ -225,6 +250,7 @@ function createHttpChatProvider(connection, { fetchImpl }) {
 
 const ADAPTERS = Object.freeze({
   'http-chat': createHttpChatProvider,
+  gemini: createGeminiProvider,
 });
 
 export function createLlmProvider(connection, { fetch: fetchImpl = globalThis.fetch, requireSecret = true } = {}) {
