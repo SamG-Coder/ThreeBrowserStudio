@@ -7,6 +7,7 @@ import {
   MAX_OPERATIONS_PER_TRANSACTION,
 } from '../core/constants.mjs';
 import { MESH_ELEMENT_KINDS, MESH_INSPECTION_LIMITS } from '../core/mesh-inspection.mjs';
+import { MAX_EXACT_ENTITY_SELECTION } from '../core/entity-selection.mjs';
 
 const finite = z.number().finite().min(-1_000_000_000).max(1_000_000_000);
 const nonNegativeInteger = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
@@ -69,6 +70,7 @@ const selectorSchema = z.object({
   name: z.string().min(1).max(240).optional(),
   kind: z.string().min(1).max(80).optional(),
   tag: z.string().min(1).max(120).optional(),
+  collectionId: identifier.optional(),
   status: z.enum([
     'implemented', 'partial', 'planned', 'bake-required', 'not-applicable',
     'live-tsl', 'layout-only', 'catalogued', 'migration-required',
@@ -112,7 +114,9 @@ export const inspectSchema = z.object({
 export const OPERATION_TYPES = Object.freeze([
   'scene.create', 'scene.patch', 'scene.delete', 'scene.setActive',
   'scene.settings.patch', 'scene.rtx.patch', 'scene.setActiveCamera',
-  'entity.create', 'entity.patch', 'entity.duplicate', 'entity.reparent', 'entity.delete',
+  'entity.create', 'entity.patch', 'entity.patchMany', 'entity.transformMany',
+  'entity.group', 'entity.ungroup', 'entity.duplicate', 'entity.reparent', 'entity.delete',
+  'collection.create', 'collection.patch', 'collection.membership.patch', 'collection.reparent', 'collection.delete',
   'camera.frame', 'layout.pattern', 'geometry.edit',
   'resource.create', 'resource.patch', 'resource.delete',
 ]);
@@ -121,6 +125,10 @@ const alias = z.string().min(2).max(65).regex(/^\$[a-z][a-z0-9_-]{0,63}$/);
 const reference = z.union([identifier, alias]);
 const hash = z.string().length(64).regex(/^[a-f0-9]{64}$/);
 const insertionIndex = z.number().int().min(0).max(20_000);
+const exactEntityReferences = z.array(reference).min(1).max(200).refine(
+  values => new Set(values).size === values.length,
+  { message: 'Entity ID lists cannot contain duplicates.' },
+);
 const resourceType = z.enum([
   'geometries', 'materials', 'textures', 'graphs', 'animations', 'prefabs', 'audio', 'assets',
   'geometry', 'material', 'texture', 'graph', 'animation', 'prefab', 'asset',
@@ -299,6 +307,39 @@ const cameraDirection = vec3.refine(
 
 const operation = (name, fields) => z.object({ op: z.literal(name), ...fields }).strict();
 
+const transformManyPatch = z.object({
+  position: vec3.optional(),
+  rotation: vec3.optional(),
+  scale: vec3.optional(),
+}).strict().refine(value => Object.keys(value).length > 0, {
+  message: 'entity.transformMany requires at least one transform field.',
+});
+
+const optionalExactEntityReferences = z.array(reference).max(200).refine(
+  values => new Set(values).size === values.length,
+  { message: 'Entity ID lists cannot contain duplicates.' },
+).optional();
+
+const collectionMembershipOperation = operation('collection.membership.patch', {
+  collectionId: reference,
+  addEntityIds: optionalExactEntityReferences,
+  removeEntityIds: optionalExactEntityReferences,
+  expectedMembershipHash: hash,
+}).superRefine((value, context) => {
+  const added = value.addEntityIds ?? [];
+  const removed = value.removeEntityIds ?? [];
+  if (added.length + removed.length === 0) {
+    context.addIssue({ code: 'custom', message: 'At least one entity must be added or removed.' });
+  }
+  if (added.length + removed.length > 200) {
+    context.addIssue({ code: 'custom', message: 'A membership patch may target at most 200 entities.' });
+  }
+  const removedSet = new Set(removed);
+  if (added.some(id => removedSet.has(id))) {
+    context.addIssue({ code: 'custom', message: 'An entity cannot be added and removed in the same patch.' });
+  }
+});
+
 const directOperations = [
   operation('scene.create', { scene: jsonObjectSchema, alias: alias.optional(), index: insertionIndex.optional() }),
   operation('scene.patch', { sceneId: reference, patch: jsonObjectSchema }),
@@ -309,6 +350,22 @@ const directOperations = [
   operation('scene.setActiveCamera', { sceneId: reference, cameraId: reference.nullable() }),
   operation('entity.create', { sceneId: reference, entity: jsonObjectSchema, alias: alias.optional(), index: insertionIndex.optional() }),
   operation('entity.patch', { entityId: reference, patch: jsonObjectSchema }),
+  operation('entity.patchMany', { entityIds: exactEntityReferences, patch: jsonObjectSchema, expectedEntitySetHash: hash }),
+  operation('entity.transformMany', {
+    entityIds: exactEntityReferences,
+    mode: z.enum(['set', 'delta']),
+    transform: transformManyPatch,
+    expectedEntitySetHash: hash,
+  }),
+  operation('entity.group', {
+    sceneId: reference,
+    entityIds: exactEntityReferences,
+    group: jsonObjectSchema,
+    expectedEntitySetHash: hash,
+    alias: alias.optional(),
+    index: insertionIndex.optional(),
+  }),
+  operation('entity.ungroup', { entityId: reference, expectedSubtreeHash: hash }),
   operation('entity.duplicate', {
     entityId: reference,
     newId: reference.optional(),
@@ -322,6 +379,15 @@ const directOperations = [
   operation('entity.reparent', { entityId: reference, parentId: reference.nullable(), index: insertionIndex.optional() }),
   operation('entity.delete', {
     entityId: reference,
+    recursive: z.boolean().optional().default(false),
+    expectedSubtreeHash: hash.optional(),
+  }),
+  operation('collection.create', { sceneId: reference, collection: jsonObjectSchema, alias: alias.optional(), index: insertionIndex.optional() }),
+  operation('collection.patch', { collectionId: reference, patch: jsonObjectSchema }),
+  collectionMembershipOperation,
+  operation('collection.reparent', { collectionId: reference, parentId: reference.nullable(), index: insertionIndex.optional() }),
+  operation('collection.delete', {
+    collectionId: reference,
     recursive: z.boolean().optional().default(false),
     expectedSubtreeHash: hash.optional(),
   }),
@@ -478,6 +544,7 @@ const TOOL_CONTRACT_LIMITS = Object.freeze({
   maxMeshElementsPerPage: MESH_INSPECTION_LIMITS.maxElementsPerPage,
   maxMeshElementAdjacency: MESH_INSPECTION_LIMITS.maxAdjacencyPerElement,
   maxDerivedMeshEdges: MESH_INSPECTION_LIMITS.maxDerivedEdges,
+  maxExactEntitySelection: MAX_EXACT_ENTITY_SELECTION,
 });
 const TOOL_CONTRACT_FEATURES = Object.freeze({
   compactGeometrySelectionAll: true,
@@ -485,6 +552,9 @@ const TOOL_CONTRACT_FEATURES = Object.freeze({
   meshElements: true,
   graphDigest: true,
   rtxDigest: true,
+  exactBulkEntityEditing: true,
+  transformGrouping: true,
+  organizationalCollections: true,
   liveSchemaRefresh: true,
 });
 const TOOL_CONTRACT_SUMMARY_FIELDS = Object.freeze({

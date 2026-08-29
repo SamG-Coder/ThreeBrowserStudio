@@ -1,6 +1,7 @@
 import { MAX_OPERATIONS_PER_TRANSACTION } from './constants.mjs';
 import {
   assertValidProjectDocument,
+  createCollectionDocument,
   createEntityDocument,
   createResourceDocument,
   createSceneDocument,
@@ -10,6 +11,16 @@ import {
 import { StudioError, studioAssert } from './errors.mjs';
 import { assertStableId, assertTransactionAlias, resolveId } from './ids.mjs';
 import { buildProjectIndex } from './indexes.mjs';
+import {
+  assertExpectedEntitySetHash,
+  resolveExactEntitySelection,
+} from './entity-selection.mjs';
+import {
+  composeEntityTransforms,
+  composeTransformMatrix,
+  multiplyTransformMatrices,
+  relativeEntityTransform,
+} from './transform-math.mjs';
 import { solveCameraFrame } from './camera-framing.mjs';
 import { applyIndexedMeshEdit, validateIndexedMeshRecipe } from './indexed-mesh-editing.mjs';
 import { normalizeLayoutPattern } from './layout-patterns.mjs';
@@ -41,9 +52,18 @@ const OPERATION_KEYS = new Map([
   ['scene.setActiveCamera', new Set(['type', 'op', 'sceneId', 'cameraId'])],
   ['entity.create', new Set(['type', 'op', 'sceneId', 'entity', 'alias', 'index'])],
   ['entity.patch', new Set(['type', 'op', 'entityId', 'patch'])],
+  ['entity.patchMany', new Set(['type', 'op', 'entityIds', 'patch', 'expectedEntitySetHash'])],
+  ['entity.transformMany', new Set(['type', 'op', 'entityIds', 'mode', 'transform', 'expectedEntitySetHash'])],
+  ['entity.group', new Set(['type', 'op', 'sceneId', 'entityIds', 'group', 'expectedEntitySetHash', 'alias', 'index'])],
+  ['entity.ungroup', new Set(['type', 'op', 'entityId', 'expectedSubtreeHash'])],
   ['entity.duplicate', new Set(['type', 'op', 'entityId', 'newId', 'name', 'parentId', 'index', 'deep', 'idMap', 'alias'])],
   ['entity.reparent', new Set(['type', 'op', 'entityId', 'parentId', 'index'])],
   ['entity.delete', new Set(['type', 'op', 'entityId', 'recursive', 'expectedSubtreeHash'])],
+  ['collection.create', new Set(['type', 'op', 'sceneId', 'collection', 'alias', 'index'])],
+  ['collection.patch', new Set(['type', 'op', 'collectionId', 'patch'])],
+  ['collection.membership.patch', new Set(['type', 'op', 'collectionId', 'addEntityIds', 'removeEntityIds', 'expectedMembershipHash'])],
+  ['collection.reparent', new Set(['type', 'op', 'collectionId', 'parentId', 'index'])],
+  ['collection.delete', new Set(['type', 'op', 'collectionId', 'recursive', 'expectedSubtreeHash'])],
   ['camera.frame', new Set(['type', 'op', 'cameraId', 'bounds', 'targetIds', 'aspect', 'padding', 'direction', 'lockPreviewAspect'])],
   ['layout.pattern', new Set(['type', 'op', 'entityId', 'pattern'])],
   ['geometry.edit', new Set(['type', 'op', 'resourceId', 'edits'])],
@@ -54,10 +74,14 @@ const OPERATION_KEYS = new Map([
   ['_scene.fields.restore', new Set(['type', 'sceneId', 'fields'])],
   ['_scene.settings.restore', new Set(['type', 'sceneId', 'fields'])],
   ['_entity.fields.restore', new Set(['type', 'entityId', 'fields'])],
+  ['_entity.many.restore', new Set(['type', 'entries'])],
+  ['_collection.fields.restore', new Set(['type', 'collectionId', 'fields'])],
   ['_resource.restore', new Set(['type', 'resourceType', 'resourceId', 'snapshot', 'expectedCurrentHash'])],
 ]);
 
 const ENTITY_PATCH_KEYS = new Set(['kind', 'name', 'visible', 'transform', 'components', 'tags', 'scriptIds', 'metadata']);
+const TRANSFORM_PATCH_KEYS = new Set(['position', 'rotation', 'scale']);
+const COLLECTION_PATCH_KEYS = new Set(['name', 'metadata']);
 const SCENE_PATCH_KEYS = new Set(['name', 'settings', 'scriptIds', 'metadata']);
 
 function operationType(operation) {
@@ -116,6 +140,43 @@ function resolveEntityReferences(source, aliases) {
   return source;
 }
 
+function resolveExactIds(values, aliases, label) {
+  studioAssert(Array.isArray(values), 'invalid_operation', `${label} must be an array of exact entity IDs`);
+  return values.map((value, index) => resolveId(value, aliases, `${label}[${index}]`));
+}
+
+function resolveCollectionReferences(source, aliases) {
+  if (!isPlainRecord(source)) return source;
+  if (source.parentId && aliases.has(source.parentId)) source.parentId = aliases.get(source.parentId);
+  if (Array.isArray(source.entityIds)) {
+    source.entityIds = source.entityIds.map((value, index) => resolveId(value, aliases, `collection.entityIds[${index}]`));
+  }
+  return source;
+}
+
+function entityWorldMatrix(scene, entityId, memo = new Map()) {
+  if (memo.has(entityId)) return memo.get(entityId);
+  const entity = scene.entities[entityId];
+  studioAssert(entity, 'not_found', `Entity ${entityId} does not exist`, { id: entityId, kind: 'entity' });
+  const local = composeTransformMatrix(entity.transform);
+  const world = entity.parentId
+    ? multiplyTransformMatrices(entityWorldMatrix(scene, entity.parentId, memo), local)
+    : local;
+  memo.set(entityId, world);
+  return world;
+}
+
+function entityMutationInverse(entries) {
+  return {
+    type: '_entity.many.restore',
+    entries: entries.map(({ entityId, snapshot, current }) => ({
+      entityId,
+      snapshot: cloneJson(snapshot),
+      expectedCurrentHash: contentHash(current),
+    })),
+  };
+}
+
 function insertAt(list, value, index) {
   const target = Number.isInteger(index) ? Math.max(0, Math.min(index, list.length)) : list.length;
   list.splice(target, 0, value);
@@ -145,7 +206,7 @@ function restoreFields(value, fields) {
 
 function assertIndexFree(draft, id) {
   const index = buildProjectIndex(draft);
-  if (index.scenes.has(id) || index.entities.has(id) || index.resources.has(id) || index.scripts.has(id) || draft.projectId === id) {
+  if (index.scenes.has(id) || index.entities.has(id) || index.collections.has(id) || index.resources.has(id) || index.scripts.has(id) || draft.projectId === id) {
     throw new StudioError('duplicate_id', `Stable ID ${id} is already in use`, { id });
   }
 }
@@ -153,6 +214,7 @@ function assertIndexFree(draft, id) {
 function invalidationsFor(type, operation) {
   if (type.startsWith('_scene.')) return ['sceneGraph', 'renderer', 'rtxTopology', 'persistence'];
   if (type.startsWith('_entity.')) return ['sceneGraph', 'transforms', 'renderer', 'rtxTransforms', 'persistence'];
+  if (type.startsWith('_collection.')) return ['selection', 'persistence'];
   if (type.startsWith('_resource.')) {
     const resourceType = normalizeResourceType(operation.resourceType);
     return uniqueSorted([resourceType, 'renderer', 'persistence', ...(resourceType === 'geometries' ? ['rtxTopology'] : [])]);
@@ -160,6 +222,16 @@ function invalidationsFor(type, operation) {
   if (type.startsWith('scene.')) return ['sceneGraph', 'renderer', 'rtxTopology', 'persistence'];
   if (type === 'camera.frame') return ['sceneGraph', 'transforms', 'renderer', 'persistence'];
   if (type === 'entity.reparent') return ['sceneGraph', 'transforms', 'renderer', 'rtxTransforms', 'persistence'];
+  if (type === 'entity.transformMany') return ['transforms', 'renderer', 'rtxTransforms', 'persistence'];
+  if (type === 'entity.group' || type === 'entity.ungroup') return ['sceneGraph', 'transforms', 'renderer', 'rtxTransforms', 'persistence'];
+  if (type === 'entity.patchMany') {
+    const fields = Object.keys(operation.patch ?? {});
+    const result = ['renderer', 'persistence'];
+    if (fields.includes('transform')) result.push('transforms', 'rtxTransforms');
+    if (fields.includes('components') || fields.includes('kind')) result.push('sceneGraph', 'geometry', 'materials', 'rtxTopology');
+    return result;
+  }
+  if (type.startsWith('collection.')) return ['selection', 'persistence'];
   if (type === 'layout.pattern') return ['sceneGraph', 'transforms', 'geometry', 'renderer', 'rtxTopology', 'persistence'];
   if (type === 'geometry.edit') return ['geometry', 'renderer', 'rtxTopology', 'persistence'];
   if (type === 'entity.patch') {
@@ -187,6 +259,8 @@ function applySceneCreate(draft, operation, aliases, resolvedIds) {
   if (sceneInput.id && aliases.has(sceneInput.id)) sceneInput.id = aliases.get(sceneInput.id);
   const sceneEntities = Array.isArray(sceneInput.entities) ? sceneInput.entities : Object.values(sceneInput.entities ?? {});
   for (const entity of sceneEntities) resolveEntityReferences(entity, aliases);
+  const sceneCollections = Array.isArray(sceneInput.collections) ? sceneInput.collections : Object.values(sceneInput.collections ?? {});
+  for (const collection of sceneCollections) resolveCollectionReferences(collection, aliases);
   if (sceneInput.settings?.activeCameraId && aliases.has(sceneInput.settings.activeCameraId)) {
     sceneInput.settings.activeCameraId = aliases.get(sceneInput.settings.activeCameraId);
   }
@@ -306,6 +380,142 @@ function applySceneSetCamera(draft, operation, aliases) {
   };
 }
 
+function applyCollectionCreate(draft, operation, aliases, resolvedIds) {
+  const sceneId = resolveId(operation.sceneId, aliases, 'sceneId');
+  const scene = buildProjectIndex(draft).getScene(sceneId);
+  const source = resolveCollectionReferences(cloneJson(operation.collection), aliases);
+  studioAssert(isPlainRecord(source), 'invalid_operation', 'collection.create requires collection');
+  studioAssert(!source.children || source.children.length === 0, 'invalid_operation', 'New collections cannot adopt children; use collection.reparent');
+  const collection = createCollectionDocument(source);
+  assertIndexFree(draft, collection.id);
+  if (collection.parentId) {
+    const parent = buildProjectIndex(draft).getCollection(collection.parentId);
+    studioAssert(parent.sceneId === sceneId, 'cross_scene_parent', 'Collections cannot be parented across scenes');
+  }
+  if (collection.entityIds.length > 0) {
+    resolveExactEntitySelection(draft, collection.entityIds, { requireSameScene: true, sceneId });
+  }
+  scene.collections[collection.id] = collection;
+  const siblings = collection.parentId ? scene.collections[collection.parentId].children : scene.rootCollectionIds;
+  const insertionIndex = insertAt(siblings, collection.id, operation.index);
+  addAlias(aliases, resolvedIds, operation.alias, collection.id);
+  return {
+    resolved: { type: 'collection.create', sceneId, collection: cloneJson(collection), index: insertionIndex },
+    inverse: { type: 'collection.delete', collectionId: collection.id, recursive: false },
+  };
+}
+
+function applyCollectionPatch(draft, operation, aliases) {
+  const collectionId = resolveId(operation.collectionId, aliases, 'collectionId');
+  const { scene, collection } = buildProjectIndex(draft).getCollection(collectionId);
+  assertPatchKeys(operation.patch, COLLECTION_PATCH_KEYS, 'collection.patch');
+  const fields = captureFields(collection, Object.keys(operation.patch));
+  scene.collections[collectionId] = createCollectionDocument(mergePatch(collection, cloneJson(operation.patch)));
+  return {
+    resolved: { type: 'collection.patch', collectionId, patch: cloneJson(operation.patch) },
+    inverse: { type: '_collection.fields.restore', collectionId, fields },
+  };
+}
+
+function applyCollectionMembershipPatch(draft, operation, aliases) {
+  const collectionId = resolveId(operation.collectionId, aliases, 'collectionId');
+  const { sceneId, scene, collection } = buildProjectIndex(draft).getCollection(collectionId);
+  const addEntityIds = resolveExactIds(operation.addEntityIds ?? [], aliases, 'addEntityIds');
+  const removeEntityIds = resolveExactIds(operation.removeEntityIds ?? [], aliases, 'removeEntityIds');
+  studioAssert(addEntityIds.length + removeEntityIds.length > 0, 'invalid_collection_membership_patch', 'collection.membership.patch requires at least one added or removed entity');
+  studioAssert(addEntityIds.length + removeEntityIds.length <= 200, 'entity_selection_too_large', 'A collection membership patch may target at most 200 entities', {
+    count: addEntityIds.length + removeEntityIds.length,
+    maximum: 200,
+  });
+  studioAssert(new Set(addEntityIds).size === addEntityIds.length, 'duplicate_entity_selection', 'addEntityIds cannot contain duplicates');
+  studioAssert(new Set(removeEntityIds).size === removeEntityIds.length, 'duplicate_entity_selection', 'removeEntityIds cannot contain duplicates');
+  const overlap = addEntityIds.filter((id) => removeEntityIds.includes(id));
+  studioAssert(overlap.length === 0, 'invalid_collection_membership_patch', 'An entity cannot be added and removed in the same membership patch', { overlap });
+  resolveExactEntitySelection(draft, [...addEntityIds, ...removeEntityIds], {
+    allowEmpty: true,
+    requireSameScene: true,
+    sceneId,
+  });
+  const index = buildProjectIndex(draft);
+  const actualMembershipHash = index.collectionMembershipHash(collectionId);
+  studioAssert(operation.expectedMembershipHash === actualMembershipHash, 'guard_failed', 'Collection membership changed after it was inspected', {
+    expectedMembershipHash: operation.expectedMembershipHash,
+    actualMembershipHash,
+  });
+  const members = new Set(collection.entityIds);
+  const alreadyPresent = addEntityIds.filter((id) => members.has(id));
+  const alreadyAbsent = removeEntityIds.filter((id) => !members.has(id));
+  studioAssert(alreadyPresent.length === 0 && alreadyAbsent.length === 0, 'collection_membership_conflict', 'Collection membership patch does not match the inspected membership', {
+    alreadyPresent,
+    alreadyAbsent,
+  });
+  for (const id of addEntityIds) members.add(id);
+  for (const id of removeEntityIds) members.delete(id);
+  const fields = captureFields(collection, ['entityIds']);
+  collection.entityIds = [...members].sort();
+  return {
+    resolved: {
+      type: 'collection.membership.patch', collectionId, addEntityIds, removeEntityIds,
+      expectedMembershipHash: operation.expectedMembershipHash,
+    },
+    inverse: { type: '_collection.fields.restore', collectionId, fields },
+  };
+}
+
+function applyCollectionReparent(draft, operation, aliases) {
+  const collectionId = resolveId(operation.collectionId, aliases, 'collectionId');
+  const record = buildProjectIndex(draft).getCollection(collectionId);
+  const { scene, collection } = record;
+  const parentId = operation.parentId === null ? null : resolveId(operation.parentId, aliases, 'parentId');
+  if (parentId) {
+    const parentRecord = buildProjectIndex(draft).getCollection(parentId);
+    studioAssert(parentRecord.sceneId === record.sceneId, 'cross_scene_parent', 'Collections cannot be parented across scenes');
+    studioAssert(!buildProjectIndex(draft).collectCollectionSubtree(collectionId).includes(parentId), 'collection_hierarchy_cycle', 'Cannot parent a collection beneath its own subtree');
+  }
+  const snapshot = cloneJson(scene);
+  const oldSiblings = collection.parentId ? scene.collections[collection.parentId].children : scene.rootCollectionIds;
+  removeFrom(oldSiblings, collectionId);
+  collection.parentId = parentId;
+  const newSiblings = parentId ? scene.collections[parentId].children : scene.rootCollectionIds;
+  insertAt(newSiblings, collectionId, operation.index);
+  return {
+    resolved: { type: 'collection.reparent', collectionId, parentId, ...(operation.index === undefined ? {} : { index: operation.index }) },
+    inverse: {
+      type: '_scene.restore', sceneId: scene.id, snapshot, index: draft.sceneOrder.indexOf(scene.id),
+      restoreActive: false, expectedCurrentHash: contentHash(scene),
+    },
+  };
+}
+
+function applyCollectionDelete(draft, operation, aliases) {
+  const collectionId = resolveId(operation.collectionId, aliases, 'collectionId');
+  const index = buildProjectIndex(draft);
+  const { scene, collection } = index.getCollection(collectionId);
+  const subtree = index.collectCollectionSubtree(collectionId);
+  if (subtree.length > 1) {
+    studioAssert(operation.recursive === true, 'non_empty_collection', 'Collection has children; recursive delete was not requested');
+    const actual = index.collectionSubtreeHash(collectionId);
+    studioAssert(operation.expectedSubtreeHash === actual, 'guard_failed', 'Recursive collection delete requires the exact expectedSubtreeHash', {
+      expectedSubtreeHash: operation.expectedSubtreeHash,
+      actualSubtreeHash: actual,
+    });
+  }
+  const snapshot = cloneJson(scene);
+  const siblings = collection.parentId ? scene.collections[collection.parentId].children : scene.rootCollectionIds;
+  removeFrom(siblings, collectionId);
+  for (const id of subtree.reverse()) delete scene.collections[id];
+  return {
+    resolved: {
+      type: 'collection.delete', collectionId, recursive: operation.recursive === true,
+      ...(operation.expectedSubtreeHash ? { expectedSubtreeHash: operation.expectedSubtreeHash } : {}),
+    },
+    inverse: {
+      type: '_scene.restore', sceneId: scene.id, snapshot, index: draft.sceneOrder.indexOf(scene.id),
+      restoreActive: false, expectedCurrentHash: contentHash(scene),
+    },
+  };
+}
+
 function applyEntityCreate(draft, operation, aliases, resolvedIds) {
   const sceneId = resolveId(operation.sceneId, aliases, 'sceneId');
   const scene = buildProjectIndex(draft).getScene(sceneId);
@@ -343,6 +553,190 @@ function applyEntityPatch(draft, operation, aliases) {
   };
 }
 
+function applyEntityPatchMany(draft, operation, aliases) {
+  const entityIds = resolveExactIds(operation.entityIds, aliases, 'entityIds');
+  const selection = resolveExactEntitySelection(draft, entityIds);
+  assertExpectedEntitySetHash(selection.entitySetHash, operation.expectedEntitySetHash);
+  assertPatchKeys(operation.patch, ENTITY_PATCH_KEYS, 'entity.patchMany');
+  const resolvedPatch = resolveEntityReferences(cloneJson(operation.patch), aliases);
+  const snapshots = selection.entries.map(({ entityId, scene, entity }) => ({
+    entityId,
+    scene,
+    snapshot: cloneJson(entity),
+  }));
+  for (const entry of snapshots) {
+    entry.scene.entities[entry.entityId] = createEntityDocument(mergePatch(entry.snapshot, resolvedPatch));
+    entry.current = entry.scene.entities[entry.entityId];
+  }
+  return {
+    resolved: {
+      type: 'entity.patchMany', entityIds, patch: resolvedPatch,
+      expectedEntitySetHash: operation.expectedEntitySetHash,
+    },
+    inverse: entityMutationInverse(snapshots),
+  };
+}
+
+function applyEntityTransformMany(draft, operation, aliases) {
+  const entityIds = resolveExactIds(operation.entityIds, aliases, 'entityIds');
+  const selection = resolveExactEntitySelection(draft, entityIds);
+  assertExpectedEntitySetHash(selection.entitySetHash, operation.expectedEntitySetHash);
+  studioAssert(['set', 'delta'].includes(operation.mode), 'invalid_transform_mode', 'entity.transformMany mode must be set or delta');
+  assertPatchKeys(operation.transform, TRANSFORM_PATCH_KEYS, 'entity.transformMany.transform');
+  studioAssert(Object.keys(operation.transform).length > 0, 'invalid_transform', 'entity.transformMany requires at least one transform field');
+  const vector = (value, fallback, combine) => {
+    if (value === undefined) return [...fallback];
+    studioAssert(Array.isArray(value) && value.length === 3 && value.every(Number.isFinite), 'invalid_transform', 'Transform fields must contain exactly three finite numbers');
+    return value.map((component, index) => combine(fallback[index], component));
+  };
+  const snapshots = selection.entries.map(({ entityId, scene, entity }) => ({
+    entityId,
+    scene,
+    snapshot: cloneJson(entity),
+  }));
+  for (const entry of snapshots) {
+    const prior = entry.snapshot.transform;
+    const transform = operation.mode === 'set'
+      ? {
+          position: vector(operation.transform.position, prior.position, (_prior, next) => next),
+          rotation: vector(operation.transform.rotation, prior.rotation, (_prior, next) => next),
+          scale: vector(operation.transform.scale, prior.scale, (_prior, next) => next),
+        }
+      : {
+          position: vector(operation.transform.position, prior.position, (current, delta) => current + delta),
+          rotation: vector(operation.transform.rotation, prior.rotation, (current, delta) => current + delta),
+          scale: vector(operation.transform.scale, prior.scale, (current, factor) => current * factor),
+        };
+    entry.scene.entities[entry.entityId] = createEntityDocument({ ...entry.snapshot, transform });
+    entry.current = entry.scene.entities[entry.entityId];
+  }
+  return {
+    resolved: {
+      type: 'entity.transformMany', entityIds, mode: operation.mode,
+      transform: cloneJson(operation.transform), expectedEntitySetHash: operation.expectedEntitySetHash,
+    },
+    inverse: entityMutationInverse(snapshots),
+  };
+}
+
+function applyEntityGroup(draft, operation, aliases, resolvedIds) {
+  const sceneId = resolveId(operation.sceneId, aliases, 'sceneId');
+  const scene = buildProjectIndex(draft).getScene(sceneId);
+  const entityIds = resolveExactIds(operation.entityIds, aliases, 'entityIds');
+  const selection = resolveExactEntitySelection(draft, entityIds, { requireSameScene: true, sceneId });
+  assertExpectedEntitySetHash(selection.entitySetHash, operation.expectedEntitySetHash);
+  const source = cloneJson(operation.group);
+  studioAssert(isPlainRecord(source), 'invalid_operation', 'entity.group requires a group entity document');
+  resolveEntityReferences(source, aliases);
+  studioAssert(source.kind === undefined || source.kind === 'group', 'invalid_group_entity', 'entity.group requires kind group');
+  studioAssert(!source.children || source.children.length === 0, 'invalid_group_entity', 'entity.group determines the group children from entityIds');
+  const parentIds = new Set(selection.entries.map(({ entity }) => entity.parentId));
+  const parentId = Object.hasOwn(source, 'parentId')
+    ? source.parentId
+    : (parentIds.size === 1 ? [...parentIds][0] : null);
+  if (parentId) {
+    const parentRecord = buildProjectIndex(draft).getEntity(parentId);
+    studioAssert(parentRecord.sceneId === sceneId, 'cross_scene_parent', 'Group parent must belong to the same scene');
+  }
+  const selected = new Set(entityIds);
+  for (const entityId of entityIds) {
+    const subtree = buildProjectIndex(draft).collectSubtree(entityId);
+    const nestedSelection = subtree.filter((id) => id !== entityId && selected.has(id));
+    studioAssert(nestedSelection.length === 0, 'overlapping_entity_selection', 'entity.group cannot select both an entity and its descendant', {
+      entityId,
+      nestedSelection,
+    });
+    studioAssert(!parentId || !subtree.includes(parentId), 'hierarchy_cycle', 'Group parent cannot be inside a selected entity subtree', {
+      entityId,
+      parentId,
+    });
+  }
+  const group = createEntityDocument({ ...source, kind: 'group', parentId, children: entityIds });
+  assertIndexFree(draft, group.id);
+  const worldMemo = new Map();
+  const parentWorld = parentId ? entityWorldMatrix(scene, parentId, worldMemo) : composeTransformMatrix({});
+  const groupWorld = multiplyTransformMatrices(parentWorld, composeTransformMatrix(group.transform));
+  const childTransforms = new Map(entityIds.map((entityId) => [
+    entityId,
+    relativeEntityTransform(groupWorld, entityWorldMatrix(scene, entityId, worldMemo)),
+  ]));
+  const snapshot = cloneJson(scene);
+  const targetSiblings = parentId ? scene.entities[parentId].children : scene.rootEntityIds;
+  let insertionIndex = operation.index;
+  if (insertionIndex === undefined) {
+    const selectedIndices = entityIds
+      .filter((id) => scene.entities[id].parentId === parentId)
+      .map((id) => targetSiblings.indexOf(id))
+      .filter((index) => index >= 0);
+    if (selectedIndices.length > 0) {
+      const first = Math.min(...selectedIndices);
+      insertionIndex = targetSiblings.slice(0, first).filter((id) => !selected.has(id)).length;
+    }
+  }
+  for (const entityId of entityIds) {
+    const entity = scene.entities[entityId];
+    const siblings = entity.parentId ? scene.entities[entity.parentId].children : scene.rootEntityIds;
+    removeFrom(siblings, entityId);
+    entity.parentId = group.id;
+    entity.transform = childTransforms.get(entityId);
+  }
+  scene.entities[group.id] = group;
+  const resolvedIndex = insertAt(targetSiblings, group.id, insertionIndex);
+  addAlias(aliases, resolvedIds, operation.alias, group.id);
+  return {
+    resolved: {
+      type: 'entity.group', sceneId, entityIds, group: cloneJson(group),
+      expectedEntitySetHash: operation.expectedEntitySetHash, index: resolvedIndex,
+    },
+    inverse: {
+      type: '_scene.restore', sceneId: scene.id, snapshot, index: draft.sceneOrder.indexOf(scene.id),
+      restoreActive: false, expectedCurrentHash: contentHash(scene),
+    },
+  };
+}
+
+function applyEntityUngroup(draft, operation, aliases) {
+  const entityId = resolveId(operation.entityId, aliases, 'entityId');
+  const index = buildProjectIndex(draft);
+  const { scene, entity } = index.getEntity(entityId);
+  studioAssert(entity.kind === 'group', 'invalid_ungroup_target', 'entity.ungroup requires a group entity', { entityId, kind: entity.kind });
+  const actualSubtreeHash = index.subtreeHash(entityId);
+  studioAssert(operation.expectedSubtreeHash === actualSubtreeHash, 'guard_failed', 'entity.ungroup requires the exact expectedSubtreeHash', {
+    expectedSubtreeHash: operation.expectedSubtreeHash,
+    actualSubtreeHash,
+  });
+  const external = index.getReferencesTo(entityId).filter((reference) => !['parent', 'collectionMember'].includes(reference.kind));
+  studioAssert(external.length === 0, 'entity_in_use', `Group ${entityId} is still referenced`, { references: external });
+  const childTransforms = new Map(entity.children.map((childId) => [
+    childId,
+    composeEntityTransforms(entity.transform, scene.entities[childId].transform),
+  ]));
+  const snapshot = cloneJson(scene);
+  const siblings = entity.parentId ? scene.entities[entity.parentId].children : scene.rootEntityIds;
+  const groupIndex = removeFrom(siblings, entityId);
+  siblings.splice(groupIndex < 0 ? siblings.length : groupIndex, 0, ...entity.children);
+  for (const childId of entity.children) {
+    const child = scene.entities[childId];
+    child.parentId = entity.parentId;
+    child.transform = childTransforms.get(childId);
+  }
+  for (const collection of Object.values(scene.collections)) {
+    if (!collection.entityIds.includes(entityId)) continue;
+    collection.entityIds = [...new Set([
+      ...collection.entityIds.filter((id) => id !== entityId),
+      ...entity.children,
+    ])].sort();
+  }
+  delete scene.entities[entityId];
+  return {
+    resolved: { type: 'entity.ungroup', entityId, expectedSubtreeHash: operation.expectedSubtreeHash },
+    inverse: {
+      type: '_scene.restore', sceneId: scene.id, snapshot, index: draft.sceneOrder.indexOf(scene.id),
+      restoreActive: false, expectedCurrentHash: contentHash(scene),
+    },
+  };
+}
+
 function applyEntityDuplicate(draft, operation, aliases, resolvedIds) {
   const entityId = resolveId(operation.entityId, aliases, 'entityId');
   const { scene, entity } = buildProjectIndex(draft).getEntity(entityId);
@@ -375,6 +769,14 @@ function applyEntityDuplicate(draft, operation, aliases, resolvedIds) {
       children: deep ? source.children.map((id) => idMap[id]) : [],
     });
     scene.entities[copy.id] = copy;
+  }
+  for (const collection of Object.values(scene.collections)) {
+    const duplicateMembers = sourceIds
+      .filter((sourceId) => collection.entityIds.includes(sourceId))
+      .map((sourceId) => idMap[sourceId]);
+    if (duplicateMembers.length > 0) {
+      collection.entityIds = [...new Set([...collection.entityIds, ...duplicateMembers])].sort();
+    }
   }
   const rootCopyId = idMap[entityId];
   const siblings = parentId ? scene.entities[parentId].children : scene.rootEntityIds;
@@ -429,12 +831,15 @@ function applyEntityDelete(draft, operation, aliases) {
   }
   const deleting = new Set(subtree);
   for (const id of subtree) {
-    const external = index.getReferencesTo(id).filter((reference) => !deleting.has(reference.sourceId) && reference.kind !== 'parent');
+    const external = index.getReferencesTo(id).filter((reference) => !deleting.has(reference.sourceId) && !['parent', 'collectionMember'].includes(reference.kind));
     studioAssert(external.length === 0, 'resource_in_use', `Entity ${id} is still referenced`, { references: external });
   }
   const snapshot = cloneJson(scene);
   const siblings = entity.parentId ? scene.entities[entity.parentId].children : scene.rootEntityIds;
   removeFrom(siblings, entityId);
+  for (const collection of Object.values(scene.collections)) {
+    collection.entityIds = collection.entityIds.filter((id) => !deleting.has(id));
+  }
   for (const id of subtree.reverse()) delete scene.entities[id];
   return {
     resolved: {
@@ -793,6 +1198,50 @@ function applyInternalEntityFieldsRestore(draft, operation) {
   };
 }
 
+function applyInternalEntityManyRestore(draft, operation) {
+  studioAssert(Array.isArray(operation.entries) && operation.entries.length > 0, 'invalid_history_entry', '_entity.many.restore requires entries');
+  const seen = new Set();
+  const prepared = operation.entries.map((entry) => {
+    studioAssert(isPlainRecord(entry), 'invalid_history_entry', 'Each entity restore entry must be an object');
+    const { scene, entity } = buildProjectIndex(draft).getEntity(entry.entityId);
+    studioAssert(!seen.has(entity.id), 'invalid_history_entry', `Duplicate entity restore entry ${entity.id}`);
+    seen.add(entity.id);
+    const actualCurrentHash = contentHash(entity);
+    studioAssert(actualCurrentHash === entry.expectedCurrentHash, 'history_conflict', `Entity ${entity.id} changed after the transaction being compensated`, {
+      expectedCurrentHash: entry.expectedCurrentHash,
+      actualCurrentHash,
+    });
+    const snapshot = createEntityDocument(entry.snapshot);
+    studioAssert(snapshot.id === entity.id, 'invalid_history_entry', 'Entity restore snapshot ID does not match target', {
+      entityId: entity.id,
+      snapshotId: snapshot.id,
+    });
+    return { scene, entity, snapshot };
+  });
+  for (const entry of prepared) entry.scene.entities[entry.entity.id] = entry.snapshot;
+  return {
+    resolved: cloneJson(operation),
+    inverse: {
+      type: '_entity.many.restore',
+      entries: prepared.map(({ entity, snapshot }) => ({
+        entityId: entity.id,
+        snapshot: cloneJson(entity),
+        expectedCurrentHash: contentHash(snapshot),
+      })),
+    },
+  };
+}
+
+function applyInternalCollectionFieldsRestore(draft, operation) {
+  const { scene, collection } = buildProjectIndex(draft).getCollection(operation.collectionId);
+  const inverse = restoreFields(collection, operation.fields);
+  scene.collections[collection.id] = createCollectionDocument(collection);
+  return {
+    resolved: cloneJson(operation),
+    inverse: { type: '_collection.fields.restore', collectionId: collection.id, fields: inverse },
+  };
+}
+
 function applyInternalResourceRestore(draft, operation) {
   const resourceType = normalizeResourceType(operation.resourceType);
   const current = draft.resources[resourceType][operation.resourceId] ?? null;
@@ -827,8 +1276,17 @@ function applyOne(draft, operation, aliases, resolvedIds, allowInternal) {
     case 'scene.settings.patch': return applySceneSettings(draft, operation, aliases);
     case 'scene.rtx.patch': return applySceneRtxPatch(draft, operation, aliases);
     case 'scene.setActiveCamera': return applySceneSetCamera(draft, operation, aliases);
+    case 'collection.create': return applyCollectionCreate(draft, operation, aliases, resolvedIds);
+    case 'collection.patch': return applyCollectionPatch(draft, operation, aliases);
+    case 'collection.membership.patch': return applyCollectionMembershipPatch(draft, operation, aliases);
+    case 'collection.reparent': return applyCollectionReparent(draft, operation, aliases);
+    case 'collection.delete': return applyCollectionDelete(draft, operation, aliases);
     case 'entity.create': return applyEntityCreate(draft, operation, aliases, resolvedIds);
     case 'entity.patch': return applyEntityPatch(draft, operation, aliases);
+    case 'entity.patchMany': return applyEntityPatchMany(draft, operation, aliases);
+    case 'entity.transformMany': return applyEntityTransformMany(draft, operation, aliases);
+    case 'entity.group': return applyEntityGroup(draft, operation, aliases, resolvedIds);
+    case 'entity.ungroup': return applyEntityUngroup(draft, operation, aliases);
     case 'entity.duplicate': return applyEntityDuplicate(draft, operation, aliases, resolvedIds);
     case 'entity.reparent': return applyEntityReparent(draft, operation, aliases);
     case 'entity.delete': return applyEntityDelete(draft, operation, aliases);
@@ -842,6 +1300,8 @@ function applyOne(draft, operation, aliases, resolvedIds, allowInternal) {
     case '_scene.fields.restore': return applyInternalSceneFieldsRestore(draft, operation);
     case '_scene.settings.restore': return applyInternalSceneSettingsRestore(draft, operation);
     case '_entity.fields.restore': return applyInternalEntityFieldsRestore(draft, operation);
+    case '_entity.many.restore': return applyInternalEntityManyRestore(draft, operation);
+    case '_collection.fields.restore': return applyInternalCollectionFieldsRestore(draft, operation);
     case '_resource.restore': return applyInternalResourceRestore(draft, operation);
     default: throw new StudioError('unknown_operation', `Unknown operation ${type}`);
   }

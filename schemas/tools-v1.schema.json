@@ -48,6 +48,7 @@
         "name": { "type": "string", "minLength": 1, "maxLength": 240 },
         "kind": { "type": "string", "minLength": 1, "maxLength": 80 },
         "tag": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "collectionId": { "$ref": "#/$defs/id" },
         "status": {
           "enum": [
             "implemented", "partial", "planned", "bake-required", "not-applicable",
@@ -287,19 +288,29 @@
       "properties": {
         "op": { "enum": [
           "scene.create", "scene.patch", "scene.delete", "scene.setActive", "scene.settings.patch", "scene.rtx.patch", "scene.setActiveCamera",
-          "entity.create", "entity.patch", "entity.duplicate", "entity.reparent", "entity.delete",
+          "entity.create", "entity.patch", "entity.patchMany", "entity.transformMany", "entity.group", "entity.ungroup", "entity.duplicate", "entity.reparent", "entity.delete",
+          "collection.create", "collection.patch", "collection.membership.patch", "collection.reparent", "collection.delete",
           "camera.frame", "layout.pattern", "geometry.edit",
           "resource.create", "resource.patch", "resource.delete"
         ] },
-        "sceneId": { "$ref": "#/$defs/reference" }, "entityId": { "$ref": "#/$defs/reference" }, "cameraId": { "oneOf": [{ "$ref": "#/$defs/reference" }, { "type": "null" }] },
+        "sceneId": { "$ref": "#/$defs/reference" }, "entityId": { "$ref": "#/$defs/reference" }, "collectionId": { "$ref": "#/$defs/reference" }, "cameraId": { "oneOf": [{ "$ref": "#/$defs/reference" }, { "type": "null" }] },
         "resourceId": { "$ref": "#/$defs/reference" },
         "parentId": { "oneOf": [{ "$ref": "#/$defs/reference" }, { "type": "null" }] }, "newId": { "$ref": "#/$defs/reference" },
         "alias": { "type": "string", "pattern": "^\\$[a-z][a-z0-9_-]{0,63}$" },
         "expectedSceneHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }, "expectedSubtreeHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "expectedEntitySetHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }, "expectedMembershipHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
         "index": { "type": "integer", "minimum": 0, "maximum": 20000 }, "deep": { "type": "boolean" }, "recursive": { "type": "boolean" },
         "name": { "type": "string", "minLength": 1, "maxLength": 240 },
         "resourceType": { "enum": ["geometries", "materials", "textures", "graphs", "animations", "prefabs", "audio", "assets", "geometry", "material", "texture", "graph", "animation", "prefab", "asset"] },
-        "scene": { "type": "object" }, "entity": { "type": "object" }, "resource": { "type": "object" }, "patch": { "type": "object" },
+        "scene": { "type": "object" }, "entity": { "type": "object" }, "group": { "type": "object" }, "collection": { "type": "object" }, "resource": { "type": "object" }, "patch": { "type": "object" },
+        "entityIds": { "type": "array", "minItems": 1, "maxItems": 200, "uniqueItems": true, "items": { "$ref": "#/$defs/reference" } },
+        "addEntityIds": { "type": "array", "maxItems": 200, "uniqueItems": true, "items": { "$ref": "#/$defs/reference" } },
+        "removeEntityIds": { "type": "array", "maxItems": 200, "uniqueItems": true, "items": { "$ref": "#/$defs/reference" } },
+        "mode": { "enum": ["set", "delta"] },
+        "transform": {
+          "type": "object", "additionalProperties": false, "minProperties": 1,
+          "properties": { "position": { "$ref": "#/$defs/vec3" }, "rotation": { "$ref": "#/$defs/vec3" }, "scale": { "$ref": "#/$defs/vec3" } }
+        },
         "pattern": { "$ref": "#/$defs/layoutPattern" },
         "target": { "$ref": "#/$defs/cameraFrameTarget" },
         "aspect": { "type": "number", "minimum": 0.1, "maximum": 10 },
@@ -318,6 +329,45 @@
         "idMap": { "type": "object", "additionalProperties": { "$ref": "#/$defs/reference" } }
       },
       "allOf": [
+        {
+          "if": { "properties": { "op": { "const": "entity.patchMany" } }, "required": ["op"] },
+          "then": { "required": ["entityIds", "patch", "expectedEntitySetHash"] }
+        },
+        {
+          "if": { "properties": { "op": { "const": "entity.transformMany" } }, "required": ["op"] },
+          "then": { "required": ["entityIds", "mode", "transform", "expectedEntitySetHash"] }
+        },
+        {
+          "if": { "properties": { "op": { "const": "entity.group" } }, "required": ["op"] },
+          "then": { "required": ["sceneId", "entityIds", "group", "expectedEntitySetHash"] }
+        },
+        {
+          "if": { "properties": { "op": { "const": "entity.ungroup" } }, "required": ["op"] },
+          "then": { "required": ["entityId", "expectedSubtreeHash"] }
+        },
+        {
+          "if": { "properties": { "op": { "const": "collection.create" } }, "required": ["op"] },
+          "then": { "required": ["sceneId", "collection"] }
+        },
+        {
+          "if": { "properties": { "op": { "const": "collection.patch" } }, "required": ["op"] },
+          "then": { "required": ["collectionId", "patch"] }
+        },
+        {
+          "if": { "properties": { "op": { "const": "collection.membership.patch" } }, "required": ["op"] },
+          "then": {
+            "required": ["collectionId", "expectedMembershipHash"],
+            "anyOf": [{ "required": ["addEntityIds"] }, { "required": ["removeEntityIds"] }]
+          }
+        },
+        {
+          "if": { "properties": { "op": { "const": "collection.reparent" } }, "required": ["op"] },
+          "then": { "required": ["collectionId", "parentId"] }
+        },
+        {
+          "if": { "properties": { "op": { "const": "collection.delete" } }, "required": ["op"] },
+          "then": { "required": ["collectionId"] }
+        },
         {
           "if": { "properties": { "op": { "const": "scene.rtx.patch" } }, "required": ["op"] },
           "then": {

@@ -177,6 +177,7 @@ export class AuthoringKernel {
       activeSceneId: this.#document.activeSceneId,
       sceneCount: this.#document.sceneOrder.length,
       entityCount: Object.values(this.#document.scenes).reduce((sum, scene) => sum + Object.keys(scene.entities).length, 0),
+      collectionCount: Object.values(this.#document.scenes).reduce((sum, scene) => sum + Object.keys(scene.collections).length, 0),
       undoAvailable: this.#undoStack.length > 0,
       redoAvailable: this.#redoStack.length > 0,
       latestTransactionId: this.#history.at(-1)?.transactionId ?? null,

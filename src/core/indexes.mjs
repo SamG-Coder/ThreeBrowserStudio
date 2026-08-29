@@ -9,6 +9,7 @@ export class ProjectIndex {
     this.project = project;
     this.scenes = new Map();
     this.entities = new Map();
+    this.collections = new Map();
     this.resources = new Map();
     this.scripts = new Map();
     this.referencesTo = new Map();
@@ -39,6 +40,16 @@ export class ProjectIndex {
             sceneId: scene.id,
             path: reference.path,
           });
+        }
+      }
+      for (const collection of Object.values(scene.collections ?? {})) {
+        if (this.collections.has(collection.id)) {
+          throw new StudioError('duplicate_id', `Duplicate collection ID ${collection.id}`);
+        }
+        this.collections.set(collection.id, { sceneId: scene.id, scene, collection });
+        if (collection.parentId) this.#addReference(collection.parentId, { kind: 'collectionParent', sourceId: collection.id, sceneId: scene.id });
+        for (const entityId of collection.entityIds ?? []) {
+          this.#addReference(entityId, { kind: 'collectionMember', sourceId: collection.id, sceneId: scene.id });
         }
       }
       for (const scriptId of scene.scriptIds ?? []) this.#addReference(scriptId, { kind: 'sceneScript', sourceId: scene.id, sceneId: scene.id });
@@ -81,6 +92,13 @@ export class ProjectIndex {
     return result;
   }
 
+  getCollection(collectionId) {
+    assertStableId(collectionId, 'collectionId');
+    const result = this.collections.get(collectionId);
+    if (!result) throw new StudioError('not_found', `Collection ${collectionId} does not exist`, { id: collectionId, kind: 'collection' });
+    return result;
+  }
+
   getResource(resourceId, expectedType) {
     assertStableId(resourceId, 'resourceId');
     const result = this.resources.get(resourceId);
@@ -114,6 +132,31 @@ export class ProjectIndex {
     const ids = this.collectSubtree(entityId).sort();
     return contentHash(ids.map((id) => scene.entities[id]));
   }
+
+  collectCollectionSubtree(collectionId) {
+    const { scene, collection } = this.getCollection(collectionId);
+    const result = [];
+    const visit = (current) => {
+      result.push(current.id);
+      for (const childId of current.children) {
+        const child = scene.collections[childId];
+        if (child) visit(child);
+      }
+    };
+    visit(collection);
+    return result;
+  }
+
+  collectionSubtreeHash(collectionId) {
+    const { scene } = this.getCollection(collectionId);
+    const ids = this.collectCollectionSubtree(collectionId).sort();
+    return contentHash(ids.map((id) => scene.collections[id]));
+  }
+
+  collectionMembershipHash(collectionId) {
+    const { collection } = this.getCollection(collectionId);
+    return contentHash([...(collection.entityIds ?? [])].sort());
+  }
 }
 
 export function buildProjectIndex(project) {
@@ -128,10 +171,26 @@ export function findResource(project, resourceId, expectedType) {
   return buildProjectIndex(project).getResource(resourceId, expectedType);
 }
 
+export function findCollection(project, collectionId) {
+  return buildProjectIndex(project).getCollection(collectionId);
+}
+
 export function collectEntitySubtree(project, entityId) {
   return buildProjectIndex(project).collectSubtree(entityId);
 }
 
 export function hashEntitySubtree(project, entityId) {
   return buildProjectIndex(project).subtreeHash(entityId);
+}
+
+export function collectCollectionSubtree(project, collectionId) {
+  return buildProjectIndex(project).collectCollectionSubtree(collectionId);
+}
+
+export function hashCollectionSubtree(project, collectionId) {
+  return buildProjectIndex(project).collectionSubtreeHash(collectionId);
+}
+
+export function hashCollectionMembership(project, collectionId) {
+  return buildProjectIndex(project).collectionMembershipHash(collectionId);
 }

@@ -230,6 +230,8 @@ The current native loop is functional, not a static design mock:
 - canonical project/scene/entity/resource documents with strict stable IDs;
 - atomic multi-operation changes, dry-run, optimistic revisions, idempotency,
   recovery, named split-file saves, guarded delete, and monotonic undo/redo;
+- guarded exact-ID bulk patch/transform, world-preserving transform groups,
+  and independent nested many-to-many organizational collections;
 - authenticated one-MiB NDJSON bridge over a random local named pipe;
 - official MCP v2 STDIO adapter with nine bounded model-facing tools and an
   explicit native/adapter contract handshake;

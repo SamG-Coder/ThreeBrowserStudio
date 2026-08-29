@@ -8,14 +8,16 @@ Treat `three_studio_status.capabilities` and the live tool schemas as the
 authority. In the current lean slice:
 
 - inspect supports scene summaries and delete-guard hashes,
-  ID/name/kind/tag selection, tree, transforms, components, compiled bounds,
+  ID/name/kind/tag/collection selection, exact entity-set guards, collection
+  membership/subtree guards, tree, transforms, components, compiled bounds,
   incoming references, bounded resource topology/component digests, exact
   hash-guarded mesh elements, graph structure, RTX collection diagnostics,
   resource-usage checks, changes, graph catalog, Play counters, and latest
   evidence metadata;
-- apply supports the declared scene/entity/resource operations plus persistent
-  `camera.frame`, bounded `layout.pattern`, indexed `geometry.edit`, and
-  canonical `scene.rtx.patch`;
+- apply supports the declared scene/entity/resource operations, exact guarded
+  bulk patch/transform, world-preserving transform groups, independent nested
+  organizational collections, persistent `camera.frame`, bounded
+  `layout.pattern`, indexed `geometry.edit`, and canonical `scene.rtx.patch`;
 - validation is whole-project, interactive document/reference/hierarchy/graph
   validation with budgets;
 - rendering is WebGPU beauty capture through the same effective camera and
@@ -52,6 +54,16 @@ Use it only after both status and the current tool schema expose it.
 - World units are metres. Rotation values are radians. Time is seconds.
 - Use meaningful stable IDs such as `market/stall-03`, not runtime UUIDs.
 - Never write using fuzzy name/tag selectors.
+- Inspect the complete intended set and carry its `selectionHash` into
+  `entity.patchMany`, `entity.transformMany`, or `entity.group`; never bulk
+  mutate a stale or partially paged selection.
+- Use group entities only for transform parenting. Use collections for
+  independent many-to-many organization; collection membership never changes
+  transforms and collection deletion never deletes member entities.
+- `entity.group` and `entity.ungroup` preserve world transforms when the result
+  can be represented by canonical TRS. If non-uniform scale would introduce
+  shear, restructure or bake deliberately instead of forcing a drifting
+  approximation.
 - Prefer `layout.pattern` for bounded linear, grid, radial, and seeded volume
   scatter repetition when status reports it implemented; use explicit
   transforms for other layouts.

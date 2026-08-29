@@ -12,7 +12,7 @@ import {
 
 const INITIAL_SERVER_INSTRUCTIONS = `Studio is an LLM-first WebGPU editor. Start with three_studio_status; the live-refreshed schemas and capability contract are authoritative. Use exact inspection digests before dense mesh, graph, material, or RTX edits. Play evaluates Action animation only; file-producing jobs remain capability-gated. Never infer support from an earlier Studio session.`;
 
-export const SERVER_INSTRUCTIONS = `${INITIAL_SERVER_INSTRUCTIONS.padEnd(512, ' ')}Inspect only bounded context. Mutate with exact stable IDs, the latest baseRevision, a unique idempotencyKey, and one coherent label. Dry-run risky or large changes. Never claim gameplay works while behaviorRuntime is false. Save verified milestones. Never edit project JSON, history, recovery, or session-marker files directly, and never enable trusted-project mode. Units are metres, radians, and seconds.`;
+export const SERVER_INSTRUCTIONS = `${INITIAL_SERVER_INSTRUCTIONS.padEnd(512, ' ')}Inspect only bounded context. Mutate with exact stable IDs, the latest baseRevision, a unique idempotencyKey, and one coherent label. Carry selection and membership hashes into guarded bulk edits. Groups own transforms; collections are independent organization. Dry-run risky or large changes. Never claim gameplay works while behaviorRuntime is false. Save verified milestones. Never edit project JSON, history, recovery, or session-marker files directly, and never enable trusted-project mode. Units are metres, radians, and seconds.`;
 
 export const TOOL_DEFINITIONS = Object.freeze({
   three_studio_status: {
@@ -22,12 +22,12 @@ export const TOOL_DEFINITIONS = Object.freeze({
   },
   three_studio_inspect: {
     title: 'Inspect Three Studio',
-    description: 'Read paginated scene summaries plus tree/guard hashes, transform, component, compiled bounds, and incoming-reference slices; inspect bounded resource, exact mesh-element, graph, and RTX digests without echoing unbounded arrays; query changes, unresolved/unused resources, compatibility catalogs, Play state, or latest evidence.',
+    description: 'Read paginated scene summaries plus exact entity-set, hierarchy, and collection membership/subtree guards; inspect transform, component, compiled bounds, references, bounded resources, exact mesh elements, graphs, and RTX state without echoing unbounded arrays; query changes, catalogs, Play state, or latest evidence.',
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   three_studio_apply: {
     title: 'Apply Three Studio Changeset',
-    description: 'Apply one labelled atomic changeset against an exact base revision. The live schema exposes the active native operation contract. Supports strict bounded operations, idempotency, guarded edits/deletes, aliases, and dry-run.',
+    description: 'Apply one labelled atomic changeset against an exact base revision. Supports exact guarded bulk entity edits, world-preserving groups, independent organizational collections, strict bounded operations, idempotency, guarded deletes, aliases, and dry-run.',
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   },
   three_studio_validate: {

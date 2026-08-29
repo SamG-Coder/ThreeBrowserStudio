@@ -12,6 +12,7 @@ import {
   contentHash,
   createProjectDocument,
   createResourceDocument,
+  hashExactEntitySet,
   normalizeGraphResourcePatch,
   normalizeResourceType,
   supportedOperationTypes,
@@ -64,6 +65,8 @@ const DIRECT_CORE_OPERATIONS = new Set([
   'scene.create', 'scene.patch', 'scene.delete', 'scene.setActive',
   'scene.settings.patch', 'scene.rtx.patch', 'scene.setActiveCamera',
   'entity.create', 'entity.patch', 'entity.duplicate', 'entity.reparent', 'entity.delete',
+  'entity.patchMany', 'entity.transformMany', 'entity.group', 'entity.ungroup',
+  'collection.create', 'collection.patch', 'collection.membership.patch', 'collection.reparent', 'collection.delete',
   'camera.frame', 'layout.pattern', 'geometry.edit',
   'resource.create', 'resource.patch', 'resource.delete',
 ]);
@@ -900,6 +903,10 @@ export class StudioApplication {
         geometryEditing: true,
         geometryEditCommands: ['move', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate'],
         maxGeometryEditCommands: 64,
+        exactBulkEntityEditing: true,
+        maxExactEntitySelection: 200,
+        transformGrouping: true,
+        organizationalCollections: true,
         materialRecipes: ['basic', 'standard', 'physical', 'toon'],
         modifierRuntime: ['array', 'mirror', 'pattern'],
         layoutGenerators: true,
@@ -1124,6 +1131,24 @@ export class StudioApplication {
     if (selector.name) entities = entities.filter(entity => entity.name.toLowerCase().includes(selector.name.toLowerCase()));
     if (selector.kind) entities = entities.filter(entity => entity.kind === selector.kind);
     if (selector.tag) entities = entities.filter(entity => entity.tags.includes(selector.tag));
+    let selectedCollection;
+    if (selector.collectionId) {
+      const record = index.getCollection(selector.collectionId);
+      if (record.sceneId !== scene.id) throw new StudioError('collection_scene_mismatch', `Collection ${selector.collectionId} does not belong to scene ${scene.id}.`);
+      selectedCollection = {
+        id: record.collection.id,
+        name: record.collection.name,
+        parentId: record.collection.parentId,
+        children: [...record.collection.children],
+        entityIds: [...record.collection.entityIds],
+        metadata: structuredClone(record.collection.metadata),
+        membershipHash: index.collectionMembershipHash(record.collection.id),
+        subtreeHash: index.collectionSubtreeHash(record.collection.id),
+      };
+      const membership = new Set(record.collection.entityIds);
+      entities = entities.filter(entity => membership.has(entity.id));
+    }
+    const selectionHash = hashExactEntitySet(index, entities.map(entity => entity.id), { allowEmpty: true });
     const offset = Math.max(0, Number.parseInt(params.cursor ?? '0', 10) || 0);
     const limit = Math.min(200, params.limit ?? 50);
     const page = entities.sort((a, b) => a.id.localeCompare(b.id)).slice(offset, offset + limit);
@@ -1136,9 +1161,13 @@ export class StudioApplication {
         name: scene.name,
         activeCameraId: scene.settings.activeCameraId,
         entityCount: Object.keys(scene.entities).length,
+        collectionCount: Object.keys(scene.collections).length,
+        rootCollectionIds: [...scene.rootCollectionIds],
         selectedEntityCount: entities.length,
         sceneHash: contentHash(scene),
+        selectionHash,
       },
+      collection: selectedCollection,
       entities: page.map(entity => compactEntity(entity, include, {
         index,
         compiled: this.#compiled,

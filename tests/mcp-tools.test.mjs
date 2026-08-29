@@ -170,11 +170,14 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
   assert.deepEqual(OPERATION_TYPES, [
     'scene.create', 'scene.patch', 'scene.delete', 'scene.setActive',
     'scene.settings.patch', 'scene.rtx.patch', 'scene.setActiveCamera',
-    'entity.create', 'entity.patch', 'entity.duplicate', 'entity.reparent', 'entity.delete',
+    'entity.create', 'entity.patch', 'entity.patchMany', 'entity.transformMany',
+    'entity.group', 'entity.ungroup', 'entity.duplicate', 'entity.reparent', 'entity.delete',
+    'collection.create', 'collection.patch', 'collection.membership.patch', 'collection.reparent', 'collection.delete',
     'camera.frame', 'layout.pattern', 'geometry.edit',
     'resource.create', 'resource.patch', 'resource.delete',
   ]);
   assert.equal(inspectSchema.safeParse({ query: 'selector', selector: { tag: 'hero' }, include: ['tree', 'transform', 'bounds', 'references'] }).success, true);
+  assert.equal(inspectSchema.safeParse({ query: 'selector', selector: { collectionId: 'collection/environment' } }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'graphCatalog', selector: { kind: 'shader', status: 'live-tsl' } }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'unresolvedResources' }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'unusedResources' }).success, true);
@@ -213,6 +216,33 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
     ...mutation,
     operations: [{ op: 'resource.create', resourceType: 'audio', resource: { id: 'audio/chime', kind: 'audio' } }],
   }).success, true);
+  const parseOperation = operation => applySchema.safeParse({ ...mutation, operations: [operation] }).success;
+  assert.equal(parseOperation({
+    op: 'entity.patchMany', entityIds: ['entity/a', 'entity/b'], patch: { visible: false },
+    expectedEntitySetHash: 'a'.repeat(64),
+  }), true);
+  assert.equal(parseOperation({
+    op: 'entity.transformMany', entityIds: ['entity/a'], mode: 'delta', transform: { position: [1, 0, 0] },
+    expectedEntitySetHash: 'a'.repeat(64),
+  }), true);
+  assert.equal(parseOperation({
+    op: 'entity.group', sceneId: 'scene/main', entityIds: ['entity/a'], group: { id: 'entity/group', kind: 'group' },
+    expectedEntitySetHash: 'a'.repeat(64),
+  }), true);
+  assert.equal(parseOperation({ op: 'entity.ungroup', entityId: 'entity/group', expectedSubtreeHash: 'a'.repeat(64) }), true);
+  assert.equal(parseOperation({ op: 'collection.create', sceneId: 'scene/main', collection: { id: 'collection/environment' } }), true);
+  assert.equal(parseOperation({
+    op: 'collection.membership.patch', collectionId: 'collection/environment', addEntityIds: ['entity/a'],
+    expectedMembershipHash: 'a'.repeat(64),
+  }), true);
+  assert.equal(parseOperation({
+    op: 'collection.membership.patch', collectionId: 'collection/environment', addEntityIds: ['entity/a'],
+    removeEntityIds: ['entity/a'], expectedMembershipHash: 'a'.repeat(64),
+  }), false);
+  assert.equal(parseOperation({
+    op: 'entity.patchMany', entityIds: ['entity/a', 'entity/a'], patch: { visible: false },
+    expectedEntitySetHash: 'a'.repeat(64),
+  }), false);
   assert.equal(MAX_RESOURCE_ARRAY_ITEMS, 6_000_000);
   const denseIndices = new Array(20_001).fill(0);
   assert.equal(applySchema.safeParse({

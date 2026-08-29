@@ -144,10 +144,36 @@
         "metadata": { "type": "object" }
       }
     },
+    "collection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "parentId", "children", "entityIds", "metadata"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "parentId": {
+          "oneOf": [
+            { "$ref": "#/$defs/stableId" },
+            { "type": "null" }
+          ]
+        },
+        "children": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/stableId" }
+        },
+        "entityIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/stableId" }
+        },
+        "metadata": { "type": "object" }
+      }
+    },
     "scene": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "name", "rootEntityIds", "entities", "settings", "scriptIds", "metadata"],
+      "required": ["id", "name", "rootEntityIds", "entities", "rootCollectionIds", "collections", "settings", "scriptIds", "metadata"],
       "properties": {
         "id": { "$ref": "#/$defs/stableId" },
         "name": { "type": "string", "minLength": 1, "maxLength": 160 },
@@ -159,6 +185,15 @@
         "entities": {
           "type": "object",
           "additionalProperties": { "$ref": "#/$defs/entity" }
+        },
+        "rootCollectionIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/stableId" }
+        },
+        "collections": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/collection" }
         },
         "settings": {
           "type": "object",

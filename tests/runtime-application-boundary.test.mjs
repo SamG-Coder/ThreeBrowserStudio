@@ -10,6 +10,7 @@ import {
   contentHash,
   createProjectDocument,
   createResourceDocument,
+  hashExactEntitySet,
 } from '../src/core/index.mjs';
 import { LAYOUT_PATTERN_MODES } from '../src/core/layout-patterns.mjs';
 import { TOOL_CONTRACT, TOOL_CONTRACT_SUMMARY } from '../src/mcp/tool-schemas.mjs';
@@ -781,4 +782,41 @@ test('a project switch compile failure preserves the active project and live sce
   assert.equal(Object.hasOwn(status.capabilities.toolContract, 'inputSchemas'), false);
   assert.deepEqual(viewport.scene.children, [liveRoot]);
   assert.equal(liveRoot.parent, viewport.scene);
+});
+
+test('live collection inspection returns guarded membership and exact entity-set hashes', async (t) => {
+  const { application } = await applicationFixture(t);
+  await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1',
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    baseRevision: 0,
+    idempotencyKey: 'collection-inspection-create-0001',
+    label: 'Create an exact organizational collection',
+    operations: [
+      { op: 'entity.create', sceneId: 'scene/main', entity: { id: 'entity/tree', name: 'Tree' } },
+      { op: 'entity.create', sceneId: 'scene/main', entity: { id: 'entity/road', name: 'Road' } },
+      {
+        op: 'collection.create', sceneId: 'scene/main',
+        collection: { id: 'collection/environment', name: 'Environment', entityIds: ['entity/tree'] },
+      },
+    ],
+  });
+
+  const result = await application.dispatch('three_studio_inspect', {
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    sceneId: 'scene/main',
+    query: 'selector',
+    selector: { collectionId: 'collection/environment' },
+    include: ['summary', 'tree'],
+  });
+  assert.equal(result.success, true);
+  assert.equal(result.scene.collectionCount, 1);
+  assert.deepEqual(result.scene.rootCollectionIds, ['collection/environment']);
+  assert.equal(result.scene.selectedEntityCount, 1);
+  assert.equal(result.scene.selectionHash, hashExactEntitySet(application.kernel.document, ['entity/tree']));
+  assert.equal(result.collection.membershipHash, contentHash(['entity/tree']));
+  assert.match(result.collection.subtreeHash, /^[a-f0-9]{64}$/);
+  assert.deepEqual(result.entities.map(entity => entity.id), ['entity/tree']);
 });

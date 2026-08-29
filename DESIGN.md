@@ -433,6 +433,8 @@ static scene during inspection.
 Useful special queries include:
 
 - scene digest;
+- exact entity-set guards plus independent collection membership/subtree
+  guards;
 - resource digest with indexed-mesh counts, local bounds, compact components,
   and incoming references;
 - exact mesh elements and adjacency;
@@ -455,7 +457,10 @@ Operation families include:
 
 - scene create, patch, guarded delete, active scene, settings, and active
   camera;
-- entity create, patch, duplicate, reparent, and guarded delete;
+- entity create, patch, exact guarded bulk patch/transform, world-preserving
+  group/ungroup, duplicate, reparent, and guarded delete;
+- independent nested collection create, patch, guarded membership edit,
+  reparent, and collection-only delete;
 - exact-aspect camera framing, bounded live layout patterns, indexed geometry
   edits (including `selection: "all"`), and canonical RTX settings; and
 - resource create, patch, and reference-safe delete across canonical resource
@@ -474,6 +479,14 @@ budgets remain authoritative. Explicit vertex-index lists stay bounded; use
 `selection: "all"` for a whole indexed mesh instead of serializing thousands of
 indices. Indexed and explicit topology is validated on both resource creation
 and the fully merged result of a resource patch before canonical state changes.
+
+Groups and collections deliberately remain different document concepts. A
+group entity owns a transform and changes the entity parent hierarchy;
+group/ungroup computes exact relative TRS and rejects shear that canonical TRS
+cannot preserve. A collection has no transform and can contain overlapping
+entity memberships in its own hierarchy. Deleting a collection never deletes
+its member entities. Bulk entity mutations and collection membership changes
+must carry the exact hash returned by the preceding bounded inspection.
 
 ### 5. `three_studio_validate`
 

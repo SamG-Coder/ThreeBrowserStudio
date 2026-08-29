@@ -5,6 +5,7 @@ export const MAX_OPERATIONS_PER_TRANSACTION = 128;
 export const MAX_CONTROL_REQUEST_BYTES = 1024 * 1024;
 export const MAX_INSPECT_RESPONSE_BYTES = 512 * 1024;
 export const MAX_AUTHORED_ENTITIES = 20_000;
+export const MAX_AUTHORED_COLLECTIONS = 20_000;
 
 export const ENTITY_KINDS = Object.freeze([
   'scene',

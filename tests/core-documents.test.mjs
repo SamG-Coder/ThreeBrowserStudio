@@ -2,9 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildProjectIndex,
+  createCollectionDocument,
   createEntityDocument,
   createProjectDocument,
   hashEntitySubtree,
+  hashCollectionMembership,
+  hashCollectionSubtree,
   isStableId,
   normalizeStableId,
   validateProjectDocument,
@@ -22,7 +25,63 @@ test('creates a complete normalized v1 project and scene', () => {
   assert.deepEqual(project.sceneOrder, ['scene/main']);
   assert.deepEqual(project.resources.geometries, {});
   assert.deepEqual(project.scenes['scene/main'].rootEntityIds, []);
+  assert.deepEqual(project.scenes['scene/main'].rootCollectionIds, []);
+  assert.deepEqual(project.scenes['scene/main'].collections, {});
   assert.equal(validateProjectDocument(project).valid, true);
+});
+
+test('normalizes independent nested collections with overlapping entity membership', () => {
+  const project = createProjectDocument({
+    projectId: 'project/collections',
+    scenes: [{
+      id: 'scene/main',
+      entities: [{ id: 'entity/tree' }, { id: 'entity/road' }],
+      collections: [
+        {
+          id: 'collection/environment', children: ['collection/foliage'],
+          entityIds: ['entity/road', 'entity/tree'],
+        },
+        {
+          id: 'collection/foliage', parentId: 'collection/environment',
+          entityIds: ['entity/tree'],
+        },
+      ],
+    }],
+  });
+  const scene = project.scenes['scene/main'];
+  assert.deepEqual(scene.rootCollectionIds, ['collection/environment']);
+  assert.deepEqual(scene.collections['collection/environment'].entityIds, ['entity/road', 'entity/tree']);
+  assert.equal(validateProjectDocument(project).valid, true);
+  const index = buildProjectIndex(project);
+  assert.equal(index.getCollection('collection/foliage').sceneId, 'scene/main');
+  assert.deepEqual(index.collectCollectionSubtree('collection/environment'), ['collection/environment', 'collection/foliage']);
+  assert.equal(index.getReferencesTo('entity/tree').filter(item => item.kind === 'collectionMember').length, 2);
+  assert.equal(hashCollectionMembership(project, 'collection/foliage'), index.collectionMembershipHash('collection/foliage'));
+  assert.match(hashCollectionSubtree(project, 'collection/environment'), /^[a-f0-9]{64}$/);
+});
+
+test('collection validation rejects asymmetric cycles, missing members, and global ID collisions', () => {
+  const project = createProjectDocument({
+    projectId: 'project/invalid-collections',
+    resources: { materials: [{ id: 'collection/collision', kind: 'standard' }] },
+    scenes: [{
+      id: 'scene/main',
+      collections: [{ id: 'collection/collision' }],
+    }],
+  });
+  const scene = project.scenes['scene/main'];
+  scene.collections['collection/a'] = createCollectionDocument({
+    id: 'collection/a', parentId: 'collection/b', children: ['collection/b'], entityIds: ['entity/missing'],
+  });
+  scene.collections['collection/b'] = createCollectionDocument({
+    id: 'collection/b', parentId: 'collection/a', children: ['collection/a'],
+  });
+  const result = validateProjectDocument(project);
+  const codes = new Set(result.diagnostics.map(item => item.code));
+  assert.equal(result.valid, false);
+  assert.equal(codes.has('collection_hierarchy_cycle'), true);
+  assert.equal(codes.has('missing_collection_entity'), true);
+  assert.equal(codes.has('duplicate_id'), true);
 });
 
 test('stable IDs are semantic, bounded, and aliases are not document IDs', () => {

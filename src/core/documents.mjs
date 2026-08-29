@@ -2,6 +2,7 @@ import {
   CAMERA_KINDS,
   ENTITY_KINDS,
   FORMAT_VERSION,
+  MAX_AUTHORED_COLLECTIONS,
   MAX_AUTHORED_ENTITIES,
   PROTOCOL_VERSION,
   RESOURCE_TYPES,
@@ -19,7 +20,11 @@ const PROJECT_KEYS = new Set([
   'scriptTrustPolicy', 'settings', 'exportSettings', 'metadata',
 ]);
 const SCENE_KEYS = new Set([
-  'id', 'name', 'rootEntityIds', 'entities', 'settings', 'scriptIds', 'metadata',
+  'id', 'name', 'rootEntityIds', 'entities', 'rootCollectionIds', 'collections',
+  'settings', 'scriptIds', 'metadata',
+]);
+const COLLECTION_KEYS = new Set([
+  'id', 'name', 'parentId', 'children', 'entityIds', 'metadata',
 ]);
 const ENTITY_KEYS = new Set([
   'id', 'kind', 'name', 'parentId', 'children', 'visible', 'transform',
@@ -169,6 +174,18 @@ export function createEntityDocument(input = {}) {
   };
 }
 
+export function createCollectionDocument(input = {}) {
+  const id = assertStableId(input.id, 'collection.id');
+  return {
+    id,
+    name: input.name ?? id.split('/').at(-1),
+    parentId: input.parentId ?? null,
+    children: [...(input.children ?? [])],
+    entityIds: uniqueSorted(input.entityIds ?? []),
+    metadata: cloneJson(input.metadata ?? {}),
+  };
+}
+
 export function createSceneDocument(input = {}) {
   const id = assertStableId(input.id, 'scene.id');
   const entities = {};
@@ -178,6 +195,14 @@ export function createSceneDocument(input = {}) {
   for (const source of sourceEntities) {
     const entity = createEntityDocument(source);
     entities[entity.id] = entity;
+  }
+  const collections = {};
+  const sourceCollections = Array.isArray(input.collections)
+    ? input.collections
+    : Object.values(input.collections ?? {});
+  for (const source of sourceCollections) {
+    const collection = createCollectionDocument(source);
+    collections[collection.id] = collection;
   }
   const defaults = defaultSceneSettings();
   const authoredSettings = cloneJson(input.settings) ?? {};
@@ -198,6 +223,10 @@ export function createSceneDocument(input = {}) {
       .filter((entity) => entity.parentId === null)
       .map((entity) => entity.id))],
     entities,
+    rootCollectionIds: [...(input.rootCollectionIds ?? Object.values(collections)
+      .filter((collection) => collection.parentId === null)
+      .map((collection) => collection.id))],
+    collections,
     settings,
     scriptIds: uniqueSorted(input.scriptIds ?? []),
     metadata: cloneJson(input.metadata ?? {}),
@@ -380,6 +409,24 @@ function validateEntity(entity, key, scene, diagnostics) {
   if (!isPlainRecord(entity.metadata)) issue(diagnostics, 'invalid_metadata', `${path}.metadata`, 'metadata must be an object');
 }
 
+function validateCollection(collection, key, scene, diagnostics) {
+  const path = `$.scenes.${scene.id}.collections.${key}`;
+  if (!isPlainRecord(collection)) {
+    issue(diagnostics, 'invalid_collection', path, 'Collection must be an object');
+    return;
+  }
+  unknownKeys(collection, COLLECTION_KEYS, path, diagnostics);
+  if (!isStableId(collection.id)) issue(diagnostics, 'invalid_id', `${path}.id`, 'Invalid stable collection ID');
+  if (key !== collection.id) issue(diagnostics, 'index_mismatch', path, 'Collection map key must match collection.id');
+  if (typeof collection.name !== 'string' || collection.name.length === 0) issue(diagnostics, 'invalid_name', `${path}.name`, 'Name is required');
+  if (collection.parentId !== null && !isStableId(collection.parentId)) issue(diagnostics, 'invalid_parent', `${path}.parentId`, 'parentId must be null or a stable ID');
+  if (!Array.isArray(collection.children) || collection.children.some((id) => !isStableId(id))) issue(diagnostics, 'invalid_children', `${path}.children`, 'children must be stable IDs');
+  if (new Set(collection.children ?? []).size !== (collection.children?.length ?? 0)) issue(diagnostics, 'duplicate_child', `${path}.children`, 'children cannot contain duplicates');
+  if (!Array.isArray(collection.entityIds) || collection.entityIds.some((id) => !isStableId(id))) issue(diagnostics, 'invalid_collection_members', `${path}.entityIds`, 'entityIds must be stable IDs');
+  if (new Set(collection.entityIds ?? []).size !== (collection.entityIds?.length ?? 0)) issue(diagnostics, 'duplicate_collection_member', `${path}.entityIds`, 'entityIds cannot contain duplicates');
+  if (!isPlainRecord(collection.metadata)) issue(diagnostics, 'invalid_metadata', `${path}.metadata`, 'metadata must be an object');
+}
+
 function validateScene(scene, key, project, diagnostics) {
   const path = `$.scenes.${key}`;
   if (!isPlainRecord(scene)) {
@@ -396,6 +443,13 @@ function validateScene(scene, key, project, diagnostics) {
   else {
     if (scene.rootEntityIds.some((id) => !isStableId(id))) issue(diagnostics, 'invalid_roots', `${path}.rootEntityIds`, 'rootEntityIds must contain stable IDs');
     if (new Set(scene.rootEntityIds).size !== scene.rootEntityIds.length) issue(diagnostics, 'duplicate_root', `${path}.rootEntityIds`, 'rootEntityIds cannot contain duplicates');
+  }
+  if (!isPlainRecord(scene.collections)) issue(diagnostics, 'invalid_collections', `${path}.collections`, 'collections must be an object');
+  else for (const [collectionId, collection] of Object.entries(scene.collections)) validateCollection(collection, collectionId, scene, diagnostics);
+  if (!Array.isArray(scene.rootCollectionIds)) issue(diagnostics, 'invalid_collection_roots', `${path}.rootCollectionIds`, 'rootCollectionIds must be an array');
+  else {
+    if (scene.rootCollectionIds.some((id) => !isStableId(id))) issue(diagnostics, 'invalid_collection_roots', `${path}.rootCollectionIds`, 'rootCollectionIds must contain stable IDs');
+    if (new Set(scene.rootCollectionIds).size !== scene.rootCollectionIds.length) issue(diagnostics, 'duplicate_collection_root', `${path}.rootCollectionIds`, 'rootCollectionIds cannot contain duplicates');
   }
   if (!isPlainRecord(scene.settings)) issue(diagnostics, 'invalid_settings', `${path}.settings`, 'settings must be an object');
   else {
@@ -452,6 +506,44 @@ function validateScene(scene, key, project, diagnostics) {
       }
     }
   }
+  if (isPlainRecord(scene.collections)) {
+    const collectionRoots = new Set(scene.rootCollectionIds ?? []);
+    for (const rootId of collectionRoots) {
+      const root = scene.collections[rootId];
+      if (!root) issue(diagnostics, 'missing_collection_root', `${path}.rootCollectionIds`, `Collection root ${rootId} does not exist`);
+      else if (root.parentId !== null) issue(diagnostics, 'collection_root_has_parent', `${path}.rootCollectionIds`, `Collection root ${rootId} has a parent`);
+    }
+    for (const collection of Object.values(scene.collections)) {
+      if (collection.parentId === null && !collectionRoots.has(collection.id)) issue(diagnostics, 'unindexed_collection_root', `${path}.collections.${collection.id}`, 'Root collection is missing from rootCollectionIds');
+      if (collection.parentId !== null) {
+        const parent = scene.collections[collection.parentId];
+        if (!parent) issue(diagnostics, 'missing_collection_parent', `${path}.collections.${collection.id}.parentId`, `Collection parent ${collection.parentId} does not exist`);
+        else if (!parent.children.includes(collection.id)) issue(diagnostics, 'collection_parent_child_mismatch', `${path}.collections.${collection.id}`, 'Collection parent does not list this child');
+      }
+      for (const childId of collection.children ?? []) {
+        const child = scene.collections[childId];
+        if (!child) issue(diagnostics, 'missing_collection_child', `${path}.collections.${collection.id}.children`, `Collection child ${childId} does not exist`);
+        else if (child.parentId !== collection.id) issue(diagnostics, 'collection_parent_child_mismatch', `${path}.collections.${collection.id}.children`, `Collection child ${childId} points to another parent`);
+      }
+      for (const entityId of collection.entityIds ?? []) {
+        if (!scene.entities[entityId]) issue(diagnostics, 'missing_collection_entity', `${path}.collections.${collection.id}.entityIds`, `Collection member ${entityId} does not exist`);
+      }
+    }
+    const collectionVisiting = new Set();
+    const collectionVisited = new Set();
+    const visitCollection = (id) => {
+      if (collectionVisiting.has(id)) {
+        issue(diagnostics, 'collection_hierarchy_cycle', `${path}.collections.${id}`, 'Collection hierarchy contains a cycle');
+        return;
+      }
+      if (collectionVisited.has(id) || !scene.collections[id]) return;
+      collectionVisiting.add(id);
+      for (const child of scene.collections[id].children ?? []) visitCollection(child);
+      collectionVisiting.delete(id);
+      collectionVisited.add(id);
+    };
+    for (const id of Object.keys(scene.collections)) visitCollection(id);
+  }
   for (const scriptId of scene.scriptIds ?? []) {
     if (!project.scripts?.[scriptId]) issue(diagnostics, 'missing_script', `${path}.scriptIds`, `Script ${scriptId} does not exist`);
   }
@@ -478,17 +570,20 @@ function validateScene(scene, key, project, diagnostics) {
   for (const id of Object.keys(scene.entities)) visit(id);
 }
 
-export function validateProjectDocument(project, { maxEntities = MAX_AUTHORED_ENTITIES } = {}) {
+export function validateProjectDocument(project, {
+  maxEntities = MAX_AUTHORED_ENTITIES,
+  maxCollections = MAX_AUTHORED_COLLECTIONS,
+} = {}) {
   const diagnostics = [];
   try {
     assertJsonValue(project);
   } catch (error) {
     issue(diagnostics, 'invalid_json', '$', error.message);
-    return { valid: false, diagnostics, budgets: { entities: 0, maxEntities } };
+    return { valid: false, diagnostics, budgets: { entities: 0, maxEntities, collections: 0, maxCollections } };
   }
   if (!isPlainRecord(project)) {
     issue(diagnostics, 'invalid_project', '$', 'Project must be an object');
-    return { valid: false, diagnostics, budgets: { entities: 0, maxEntities } };
+    return { valid: false, diagnostics, budgets: { entities: 0, maxEntities, collections: 0, maxCollections } };
   }
   unknownKeys(project, PROJECT_KEYS, '$', diagnostics);
   if (project.kind !== 'ThreeStudioProject') issue(diagnostics, 'invalid_kind', '$.kind', 'Expected ThreeStudioProject');
@@ -558,16 +653,19 @@ export function validateProjectDocument(project, { maxEntities = MAX_AUTHORED_EN
   for (const scene of Object.values(project.scenes ?? {})) {
     register(scene.id, `$.scenes.${scene.id}`);
     for (const entity of Object.values(scene.entities ?? {})) register(entity.id, `$.scenes.${scene.id}.entities.${entity.id}`);
+    for (const collection of Object.values(scene.collections ?? {})) register(collection.id, `$.scenes.${scene.id}.collections.${collection.id}`);
   }
   for (const type of RESOURCE_TYPES) for (const id of Object.keys(project.resources?.[type] ?? {})) register(id, `$.resources.${type}.${id}`);
   for (const id of Object.keys(project.scripts ?? {})) register(id, `$.scripts.${id}`);
 
   const entityCount = Object.values(project.scenes ?? {}).reduce((count, scene) => count + Object.keys(scene.entities ?? {}).length, 0);
+  const collectionCount = Object.values(project.scenes ?? {}).reduce((count, scene) => count + Object.keys(scene.collections ?? {}).length, 0);
   if (entityCount > maxEntities) issue(diagnostics, 'entity_budget_exceeded', '$.scenes', `${entityCount} entities exceeds the ${maxEntities} entity limit`);
+  if (collectionCount > maxCollections) issue(diagnostics, 'collection_budget_exceeded', '$.scenes', `${collectionCount} collections exceeds the ${maxCollections} collection limit`);
   return {
     valid: diagnostics.length === 0,
     diagnostics,
-    budgets: { entities: entityCount, maxEntities },
+    budgets: { entities: entityCount, maxEntities, collections: collectionCount, maxCollections },
   };
 }
 

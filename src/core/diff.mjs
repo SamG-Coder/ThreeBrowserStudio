@@ -42,21 +42,22 @@ export function computeCompactDiff(before, after) {
     const next = after.scenes?.[sceneId];
     if (!prior) {
       changes.push({ kind: 'scene', id: sceneId, change: 'create' });
-      changedIds.push(sceneId, ...Object.keys(next.entities ?? {}));
+      changedIds.push(sceneId, ...Object.keys(next.entities ?? {}), ...Object.keys(next.collections ?? {}));
       continue;
     }
     if (!next) {
       changes.push({ kind: 'scene', id: sceneId, change: 'delete' });
-      changedIds.push(sceneId, ...Object.keys(prior.entities ?? {}));
-      deletedIds.push(sceneId, ...Object.keys(prior.entities ?? {}));
+      changedIds.push(sceneId, ...Object.keys(prior.entities ?? {}), ...Object.keys(prior.collections ?? {}));
+      deletedIds.push(sceneId, ...Object.keys(prior.entities ?? {}), ...Object.keys(prior.collections ?? {}));
       continue;
     }
-    const sceneFields = changedTopLevelFields(prior, next, new Set(['entities']));
+    const sceneFields = changedTopLevelFields(prior, next, new Set(['entities', 'collections']));
     if (sceneFields.length) {
       changes.push({ kind: 'scene', id: sceneId, change: 'patch', fields: sceneFields });
       changedIds.push(sceneId);
     }
     compareTable(prior.entities, next.entities, 'entity', sceneId, changes, deletedIds, changedIds);
+    compareTable(prior.collections, next.collections, 'collection', sceneId, changes, deletedIds, changedIds);
   }
 
   for (const type of RESOURCE_TYPES) compareTable(before.resources?.[type], after.resources?.[type], type, undefined, changes, deletedIds, changedIds);
