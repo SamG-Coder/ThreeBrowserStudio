@@ -49,8 +49,8 @@ because Blender itself documents operators separately from direct
 | Collection | Group entity as a transform hierarchy | Planned as independent many-to-many membership |
 | View Layer | Single active compiled scene view | Planned |
 | Object | Entity document | Implemented for the declared entity kinds |
-| Mesh data | Shared geometry resource | Procedural and explicit indexed meshes |
-| Materials | Shared basic/standard/physical/toon resource | Scalar PBR plus supported live node graphs |
+| Mesh data | Shared geometry resource | Procedural, explicit indexed, and canonical editable polygon/corner meshes |
+| Materials | Shared basic/standard/physical/toon resource | Scalar PBR, supported bounded raster maps, and supported live node graphs |
 | Modifier stack | `entity.components.modifiers[]` in authored order | Array/Mirror/Pattern plus nine bounded geometry evaluators; all other Blender types use an explicit validated bake boundary |
 | Constraint stack | `entity.components.constraints[]` in authored order | Aim/copy/limit subset |
 | Action/F-curves | Animation resource with stable target/property tracks | Frame/second keyframes and four interpolations |
@@ -86,6 +86,14 @@ smoothing, face subdivision/inset/individual extrusion/deletion, pairwise
 manifold edge bevels, and exact vertex merges. Region extrusion, arbitrary loop
 cuts/dissolve, sculpting, and adjacency-dependent live modifiers over split UV
 seams remain explicit bake boundaries rather than approximations.
+
+The same guarded edit path directly creates, deletes, renames, activates,
+projects, transforms, and sets per-corner UV/color layers; assigns per-face
+material slots; and edits sharp edges and crease weights. Multiple layers stay
+canonical, but only the active UV and active color layer compile into the
+current viewport; the active UV becomes raster channel 0. Crease weights are
+storage/editing data only until a
+seam-safe subdivision lowering consumes them.
 
 Blender defines modifiers as ordered, non-destructive operations evaluated
 top-to-bottom. Studio preserves that model in canonical data. Use
@@ -151,6 +159,42 @@ discoverable; unsupported closures and engine-specific nodes fail clearly
 rather than degrading to a washed-out approximation. See
 Blender's [shader-node model](https://docs.blender.org/manual/en/latest/render/shader_nodes/introduction.html)
 and [Principled BSDF](https://docs.blender.org/manual/en/latest/render/shader_nodes/shader/principled.html).
+
+Studio also compiles strict inline 1–4-channel `dataTexture` resources to
+shared RGBA8 WebGPU textures for supported basic, standard, physical, and toon
+map slots. Encoded albedo/emissive/color maps use sRGB; normal, roughness,
+metalness, AO, bump, displacement, alpha/mask, and physical data maps use no
+colour space.
+Raster maps require an active UV layer. They shade the WebGPU material path but
+are not sampled by native RTX hit shading.
+
+Direct color-role map bindings and `texture.sample2d` may use `linear` instead
+of sRGB when their bytes are already linear; a graph sampler declaration must
+exactly match its texture resource. Canonical textures default to trilinear
+generated mipmaps, linear magnification, clamp wrapping, and anisotropy 4;
+normalized recipes always contain bounded anisotropy. A direct map is rejected
+when a material graph outputs the same property or a `surface` value that
+supersedes that slot; use
+`texture.sample2d` inside that graph. Graph `image` asset nodes remain
+CPU-bake-only. Generic format-v1 texture placeholders remain valid for project
+compatibility but cannot enter these live raster paths.
+
+Inline dimensions stop at 512 × 512, but canonical base64 still stops at
+700,000 decoded bytes under the one-MiB MCP control request. Consequently,
+full-resolution three/four-channel sources require a future chunk/blob path.
+Aggregate canonical recipes stop at 8 MiB serialized and 16 MiB decoded, and
+each expanded RGBA8 mip chain stops at 1,398,100 GPU bytes.
+
+`three_studio_status.capabilities.imageTextures.materialControls` exposes the
+accepted scalar/vec2 ranges, `vertexColors` and color-control names, and the
+exact neutral multiplier for each mapped slot. This is the Studio equivalent
+of checking Blender's material inputs before connecting a texture: unauthored
+mapped base/emissive/sheen/specular colors become white, applicable lobe and
+intensity controls become 1, normal scales become `[1, 1]`, and displacement
+uses scale 1/bias 0. The map-aware table explicitly activates sheen (including
+white `sheenColor`) and preserves white `specularColor`/unit
+`specularIntensity`, preventing those physical maps from being multiplied away.
+Authored controls override these neutral defaults.
 
 The pinned Blender 5.2 inventory distinguishes 115 current Add-menu entries,
 100 direct `ShaderNode` API subclasses, API-only and legacy nodes, and 36 live
@@ -239,13 +283,14 @@ They use only the same nine MCP method contracts available to Codex/ChatGPT.
 The catalog represents the rest of Blender instead of claiming it works:
 
 - true Collection membership and View Layers;
-- topology-aware Edit/Sculpt/Paint modes, UV authoring and armatures;
+- context-dependent Edit/Sculpt/Paint modes, automatic UV unwrap/island
+  packing, and armatures;
 - live evaluation of the complete modifier and constraint sets;
-- shader/texture/Geometry Nodes compilation and Blender-specific nodes;
+- the remaining Blender shader/texture nodes and Geometry Nodes execution;
 - drivers, NLA layers, shape keys, rigging and motion paths;
 - rigid body, cloth, fluid, particles and simulation caches;
 - compositor nodes, render layers and diagnostic passes;
-- asset import, link/append, local overrides and external libraries; and
+- external image/asset import, link/append, local overrides and libraries; and
 - `.blend` serialization or `bpy` execution.
 
 Those features should be implemented, imported, or baked behind explicit

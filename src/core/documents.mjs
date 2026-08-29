@@ -13,6 +13,20 @@ import { assertJsonValue, cloneJson, isPlainRecord, mergePatch, nowIso, uniqueSo
 import { entityComponentReferences, validateEntityComponents } from './component-validation.mjs';
 import { validateIndexedMeshRecipe } from './indexed-mesh-editing.mjs';
 import { normalizeEditableMeshRecipe } from './editable-mesh.mjs';
+import {
+  DATA_TEXTURE_LIMITS,
+  DATA_TEXTURE_RECIPE_KEYS,
+  dataTextureDecodedByteLength,
+  dataTextureSerializedByteLength,
+  normalizeDataTextureResource,
+  validateDataTextureResource,
+} from './image-texture.mjs';
+import {
+  assertMaterialTextureCompatibility,
+  assertMaterialTextureControls,
+  materialTextureGraphConflicts,
+  materialTextureReferences,
+} from './material-textures.mjs';
 import { validateGraph } from '../graphs/validator.mjs';
 
 const PROJECT_KEYS = new Set([
@@ -96,6 +110,79 @@ function validateGeometryResource(id, source) {
       { resourceId: id, recipeKind },
     );
   }
+}
+
+function normalizeTextureResource(id, source) {
+  const nested = isPlainRecord(source.recipe)
+    ? source.recipe
+    : isPlainRecord(source.parameters) ? source.parameters : null;
+  const directFields = DATA_TEXTURE_RECIPE_KEYS.filter(key => (
+    !['kind', 'name'].includes(key) && Object.hasOwn(source, key)
+  ));
+  const directKind = source.textureKind ?? source.type ?? source.kind;
+  const candidateKind = nested ? (nested.kind ?? nested.type) : directKind;
+  if (candidateKind !== 'dataTexture') {
+    const partialFields = nested
+      ? DATA_TEXTURE_RECIPE_KEYS.filter(key => !['kind', 'name'].includes(key) && Object.hasOwn(nested, key))
+      : [];
+    if ((nested?.kind ?? nested?.type) === undefined && partialFields.length > 0) {
+      throw new StudioError(
+        'invalid_texture_resource',
+        `Texture resource ${id} has dataTexture fields but its nested recipe does not declare kind: dataTexture.`,
+        { resourceId: id, partialFields },
+      );
+    }
+    // Format-v1 projects previously allowed generic placeholder texture
+    // envelopes. Preserve those documents exactly; they remain indexable and
+    // deletable but cannot enter the live raster material path until patched
+    // to a canonical dataTexture recipe.
+    return;
+  }
+  if (nested && directFields.length > 0) {
+    throw new StudioError(
+      'ambiguous_texture_resource',
+      `Texture resource ${id} cannot mix a nested recipe with direct texture fields.`,
+      { resourceId: id, directFields },
+    );
+  }
+  if (source.recipe !== undefined && source.parameters !== undefined) {
+    throw new StudioError(
+      'ambiguous_texture_resource',
+      `Texture resource ${id} cannot define both recipe and parameters.`,
+      { resourceId: id },
+    );
+  }
+  if (source.recipe !== undefined && !isPlainRecord(source.recipe)) {
+    throw new StudioError('invalid_texture_resource', `Texture resource ${id} recipe must be a plain object.`, { resourceId: id });
+  }
+  if (source.parameters !== undefined && !isPlainRecord(source.parameters)) {
+    throw new StudioError('invalid_texture_resource', `Texture resource ${id} parameters must be a plain object.`, { resourceId: id });
+  }
+  const candidate = nested
+    ? { ...nested, kind: 'dataTexture' }
+    : {
+        kind: 'dataTexture',
+        ...Object.fromEntries(DATA_TEXTURE_RECIPE_KEYS
+          .filter(key => key !== 'kind' && Object.hasOwn(source, key))
+          .map(key => [key, source[key]])),
+      };
+  delete candidate.type;
+  try {
+    source.recipe = normalizeDataTextureResource(candidate);
+  } catch (error) {
+    throw new StudioError(
+      'invalid_texture_resource',
+      `Texture resource ${id} has an invalid dataTexture recipe: ${error.message}`,
+      { resourceId: id, recipeKind: 'dataTexture', diagnostics: error.details?.diagnostics ?? [] },
+    );
+  }
+  delete source.parameters;
+  for (const field of DATA_TEXTURE_RECIPE_KEYS) {
+    if (!['name'].includes(field)) delete source[field];
+  }
+  if (source.type === 'dataTexture') delete source.type;
+  if (source.textureKind === 'dataTexture') delete source.textureKind;
+  source.kind = 'texture';
 }
 
 function defaultResources() {
@@ -288,6 +375,8 @@ export function createResourceDocument(resourceType, input = {}) {
     source.graph = validation.graph;
   }
   if (normalizedResourceType === 'geometries') validateGeometryResource(id, source);
+  if (normalizedResourceType === 'textures') normalizeTextureResource(id, source);
+  if (normalizedResourceType === 'materials') assertMaterialTextureCompatibility(source);
   const defaultKinds = {
     geometries: 'geometry',
     materials: 'material',
@@ -611,6 +700,8 @@ export function validateProjectDocument(project, {
   maxCollections = MAX_AUTHORED_COLLECTIONS,
 } = {}) {
   const diagnostics = [];
+  let textureDecodedBytes = 0;
+  let textureSerializedBytes = 0;
   try {
     assertJsonValue(project);
   } catch (error) {
@@ -664,6 +755,156 @@ export function validateProjectDocument(project, {
             issue(diagnostics, item.code, `${graphPath}${suffix}`, item.message);
           }
         }
+      }
+      if (type === 'textures' && isPlainRecord(resource)) {
+        const recipe = resource.recipe ?? resource.parameters ?? resource;
+        const recipeKind = isPlainRecord(recipe) ? (recipe.kind ?? recipe.type) : null;
+        if (recipeKind !== 'dataTexture') {
+          const partialFields = isPlainRecord(recipe) && recipe !== resource && recipeKind === undefined
+            ? DATA_TEXTURE_RECIPE_KEYS.filter(key => !['kind', 'name'].includes(key) && Object.hasOwn(recipe, key))
+            : [];
+          if (partialFields.length > 0) {
+            issue(
+              diagnostics,
+              'invalid_texture_resource',
+              `$.resources.textures.${id}.recipe`,
+              'Nested dataTexture fields require recipe.kind to be dataTexture.',
+            );
+          }
+          continue;
+        }
+        const validation = validateDataTextureResource(recipe);
+        for (const item of validation.errors) {
+          const suffix = item.path === '/' ? '' : item.path.replaceAll('/', '.');
+          issue(diagnostics, item.code, `$.resources.textures.${id}.recipe${suffix}`, item.message);
+        }
+        if (validation.valid) {
+          textureDecodedBytes += dataTextureDecodedByteLength(validation.resource);
+          textureSerializedBytes += dataTextureSerializedByteLength(validation.resource);
+        }
+      }
+    }
+  }
+  if (textureDecodedBytes > DATA_TEXTURE_LIMITS.maxProjectDecodedBytes) {
+    issue(
+      diagnostics,
+      'project_texture_budget_exceeded',
+      '$.resources.textures',
+      `Decoded texture data uses ${textureDecodedBytes} bytes; the project limit is ${DATA_TEXTURE_LIMITS.maxProjectDecodedBytes}.`,
+    );
+  }
+  if (textureSerializedBytes > DATA_TEXTURE_LIMITS.maxProjectSerializedBytes) {
+    issue(
+      diagnostics,
+      'project_texture_serialized_budget_exceeded',
+      '$.resources.textures',
+      `Serialized texture recipes use ${textureSerializedBytes} bytes; the project limit is ${DATA_TEXTURE_LIMITS.maxProjectSerializedBytes}.`,
+    );
+  }
+  for (const [id, material] of Object.entries(project.resources?.materials ?? {})) {
+    let references = [];
+    try {
+      assertMaterialTextureCompatibility(material);
+      references = materialTextureReferences(material);
+    } catch (error) {
+      issue(diagnostics, error.code ?? 'invalid_material_texture_reference', `$.resources.materials.${id}`, error.message);
+      continue;
+    }
+    const hasLiveTextureReference = references.some(reference => {
+      const texture = project.resources?.textures?.[reference.textureId];
+      const recipe = texture?.recipe ?? texture?.parameters;
+      return isPlainRecord(recipe) && recipe.kind === 'dataTexture';
+    });
+    if (hasLiveTextureReference) {
+      try {
+        assertMaterialTextureControls(material);
+      } catch (error) {
+        issue(diagnostics, error.code ?? 'invalid_material_texture_control', `$.resources.materials.${id}`, error.message);
+      }
+    }
+    for (const reference of references) {
+      const texture = project.resources?.textures?.[reference.textureId];
+      const path = `$.resources.materials.${id}.${reference.authoredKey}`;
+      if (!texture) {
+        issue(diagnostics, 'missing_resource', path, `texture ${reference.textureId} does not exist`);
+        continue;
+      }
+      const textureRecipe = texture.recipe ?? texture.parameters;
+      if (!isPlainRecord(textureRecipe) || textureRecipe.kind !== 'dataTexture') continue;
+      const colorSpace = textureRecipe.colorSpace;
+      if (!reference.colorSpaces.includes(colorSpace)) {
+        issue(
+          diagnostics,
+          'material_texture_color_space_mismatch',
+          path,
+          `${reference.idKey} requires texture color space ${reference.colorSpaces.join(' or ')}, but ${reference.textureId} is ${String(colorSpace)}.`,
+        );
+      }
+      const channels = textureRecipe.channels;
+      if (!reference.allowedChannels.includes(channels)) {
+        issue(
+          diagnostics,
+          'material_texture_channel_mismatch',
+          path,
+          `${reference.idKey} requires source channels ${reference.allowedChannels.join(' or ')}, but ${reference.textureId} has ${String(channels)}.`,
+        );
+      }
+    }
+    const graphId = material.graphId
+      ?? material.recipe?.graphId
+      ?? material.parameters?.graphId
+      ?? material.values?.graphId;
+    const graphResource = graphId ? project.resources?.graphs?.[graphId] : null;
+    if (graphId && !graphResource) {
+      issue(
+        diagnostics,
+        'missing_resource',
+        `$.resources.materials.${id}.graphId`,
+        `graph ${graphId} does not exist`,
+      );
+    }
+    for (const conflict of materialTextureGraphConflicts(material, graphResource)) {
+      issue(
+        diagnostics,
+        'material_texture_graph_conflict',
+        `$.resources.materials.${id}.${conflict.idKey}`,
+        `${conflict.idKey} is overridden by graph output ${conflict.graphOutput}; sample ${conflict.textureId} inside the graph instead.`,
+      );
+    }
+  }
+  for (const [id, graphResource] of Object.entries(project.resources?.graphs ?? {})) {
+    if (!isPlainRecord(graphResource) || !isPlainRecord(graphResource.graph)
+        || !Array.isArray(graphResource.graph.nodes)) continue;
+    for (const node of graphResource.graph.nodes) {
+      if (!isPlainRecord(node)) continue;
+      if (node.type === 'image') {
+        const assetId = node.params?.assetId;
+        const path = `$.resources.graphs.${id}.graph.nodes.${node.id}.params.assetId`;
+        if (!project.resources?.assets?.[assetId]) {
+          issue(diagnostics, 'missing_resource', path, `asset ${String(assetId)} does not exist`);
+        }
+        continue;
+      }
+      if (node.type !== 'texture.sample2d') continue;
+      const textureId = node.params?.textureId;
+      const path = `$.resources.graphs.${id}.graph.nodes.${node.id}.params.textureId`;
+      if (!project.resources?.textures?.[textureId]) {
+        issue(diagnostics, 'missing_resource', path, `texture ${String(textureId)} does not exist`);
+        continue;
+      }
+      const textureRecipe = project.resources.textures[textureId].recipe
+        ?? project.resources.textures[textureId].parameters;
+      if (!isPlainRecord(textureRecipe) || textureRecipe.kind !== 'dataTexture') continue;
+      const expectedColorSpace = node.params?.colorSpace;
+      const actualColorSpace = textureRecipe.colorSpace;
+      if (['srgb', 'linear', 'none'].includes(expectedColorSpace)
+          && actualColorSpace !== expectedColorSpace) {
+        issue(
+          diagnostics,
+          'graph_texture_color_space_mismatch',
+          path,
+          `Graph node expects ${expectedColorSpace} texture data, but ${textureId} is ${String(actualColorSpace)}.`,
+        );
       }
     }
   }

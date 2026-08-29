@@ -1,6 +1,15 @@
 import { compileShaderGraph, isCompiledSurface } from './shader-graph-compiler.mjs';
 import { triangulateEditableMesh } from '../core/editable-mesh.mjs';
 import { MAX_MATERIAL_SLOTS_PER_MESH } from '../core/constants.mjs';
+import {
+  MATERIAL_TEXTURE_BINDINGS,
+  MATERIAL_TEXTURE_MAP_AWARE_DEFAULTS,
+  assertMaterialTextureCompatibility,
+  assertMaterialTextureControls,
+  materialRecipeKind,
+  materialTextureGraphConflicts,
+  materialTextureReferences,
+} from '../core/material-textures.mjs';
 
 const GEOMETRY_PARAMETER_DEFAULTS = Object.freeze({
   box: { width: 1, height: 1, depth: 1, widthSegments: 1, heightSegments: 1, depthSegments: 1 },
@@ -606,14 +615,11 @@ export function createMaterial(THREE, resource = {}, options = {}) {
   // supplied by the graph, while ordinary materials silently used fallback
   // values and the default Standard material.
   const values = resource.recipe ?? resource.parameters ?? resource.values ?? resource;
-  const requestedKind = resource.materialKind
-    ?? values.materialKind
-    ?? values.type
-    ?? (resource.kind === 'material' ? 'standard' : resource.kind)
-    ?? 'standard';
-  const graphResource = resource.graph ?? (resource.graphId ? options.graphs?.[resource.graphId] : null);
-  if (resource.graphId && !graphResource) {
-    throw new Error(`Material ${resource.id ?? '<unnamed>'} references missing graph ${resource.graphId}.`);
+  const requestedKind = materialRecipeKind(resource);
+  const graphId = resource.graphId ?? values.graphId;
+  const graphResource = resource.graph ?? (graphId ? options.graphs?.[graphId] : null);
+  if (graphId && !graphResource) {
+    throw new Error(`Material ${resource.id ?? '<unnamed>'} references missing graph ${graphId}.`);
   }
   const graphCompilation = graphResource ? compileShaderGraph({
     TSL: options.TSL,
@@ -629,27 +635,140 @@ export function createMaterial(THREE, resource = {}, options = {}) {
   const graphTransmission = graphCompilation?.features?.transmission === true
     || graphOutputNames.has('transmission');
   const kind = isCompiledSurface(graphOutputs.surface) && ['standard', 'physical'].includes(requestedKind) ? 'physical' : requestedKind;
-  const mapKeys = [
-    'map', 'mapId', 'normalMap', 'normalMapId', 'roughnessMap', 'roughnessMapId',
-    'metalnessMap', 'metalnessMapId', 'emissiveMap', 'emissiveMapId',
-    'alphaMap', 'alphaMapId', 'aoMap', 'aoMapId', 'bumpMap', 'bumpMapId',
-  ];
-  const uncompiledMap = mapKeys.find(key => values[key] !== undefined || resource[key] !== undefined);
-  if (uncompiledMap) throw new Error(`Material ${resource.id ?? '<unnamed>'} uses ${uncompiledMap}; image texture resources are not bound by the live graph compiler yet.`);
+  const rawMap = MATERIAL_TEXTURE_BINDINGS.find(binding => (
+    values[binding.property] !== undefined || resource[binding.property] !== undefined
+  ));
+  if (rawMap) {
+    throw new Error(
+      `Material ${resource.id ?? '<unnamed>'} uses raw ${rawMap.property}; author a stable ${rawMap.idKey} texture reference instead.`,
+    );
+  }
+  assertMaterialTextureCompatibility(resource);
+  const textureReferences = materialTextureReferences(resource);
+  if (textureReferences.length > 0) assertMaterialTextureControls(resource);
+  const graphConflicts = materialTextureGraphConflicts(resource, graphResource);
+  if (graphConflicts.length > 0) {
+    const [conflict] = graphConflicts;
+    const error = new Error(
+      `${conflict.idKey} is overridden by graph output ${conflict.graphOutput}; sample ${conflict.textureId} inside the graph instead.`,
+    );
+    error.code = 'material_texture_graph_conflict';
+    error.details = { materialId: resource.id ?? null, graphId: graphId ?? null, conflicts: graphConflicts };
+    throw error;
+  }
+  const resolvedTextureBindings = textureReferences.map(reference => {
+    const texture = options.textureResolver?.(reference.textureId);
+    if (!texture) {
+      const error = new Error(
+        `Material ${resource.id ?? '<unnamed>'} references unavailable texture ${reference.textureId} through ${reference.idKey}.`,
+      );
+      error.code = 'material_texture_unavailable';
+      error.details = { materialId: resource.id ?? null, textureId: reference.textureId, idKey: reference.idKey };
+      throw error;
+    }
+    const sourceChannels = texture.userData?.studioSourceChannels;
+    if (sourceChannels !== undefined && !reference.allowedChannels.includes(sourceChannels)) {
+      const error = new Error(
+        `${reference.idKey} requires source channels ${reference.allowedChannels.join(' or ')}, but ${reference.textureId} has ${sourceChannels}.`,
+      );
+      error.code = 'material_texture_channel_mismatch';
+      error.details = {
+        materialId: resource.id ?? null,
+        textureId: reference.textureId,
+        idKey: reference.idKey,
+        sourceChannels,
+        allowedChannels: reference.allowedChannels,
+      };
+      throw error;
+    }
+    const sourceColorSpace = texture.userData?.studioColorSpace;
+    if (sourceColorSpace !== undefined && !reference.colorSpaces.includes(sourceColorSpace)) {
+      const error = new Error(
+        `${reference.idKey} requires texture color space ${reference.colorSpaces.join(' or ')}, but ${reference.textureId} is ${sourceColorSpace}.`,
+      );
+      error.code = 'material_texture_color_space_mismatch';
+      error.details = {
+        materialId: resource.id ?? null,
+        textureId: reference.textureId,
+        idKey: reference.idKey,
+        sourceColorSpace,
+        allowedColorSpaces: reference.colorSpaces,
+      };
+      throw error;
+    }
+    return { reference, texture };
+  });
   // A NodeMaterial without node overrides is not a harmless substitute in the
   // native WebGPU runtime: its unbound base-colour path resolves to black.
   // Keep ordinary/default materials on Three's classic material pipeline and
   // enter the node pipeline only for a successfully compiled graph.
   const Constructor = materialConstructor(THREE, kind, graphCompilation !== null);
   const color = values.baseColor ?? values.color;
-  const material = new Constructor({ color: linearColor(THREE, color) });
+  const mappedBaseColor = textureReferences.some(reference => reference.property === 'map');
+  const material = new Constructor({
+    color: linearColor(THREE, color, mappedBaseColor ? [1, 1, 1] : [0.7, 0.7, 0.7]),
+  });
+  const mapAwareDefaults = {};
+  for (const reference of textureReferences) {
+    for (const [key, value] of Object.entries(MATERIAL_TEXTURE_MAP_AWARE_DEFAULTS[reference.property] ?? {})) {
+      if (Number.isFinite(value) && values[key] === undefined && key in material) {
+        material[key] = value;
+        mapAwareDefaults[key] = value;
+      }
+    }
+  }
   const numericKeys = [
     'roughness', 'metalness', 'opacity', 'alphaTest', 'emissiveIntensity',
     'clearcoat', 'clearcoatRoughness', 'ior', 'transmission', 'thickness',
-    'sheen', 'sheenRoughness', 'specularIntensity',
+    'sheen', 'sheenRoughness', 'specularIntensity', 'anisotropy', 'iridescence',
+    'aoMapIntensity', 'bumpScale', 'displacementScale', 'displacementBias',
   ];
   for (const key of numericKeys) if (Number.isFinite(values[key]) && key in material) material[key] = values[key];
-  if (values.emissive !== undefined && 'emissive' in material) material.emissive = linearColor(THREE, values.emissive, [0, 0, 0]);
+  const mappedEmissive = textureReferences.some(reference => reference.property === 'emissiveMap');
+  if ((values.emissive !== undefined || mappedEmissive) && 'emissive' in material) {
+    material.emissive = linearColor(
+      THREE,
+      values.emissive,
+      mappedEmissive ? MATERIAL_TEXTURE_MAP_AWARE_DEFAULTS.emissiveMap.emissive : [0, 0, 0],
+    );
+    if (values.emissive === undefined && mappedEmissive) mapAwareDefaults.emissive = [1, 1, 1];
+  }
+  const mappedSheen = textureReferences.some(reference => (
+    reference.property === 'sheenColorMap' || reference.property === 'sheenRoughnessMap'
+  ));
+  if ((values.sheenColor !== undefined || mappedSheen) && 'sheenColor' in material) {
+    material.sheenColor = linearColor(
+      THREE,
+      values.sheenColor,
+      mappedSheen ? MATERIAL_TEXTURE_MAP_AWARE_DEFAULTS.sheenColorMap.sheenColor : [0, 0, 0],
+    );
+    if (values.sheenColor === undefined && mappedSheen) mapAwareDefaults.sheenColor = [1, 1, 1];
+  }
+  const mappedSpecularColor = textureReferences.some(reference => reference.property === 'specularColorMap');
+  if ((values.specularColor !== undefined || mappedSpecularColor) && 'specularColor' in material) {
+    material.specularColor = linearColor(
+      THREE,
+      values.specularColor,
+      MATERIAL_TEXTURE_MAP_AWARE_DEFAULTS.specularColorMap.specularColor,
+    );
+    if (values.specularColor === undefined && mappedSpecularColor) {
+      mapAwareDefaults.specularColor = [1, 1, 1];
+    }
+  }
+  for (const { reference, texture } of resolvedTextureBindings) {
+    material[reference.property] = texture;
+  }
+  for (const [key, property] of [['normalScale', 'normalScale'], ['clearcoatNormalScale', 'clearcoatNormalScale']]) {
+    if (values[key] === undefined) continue;
+    if (!Array.isArray(values[key]) || values[key].length !== 2 || values[key].some(value => !Number.isFinite(value))) {
+      throw new Error(`${key} must contain exactly two finite numbers.`);
+    }
+    if (material[property]?.fromArray) material[property].fromArray(values[key]);
+    else if (material[property]?.set) material[property].set(...values[key]);
+    else if (THREE.Vector2) material[property] = new THREE.Vector2(...values[key]);
+    else material[property] = { x: values[key][0], y: values[key][1] };
+  }
+  if (typeof values.vertexColors === 'boolean') material.vertexColors = values.vertexColors;
   if (graphOutputs.baseColor ?? graphOutputs.albedo) material.colorNode = graphOutputs.baseColor ?? graphOutputs.albedo;
   if (graphOutputs.roughness) material.roughnessNode = graphOutputs.roughness;
   if (graphOutputs.metalness) material.metalnessNode = graphOutputs.metalness;
@@ -665,8 +784,11 @@ export function createMaterial(THREE, resource = {}, options = {}) {
   if (graphTransmission && graphOutputs.transmission && 'transmissionNode' in material) {
     material.transmissionNode = graphOutputs.transmission;
   }
+  const hasAlphaMap = textureReferences.some(reference => reference.property === 'alphaMap');
+  const usesAlphaCutout = Number.isFinite(values.alphaTest) && values.alphaTest > 0;
   const inferredTransparency = (Number.isFinite(values.opacity) && values.opacity < 1)
-    || graphTransparency;
+    || graphTransparency
+    || (hasAlphaMap && !usesAlphaCutout);
   material.transparent = typeof values.transparent === 'boolean'
     ? values.transparent
     : inferredTransparency;
@@ -675,6 +797,7 @@ export function createMaterial(THREE, resource = {}, options = {}) {
   material.wireframe = values.wireframe ?? false;
   const sides = { front: THREE.FrontSide, back: THREE.BackSide, double: THREE.DoubleSide };
   if (values.side in sides) material.side = sides[values.side];
+  if (textureReferences.length > 0) material.needsUpdate = true;
   material.name = resource.name ?? resource.id ?? 'Studio material';
   material.userData = {
     ...(material.userData ?? {}),
@@ -683,7 +806,18 @@ export function createMaterial(THREE, resource = {}, options = {}) {
       studioGraphId: graphCompilation.graphId,
       studioGraphCompilation: graphCompilation.mode,
       studioGraphNodesCompiled: graphCompilation.nodesCompiled,
+      studioGraphTextureIds: graphCompilation.textureIds,
+      studioRequiresGeometryUv: graphCompilation.requiresGeometryUv,
     } : {}),
+    studioTextureBindings: textureReferences.map(reference => ({
+      slot: reference.property,
+      textureId: reference.textureId,
+      colorSpace: reference.colorSpace,
+      preferredColorSpace: reference.colorSpace,
+      allowedColorSpaces: reference.colorSpaces,
+      allowedChannels: reference.allowedChannels,
+    })),
+    studioMapAwareDefaults: mapAwareDefaults,
   };
   return material;
 }

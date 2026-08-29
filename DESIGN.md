@@ -243,10 +243,17 @@ the mutation API. Three.js UUIDs and object pointers are runtime-only.
 
 Geometry is a resource recipe or imported asset reference. V1 recipes include
 box, plane, sphere, capsule, circle, cone, cylinder, lathe, extrude, shape,
-torus, torusKnot, tube, heightfield, line, points, and explicit indexed mesh.
+torus, torusKnot, tube, heightfield, line, points, explicit indexed mesh, and a
+canonical polygon/corner editable mesh.
 
 Every recipe reports bounds, vertex count, triangle count, attribute layout,
 and whether topology is static, instanced, or deforming before commit.
+Editable meshes preserve multiple per-corner UV/color layers, per-face material
+indices, sharp edges, and crease weights through guarded topology edits. Direct
+attribute commands create, delete, rename, activate, project, transform, and
+set these values. The current compiler lowers only the active UV and color
+layer; the active UV becomes raster channel 0. Crease weights are
+storage/editing data and do not affect viewport subdivision yet.
 
 ### Materials and shader graphs
 
@@ -266,6 +273,40 @@ Materials are `basic`, `standard`, `physical`, `toon`, `sprite`, `line`, or
 `nodePhysical` records. A material can reference maps and one typed shader
 graph. The graph compiles through a curated registry into TSL assignments on a
 Three.js NodeMaterial.
+
+Basic, standard, physical, and toon materials can also reference bounded
+inline `dataTexture` resources through their supported PBR map slots. Encoded
+colour maps use sRGB, while direct color-role bindings and
+`texture.sample2d` also accept `linear` for already-linear bytes; graph sampler
+declarations must exactly match their resource. Normals, roughness, metalness,
+AO, height, masks, and other numeric maps require no colour space. A geometry
+must expose an active UV layer before a raster map can compile. Each canonical
+texture is cached once per compiled candidate and disposed exactly once with
+that candidate.
+
+A material cannot define a direct map for a property that its graph also
+outputs, and a graph `surface` output conflicts with every direct map it
+overrides. Candidate validation rejects the ambiguity; author the sample inside
+the graph through `texture.sample2d` instead. Graph `image` asset nodes are
+bounded CPU-bake inputs only and fail explicitly in live WebGPU compilation.
+
+Status publishes the mapped-material control contract at
+`capabilities.imageTextures.materialControls`: exact scalar and vec2 ranges,
+the `vertexColors` boolean, accepted base/color, emissive, sheen, and specular
+color-control names, and per-map neutral defaults. Unit-bounded PBR weights and
+AO intensity, IOR 1–3, large but finite thickness/emissive and displacement
+ranges, and ±100 normal-scale components are therefore discoverable instead of
+implicit runtime knowledge.
+
+Map-aware defaults make an unauthored multiplier neutral rather than allowing a
+constructor default to erase the sampled map. Base, emissive, sheen, and
+specular color multipliers become white; relevant scalar lobes/intensities and
+normal scales become 1; displacement becomes scale 1/bias 0. The exact map in
+status also covers paired activation: clearcoat-normal/roughness maps activate
+clearcoat, sheen color/roughness maps activate sheen with white sheen color,
+thickness activates transmission, specular color stays white, specular
+intensity becomes 1, and anisotropy/iridescence maps activate their weights.
+Explicit authored values always take precedence.
 
 V1 graph outputs are limited to:
 
@@ -292,8 +333,11 @@ when exporting to interchange formats.
 ### Texture graphs
 
 The typed texture-graph contract, validator, live TSL material path, and bounded
-deterministic CPU evaluator/baker exist. Image decoding and MCP file-producing
-bake jobs remain deferred.
+deterministic CPU evaluator/baker exist. Bounded inline byte/base64
+`dataTexture` resources compile to RGBA8 for raster material shading. External
+image-file decoding/import and MCP file-producing bake jobs remain deferred.
+Generic texture envelopes from format v1 remain valid/indexable placeholders,
+but do not compile into a live raster map until patched to `dataTexture`.
 
 Texture graphs use the same typed DAG envelope as shader and blueprint graphs.
 V1 nodes include constant, image, UV, world position, Blender Gradient,
@@ -307,6 +351,10 @@ are explicit. Albedo/emissive outputs use sRGB; normal, roughness, metalness,
 height, masks, and data use no colour space.
 
 Interactive resolution is capped at 2048. Explicit bake jobs may use 4096.
+Inline `dataTexture` resources have their own live limit of 512 × 512 and use
+1–4 source channels expanded to RGBA8 at upload. Canonical sampler defaults are
+trilinear minification with generated mipmaps, linear magnification, clamp
+wrapping, and anisotropy 4; normalized recipes always carry anisotropy.
 
 ### Blueprint graphs
 
@@ -463,9 +511,10 @@ Operation families include:
   reparent, and collection-only delete;
 - exact-aspect camera framing, bounded live layout patterns, indexed-triangle
   edits plus topology-guarded editable polygon/corner operations (including
-  compact `selection: "all"`), and canonical RTX settings; and
+  compact `selection: "all"`, direct UV/color layers, face materials, sharp
+  edges, and crease storage), and canonical RTX settings; and
 - resource create, patch, and reference-safe delete across canonical resource
-  tables.
+  tables, including bounded inline raster textures and material-map references.
 
 In-transaction aliases such as `$ground` let later operations reference new
 entities/resources without round trips. A dry-run returns resolved IDs, the
@@ -561,8 +610,8 @@ Every `apply` follows the same path:
    budgets; validate typed graph and animation resources before they enter the
    kernel.
 7. Compile the candidate scene through the currently implemented procedural
-   geometry, ordered modifier/constraint subset, PBR/physical material, light,
-   camera, fog, shadow, and Action factories.
+   geometry, ordered modifier/constraint subset, shared raster textures,
+   PBR/physical material, light, camera, fog, shadow, and Action factories.
 8. Compute normalized diff, inverse operations, hashes, and invalidations.
 9. If dry-run, return without publishing document or viewport state.
 10. For a commit, increment once and atomically publish recovery/journal state.
@@ -655,10 +704,11 @@ Authored WebGPU/TSL materials and raster shadows remain active during editing.
 RTX accelerates review; it is never an on/off replacement for the authored
 shader.
 
-The current Studio reports `rtx: false`, exposes only `renderer: webgpu`, and
-keeps compiled TSL graph materials active in the raster viewport. Everything
-below in this section is the integration policy for the later RTX capability,
-not current render behaviour.
+The current Studio reports native RTX adapter support and activation state
+separately, exposes `renderer: webgpu` for evidence, and keeps compiled TSL and
+raster-map materials active in the WebGPU viewport. `scene.rtx.patch` can
+request the available ray lighting, shadows, and AO without replacing those
+materials.
 
 Topology and opaque membership edits mark static RTX data stale. Rebuild after
 300–500 ms idle or on an explicit RTX render request. Transform-only repeated
@@ -666,7 +716,8 @@ geometry should use native instance groups. The current native contract allows
 up to 8,192 slots per group, eight packed point/spot lights, one fixed-topology
 dynamic mesh, ray lighting/AO, and one-bounce reflections. Unsupported
 transparency, textured hit materials, refraction, and recursive tracing stay in
-the WebGPU authored path.
+the WebGPU authored path. In particular, inline albedo, normal, roughness, AO,
+height, and alpha maps shade raster materials but are not sampled at RTX hits.
 
 Every status and render response distinguishes `ready`, `stale`, `building`,
 `unsupported`, and `failed`; adapter support is never reported as an active
@@ -677,13 +728,21 @@ render result.
 Currently enforced guardrails include the 1 MiB bridge request, 128 operations
 per transaction, 20,000 authored entities, typed-graph limits, 1,920 × 1,080
 evidence bounds, strict Action structure and target validation, and
-hash-guarded recursive/non-empty deletes. The project-wide animation-key,
-texture-bake, and RTX-specific numbers below are planned pipeline limits.
+hash-guarded recursive/non-empty deletes. Inline raster resources are limited
+to 512 × 512, 65,536 numeric source bytes or 700,000 decoded base64 bytes,
+1,398,100 expanded RGBA8 mip-chain bytes per texture, 8 MiB serialized recipe
+JSON across a project, and 16 MiB decoded source bytes across a project. The
+dimension cap and base64-byte cap are independent: under the one-MiB MCP
+control request, full-resolution three/four-channel payloads require a future
+chunk/blob path. The animation-key, texture-bake, and RTX-specific numbers
+below are planned pipeline limits.
 
 - 1 MiB control request;
 - 128 operations per transaction;
 - 20,000 authored entities;
 - 256 nodes and graph depth 64;
+- 512 × 512 and 1,398,100 mip-chain GPU bytes per inline `dataTexture`;
+- 8 MiB serialized and 16 MiB decoded inline texture data per project;
 - 2,048 interactive and 4,096 bake texture resolution;
 - 100,000 animation keys per project;
 - 2 million registered static RTX triangles;

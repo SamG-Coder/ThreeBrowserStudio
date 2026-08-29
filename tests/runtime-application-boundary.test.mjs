@@ -879,11 +879,87 @@ test('a project switch compile failure preserves the active project and live sce
   assert.deepEqual(status.capabilities.geometryEditCommands, [
     'move', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
     'subdivideFaces', 'insetFaces', 'extrudeFaces', 'bevelEdges', 'deleteFaces', 'mergeVertices',
+    'createUvLayer', 'deleteUvLayer', 'renameUvLayer', 'setActiveUvLayer', 'setCornerUvs',
+    'transformUvs', 'projectUvs', 'createColorLayer', 'deleteColorLayer', 'renameColorLayer',
+    'setActiveColorLayer', 'setCornerColors', 'assignFaceMaterials', 'setSharpEdges',
+    'setEdgeCreases', 'removeEdgeCreases',
   ]);
   assert.equal(status.capabilities.geometryRecipes.includes('editableMesh'), true);
   assert.equal(status.capabilities.editableMesh.topologyHashGuards, true);
   assert.equal(status.capabilities.maxGeometryEditCommands, 64);
   assert.equal(status.capabilities.implementedOperations.includes('geometry.edit'), true);
+  const materialControls = status.capabilities.imageTextures.materialControls;
+  assert.deepEqual(materialControls.scalarRanges, {
+    metalness: [0, 1],
+    roughness: [0, 1],
+    opacity: [0, 1],
+    alphaTest: [0, 1],
+    clearcoat: [0, 1],
+    clearcoatRoughness: [0, 1],
+    transmission: [0, 1],
+    sheen: [0, 1],
+    sheenRoughness: [0, 1],
+    specularIntensity: [0, 1],
+    anisotropy: [0, 1],
+    iridescence: [0, 1],
+    thickness: [0, 1_000_000],
+    emissiveIntensity: [0, 1_000_000],
+    ior: [1, 3],
+    aoMapIntensity: [0, 1],
+    bumpScale: [-1_000, 1_000],
+    displacementScale: [-100_000, 100_000],
+    displacementBias: [-100_000, 100_000],
+  });
+  assert.deepEqual(materialControls.vector2Ranges, {
+    normalScale: [-100, 100],
+    clearcoatNormalScale: [-100, 100],
+  });
+  assert.deepEqual(materialControls.booleans, ['vertexColors']);
+  assert.deepEqual(materialControls.colors, [
+    'baseColor', 'color', 'emissive', 'sheenColor', 'specularColor',
+  ]);
+  assert.deepEqual(materialControls.colorValueFormats, [
+    'linear-rgb-array', 'numeric-color', 'css-color-subset',
+  ]);
+  assert.deepEqual(materialControls.colorValueLimits, {
+    linearRgbArrayLength: [3, 4],
+    linearRgbComponent: [0, 1_000_000],
+    optionalAlpha: { range: [0, 1], behavior: 'ignored-use-opacity' },
+    numericColor: [0, 0xffffff],
+    cssColorStringLength: [1, 128],
+    cssColorSyntax: [
+      '#rgb', '#rrggbb', 'rgb(integer 0..255)', 'rgb(integer 0%..100%)',
+      'hsl(unsigned degrees,unsigned 0%..100%,unsigned 0%..100%)', 'basic-name',
+    ],
+    cssColorNames: [
+      'aqua', 'black', 'blue', 'fuchsia', 'gray', 'green', 'grey', 'lime',
+      'maroon', 'navy', 'olive', 'orange', 'purple', 'red', 'silver', 'teal',
+      'white', 'yellow',
+    ],
+  });
+  assert.deepEqual(materialControls.mapAwareNeutralDefaults, {
+    map: { color: [1, 1, 1] },
+    normalMap: { normalScale: [1, 1] },
+    roughnessMap: { roughness: 1 },
+    metalnessMap: { metalness: 1 },
+    emissiveMap: { emissive: [1, 1, 1], emissiveIntensity: 1 },
+    alphaMap: { opacity: 1 },
+    aoMap: { aoMapIntensity: 1 },
+    bumpMap: { bumpScale: 1 },
+    displacementMap: { displacementScale: 1, displacementBias: 0 },
+    clearcoatMap: { clearcoat: 1 },
+    clearcoatNormalMap: { clearcoat: 1, clearcoatNormalScale: [1, 1] },
+    clearcoatRoughnessMap: { clearcoat: 1, clearcoatRoughness: 1 },
+    sheenColorMap: { sheen: 1, sheenColor: [1, 1, 1] },
+    sheenRoughnessMap: { sheen: 1, sheenRoughness: 1, sheenColor: [1, 1, 1] },
+    transmissionMap: { transmission: 1 },
+    thicknessMap: { transmission: 1, thickness: 1 },
+    specularColorMap: { specularColor: [1, 1, 1] },
+    specularIntensityMap: { specularIntensity: 1 },
+    anisotropyMap: { anisotropy: 1 },
+    iridescenceMap: { iridescence: 1 },
+    iridescenceThicknessMap: { iridescence: 1 },
+  });
   assert.deepEqual(status.capabilities.toolContract, TOOL_CONTRACT_SUMMARY);
   assert.equal(Object.hasOwn(status.capabilities.toolContract, 'inputSchemas'), false);
   assert.deepEqual(viewport.scene.children, [liveRoot]);

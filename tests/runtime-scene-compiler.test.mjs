@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createProjectDocument } from '../src/core/index.mjs';
+import { createProjectDocument, validateProjectDocument } from '../src/core/index.mjs';
 import { compileSceneDocument } from '../src/runtime/scene-compiler.mjs';
 
 function fakeThree() {
@@ -105,6 +105,14 @@ function fakeThree() {
     constructor() { this.userData = {}; this.disposeCount = 0; }
     dispose() { this.disposeCount += 1; }
   }
+  class DataTexture {
+    constructor(...arguments_) {
+      this.arguments = arguments_;
+      this.userData = {};
+      this.disposeCount = 0;
+    }
+    dispose() { this.disposeCount += 1; }
+  }
   class Mesh extends Object3D {
     constructor(geometry, material) { super(); this.geometry = geometry; this.material = material; }
   }
@@ -159,7 +167,22 @@ function fakeThree() {
     BoxGeometry: DisposableGeometry,
     BufferGeometry,
     Float32BufferAttribute,
+    DataTexture,
     MeshStandardNodeMaterial: Material,
+    RGBAFormat: 'rgba-format',
+    UnsignedByteType: 'unsigned-byte',
+    ClampToEdgeWrapping: 'clamp-wrap',
+    RepeatWrapping: 'repeat-wrap',
+    MirroredRepeatWrapping: 'mirror-wrap',
+    NearestFilter: 'nearest-filter',
+    LinearFilter: 'linear-filter',
+    NearestMipmapNearestFilter: 'nearest-mipmap-nearest-filter',
+    NearestMipmapLinearFilter: 'nearest-mipmap-linear-filter',
+    LinearMipmapNearestFilter: 'linear-mipmap-nearest-filter',
+    LinearMipmapLinearFilter: 'linear-mipmap-linear-filter',
+    SRGBColorSpace: 'srgb-space',
+    LinearSRGBColorSpace: 'linear-space',
+    NoColorSpace: 'no-color-space',
     FrontSide: 0,
     BackSide: 1,
     DoubleSide: 2,
@@ -168,6 +191,14 @@ function fakeThree() {
 
 function fakeTsl() {
   return {
+    vec2(...value) { return { isNode: true, kind: 'vec2', value }; },
+    uv() { return { isNode: true, kind: 'uv' }; },
+    texture(texture, coordinate) {
+      return {
+        rgb: { isNode: true, kind: 'texture-rgb', texture, coordinate },
+        a: { isNode: true, kind: 'texture-alpha', texture, coordinate },
+      };
+    },
     color(value) {
       return {
         isNode: true,
@@ -304,6 +335,185 @@ test('compiled lights, instances, geometry, and materials dispose exactly once',
   assert.equal(instance.disposeCount, 1);
   assert.equal(geometry.disposeCount, 1);
   assert.equal(material.disposeCount, 1);
+});
+
+test('scene compilation shares one texture across materials and disposes it exactly once', () => {
+  const project = createProjectDocument({
+    projectId: 'project/texture-cache',
+    resources: {
+      textures: [{
+        id: 'texture/shared', kind: 'dataTexture', width: 1, height: 1, channels: 4,
+        pixels: [12, 34, 56, 255], colorSpace: 'srgb',
+      }],
+      geometries: [{ id: 'geometry/uv-triangle', recipe: {
+        kind: 'indexedMesh',
+        positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+        indices: [0, 1, 2],
+        uvs: [0, 0, 1, 0, 0, 1],
+      } }],
+      materials: [
+        { id: 'material/first', kind: 'standard', baseColorMapId: 'texture/shared' },
+        { id: 'material/second', kind: 'standard', baseColorMapId: 'texture/shared' },
+      ],
+    },
+    scenes: [{
+      id: 'scene/main',
+      entities: [
+        entity('entity/first', 'mesh', { components: { mesh: {
+          geometryId: 'geometry/uv-triangle', materialIds: ['material/first'],
+        } } }),
+        entity('entity/second', 'mesh', { components: { mesh: {
+          geometryId: 'geometry/uv-triangle', materialIds: ['material/second'],
+        } } }),
+      ],
+    }],
+  });
+
+  const compiled = compileSceneDocument({ THREE: fakeThree(), TSL: fakeTsl(), project });
+  const first = compiled.objects.get('entity/first');
+  const second = compiled.objects.get('entity/second');
+  assert.equal(first.material.map, second.material.map);
+  assert.deepEqual(Array.from(first.material.map.arguments[0]), [12, 34, 56, 255]);
+  assert.equal(first.material.map.userData.studioResourceId, 'texture/shared');
+  assert.deepEqual(compiled.diagnostics, []);
+
+  const shared = first.material.map;
+  compiled.dispose();
+  compiled.dispose();
+  assert.equal(first.material.disposeCount, 1);
+  assert.equal(second.material.disposeCount, 1);
+  assert.equal(shared.disposeCount, 1);
+});
+
+test('raster-mapped materials fail closed on geometry without an active UV attribute', () => {
+  const project = createProjectDocument({
+    projectId: 'project/texture-needs-uv',
+    resources: {
+      textures: [{
+        id: 'texture/albedo', kind: 'dataTexture', width: 1, height: 1, channels: 4,
+        pixels: [255, 255, 255, 255], colorSpace: 'srgb',
+      }],
+      geometries: [{ id: 'geometry/no-uv', recipe: {
+        kind: 'indexedMesh', positions: [0, 0, 0, 1, 0, 0, 0, 1, 0], indices: [0, 1, 2],
+      } }],
+      materials: [{ id: 'material/mapped', kind: 'standard', baseColorMapId: 'texture/albedo' }],
+    },
+    scenes: [{
+      id: 'scene/main',
+      entities: [entity('entity/no-uv', 'mesh', { components: { mesh: {
+        geometryId: 'geometry/no-uv', materialIds: ['material/mapped'],
+      } } })],
+    }],
+  });
+
+  const compiled = compileSceneDocument({ THREE: fakeThree(), TSL: fakeTsl(), project });
+  assert.equal(compiled.objects.has('entity/no-uv'), false);
+  assert.deepEqual(compiled.diagnostics.map(entry => entry.code), ['runtime_texture_uv_missing']);
+  compiled.dispose();
+});
+
+test('no-UV geometry accepts constant-coordinate graph sampling but rejects input.uv sampling', () => {
+  const textureGraph = (id, coordinateNode) => ({
+    id,
+    kind: 'graph',
+    graph: {
+      formatVersion: 1,
+      id,
+      domain: 'shader',
+      nodes: [
+        coordinateNode,
+        { id: 'sample', type: 'texture.sample2d', params: { textureId: 'texture/albedo', colorSpace: 'srgb' } },
+      ],
+      edges: [{
+        from: {
+          nodeId: coordinateNode.id,
+          port: coordinateNode.type === 'input.uv' ? 'uv' : 'value',
+        },
+        to: { nodeId: 'sample', port: 'uv' },
+      }],
+      outputs: { baseColor: { nodeId: 'sample', port: 'color' } },
+    },
+  });
+  const project = createProjectDocument({
+    projectId: 'project/graph-texture-uv-provenance',
+    resources: {
+      textures: [{
+        id: 'texture/albedo', kind: 'dataTexture', width: 1, height: 1, channels: 4,
+        pixels: [180, 120, 60, 255], colorSpace: 'srgb',
+      }],
+      geometries: [{ id: 'geometry/no-uv', recipe: {
+        kind: 'indexedMesh', positions: [0, 0, 0, 1, 0, 0, 0, 1, 0], indices: [0, 1, 2],
+      } }],
+      graphs: [
+        textureGraph('graph/constant-coordinate', {
+          id: 'coordinate', type: 'constant.vec2', params: { value: [0.5, 0.5] },
+        }),
+        textureGraph('graph/geometry-uv', { id: 'coordinate', type: 'input.uv', params: {} }),
+      ],
+      materials: [
+        { id: 'material/constant-coordinate', kind: 'standard', graphId: 'graph/constant-coordinate' },
+        { id: 'material/geometry-uv', kind: 'standard', graphId: 'graph/geometry-uv' },
+      ],
+    },
+    scenes: [{
+      id: 'scene/main',
+      entities: [
+        entity('entity/constant-coordinate', 'mesh', { components: { mesh: {
+          geometryId: 'geometry/no-uv', materialIds: ['material/constant-coordinate'],
+        } } }),
+        entity('entity/geometry-uv', 'mesh', { components: { mesh: {
+          geometryId: 'geometry/no-uv', materialIds: ['material/geometry-uv'],
+        } } }),
+      ],
+    }],
+  });
+
+  const compiled = compileSceneDocument({ THREE: fakeThree(), TSL: fakeTsl(), project });
+  assert.equal(compiled.objects.has('entity/constant-coordinate'), true);
+  assert.equal(compiled.objects.has('entity/geometry-uv'), false);
+  assert.equal(
+    compiled.objects.get('entity/constant-coordinate').material.userData.studioRequiresGeometryUv,
+    false,
+  );
+  assert.deepEqual(compiled.diagnostics.map(entry => entry.code), ['runtime_texture_uv_missing']);
+  compiled.dispose();
+});
+
+test('legacy texture placeholders stay valid until a live material tries to bind them', () => {
+  const placeholder = {
+    id: 'texture/legacy', kind: 'texture',
+    recipe: { kind: 'image', assetId: 'asset/legacy' },
+  };
+  const unused = createProjectDocument({
+    projectId: 'project/unused-legacy-texture',
+    resources: { textures: [placeholder] },
+  });
+  assert.equal(validateProjectDocument(unused).valid, true);
+
+  const project = createProjectDocument({
+    projectId: 'project/bound-legacy-texture',
+    resources: {
+      textures: [placeholder],
+      geometries: [{ id: 'geometry/uv-triangle', recipe: {
+        kind: 'indexedMesh',
+        positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+        indices: [0, 1, 2],
+        uvs: [0, 0, 1, 0, 0, 1],
+      } }],
+      materials: [{ id: 'material/legacy', kind: 'standard', baseColorMapId: 'texture/legacy' }],
+    },
+    scenes: [{
+      id: 'scene/main',
+      entities: [entity('entity/legacy', 'mesh', { components: { mesh: {
+        geometryId: 'geometry/uv-triangle', materialIds: ['material/legacy'],
+      } } })],
+    }],
+  });
+  assert.equal(validateProjectDocument(project).valid, true);
+  const compiled = compileSceneDocument({ THREE: fakeThree(), TSL: fakeTsl(), project });
+  assert.equal(compiled.objects.has('entity/legacy'), false);
+  assert.deepEqual(compiled.diagnostics.map(entry => entry.code), ['texture_not_live_raster']);
+  compiled.dispose();
 });
 
 test('ordered array and mirror modifiers lower to deterministic instance matrices', () => {

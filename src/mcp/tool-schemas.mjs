@@ -10,6 +10,12 @@ import {
 import { MESH_ELEMENT_KINDS, MESH_INSPECTION_LIMITS } from '../core/mesh-inspection.mjs';
 import { MAX_EXACT_ENTITY_SELECTION } from '../core/entity-selection.mjs';
 import {
+  EDITABLE_MESH_ATTRIBUTE_COMMAND_TYPES,
+  EDITABLE_MESH_ATTRIBUTE_LIMITS,
+} from '../core/editable-mesh-attributes.mjs';
+import { DATA_TEXTURE_LIMITS } from '../core/image-texture.mjs';
+import { MATERIAL_TEXTURE_BINDINGS } from '../core/material-textures.mjs';
+import {
   BAKE_BOUNDARY_MODIFIER_TYPE,
   MAX_MODIFIERS_PER_ENTITY,
   normalizeModifierDocument,
@@ -504,6 +510,7 @@ export const modifierStackEditsSchema = z.array(modifierStackEditSchema).min(1).
 export const GEOMETRY_EDIT_COMMAND_TYPES = Object.freeze([
   'move', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
   'subdivideFaces', 'insetFaces', 'extrudeFaces', 'bevelEdges', 'deleteFaces', 'mergeVertices',
+  ...EDITABLE_MESH_ATTRIBUTE_COMMAND_TYPES,
 ]);
 export const MAX_GEOMETRY_EDIT_COMMANDS = 64;
 export const MAX_GEOMETRY_EDIT_VERTEX_SELECTION = 20_000;
@@ -603,6 +610,140 @@ const geometryMergeVerticesEdit = geometrySelectedVariants('mergeVertices', {
   position: z.enum(['average', 'target']).optional(),
 });
 
+const geometryLayerName = z.string().min(1).max(EDITABLE_MESH_ATTRIBUTE_LIMITS.maxLayerNameLength)
+  .refine(value => value.trim() === value && !/[\u0000-\u001f\u007f]/u.test(value), {
+    message: 'Layer names cannot have surrounding whitespace or control characters.',
+  });
+const geometryCornerIndices = z.union([
+  z.literal('all'),
+  z.array(z.number().int().min(0).max(EDITABLE_MESH_ATTRIBUTE_LIMITS.maxCorners - 1))
+    .min(1).max(MAX_GEOMETRY_EDIT_VERTEX_SELECTION)
+    .refine(indices => new Set(indices).size === indices.length, {
+      message: 'cornerIndices cannot contain duplicates.',
+    }),
+]);
+const geometryAttributeFaceIndices = z.union([z.literal('all'), geometryFaceIndices]);
+const geometryUvValue = z.number().finite()
+  .min(-EDITABLE_MESH_ATTRIBUTE_LIMITS.maxUvAbsolute)
+  .max(EDITABLE_MESH_ATTRIBUTE_LIMITS.maxUvAbsolute);
+const geometryUvVec2 = z.tuple([geometryUvValue, geometryUvValue]);
+const geometryUvScale = z.union([geometryUvValue, geometryUvVec2]);
+const geometryColorValue = z.number().finite().min(0).max(1);
+const geometryColorVec4 = z.tuple([
+  geometryColorValue, geometryColorValue, geometryColorValue, geometryColorValue,
+]);
+const geometryUvValues = z.array(geometryUvValue).min(2).max(2_000_000)
+  .refine(values => values.length % 2 === 0, { message: 'UV values must contain complete vec2 items.' });
+const geometryColorValues = z.array(geometryColorValue).min(4).max(4_000_000)
+  .refine(values => values.length % 4 === 0, { message: 'Color values must contain complete RGBA items.' });
+const geometryCreateUvLayerEdit = z.object({
+  type: z.literal('createUvLayer'),
+  name: geometryLayerName,
+  fill: geometryUvVec2.optional(),
+  values: geometryUvValues.optional(),
+  setActive: z.boolean().optional(),
+}).strict().refine(value => value.fill === undefined || value.values === undefined, {
+  message: 'createUvLayer accepts fill or values, not both.',
+});
+const geometryDeleteUvLayerEdit = z.object({
+  type: z.literal('deleteUvLayer'),
+  name: geometryLayerName,
+  nextActiveLayer: geometryLayerName.nullable().optional(),
+}).strict();
+const geometryRenameUvLayerEdit = z.object({
+  type: z.literal('renameUvLayer'), name: geometryLayerName, newName: geometryLayerName,
+}).strict();
+const geometrySetActiveUvLayerEdit = z.object({
+  type: z.literal('setActiveUvLayer'), name: geometryLayerName.nullable(),
+}).strict();
+const geometrySetCornerUvsEdit = z.object({
+  type: z.literal('setCornerUvs'),
+  layer: geometryLayerName,
+  cornerIndices: geometryCornerIndices,
+  values: geometryUvValues,
+}).strict().superRefine((value, context) => {
+  if (Array.isArray(value.cornerIndices) && value.values.length !== value.cornerIndices.length * 2) {
+    context.addIssue({ code: 'custom', path: ['values'], message: 'values must contain one vec2 per selected corner.' });
+  }
+});
+const geometryTransformUvsEdit = z.object({
+  type: z.literal('transformUvs'),
+  layer: geometryLayerName,
+  cornerIndices: geometryCornerIndices,
+  translation: geometryUvVec2.optional(),
+  scale: geometryUvScale.optional(),
+  rotation: geometryFinite.optional(),
+  pivot: geometryUvVec2.optional(),
+}).strict().refine(value => (
+  value.translation !== undefined || value.scale !== undefined || value.rotation !== undefined
+), { message: 'transformUvs requires translation, scale, or rotation.' });
+const geometryProjectUvsEdit = z.object({
+  type: z.literal('projectUvs'),
+  layer: geometryLayerName,
+  cornerIndices: geometryCornerIndices,
+  axis: z.enum(['xy', 'xz', 'yz']),
+  scale: geometryUvScale.optional(),
+  offset: geometryUvVec2.optional(),
+}).strict();
+const geometryCreateColorLayerEdit = z.object({
+  type: z.literal('createColorLayer'),
+  name: geometryLayerName,
+  fill: geometryColorVec4.optional(),
+  values: geometryColorValues.optional(),
+  setActive: z.boolean().optional(),
+}).strict().refine(value => value.fill === undefined || value.values === undefined, {
+  message: 'createColorLayer accepts fill or values, not both.',
+});
+const geometryDeleteColorLayerEdit = z.object({
+  type: z.literal('deleteColorLayer'),
+  name: geometryLayerName,
+  nextActiveLayer: geometryLayerName.nullable().optional(),
+}).strict();
+const geometryRenameColorLayerEdit = z.object({
+  type: z.literal('renameColorLayer'), name: geometryLayerName, newName: geometryLayerName,
+}).strict();
+const geometrySetActiveColorLayerEdit = z.object({
+  type: z.literal('setActiveColorLayer'), name: geometryLayerName.nullable(),
+}).strict();
+const geometrySetCornerColorsEdit = z.object({
+  type: z.literal('setCornerColors'),
+  layer: geometryLayerName,
+  cornerIndices: geometryCornerIndices,
+  values: geometryColorValues,
+}).strict().superRefine((value, context) => {
+  if (Array.isArray(value.cornerIndices) && value.values.length !== value.cornerIndices.length * 4) {
+    context.addIssue({ code: 'custom', path: ['values'], message: 'values must contain one RGBA value per selected corner.' });
+  }
+});
+const geometryAssignFaceMaterialsEdit = z.object({
+  type: z.literal('assignFaceMaterials'),
+  faceIndices: geometryAttributeFaceIndices,
+  materialIndex: z.number().int().min(0).max(MAX_MATERIAL_SLOTS_PER_MESH - 1).optional(),
+  materialIndices: z.array(
+    z.number().int().min(0).max(MAX_MATERIAL_SLOTS_PER_MESH - 1),
+  ).min(1).max(MAX_GEOMETRY_EDIT_VERTEX_SELECTION).optional(),
+}).strict().superRefine((value, context) => {
+  if ((value.materialIndex === undefined) === (value.materialIndices === undefined)) {
+    context.addIssue({ code: 'custom', message: 'assignFaceMaterials requires exactly one of materialIndex or materialIndices.' });
+  }
+  if (Array.isArray(value.faceIndices) && value.materialIndices !== undefined
+      && value.materialIndices.length !== value.faceIndices.length) {
+    context.addIssue({ code: 'custom', path: ['materialIndices'], message: 'materialIndices must contain one slot per selected face.' });
+  }
+});
+const geometryAttributeEdges = z.union([z.literal('all'), geometryEdges]);
+const geometrySetSharpEdgesEdit = z.object({
+  type: z.literal('setSharpEdges'), edges: geometryAttributeEdges, sharp: z.boolean(),
+}).strict();
+const geometrySetEdgeCreasesEdit = z.object({
+  type: z.literal('setEdgeCreases'),
+  edges: geometryAttributeEdges,
+  weight: z.number().finite().min(0).max(1),
+}).strict();
+const geometryRemoveEdgeCreasesEdit = z.object({
+  type: z.literal('removeEdgeCreases'), edges: geometryAttributeEdges,
+}).strict();
+
 export const geometryEditCommandSchema = z.union([
   geometryMoveEdit,
   geometryScaleEdit,
@@ -618,6 +759,22 @@ export const geometryEditCommandSchema = z.union([
   geometryBevelEdgesEdit,
   geometryDeleteFacesEdit,
   geometryMergeVerticesEdit,
+  geometryCreateUvLayerEdit,
+  geometryDeleteUvLayerEdit,
+  geometryRenameUvLayerEdit,
+  geometrySetActiveUvLayerEdit,
+  geometrySetCornerUvsEdit,
+  geometryTransformUvsEdit,
+  geometryProjectUvsEdit,
+  geometryCreateColorLayerEdit,
+  geometryDeleteColorLayerEdit,
+  geometryRenameColorLayerEdit,
+  geometrySetActiveColorLayerEdit,
+  geometrySetCornerColorsEdit,
+  geometryAssignFaceMaterialsEdit,
+  geometrySetSharpEdgesEdit,
+  geometrySetEdgeCreasesEdit,
+  geometryRemoveEdgeCreasesEdit,
 ]);
 export const geometryEditsSchema = z.array(geometryEditCommandSchema)
   .min(1)
@@ -887,9 +1044,34 @@ const TOOL_CONTRACT_LIMITS = Object.freeze({
   maxMeshElementAdjacency: MESH_INSPECTION_LIMITS.maxAdjacencyPerElement,
   maxDerivedMeshEdges: MESH_INSPECTION_LIMITS.maxDerivedEdges,
   maxExactEntitySelection: MAX_EXACT_ENTITY_SELECTION,
+  maxEditableMeshAttributeLayers: EDITABLE_MESH_ATTRIBUTE_LIMITS.maxLayersPerDomain,
+  maxDataTextureDimension: DATA_TEXTURE_LIMITS.maxDimension,
+  maxDataTexturePixels: DATA_TEXTURE_LIMITS.maxPixels,
+  maxDataTextureNumericBytes: DATA_TEXTURE_LIMITS.maxNumericBytes,
+  maxDataTextureEncodedBytes: DATA_TEXTURE_LIMITS.maxEncodedBytes,
+  maxDataTextureBaseLevelGpuBytes: DATA_TEXTURE_LIMITS.maxBaseLevelGpuBytes,
+  maxDataTextureGpuBytes: DATA_TEXTURE_LIMITS.maxGpuBytes,
+  maxDataTextureAnisotropy: DATA_TEXTURE_LIMITS.maxAnisotropy,
+  maxProjectTextureDecodedBytes: DATA_TEXTURE_LIMITS.maxProjectDecodedBytes,
+  maxProjectTextureSerializedBytes: DATA_TEXTURE_LIMITS.maxProjectSerializedBytes,
 });
 const TOOL_CONTRACT_FEATURES = Object.freeze({
   compactGeometrySelectionAll: true,
+  editableMeshUvEditing: true,
+  editableMeshColorEditing: true,
+  editableMeshFaceMaterialEditing: true,
+  editableMeshEdgeAttributeEditing: true,
+  editableMeshViewportLayers: 'active-only',
+  editableMeshEdgeCreaseViewport: 'storage-editing-only',
+  boundedDataTextures: true,
+  dataTextureAuthoringInStatus: true,
+  dataTextureSourceEncodings: Object.freeze(['numeric-bytes', 'base64']),
+  dataTextureGraphSamplerNode: 'texture.sample2d',
+  dataTextureUvLayer: 'active-only-channel-0',
+  dataTextureLegacyPlaceholders: 'preserved-not-live-raster',
+  dataTextureDirectGraphOverlap: 'rejected',
+  materialTextureSlots: Object.freeze(MATERIAL_TEXTURE_BINDINGS.map(binding => binding.idKey)),
+  rasterTexturesInRtxHitShading: false,
   resourceDigest: true,
   meshElements: true,
   graphDigest: true,

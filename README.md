@@ -43,7 +43,9 @@ The nine-tool shape is stable, but each tool advertises only its live slice:
   unresolved/unused resources, graph and Blender compatibility catalogs,
   Play/Action state, and latest evidence metadata;
 - `apply`: the live-refreshed atomic scene, camera, layout, indexed-triangle and
-  hash-guarded editable-polygon geometry, RTX, entity, resource, and modifier-stack contract;
+  hash-guarded editable-polygon geometry contract, including direct per-corner
+  UV/color layers, per-face materials, sharp edges, crease storage, bounded
+  inline raster textures, RTX, entity, resource, and modifier-stack operations;
 - `validate`: whole-project interactive schema, reference, hierarchy, typed
   graph, Action/keyframe, and budget validation;
 - `render`: an exact animation frame, named camera, or explicit framing followed
@@ -56,7 +58,10 @@ The nine-tool shape is stable, but each tool advertises only its live slice:
 The jobs tool remains as an explicit reserved ninth slot and always reports
 `job_not_implemented`. Shader and texture graph resources are authored through
 ordinary resource operations: the live subset compiles to TSL/WebGPU and the
-procedural subset can be deterministically CPU-baked. Script operations,
+procedural subset can be deterministically CPU-baked. Bounded inline
+`dataTexture` resources compile once to shared RGBA8 WebGPU textures and bind
+to supported raster material map slots. Existing format-v1 generic texture
+placeholders remain valid/indexable but are not live raster inputs. Script operations,
 layout generators, scoped or code/asset/render validation, diagnostic passes,
 export, and RTX evidence remain absent. Status capabilities are authoritative.
 
@@ -254,6 +259,34 @@ The current native loop is functional, not a static design mock:
 - canonical polygon/corner meshes with exact topology guards, layered UV/color
   attributes, material slots, sharp edges, creases, smoothing, inset, extrusion,
   subdivision, bevel, deletion, merge, and polygon-native inspection;
+- direct create/delete/rename/activate/project/transform edits for per-corner
+  UV layers, direct color and face-material edits, and sharp/crease edge edits;
+  only the active UV layer lowers to raster UV channel 0 and only the active
+  color layer lowers to the viewport, while edge creases are canonical
+  storage/editing data and do not yet affect subdivision;
+- bounded 1–4-channel inline byte/base64 `dataTexture` resources, expanded to
+  shared RGBA8 GPU textures with explicit colour space, wrapping, filtering,
+  anisotropy, mipmap and flip controls, reference-safe material map binding,
+  and exact disposal; defaults are trilinear mipmapped filtering with
+  anisotropy 4, and each complete mip chain stays below 1,398,100 GPU bytes;
+  aggregate recipes stay below 8 MiB serialized and 16 MiB decoded; the
+  independent 512 × 512 dimension cap does not relax the 700,000 decoded-byte
+  base64 cap imposed beneath the one-MiB MCP request, so full-resolution
+  three/four-channel payloads need a future chunk/blob path;
+- sRGB and pre-linearized color maps both bind to color-role material slots and
+  `texture.sample2d` when its declaration exactly matches the resource, while
+  numeric/data maps require no colour space; a direct material map is
+  rejected when its material graph outputs the same property or a `surface`
+  value that supersedes that slot, so the texture must be sampled inside it with
+  `texture.sample2d`; graph `image` asset nodes remain CPU-bake-only;
+- generic format-v1 texture placeholders remain loadable, indexable, patchable,
+  and deletable but cannot shade until upgraded to canonical `dataTexture`;
+- `three_studio_status.capabilities.imageTextures.materialControls` publishes
+  the accepted scalar and vec2 ranges, `vertexColors` and color-control names,
+  plus the exact neutral multiplier chosen for every mapped slot. Map-aware
+  defaults keep texture data visible instead of multiplying it by a legacy
+  zero: this includes white base/emissive/sheen/specular colors, sheen and
+  specular intensity 1, unit normal scales, and displacement scale 1/bias 0;
 - exact modifier-stack inspection/editing, nine bounded live geometry modifiers,
   explicit bake boundaries for the remaining Blender modifier inventory, and
   multi-material runtime groups;
@@ -266,8 +299,9 @@ Native acceptance has exercised live create → inspect → visual swap → undo
 GPU capture → named save → close → reopen without touching the window.
 
 Still intentionally deferred: script execution/hot reload, blueprint
-execution, image import/bind and file-producing import/export jobs, diagnostic
-render passes, incremental resource recompilation, and RTX scene registration.
+execution, external image-file import/decoding and file-producing import/export
+jobs, diagnostic render passes, incremental resource recompilation, and RTX
+per-entity inclusion/material-hit controls.
 These are the next pipelines in `DESIGN.md`; the nine-tool contract already
 reserves them without pretending they work today.
 

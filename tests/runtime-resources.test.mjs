@@ -222,14 +222,258 @@ test('procedural recipes reject dirty control data and unsupported curve modes',
   );
 });
 
-test('unsupported materials, missing graphs, and unbound map inputs fail explicitly', () => {
+test('unsupported materials, missing graphs, and unavailable texture IDs fail explicitly', () => {
   const THREE = {
     Color: class { setRGB() { return this; } set() { return this; } },
     MeshStandardMaterial: class {},
   };
   assert.throws(() => createMaterial(THREE, { id: 'material/unknown', kind: 'mystery' }), /Unsupported material recipe/);
   assert.throws(() => createMaterial(THREE, { id: 'material/graph', kind: 'standard', graphId: 'graph/pbr' }), /references missing graph graph\/pbr/);
-  assert.throws(() => createMaterial(THREE, { id: 'material/map', kind: 'standard', mapId: 'texture/albedo' }), /image texture resources are not bound/);
+  assert.throws(
+    () => createMaterial(THREE, { id: 'material/map', kind: 'standard', mapId: 'texture/albedo' }),
+    error => error?.code === 'material_texture_unavailable'
+      && error.details.textureId === 'texture/albedo'
+      && error.details.idKey === 'baseColorMapId',
+  );
+});
+
+test('stable texture IDs bind exact material slots, controls, transparency, and diagnostics', () => {
+  class FakeColor { setRGB() { return this; } set() { return this; } }
+  class FakeVector2 { constructor(x, y) { Object.assign(this, { x, y }); } }
+  class FakePhysicalMaterial {
+    constructor(parameters) {
+      this.parameters = parameters;
+      this.aoMapIntensity = 1;
+      this.bumpScale = 1;
+      this.displacementScale = 1;
+      this.displacementBias = 0;
+      this.normalScale = null;
+      this.userData = { preserved: true };
+    }
+  }
+  const THREE = {
+    Color: FakeColor,
+    Vector2: FakeVector2,
+    MeshPhysicalMaterial: FakePhysicalMaterial,
+  };
+  const textures = Object.fromEntries([
+    'albedo', 'normal', 'roughness', 'ao', 'displacement', 'alpha',
+  ].map(name => [`texture/${name}`, { name }]));
+  const resolvedIds = [];
+  const material = createMaterial(THREE, {
+    id: 'material/textured-road',
+    name: 'Textured road',
+    recipe: {
+      type: 'physical',
+      baseColorMapId: 'texture/albedo',
+      normalMapId: 'texture/normal',
+      roughnessMapId: 'texture/roughness',
+      aoMapId: 'texture/ao',
+      displacementMapId: 'texture/displacement',
+      alphaMapId: 'texture/alpha',
+      aoMapIntensity: 0.7,
+      displacementScale: 0.15,
+      displacementBias: -0.02,
+      normalScale: [0.8, 0.6],
+      vertexColors: true,
+    },
+  }, {
+    textureResolver(textureId) {
+      resolvedIds.push(textureId);
+      return textures[textureId];
+    },
+  });
+
+  assert.deepEqual(resolvedIds, [
+    'texture/albedo', 'texture/normal', 'texture/roughness',
+    'texture/alpha', 'texture/ao', 'texture/displacement',
+  ]);
+  assert.equal(material.map, textures['texture/albedo']);
+  assert.equal(material.normalMap, textures['texture/normal']);
+  assert.equal(material.roughnessMap, textures['texture/roughness']);
+  assert.equal(material.alphaMap, textures['texture/alpha']);
+  assert.equal(material.aoMap, textures['texture/ao']);
+  assert.equal(material.displacementMap, textures['texture/displacement']);
+  assert.equal(material.aoMapIntensity, 0.7);
+  assert.equal(material.displacementScale, 0.15);
+  assert.equal(material.displacementBias, -0.02);
+  assert.deepEqual(material.normalScale, new FakeVector2(0.8, 0.6));
+  assert.equal(material.vertexColors, true);
+  assert.equal(material.transparent, true);
+  assert.equal(material.depthWrite, false);
+  assert.equal(material.needsUpdate, true);
+  assert.deepEqual(material.userData.studioTextureBindings, [
+    {
+      slot: 'map', textureId: 'texture/albedo', colorSpace: 'srgb', preferredColorSpace: 'srgb',
+      allowedColorSpaces: ['srgb', 'linear'], allowedChannels: [1, 2, 3, 4],
+    },
+    {
+      slot: 'normalMap', textureId: 'texture/normal', colorSpace: 'none', preferredColorSpace: 'none',
+      allowedColorSpaces: ['none'], allowedChannels: [3, 4],
+    },
+    {
+      slot: 'roughnessMap', textureId: 'texture/roughness', colorSpace: 'none', preferredColorSpace: 'none',
+      allowedColorSpaces: ['none'], allowedChannels: [1, 2, 3, 4],
+    },
+    {
+      slot: 'alphaMap', textureId: 'texture/alpha', colorSpace: 'none', preferredColorSpace: 'none',
+      allowedColorSpaces: ['none'], allowedChannels: [1, 2, 3, 4],
+    },
+    {
+      slot: 'aoMap', textureId: 'texture/ao', colorSpace: 'none', preferredColorSpace: 'none',
+      allowedColorSpaces: ['none'], allowedChannels: [1, 2, 3, 4],
+    },
+    {
+      slot: 'displacementMap', textureId: 'texture/displacement', colorSpace: 'none', preferredColorSpace: 'none',
+      allowedColorSpaces: ['none'], allowedChannels: [1, 2, 3, 4],
+    },
+  ]);
+  assert.deepEqual(material.userData.studioMapAwareDefaults, {});
+});
+
+test('physical texture maps activate neutral scalar and color multipliers by default', () => {
+  class FakeColor {
+    setRGB(...values) { this.values = values; return this; }
+    set(value) { this.value = value; return this; }
+  }
+  class FakePhysicalMaterial {
+    constructor(parameters) {
+      this.parameters = parameters;
+      this.color = parameters.color;
+      this.emissive = new FakeColor().setRGB(0, 0, 0);
+      this.sheenColor = new FakeColor().setRGB(0, 0, 0);
+      this.specularColor = new FakeColor().setRGB(0, 0, 0);
+      this.metalness = 0;
+      this.clearcoat = 0;
+      this.transmission = 0;
+      this.sheen = 0;
+      this.anisotropy = 0;
+      this.iridescence = 0;
+      this.userData = {};
+    }
+  }
+  const THREE = { Color: FakeColor, MeshPhysicalMaterial: FakePhysicalMaterial };
+  const colorTexture = { userData: { studioSourceChannels: 4 } };
+  const scalarTexture = { userData: { studioSourceChannels: 1 } };
+  const anisotropyTexture = { userData: { studioSourceChannels: 3 } };
+  const textures = {
+    'texture/base': colorTexture,
+    'texture/emissive': colorTexture,
+    'texture/metalness': scalarTexture,
+    'texture/clearcoat': scalarTexture,
+    'texture/transmission': scalarTexture,
+    'texture/sheen': colorTexture,
+    'texture/specular': colorTexture,
+    'texture/anisotropy': anisotropyTexture,
+    'texture/iridescence': scalarTexture,
+  };
+  const material = createMaterial(THREE, {
+    id: 'material/neutral-maps',
+    recipe: {
+      kind: 'physical',
+      baseColorMapId: 'texture/base',
+      emissiveMapId: 'texture/emissive',
+      metalnessMapId: 'texture/metalness',
+      clearcoatMapId: 'texture/clearcoat',
+      transmissionMapId: 'texture/transmission',
+      sheenColorMapId: 'texture/sheen',
+      specularColorMapId: 'texture/specular',
+      anisotropyMapId: 'texture/anisotropy',
+      iridescenceMapId: 'texture/iridescence',
+    },
+  }, { textureResolver: textureId => textures[textureId] });
+
+  assert.deepEqual(material.color.values, [1, 1, 1]);
+  assert.deepEqual(material.emissive.values, [1, 1, 1]);
+  assert.equal(material.metalness, 1);
+  assert.equal(material.clearcoat, 1);
+  assert.equal(material.transmission, 1);
+  assert.equal(material.sheen, 1);
+  assert.equal(material.anisotropy, 1);
+  assert.equal(material.iridescence, 1);
+  assert.deepEqual(material.sheenColor.values, [1, 1, 1]);
+  assert.deepEqual(material.specularColor.values, [1, 1, 1]);
+  assert.deepEqual(material.userData.studioMapAwareDefaults, {
+    metalness: 1,
+    emissive: [1, 1, 1],
+    clearcoat: 1,
+    transmission: 1,
+    sheen: 1,
+    sheenColor: [1, 1, 1],
+    specularColor: [1, 1, 1],
+    anisotropy: 1,
+    iridescence: 1,
+  });
+});
+
+test('alpha maps with an authored cutoff stay opaque and depth-writing', () => {
+  class FakeColor { setRGB() { return this; } set() { return this; } }
+  class FakeStandardMaterial {
+    constructor() { this.alphaTest = 0; this.userData = {}; }
+  }
+  const alpha = { userData: { studioSourceChannels: 1 } };
+  const material = createMaterial({ Color: FakeColor, MeshStandardMaterial: FakeStandardMaterial }, {
+    id: 'material/cutout', kind: 'standard',
+    alphaMapId: 'texture/alpha', alphaTest: 0.5,
+  }, { textureResolver: textureId => textureId === 'texture/alpha' ? alpha : null });
+  assert.equal(material.alphaMap, alpha);
+  assert.equal(material.alphaTest, 0.5);
+  assert.equal(material.transparent, false);
+  assert.equal(material.depthWrite, true);
+});
+
+test('runtime map binding rejects channel mismatches and direct graph-output conflicts', () => {
+  class FakeColor { setRGB() { return this; } set() { return this; } }
+  class FakePhysicalMaterial { constructor() { this.userData = {}; } }
+  const THREE = { Color: FakeColor, MeshPhysicalMaterial: FakePhysicalMaterial };
+  assert.throws(() => createMaterial(THREE, {
+    id: 'material/bad-normal', kind: 'physical', normalMapId: 'texture/one-channel',
+  }, {
+    textureResolver: () => ({ userData: { studioSourceChannels: 1 } }),
+  }), error => error?.code === 'material_texture_channel_mismatch'
+    && error.details.idKey === 'normalMapId');
+
+  assert.throws(() => createMaterial(THREE, {
+    id: 'material/bad-normal-color-space', kind: 'physical', normalMapId: 'texture/srgb-normal',
+  }, {
+    textureResolver: () => ({
+      userData: { studioSourceChannels: 3, studioColorSpace: 'srgb' },
+    }),
+  }), error => error?.code === 'material_texture_color_space_mismatch'
+    && error.details.idKey === 'normalMapId'
+    && error.details.sourceColorSpace === 'srgb'
+    && error.details.allowedColorSpaces.length === 1
+    && error.details.allowedColorSpaces[0] === 'none');
+
+  const linearColorTexture = {
+    userData: { studioSourceChannels: 4, studioColorSpace: 'linear' },
+  };
+  const linearColorMaterial = createMaterial(THREE, {
+    id: 'material/linear-base-color', kind: 'physical', baseColorMapId: 'texture/linear-color',
+  }, { textureResolver: () => linearColorTexture });
+  assert.equal(linearColorMaterial.map, linearColorTexture);
+
+  const graph = {
+    id: 'graph/base-color',
+    kind: 'graph',
+    graph: {
+      formatVersion: 1,
+      id: 'graph/base-color',
+      domain: 'shader',
+      nodes: [{ id: 'color', type: 'constant.color', params: { value: [0.2, 0.4, 0.6] } }],
+      edges: [],
+      outputs: { baseColor: { nodeId: 'color', port: 'value' } },
+    },
+  };
+  assert.throws(() => createMaterial(THREE, {
+    id: 'material/graph-conflict', kind: 'physical',
+    graphId: 'graph/base-color', baseColorMapId: 'texture/albedo',
+  }, {
+    TSL: { vec3: (...values) => ({ values }) },
+    graphs: { 'graph/base-color': graph },
+    textureResolver: () => ({ userData: { studioSourceChannels: 4 } }),
+  }), error => error?.code === 'material_texture_graph_conflict'
+    && error.details.conflicts[0].graphOutput === 'baseColor');
 });
 
 test('an explicit opaque material overrides inferred alpha blending', () => {

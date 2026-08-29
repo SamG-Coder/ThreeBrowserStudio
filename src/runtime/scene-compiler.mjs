@@ -6,6 +6,7 @@ import {
   indexedMeshRecipeFromBufferGeometry,
   normalizeGeometryRecipe,
 } from './resource-factories.mjs';
+import { createDataTexture } from './image-texture-resources.mjs';
 import { applyConstraintStacks, evaluateInstanceStack } from './object-evaluation.mjs';
 import { createAnimationRuntime, validateAnimationResource } from './animation-runtime.mjs';
 import {
@@ -176,6 +177,16 @@ function instantiateEntity(THREE, entity, context) {
     const geometryResult = context.geometry(meshValues.geometryId, entity);
     const geometry = geometryResult.value;
     const materials = materialIds.map(context.material).filter(Boolean);
+    const uvDependentMaterials = materials.filter(material => (
+      material.userData?.studioTextureBindings?.length > 0
+      || material.userData?.studioRequiresGeometryUv === true
+    ));
+    if (uvDependentMaterials.length > 0 && !geometry.getAttribute?.('uv')) {
+      throw compileError(
+        'runtime_texture_uv_missing',
+        `Entity ${entity.id} uses raster material maps but geometry ${meshValues.geometryId} has no active UV attribute.`,
+      );
+    }
     const groupMaterialSlotCount = Array.isArray(geometry.groups) && geometry.groups.length > 0
       ? Math.max(...geometry.groups.map(group => group.materialIndex ?? 0)) + 1
       : 0;
@@ -292,6 +303,7 @@ export function compileSceneDocument({ THREE, TSL, project, sceneId = project.ac
   const diagnostics = [];
   const geometries = new Map();
   const materials = new Map();
+  const textures = new Map();
   let fallback = null;
   const geometry = (id, entity) => {
     const target = 'viewport';
@@ -341,6 +353,22 @@ export function compileSceneDocument({ THREE, TSL, project, sceneId = project.ac
     geometries.set(cacheKey, result);
     return result;
   };
+  const texture = id => {
+    if (!id) return null;
+    if (textures.has(id)) return textures.get(id);
+    const resource = project.resources?.textures?.[id];
+    if (!resource) return null;
+    const authored = resource.recipe ?? resource.parameters ?? resource;
+    if ((authored?.kind ?? authored?.type) !== 'dataTexture') {
+      throw compileError(
+        'texture_not_live_raster',
+        `Texture ${id} is a preserved legacy placeholder; patch it to a canonical dataTexture recipe before binding it to a live material or graph.`,
+      );
+    }
+    const value = createDataTexture({ THREE, resource });
+    textures.set(id, value);
+    return value;
+  };
   const material = id => {
     if (!id) return null;
     if (materials.has(id)) return materials.get(id);
@@ -349,6 +377,7 @@ export function compileSceneDocument({ THREE, TSL, project, sceneId = project.ac
     const value = createMaterial(THREE, resource, {
       TSL,
       graphs: project.resources?.graphs ?? {},
+      textureResolver: texture,
     });
     materials.set(id, value);
     return value;
@@ -508,10 +537,12 @@ export function compileSceneDocument({ THREE, TSL, project, sceneId = project.ac
       for (const value of ownedDisposableObjects) value.dispose?.();
       for (const value of geometries.values()) value.value.dispose?.();
       for (const value of ownedMaterials) value.dispose?.();
+      for (const value of textures.values()) value.dispose?.();
       ownedDisposableObjects.clear();
       ownedMaterials.clear();
       geometries.clear();
       materials.clear();
+      textures.clear();
       objects.clear();
       authoredPose.clear();
       appearance.backgroundNode?.dispose?.();

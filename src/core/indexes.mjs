@@ -3,6 +3,7 @@ import { StudioError } from './errors.mjs';
 import { assertStableId } from './ids.mjs';
 import { contentHash } from './util.mjs';
 import { entityComponentReferences } from './component-validation.mjs';
+import { materialTextureReferences } from './material-textures.mjs';
 
 export class ProjectIndex {
   constructor(project) {
@@ -60,10 +61,29 @@ export class ProjectIndex {
         if (this.resources.has(resource.id)) throw new StudioError('duplicate_id', `Duplicate resource ID ${resource.id}`);
         this.resources.set(resource.id, { type, resource });
         if (type === 'materials') {
-          this.#addReference(resource.graphId, { kind: 'materialGraph', sourceId: resource.id });
-          const values = resource.parameters ?? resource.values ?? resource;
-          for (const key of ['mapId', 'normalMapId', 'roughnessMapId', 'metalnessMapId', 'emissiveMapId', 'alphaMapId']) {
-            this.#addReference(values?.[key], { kind: 'materialTexture', sourceId: resource.id, path: key });
+          const graphId = resource.graphId
+            ?? resource.recipe?.graphId
+            ?? resource.parameters?.graphId
+            ?? resource.values?.graphId;
+          this.#addReference(graphId, { kind: 'materialGraph', sourceId: resource.id });
+          for (const reference of materialTextureReferences(resource)) {
+            this.#addReference(reference.textureId, {
+              kind: 'materialTexture', sourceId: resource.id, path: reference.authoredKey,
+            });
+          }
+        }
+        if (type === 'graphs') {
+          for (const node of resource.graph?.nodes ?? []) {
+            if (node?.type === 'texture.sample2d' && node.params?.textureId) {
+              this.#addReference(node.params.textureId, {
+                kind: 'graphTexture', sourceId: resource.id, path: `graph.nodes.${node.id}.params.textureId`,
+              });
+            }
+            if (node?.type === 'image' && node.params?.assetId) {
+              this.#addReference(node.params.assetId, {
+                kind: 'graphAsset', sourceId: resource.id, path: `graph.nodes.${node.id}.params.assetId`,
+              });
+            }
           }
         }
         if (type === 'animations') {

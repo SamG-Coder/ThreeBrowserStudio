@@ -168,6 +168,204 @@
         "items": { "type": "integer", "minimum": 0, "maximum": 999999 }
       }
     },
+    "geometryVec2": {
+      "type": "array", "minItems": 2, "maxItems": 2,
+      "items": { "type": "number", "minimum": -1000000, "maximum": 1000000 }
+    },
+    "geometryLayerName": {
+      "type": "string", "minLength": 1, "maxLength": 128,
+      "description": "A trimmed UV or color layer name without control characters."
+    },
+    "geometryCornerSelection": {
+      "oneOf": [
+        { "const": "all" },
+        {
+          "type": "array", "minItems": 1, "maxItems": 20000, "uniqueItems": true,
+          "items": { "type": "integer", "minimum": 0, "maximum": 3999999 }
+        }
+      ]
+    },
+    "geometryFaceSelection": {
+      "oneOf": [
+        { "const": "all" },
+        { "$ref": "#/$defs/geometryFaceIndices" }
+      ]
+    },
+    "geometryEdgeSelection": {
+      "oneOf": [
+        { "const": "all" },
+        { "$ref": "#/$defs/geometryEdges" }
+      ]
+    },
+    "geometryUvValues": {
+      "type": "array", "minItems": 2, "maxItems": 2000000,
+      "description": "Flat complete vec2 UV values; the kernel requires one value per selected corner.",
+      "items": { "type": "number", "minimum": -1000000, "maximum": 1000000 }
+    },
+    "geometryColorVec4": {
+      "type": "array", "minItems": 4, "maxItems": 4,
+      "items": { "type": "number", "minimum": 0, "maximum": 1 }
+    },
+    "geometryColorValues": {
+      "type": "array", "minItems": 4, "maxItems": 4000000,
+      "description": "Flat complete RGBA values; the kernel requires one value per selected corner.",
+      "items": { "type": "number", "minimum": 0, "maximum": 1 }
+    },
+    "dataTextureRecipeInput": {
+      "description": "Bounded inline raster source accepted by canonical texture resource payloads. Supply exactly one source. The 512 × 512 dimension cap is independent of the 700,000 decoded-base64-byte cap beneath the one-MiB MCP request, so full-resolution three/four-channel payloads require a future chunk/blob path. The kernel also enforces exact decoded length, an 8 MiB aggregate serialized-recipe budget, a 16 MiB aggregate decoded-source budget, and a 1,398,100-byte per-texture RGBA8 mip-chain GPU budget. Format-v1 placeholder texture resources remain valid but are not live raster inputs. Raster maps shade the WebGPU material path and are not sampled by RTX hit shading.",
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "width", "height", "channels"],
+      "oneOf": [{ "required": ["pixels"] }, { "required": ["data"] }],
+      "properties": {
+        "kind": { "const": "dataTexture" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "width": { "type": "integer", "minimum": 1, "maximum": 512 },
+        "height": { "type": "integer", "minimum": 1, "maximum": 512 },
+        "channels": { "enum": [1, 2, 3, 4] },
+        "pixels": {
+          "type": "array", "minItems": 1, "maxItems": 65536,
+          "items": { "type": "integer", "minimum": 0, "maximum": 255 }
+        },
+        "data": {
+          "type": "string", "minLength": 4, "maxLength": 933336,
+          "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+        },
+        "colorSpace": { "enum": ["srgb", "linear", "none"], "default": "srgb" },
+        "wrapS": { "enum": ["clamp", "repeat", "mirror"], "default": "clamp" },
+        "wrapT": { "enum": ["clamp", "repeat", "mirror"], "default": "clamp" },
+        "minFilter": { "enum": ["nearest", "linear", "nearestMipmapNearest", "nearestMipmapLinear", "linearMipmapNearest", "linearMipmapLinear"], "default": "linearMipmapLinear" },
+        "magFilter": { "enum": ["nearest", "linear"], "default": "linear" },
+        "anisotropy": { "type": "integer", "minimum": 1, "maximum": 16, "default": 4 },
+        "flipY": { "type": "boolean", "default": false },
+        "generateMipmaps": { "type": "boolean", "default": true }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["minFilter"],
+            "properties": { "minFilter": { "enum": ["nearestMipmapNearest", "nearestMipmapLinear", "linearMipmapNearest", "linearMipmapLinear"] } }
+          },
+          "then": { "properties": { "generateMipmaps": { "const": true } } }
+        },
+        {
+          "if": {
+            "required": ["generateMipmaps"],
+            "properties": { "generateMipmaps": { "const": false } }
+          },
+          "then": {
+            "required": ["minFilter"],
+            "properties": { "minFilter": { "enum": ["nearest", "linear"] } }
+          }
+        }
+      ]
+    },
+    "directDataTextureResourceInput": {
+      "description": "Accepted direct convenience form; the kernel canonicalizes these fields beneath recipe.",
+      "type": "object",
+      "required": ["id", "width", "height", "channels"],
+      "oneOf": [{ "required": ["pixels"] }, { "required": ["data"] }],
+      "anyOf": [
+        { "required": ["kind"], "properties": { "kind": { "const": "dataTexture" } } },
+        { "required": ["type"], "properties": { "type": { "const": "dataTexture" } } },
+        { "required": ["textureKind"], "properties": { "textureKind": { "const": "dataTexture" } } }
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "kind": { "enum": ["dataTexture", "texture"] },
+        "type": { "const": "dataTexture" },
+        "textureKind": { "const": "dataTexture" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "metadata": { "type": "object" },
+        "width": { "type": "integer", "minimum": 1, "maximum": 512 },
+        "height": { "type": "integer", "minimum": 1, "maximum": 512 },
+        "channels": { "enum": [1, 2, 3, 4] },
+        "pixels": {
+          "type": "array", "minItems": 1, "maxItems": 65536,
+          "items": { "type": "integer", "minimum": 0, "maximum": 255 }
+        },
+        "data": {
+          "type": "string", "minLength": 4, "maxLength": 933336,
+          "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+        },
+        "colorSpace": { "enum": ["srgb", "linear", "none"], "default": "srgb" },
+        "wrapS": { "enum": ["clamp", "repeat", "mirror"], "default": "clamp" },
+        "wrapT": { "enum": ["clamp", "repeat", "mirror"], "default": "clamp" },
+        "minFilter": { "enum": ["nearest", "linear", "nearestMipmapNearest", "nearestMipmapLinear", "linearMipmapNearest", "linearMipmapLinear"], "default": "linearMipmapLinear" },
+        "magFilter": { "enum": ["nearest", "linear"], "default": "linear" },
+        "anisotropy": { "type": "integer", "minimum": 1, "maximum": 16, "default": 4 },
+        "flipY": { "type": "boolean", "default": false },
+        "generateMipmaps": { "type": "boolean", "default": true }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["minFilter"],
+            "properties": { "minFilter": { "enum": ["nearestMipmapNearest", "nearestMipmapLinear", "linearMipmapNearest", "linearMipmapLinear"] } }
+          },
+          "then": { "properties": { "generateMipmaps": { "const": true } } }
+        },
+        {
+          "if": {
+            "required": ["generateMipmaps"],
+            "properties": { "generateMipmaps": { "const": false } }
+          },
+          "then": {
+            "required": ["minFilter"],
+            "properties": { "minFilter": { "enum": ["nearest", "linear"] } }
+          }
+        }
+      ]
+    },
+    "canonicalDataTextureResourceInput": {
+      "description": "Canonical nested envelope, legacy parameters envelope, or accepted direct convenience form for a live raster dataTexture.",
+      "not": { "required": ["recipe", "parameters"] },
+      "anyOf": [
+        {
+          "type": "object", "required": ["id", "recipe"],
+          "properties": {
+            "id": { "$ref": "#/$defs/id" }, "kind": { "const": "texture" },
+            "name": { "type": "string", "minLength": 1 }, "metadata": { "type": "object" },
+            "recipe": { "$ref": "#/$defs/dataTextureRecipeInput" }
+          }
+        },
+        {
+          "type": "object", "required": ["id", "parameters"],
+          "properties": {
+            "id": { "$ref": "#/$defs/id" }, "kind": { "const": "texture" },
+            "name": { "type": "string", "minLength": 1 }, "metadata": { "type": "object" },
+            "parameters": { "$ref": "#/$defs/dataTextureRecipeInput" }
+          }
+        },
+        { "$ref": "#/$defs/directDataTextureResourceInput" }
+      ]
+    },
+    "legacyTexturePlaceholderInput": {
+      "description": "A generic format-v1 texture placeholder. It remains authorable/indexable but is not a live raster texture.",
+      "type": "object", "required": ["id"],
+      "properties": { "id": { "$ref": "#/$defs/id" } },
+      "not": {
+        "anyOf": [
+          { "required": ["kind"], "properties": { "kind": { "const": "dataTexture" } } },
+          { "required": ["type"], "properties": { "type": { "const": "dataTexture" } } },
+          { "required": ["textureKind"], "properties": { "textureKind": { "const": "dataTexture" } } },
+          {
+            "required": ["recipe"],
+            "properties": { "recipe": { "type": "object", "required": ["kind"], "properties": { "kind": { "const": "dataTexture" } } } }
+          },
+          {
+            "required": ["parameters"],
+            "properties": { "parameters": { "type": "object", "required": ["kind"], "properties": { "kind": { "const": "dataTexture" } } } }
+          }
+        ]
+      }
+    },
+    "textureResourceInput": {
+      "description": "Texture resource.create payload. Live canonical dataTextures and preserved non-live format-v1 placeholders are both accepted.",
+      "anyOf": [
+        { "$ref": "#/$defs/canonicalDataTextureResourceInput" },
+        { "$ref": "#/$defs/legacyTexturePlaceholderInput" }
+      ]
+    },
     "geometryEditCommand": {
       "description": "One strict indexed-triangle or editable-polygon mesh edit. Rotations use radians and either XYZ rotation or axis plus angle.",
       "oneOf": [
@@ -336,6 +534,188 @@
             "selection": { "const": "all" },
             "targetVertexIndex": { "type": "integer", "minimum": 0, "maximum": 999999 },
             "position": { "enum": ["average", "target"] }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "name"],
+          "not": { "required": ["fill", "values"] },
+          "properties": {
+            "type": { "const": "createUvLayer" },
+            "name": { "$ref": "#/$defs/geometryLayerName" },
+            "fill": { "$ref": "#/$defs/geometryVec2" },
+            "values": { "$ref": "#/$defs/geometryUvValues" },
+            "setActive": { "type": "boolean" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "name"],
+          "properties": {
+            "type": { "const": "deleteUvLayer" },
+            "name": { "$ref": "#/$defs/geometryLayerName" },
+            "nextActiveLayer": {
+              "oneOf": [{ "$ref": "#/$defs/geometryLayerName" }, { "type": "null" }]
+            }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "name", "newName"],
+          "properties": {
+            "type": { "const": "renameUvLayer" },
+            "name": { "$ref": "#/$defs/geometryLayerName" },
+            "newName": { "$ref": "#/$defs/geometryLayerName" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "name"],
+          "properties": {
+            "type": { "const": "setActiveUvLayer" },
+            "name": { "oneOf": [{ "$ref": "#/$defs/geometryLayerName" }, { "type": "null" }] }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "layer", "cornerIndices", "values"],
+          "properties": {
+            "type": { "const": "setCornerUvs" },
+            "layer": { "$ref": "#/$defs/geometryLayerName" },
+            "cornerIndices": { "$ref": "#/$defs/geometryCornerSelection" },
+            "values": { "$ref": "#/$defs/geometryUvValues" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "layer", "cornerIndices"],
+          "anyOf": [
+            { "required": ["translation"] },
+            { "required": ["scale"] },
+            { "required": ["rotation"] }
+          ],
+          "properties": {
+            "type": { "const": "transformUvs" },
+            "layer": { "$ref": "#/$defs/geometryLayerName" },
+            "cornerIndices": { "$ref": "#/$defs/geometryCornerSelection" },
+            "translation": { "$ref": "#/$defs/geometryVec2" },
+            "scale": {
+              "oneOf": [
+                { "type": "number", "minimum": -1000000, "maximum": 1000000 },
+                { "$ref": "#/$defs/geometryVec2" }
+              ]
+            },
+            "rotation": { "type": "number", "minimum": -1000000, "maximum": 1000000 },
+            "pivot": { "$ref": "#/$defs/geometryVec2" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "layer", "cornerIndices", "axis"],
+          "properties": {
+            "type": { "const": "projectUvs" },
+            "layer": { "$ref": "#/$defs/geometryLayerName" },
+            "cornerIndices": { "$ref": "#/$defs/geometryCornerSelection" },
+            "axis": { "enum": ["xy", "xz", "yz"] },
+            "scale": {
+              "oneOf": [
+                { "type": "number", "minimum": -1000000, "maximum": 1000000 },
+                { "$ref": "#/$defs/geometryVec2" }
+              ]
+            },
+            "offset": { "$ref": "#/$defs/geometryVec2" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "name"],
+          "not": { "required": ["fill", "values"] },
+          "properties": {
+            "type": { "const": "createColorLayer" },
+            "name": { "$ref": "#/$defs/geometryLayerName" },
+            "fill": { "$ref": "#/$defs/geometryColorVec4" },
+            "values": { "$ref": "#/$defs/geometryColorValues" },
+            "setActive": { "type": "boolean" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "name"],
+          "properties": {
+            "type": { "const": "deleteColorLayer" },
+            "name": { "$ref": "#/$defs/geometryLayerName" },
+            "nextActiveLayer": {
+              "oneOf": [{ "$ref": "#/$defs/geometryLayerName" }, { "type": "null" }]
+            }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "name", "newName"],
+          "properties": {
+            "type": { "const": "renameColorLayer" },
+            "name": { "$ref": "#/$defs/geometryLayerName" },
+            "newName": { "$ref": "#/$defs/geometryLayerName" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "name"],
+          "properties": {
+            "type": { "const": "setActiveColorLayer" },
+            "name": { "oneOf": [{ "$ref": "#/$defs/geometryLayerName" }, { "type": "null" }] }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "layer", "cornerIndices", "values"],
+          "properties": {
+            "type": { "const": "setCornerColors" },
+            "layer": { "$ref": "#/$defs/geometryLayerName" },
+            "cornerIndices": { "$ref": "#/$defs/geometryCornerSelection" },
+            "values": { "$ref": "#/$defs/geometryColorValues" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "faceIndices"],
+          "oneOf": [{ "required": ["materialIndex"] }, { "required": ["materialIndices"] }],
+          "properties": {
+            "type": { "const": "assignFaceMaterials" },
+            "faceIndices": { "$ref": "#/$defs/geometryFaceSelection" },
+            "materialIndex": { "type": "integer", "minimum": 0, "maximum": 255 },
+            "materialIndices": {
+              "type": "array", "minItems": 1, "maxItems": 20000,
+              "items": { "type": "integer", "minimum": 0, "maximum": 255 }
+            }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "edges", "sharp"],
+          "properties": {
+            "type": { "const": "setSharpEdges" },
+            "edges": { "$ref": "#/$defs/geometryEdgeSelection" },
+            "sharp": { "type": "boolean" }
+          }
+        },
+        {
+          "description": "Stores or edits canonical edge-crease weights; current viewport subdivision does not consume them.",
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "edges", "weight"],
+          "properties": {
+            "type": { "const": "setEdgeCreases" },
+            "edges": { "$ref": "#/$defs/geometryEdgeSelection" },
+            "weight": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        {
+          "description": "Removes canonical edge-crease weights; current viewport subdivision does not consume them.",
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "edges"],
+          "properties": {
+            "type": { "const": "removeEdgeCreases" },
+            "edges": { "$ref": "#/$defs/geometryEdgeSelection" }
           }
         }
       ]
@@ -726,6 +1106,19 @@
         {
           "if": { "properties": { "op": { "const": "layout.pattern" } }, "required": ["op"] },
           "then": { "required": ["entityId", "pattern"] }
+        },
+        {
+          "if": {
+            "required": ["op", "resourceType"],
+            "properties": {
+              "op": { "const": "resource.create" },
+              "resourceType": { "enum": ["texture", "textures"] }
+            }
+          },
+          "then": {
+            "required": ["resourceType", "resource"],
+            "properties": { "resource": { "$ref": "#/$defs/textureResourceInput" } }
+          }
         },
         {
           "if": { "properties": { "op": { "const": "geometry.edit" } }, "required": ["op"] },

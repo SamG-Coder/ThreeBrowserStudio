@@ -52,7 +52,7 @@
       "properties": {
         "geometries": { "$ref": "#/$defs/resourceTable" },
         "materials": { "$ref": "#/$defs/resourceTable" },
-        "textures": { "$ref": "#/$defs/resourceTable" },
+        "textures": { "$ref": "#/$defs/dataTextureTable" },
         "graphs": { "$ref": "#/$defs/resourceTable" },
         "animations": { "$ref": "#/$defs/resourceTable" },
         "prefabs": { "$ref": "#/$defs/resourceTable" },
@@ -228,6 +228,118 @@
     "resourceTable": {
       "type": "object",
       "additionalProperties": { "$ref": "#/$defs/resource" }
+    },
+    "dataTextureRecipe": {
+      "description": "Canonical bounded inline raster data. The core validator additionally requires the selected source length to equal width × height × channels. The 512 × 512 dimension cap is independent of the 700,000 decoded-base64-byte cap beneath the one-MiB MCP request, so full-resolution three/four-channel payloads require a future chunk/blob path. One-, two-, and three-channel sources expand to RGBA8 for WebGPU upload. Each expanded texture including its mip chain is capped at 1,398,100 GPU bytes. Raster material maps are not RTX hit-shading inputs.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind", "width", "height", "channels", "colorSpace", "wrapS", "wrapT",
+        "minFilter", "magFilter", "anisotropy", "flipY", "generateMipmaps"
+      ],
+      "oneOf": [{ "required": ["pixels"] }, { "required": ["data"] }],
+      "properties": {
+        "kind": { "const": "dataTexture" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "width": { "type": "integer", "minimum": 1, "maximum": 512 },
+        "height": { "type": "integer", "minimum": 1, "maximum": 512 },
+        "channels": { "enum": [1, 2, 3, 4] },
+        "pixels": {
+          "type": "array", "minItems": 1, "maxItems": 65536,
+          "items": { "type": "integer", "minimum": 0, "maximum": 255 }
+        },
+        "data": {
+          "type": "string", "minLength": 4, "maxLength": 933336,
+          "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+        },
+        "colorSpace": { "enum": ["srgb", "linear", "none"], "default": "srgb" },
+        "wrapS": { "enum": ["clamp", "repeat", "mirror"], "default": "clamp" },
+        "wrapT": { "enum": ["clamp", "repeat", "mirror"], "default": "clamp" },
+        "minFilter": { "enum": ["nearest", "linear", "nearestMipmapNearest", "nearestMipmapLinear", "linearMipmapNearest", "linearMipmapLinear"], "default": "linearMipmapLinear" },
+        "magFilter": { "enum": ["nearest", "linear"], "default": "linear" },
+        "anisotropy": { "type": "integer", "minimum": 1, "maximum": 16, "default": 4 },
+        "flipY": { "type": "boolean", "default": false },
+        "generateMipmaps": { "type": "boolean", "default": true }
+      },
+      "allOf": [{
+        "if": {
+          "properties": { "minFilter": { "enum": ["nearestMipmapNearest", "nearestMipmapLinear", "linearMipmapNearest", "linearMipmapLinear"] } }
+        },
+        "then": { "properties": { "generateMipmaps": { "const": true } } }
+      }]
+    },
+    "dataTextureResource": {
+      "description": "Normalized live raster texture envelope. The complete project may contain at most 8 MiB of serialized dataTexture recipe JSON and 16 MiB of decoded source bytes.",
+      "type": "object",
+      "required": ["id", "kind", "name", "metadata", "recipe"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "kind": { "const": "texture" },
+        "name": { "type": "string", "minLength": 1 },
+        "metadata": { "type": "object" },
+        "recipe": { "$ref": "#/$defs/dataTextureRecipe" }
+      }
+    },
+    "legacyTextureResource": {
+      "description": "A format-v1 generic placeholder texture. It remains indexable and deletable but cannot enter live raster material or texture.sample2d paths until patched to a canonical dataTexture recipe.",
+      "allOf": [
+        { "$ref": "#/$defs/resource" },
+        {
+          "not": {
+            "anyOf": [
+              { "required": ["kind"], "properties": { "kind": { "const": "dataTexture" } } },
+              { "required": ["type"], "properties": { "type": { "const": "dataTexture" } } },
+              { "required": ["textureKind"], "properties": { "textureKind": { "const": "dataTexture" } } },
+              {
+                "required": ["recipe"],
+                "properties": {
+                  "recipe": {
+                    "type": "object", "required": ["kind"],
+                    "properties": { "kind": { "const": "dataTexture" } }
+                  }
+                }
+              },
+              {
+                "required": ["recipe"],
+                "properties": {
+                  "recipe": {
+                    "type": "object", "required": ["type"],
+                    "properties": { "type": { "const": "dataTexture" } }
+                  }
+                }
+              },
+              {
+                "required": ["parameters"],
+                "properties": {
+                  "parameters": {
+                    "type": "object", "required": ["kind"],
+                    "properties": { "kind": { "const": "dataTexture" } }
+                  }
+                }
+              },
+              {
+                "required": ["parameters"],
+                "properties": {
+                  "parameters": {
+                    "type": "object", "required": ["type"],
+                    "properties": { "type": { "const": "dataTexture" } }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "dataTextureTable": {
+      "description": "Texture resource table. Canonical dataTextures have 8 MiB aggregate serialized and 16 MiB aggregate decoded budgets; legacy format-v1 placeholders remain valid but are not live raster inputs.",
+      "type": "object",
+      "additionalProperties": {
+        "anyOf": [
+          { "$ref": "#/$defs/dataTextureResource" },
+          { "$ref": "#/$defs/legacyTextureResource" }
+        ]
+      }
     },
     "script": {
       "type": "object",

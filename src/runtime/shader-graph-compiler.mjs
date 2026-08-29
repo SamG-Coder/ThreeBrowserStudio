@@ -498,7 +498,7 @@ function makeInputResolver({ TSL, graph, compileOutput }) {
   };
 }
 
-function compileNodeFactory({ TSL, graph, parameters, textureResolver }) {
+function compileNodeFactory({ TSL, graph, parameters, textureResolver, featureTracker }) {
   const nodes = new Map(graph.nodes.map(node => [node.id, node]));
   const cache = new Map();
   let input;
@@ -547,19 +547,40 @@ function compileNodeFactory({ TSL, graph, parameters, textureResolver }) {
       const nodeValue = valueNode(TSL, value);
       return { value: TSL.uniform ? TSL.uniform(nodeValue) : nodeValue };
     }
-    if (type === 'input.uv') return { uv: TSL.uv() };
+    if (type === 'input.uv') {
+      featureTracker.requiresGeometryUv = true;
+      return { uv: TSL.uv() };
+    }
     if (type === 'input.worldPosition') return { position: TSL.positionWorld };
     if (type === 'input.normal') return { normal: TSL.normalWorld };
     if (type === 'input.viewDirection') return { direction: TSL.cameraPosition.sub(TSL.positionWorld).normalize() };
     if (type === 'input.time') return { seconds: TSL.time };
-    if (type === 'uv') return { uv: TSL.uv() };
+    if (type === 'uv') {
+      featureTracker.requiresGeometryUv = true;
+      return { uv: TSL.uv() };
+    }
     if (type === 'worldPosition') return { position: TSL.positionWorld };
     if (type === 'constant') return { value: valueNode(TSL, p.value) };
 
-    if (type === 'texture.sample2d' || type === 'image') {
-      const textureId = p.textureId ?? p.assetId;
+    if (type === 'image') {
+      fail(
+        'shader_image_asset_live_unsupported',
+        'Image asset nodes are available to bounded CPU texture baking, not live WebGPU materials; use texture.sample2d with a dataTexture resource.',
+        { assetId: p.assetId },
+      );
+    }
+    if (type === 'texture.sample2d') {
+      const textureId = p.textureId;
       const texture = textureResolver?.(textureId);
       if (!texture) fail('shader_texture_unavailable', `Texture ${textureId} is not available to the live graph compiler.`, { textureId });
+      const sourceColorSpace = texture.userData?.studioColorSpace;
+      if (sourceColorSpace !== undefined && sourceColorSpace !== p.colorSpace) {
+        fail(
+          'graph_texture_color_space_mismatch',
+          `Texture sampler ${node.id} expects ${p.colorSpace} data, but ${textureId} is ${sourceColorSpace}.`,
+          { nodeId: node.id, textureId, expectedColorSpace: p.colorSpace, sourceColorSpace },
+        );
+      }
       const sample = TSL.texture(texture, input.get(node, 'uv', [0, 0], 'vec2'));
       return { color: sample.rgb, alpha: sample.a };
     }
@@ -916,7 +937,22 @@ export function compileShaderGraph({ TSL, graph, parameterValues = {}, textureRe
   if (!source) fail('shader_graph_missing', 'A shader graph document is required.');
   const canonical = assertValidGraph(source);
   if (!['shader', 'texture'].includes(canonical.domain)) fail('shader_domain_unsupported', `Graph domain ${canonical.domain} cannot compile as a material.`);
-  const { compileOutput, cache } = compileNodeFactory({ TSL, graph: canonical, parameters: parameterValues, textureResolver });
+  const textureIds = new Set();
+  const featureTracker = { requiresGeometryUv: false };
+  const trackedTextureResolver = textureResolver
+    ? textureId => {
+        const texture = textureResolver(textureId);
+        if (texture) textureIds.add(textureId);
+        return texture;
+      }
+    : undefined;
+  const { compileOutput, cache } = compileNodeFactory({
+    TSL,
+    graph: canonical,
+    parameters: parameterValues,
+    textureResolver: trackedTextureResolver,
+    featureTracker,
+  });
   const outputs = {};
   for (const [name, reference] of Object.entries(canonical.outputs)) outputs[name] = compileOutput(reference.nodeId, reference.port);
   let features = Object.freeze({ transparent: false, transmission: false });
@@ -942,6 +978,8 @@ export function compileShaderGraph({ TSL, graph, parameterValues = {}, textureRe
     outputNames: Object.freeze(Object.keys(canonical.outputs)),
     features,
     nodesCompiled: new Set([...cache.keys()].map(key => key.split('\u0000')[0])).size,
+    textureIds: Object.freeze([...textureIds].sort()),
+    requiresGeometryUv: featureTracker.requiresGeometryUv,
   });
 }
 

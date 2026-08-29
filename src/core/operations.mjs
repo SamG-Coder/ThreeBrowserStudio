@@ -28,6 +28,11 @@ import {
   editableMeshTopologyHash,
   normalizeEditableMeshRecipe,
 } from './editable-mesh.mjs';
+import {
+  EDITABLE_MESH_ATTRIBUTE_COMMAND_TYPES,
+  applyEditableMeshAttributeEdit,
+} from './editable-mesh-attributes.mjs';
+import { DATA_TEXTURE_RECIPE_KEYS } from './image-texture.mjs';
 import { normalizeLayoutPattern } from './layout-patterns.mjs';
 import { DEFAULT_RTX_SETTINGS, normalizeRtxSettings } from './rtx-settings.mjs';
 import {
@@ -36,6 +41,7 @@ import {
   normalizeModifierDocument,
   normalizedModifierStack,
 } from './modifier-stack.mjs';
+import { MATERIAL_TEXTURE_ID_KEYS } from './material-textures.mjs';
 import { cloneJson, contentHash, isPlainRecord, mergePatch, uniqueSorted } from './util.mjs';
 
 const MAX_GEOMETRY_EDIT_COMMANDS = 64;
@@ -58,6 +64,22 @@ const GEOMETRY_EDIT_KEYS = new Map([
   ['bevelEdges', new Set(['type', 'edges', 'edgeVertexIndices', 'factor', 'materialIndex'])],
   ['deleteFaces', new Set(['type', 'faceIndices', 'selection'])],
   ['mergeVertices', new Set(['type', 'vertexIndices', 'selection', 'targetVertexIndex', 'position'])],
+  ['createUvLayer', new Set(['type', 'name', 'fill', 'values', 'setActive'])],
+  ['deleteUvLayer', new Set(['type', 'name', 'nextActiveLayer'])],
+  ['renameUvLayer', new Set(['type', 'name', 'newName'])],
+  ['setActiveUvLayer', new Set(['type', 'name'])],
+  ['setCornerUvs', new Set(['type', 'layer', 'cornerIndices', 'values'])],
+  ['transformUvs', new Set(['type', 'layer', 'cornerIndices', 'translation', 'scale', 'rotation', 'pivot'])],
+  ['projectUvs', new Set(['type', 'layer', 'cornerIndices', 'axis', 'scale', 'offset'])],
+  ['createColorLayer', new Set(['type', 'name', 'fill', 'values', 'setActive'])],
+  ['deleteColorLayer', new Set(['type', 'name', 'nextActiveLayer'])],
+  ['renameColorLayer', new Set(['type', 'name', 'newName'])],
+  ['setActiveColorLayer', new Set(['type', 'name'])],
+  ['setCornerColors', new Set(['type', 'layer', 'cornerIndices', 'values'])],
+  ['assignFaceMaterials', new Set(['type', 'faceIndices', 'materialIndex', 'materialIndices'])],
+  ['setSharpEdges', new Set(['type', 'edges', 'sharp'])],
+  ['setEdgeCreases', new Set(['type', 'edges', 'weight'])],
+  ['removeEdgeCreases', new Set(['type', 'edges'])],
 ]);
 const INDEXED_GEOMETRY_EDIT_TYPES = new Set([
   'move', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
@@ -65,6 +87,7 @@ const INDEXED_GEOMETRY_EDIT_TYPES = new Set([
 const EDITABLE_GEOMETRY_EDIT_TYPES = new Set([
   'move', 'scale', 'rotate', 'smooth', 'subdivideFaces', 'insetFaces', 'extrudeFaces',
   'bevelEdges', 'deleteFaces', 'mergeVertices',
+  ...EDITABLE_MESH_ATTRIBUTE_COMMAND_TYPES,
 ]);
 const RTX_PATCH_KEYS = new Set(['enabled', ...Object.keys(DEFAULT_RTX_SETTINGS)]);
 const MODIFIER_STACK_EDIT_KEYS = new Map([
@@ -191,6 +214,68 @@ function resolveCollectionReferences(source, aliases) {
   return source;
 }
 
+function resolveResourceReferences(source, resourceType, aliases) {
+  if (!isPlainRecord(source)) return source;
+  if (resourceType === 'materials') {
+    for (const values of [source, source.recipe, source.parameters, source.values]) {
+      if (!isPlainRecord(values)) continue;
+      if (values.graphId) values.graphId = aliases.get(values.graphId) ?? values.graphId;
+      for (const key of MATERIAL_TEXTURE_ID_KEYS) {
+        if (values[key]) values[key] = aliases.get(values[key]) ?? values[key];
+      }
+    }
+  }
+  if (resourceType === 'graphs') {
+    const graph = source.graph ?? source;
+    for (const node of graph.nodes ?? []) {
+      if (!isPlainRecord(node?.params)) continue;
+      for (const key of ['textureId', 'assetId']) {
+        if (node.params[key]) node.params[key] = aliases.get(node.params[key]) ?? node.params[key];
+      }
+    }
+  }
+  return source;
+}
+
+function normalizeTextureResourcePatch(source) {
+  const patch = cloneJson(source);
+  const directKind = patch.textureKind ?? patch.type ?? patch.kind;
+  const directKeys = DATA_TEXTURE_RECIPE_KEYS.filter(key => (
+    !['kind', 'name'].includes(key) && Object.hasOwn(patch, key)
+  ));
+  const hasRecipe = Object.hasOwn(patch, 'recipe');
+  const hasParameters = Object.hasOwn(patch, 'parameters');
+  studioAssert(!(hasRecipe && hasParameters), 'ambiguous_texture_patch', 'Texture patches cannot define both recipe and parameters.');
+  studioAssert(
+    directKeys.length === 0 || (!hasRecipe && !hasParameters),
+    'ambiguous_texture_patch',
+    'Texture patches cannot mix nested and direct texture fields.',
+    { directFields: directKeys },
+  );
+  if (hasParameters) {
+    patch.recipe = patch.parameters;
+    delete patch.parameters;
+  }
+  if (directKeys.length > 0 || (directKind === 'dataTexture' && !hasRecipe && !hasParameters)) {
+    patch.recipe = Object.fromEntries(directKeys.map(key => [key, patch[key]]));
+    if (directKind === 'dataTexture') {
+      patch.recipe.kind = 'dataTexture';
+    }
+    for (const key of directKeys) delete patch[key];
+    if (patch.kind === 'dataTexture') delete patch.kind;
+    if (patch.type === 'dataTexture') delete patch.type;
+    if (patch.textureKind === 'dataTexture') delete patch.textureKind;
+  }
+  if (isPlainRecord(patch.recipe)) {
+    const hasPixels = Object.hasOwn(patch.recipe, 'pixels') && patch.recipe.pixels !== null;
+    const hasData = Object.hasOwn(patch.recipe, 'data') && patch.recipe.data !== null;
+    studioAssert(!(hasPixels && hasData), 'ambiguous_texture_patch', 'Texture patches accept pixels or data, not both.');
+    if (hasPixels) patch.recipe.data = null;
+    if (hasData) patch.recipe.pixels = null;
+  }
+  return patch;
+}
+
 function entityWorldMatrix(scene, entityId, memo = new Map()) {
   if (memo.has(entityId)) return memo.get(entityId);
   const entity = scene.entities[entityId];
@@ -274,7 +359,11 @@ function invalidationsFor(type, operation) {
   if (type.startsWith('_collection.')) return ['selection', 'persistence'];
   if (type.startsWith('_resource.')) {
     const resourceType = normalizeResourceType(operation.resourceType);
-    return uniqueSorted([resourceType, 'renderer', 'persistence', ...(resourceType === 'geometries' ? ['rtxTopology'] : [])]);
+    return uniqueSorted([
+      resourceType, 'renderer', 'persistence',
+      ...(resourceType === 'geometries' ? ['rtxTopology'] : []),
+      ...(['materials', 'textures', 'graphs'].includes(resourceType) ? ['materials'] : []),
+    ]);
   }
   if (type.startsWith('scene.')) return ['sceneGraph', 'renderer', 'rtxTopology', 'persistence'];
   if (type === 'camera.frame') return ['sceneGraph', 'transforms', 'renderer', 'persistence'];
@@ -304,7 +393,7 @@ function invalidationsFor(type, operation) {
     const resourceType = normalizeResourceType(operation.resourceType);
     const result = [resourceType, 'renderer', 'persistence'];
     if (resourceType === 'geometries') result.push('rtxTopology');
-    if (resourceType === 'materials' || resourceType === 'graphs') result.push('materials');
+    if (resourceType === 'materials' || resourceType === 'textures' || resourceType === 'graphs') result.push('materials');
     return result;
   }
   return ['document', 'renderer', 'persistence'];
@@ -1368,7 +1457,9 @@ function applyGeometryEdit(draft, operation, aliases) {
     assertGeometryEditCommand(command, editIndex, canonical.kind);
     try {
       recipe = canonical.kind === 'editableMesh'
-        ? applyEditableMeshEdit(recipe, command)
+        ? (EDITABLE_MESH_ATTRIBUTE_COMMAND_TYPES.includes(command.type)
+            ? applyEditableMeshAttributeEdit(recipe, command)
+            : applyEditableMeshEdit(recipe, command))
         : applyIndexedMeshEdit(recipe, command);
     } catch (error) {
       if (error instanceof StudioError) throw error;
@@ -1401,6 +1492,7 @@ function applyResourceCreate(draft, operation, aliases, resolvedIds) {
   const source = cloneJson(operation.resource);
   studioAssert(isPlainRecord(source), 'invalid_operation', 'resource.create requires resource');
   if (aliases.has(source.id)) source.id = aliases.get(source.id);
+  resolveResourceReferences(source, resourceType, aliases);
   const resource = createResourceDocument(resourceType, source);
   assertIndexFree(draft, resource.id);
   draft.resources[resourceType][resource.id] = resource;
@@ -1419,12 +1511,47 @@ function applyResourcePatch(draft, operation, aliases) {
   const resourceId = resolveId(operation.resourceId, aliases, 'resourceId');
   const { resource } = buildProjectIndex(draft).getResource(resourceId, resourceType);
   studioAssert(isPlainRecord(operation.patch), 'invalid_patch', 'resource.patch requires an object patch');
+  const authoredPatch = resolveResourceReferences(
+    resourceType === 'textures'
+      ? normalizeTextureResourcePatch(operation.patch)
+      : cloneJson(operation.patch),
+    resourceType,
+    aliases,
+  );
   const patch = resourceType === 'graphs'
-    ? normalizeGraphResourcePatch(operation.patch, resource)
-    : cloneJson(operation.patch);
+    ? normalizeGraphResourcePatch(authoredPatch, resource)
+    : authoredPatch;
   studioAssert(!Object.hasOwn(patch, 'id'), 'invalid_patch', 'Resource IDs are immutable');
   const snapshot = cloneJson(resource);
-  draft.resources[resourceType][resourceId] = createResourceDocument(resourceType, mergePatch(resource, patch));
+  if (resourceType === 'textures' && isPlainRecord(patch.recipe)) {
+    const currentRecipe = resource.recipe ?? resource.parameters ?? resource;
+    const currentKind = currentRecipe?.kind ?? currentRecipe?.type;
+    const patchKind = patch.recipe.kind ?? patch.recipe.type;
+    const partialDataTextureFields = DATA_TEXTURE_RECIPE_KEYS.some(key => (
+      !['kind', 'name'].includes(key) && Object.hasOwn(patch.recipe, key)
+    ));
+    studioAssert(
+      currentKind === 'dataTexture' || patchKind === 'dataTexture' || !partialDataTextureFields,
+      'invalid_texture_patch',
+      'Upgrading a legacy texture placeholder requires kind, type, or textureKind to be dataTexture.',
+      { resourceId },
+    );
+  }
+  const patchedResource = mergePatch(resource, patch);
+  if (resourceType === 'textures' && isPlainRecord(patch.recipe)
+      && (patch.recipe.kind ?? patch.recipe.type) === 'dataTexture') {
+    const currentRecipe = resource.recipe ?? resource.parameters ?? resource;
+    if ((currentRecipe?.kind ?? currentRecipe?.type) !== 'dataTexture') {
+      // Upgrading a format-v1 placeholder is a recipe replacement, not a
+      // recursive merge: legacy asset IDs and opaque placeholder fields must
+      // not contaminate the strict canonical dataTexture envelope.
+      // Re-run merge-patch semantics against an empty object so the source-
+      // swap null sentinel (pixels vs data) is removed from the replacement.
+      patchedResource.recipe = mergePatch({}, patch.recipe);
+      delete patchedResource.parameters;
+    }
+  }
+  draft.resources[resourceType][resourceId] = createResourceDocument(resourceType, patchedResource);
   return {
     resolved: { type: 'resource.patch', resourceType, resourceId, patch: cloneJson(patch) },
     inverse: {

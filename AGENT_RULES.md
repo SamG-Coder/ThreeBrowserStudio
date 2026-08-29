@@ -18,7 +18,9 @@ authority. In the current lean slice:
   bulk patch/transform, world-preserving transform groups, independent nested
   organizational collections, persistent `camera.frame`, bounded
   `layout.pattern`, indexed-triangle and topology-guarded editable-polygon
-  `geometry.edit`, and canonical `scene.rtx.patch`;
+  `geometry.edit` with direct per-corner UV/color, face-material, sharp-edge,
+  and crease edits, bounded inline raster texture resources, and canonical
+  `scene.rtx.patch`;
 - validation is whole-project, interactive document/reference/hierarchy/graph
   validation with budgets;
 - rendering is WebGPU beauty capture through the same effective camera and
@@ -80,9 +82,51 @@ Use it only after both status and the current tool schema expose it.
 ## Resource rules
 
 - State the intended colour/data role for every texture.
-- Use sRGB only for display colour such as albedo and emissive.
+- Use sRGB for encoded display colour such as albedo and emissive; direct
+  color-role material bindings and `texture.sample2d` also accept `linear` when
+  the authored bytes are already linear. The sampler declaration must exactly
+  match its resource. Do not tag the same color values both ways interchangeably.
 - Use no colour space for normals, roughness, metalness, height, masks, and
   numeric data.
+- Inline raster resources use a strict `dataTexture` recipe: 1–512 pixels per
+  axis, 1–4 byte channels, and exactly one numeric-byte or canonical padded
+  base64 source. Numeric arrays stop at 65,536 bytes; decoded base64 stops at
+  700,000 bytes; aggregate recipe JSON stops at 8 MiB and aggregate decoded
+  sources stop at 16 MiB. A complete expanded RGBA8 mip chain stops at
+  1,398,100 GPU bytes.
+- Sampler defaults are trilinear `linearMipmapLinear`, generated mipmaps,
+  linear magnification, clamp wrapping, and anisotropy 4. Canonical normalized
+  recipes contain all sampler fields, including anisotropy (bounded 1–16).
+- Raster material maps require an active UV layer on their geometry. Only the
+  active UV layer lowers to raster channel 0 and only the active color layer
+  lowers to the current viewport; other layers remain canonical and directly
+  editable.
+- Edge creases can be stored and edited, but the current viewport subdivision
+  path does not consume crease weights. Do not claim a visible crease effect.
+- Reject a direct material map when the assigned material graph outputs the
+  same property or a `surface` value that supersedes that slot; sample that
+  texture inside the graph with `texture.sample2d` instead. The graph `image`
+  asset node is CPU-bake-only and cannot compile into a live WebGPU material.
+- Preserve generic format-v1 texture placeholders. They remain indexable and
+  deletable but cannot be used by raster maps or `texture.sample2d` until
+  patched into a canonical `dataTexture` recipe.
+- Read `three_studio_status.capabilities.imageTextures.materialControls`
+  instead of guessing mapped-material controls. Its `scalarRanges` exposes
+  exact finite bounds: unit intervals for the declared PBR weights and
+  `aoMapIntensity`; thickness/emissive intensity 0–1,000,000; IOR 1–3;
+  bump scale -1,000–1,000; and displacement scale/bias
+  -100,000–100,000. `vector2Ranges` bounds both components of `normalScale`
+  and `clearcoatNormalScale` to -100–100. It also names the `vertexColors`
+  boolean and the accepted base/color, emissive, sheen, and specular color
+  controls.
+- Respect the exact `mapAwareNeutralDefaults` from that status contract when a
+  multiplier is unauthored. They use white for mapped base, emissive, sheen,
+  and specular colors; 1 for applicable roughness/metalness, opacity,
+  emissive intensity, AO/bump/displacement scale, clearcoat,
+  transmission/thickness, sheen and sheen roughness, specular intensity,
+  anisotropy, and iridescence; `[1, 1]`
+  for normal scales; and 0 for displacement bias. Explicit authored controls
+  still win.
 - Prefer reusable material, texture, geometry, animation, and blueprint
   resources over near-duplicates.
 - Query the graph node catalog rather than inventing node or port names.
@@ -94,8 +138,9 @@ Use it only after both status and the current tool schema expose it.
 - Author Blender socket values in `node.inputs` and links in `edges`; keep node
   properties in `params`. Query the Blender inventory and executable graph
   catalog instead of guessing RNA IDs or port names.
-- Procedural texture CPU baking is deterministic and bounded, but image asset
-  decoding/binding and file-producing bake jobs remain unavailable through MCP.
+- Procedural texture CPU baking and bounded inline `dataTexture` binding are
+  deterministic. External image-file decoding/import and file-producing bake
+  jobs remain unavailable through MCP.
 - Once export/bake jobs exist, bake node materials to PBR maps before
   interchange export.
 
@@ -139,6 +184,9 @@ operations.
   controls; claim RTX evidence only when the returned status is `active`, and
   always distinguish supported, requested, configured, building, active,
   stale, and failed states.
+- Inline raster maps affect WebGPU material shading only. RTX hit shading does
+  not sample them, so never attribute albedo, normal, roughness, AO, height, or
+  alpha texture detail to a ray hit.
 - Never claim a visual result without inspecting a capture from the committed
   revision.
 
@@ -177,6 +225,11 @@ operations.
 - Avoid per-object lights when an emissive material or shared light suffices.
 - Keep interactive texture graphs at or below 2048 unless a bake job is
   explicitly justified.
+- Keep inline `dataTexture` recipes at or below 512 × 512 and prefer base64
+  after 65,536 source bytes; the 512 × 512 dimension cap is independent of the
+  700,000 decoded-base64-byte cap. Full-resolution three- or four-channel
+  payloads therefore need a future chunk/blob path. All live source channel
+  counts upload as bounded RGBA8.
 - Dry-run large explicit batches and inspect the budgets returned by current
   validation. Dense resource arrays remain subject to the one-MiB MCP request
   ceiling even when their per-array schema budget is higher. Generated layouts

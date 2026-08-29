@@ -15,9 +15,15 @@ import {
   contentHash,
   createProjectDocument,
   createResourceDocument,
+  DATA_TEXTURE_LIMITS,
+  dataTextureGpuByteLength,
+  EDITABLE_MESH_ATTRIBUTE_COMMAND_TYPES,
   hashExactEntitySet,
   LIVE_INSTANCE_MODIFIER_TYPES,
+  MATERIAL_TEXTURE_BINDINGS,
+  MATERIAL_TEXTURE_CONTROL_CONTRACT,
   MAX_MODIFIERS_PER_ENTITY,
+  normalizeDataTextureResource,
   normalizeGraphResourcePatch,
   normalizeResourceType,
   supportedOperationTypes,
@@ -442,6 +448,38 @@ function explicitGeometrySummary(resource, { includeBounds = false } = {}) {
   return output;
 }
 
+function dataTextureSummary(resource) {
+  const authored = resource?.recipe ?? resource?.parameters;
+  if (!isRecord(authored) || (authored.kind ?? authored.type) !== 'dataTexture') {
+    return {
+      recipeKind: compactString(authored?.kind ?? authored?.type ?? resource?.kind ?? 'texture', 80),
+      liveRaster: false,
+      legacyPlaceholder: true,
+    };
+  }
+  const recipe = normalizeDataTextureResource(authored);
+  return {
+    recipeKind: recipe.kind,
+    liveRaster: true,
+    width: recipe.width,
+    height: recipe.height,
+    channels: recipe.channels,
+    decodedBytes: recipe.width * recipe.height * recipe.channels,
+    gpuBytes: dataTextureGpuByteLength(recipe),
+    sourceEncoding: recipe.data === undefined ? 'numeric-bytes' : 'base64',
+    colorSpace: recipe.colorSpace,
+    sampler: {
+      wrapS: recipe.wrapS,
+      wrapT: recipe.wrapT,
+      minFilter: recipe.minFilter,
+      magFilter: recipe.magFilter,
+      anisotropy: recipe.anisotropy,
+      flipY: recipe.flipY,
+      generateMipmaps: recipe.generateMipmaps,
+    },
+  };
+}
+
 function resourceKindMatches(resourceType, resource, expectedKind) {
   if (!expectedKind) return true;
   const singularType = resourceType.endsWith('ies')
@@ -486,8 +524,13 @@ export function buildResourceDigest(document, params = {}) {
       ...(resourceType === 'geometries' ? explicitGeometrySummary(resource, {
         includeBounds: include.has('bounds'),
       }) : {}),
+      ...(resourceType === 'textures' ? dataTextureSummary(resource) : {}),
     };
-    if (include.has('components')) summary.components = compactResourceComponents(resource);
+    if (include.has('components')) {
+      summary.components = resourceType === 'textures'
+        ? { recipe: dataTextureSummary(resource), metadata: compactResourceComponents(resource.metadata ?? {}) }
+        : compactResourceComponents(resource);
+    }
     if (include.has('references')) {
       const references = index.getReferencesTo(resource.id);
       summary.referencesTo = references.slice(0, RESOURCE_REFERENCE_LIMIT);
@@ -912,16 +955,67 @@ export class StudioApplication {
         geometryEditCommands: [
           'move', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
           'subdivideFaces', 'insetFaces', 'extrudeFaces', 'bevelEdges', 'deleteFaces', 'mergeVertices',
+          ...EDITABLE_MESH_ATTRIBUTE_COMMAND_TYPES,
         ],
         editableMesh: {
           topology: 'polygon-corner-csr',
           topologyHashGuards: true,
-          uvLayers: { storage: true, topologyPropagation: true, directEditing: false },
-          colorLayers: { storage: true, topologyPropagation: true, directEditing: false },
-          materialSlots: { storage: true, topologyPropagation: true, directEditing: false },
-          sharpEdges: { storage: true, topologyPropagation: true, directEditing: false },
-          edgeCreases: { storage: true, topologyPropagation: true, directEditing: false },
+          uvLayers: { storage: true, topologyPropagation: true, directEditing: true, viewportLayer: 'active-only' },
+          colorLayers: { storage: true, topologyPropagation: true, directEditing: true, viewportLayer: 'active-only' },
+          materialSlots: { storage: true, topologyPropagation: true, directEditing: true },
+          sharpEdges: { storage: true, topologyPropagation: true, directEditing: true },
+          edgeCreases: { storage: true, topologyPropagation: true, directEditing: true, viewport: 'storage-editing-only' },
           liveGeometryModifiers: 'indexed-mesh-only-until-seam-safe-lowering',
+        },
+        imageTextures: {
+          resourceKind: 'dataTexture',
+          authoring: {
+            operation: { op: 'resource.create', resourceType: 'texture' },
+            canonicalEnvelope: {
+              id: 'texture/<stable-id>',
+              kind: 'texture',
+              recipe: { kind: 'dataTexture', width: 1, height: 1, channels: 4, data: '<canonical-padded-base64>' },
+            },
+            requiredRecipeFields: ['kind', 'width', 'height', 'channels', 'pixels|data'],
+            sourceAlternatives: [{ pixels: '<byte-array>' }, { data: '<canonical-padded-base64>' }],
+            optionalRecipeFields: ['name', 'colorSpace', 'wrapS', 'wrapT', 'minFilter', 'magFilter', 'anisotropy', 'flipY', 'generateMipmaps'],
+            defaults: {
+              colorSpace: 'srgb', wrapS: 'clamp', wrapT: 'clamp',
+              minFilter: 'linearMipmapLinear', magFilter: 'linear', anisotropy: 4,
+              flipY: false, generateMipmaps: true,
+            },
+            base64: 'canonical-padded-no-data-uri-no-whitespace',
+            patchShape: 'recipe fields may be nested under recipe or supplied directly; never mix both forms',
+            sourceSwap: 'setting non-null pixels clears data; setting non-null data clears pixels',
+            legacyPlaceholders: 'preserved-for-format-v1-but-not-live-raster',
+          },
+          sourceEncodings: ['numeric-bytes', 'base64'],
+          sourceChannels: [1, 2, 3, 4],
+          gpuFormat: 'rgba8',
+          uvChannel: 0,
+          uvLayer: 'active-only',
+          colorSpaces: ['srgb', 'linear', 'none'],
+          materialSlots: MATERIAL_TEXTURE_BINDINGS.map(binding => binding.idKey),
+          materialBindings: MATERIAL_TEXTURE_BINDINGS.map(binding => ({
+            idKey: binding.idKey,
+            aliases: binding.aliases,
+            materialKinds: binding.kinds,
+            colorSpace: binding.colorSpace,
+            preferredColorSpace: binding.colorSpace,
+            allowedColorSpaces: binding.colorSpaces,
+            allowedSourceChannels: binding.allowedChannels,
+          })),
+          graphSamplerNode: 'texture.sample2d',
+          imageAssetNode: 'cpu-bake-only',
+          directMapGraphConflictPolicy: 'reject-overlap',
+          mapAwareNeutralDefaults: true,
+          materialControls: MATERIAL_TEXTURE_CONTROL_CONTRACT,
+          perMaterialTextureTransforms: 'use-graph-uv-nodes',
+          sharedRuntimeCache: true,
+          exactDisposal: true,
+          rasterMaterialShading: true,
+          rtxHitShading: false,
+          limits: DATA_TEXTURE_LIMITS,
         },
         maxGeometryEditCommands: 64,
         exactBulkEntityEditing: true,

@@ -10,4 +10,5 @@ export { applyConstraintStacks, evaluateInstanceStack } from './object-evaluatio
 export * from './rtx-scene-collector.mjs';
 export * from './animation-runtime.mjs';
 export * from './procedural-texture-compiler.mjs';
+export * from './image-texture-resources.mjs';
 export { StudioApplication, startStudioApplication, translateToolOperation } from './studio-application.mjs';
