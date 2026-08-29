@@ -1,5 +1,5 @@
 import * as THREE from "three/webgpu";
-import { isStudioOverlayEvent } from "./overlay-controls.mjs";
+import { claimStudioViewportFocus, isStudioOverlayEvent } from "./overlay-controls.mjs";
 import { reviewShouldIgnoreKey, reviewShouldReleaseKeys, reviewShouldStartLook } from "./review-input.mjs";
 import { applyLookDelta, clampPitch, flyStep } from "./review-fly.mjs";
 
@@ -56,6 +56,7 @@ export function createReviewControls(camera, domElement, {
 
   function onPointerDown(event) {
     if (disposed || dragging) return;
+    claimStudioViewportFocus(event, domElement);
     if (reviewShouldReleaseKeys(event)) {
       releaseKeys();
       return;

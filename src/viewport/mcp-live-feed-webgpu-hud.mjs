@@ -12,6 +12,7 @@ import {
   ToggleOption,
   VirtualList,
   eventPoint,
+  claimStudioViewportFocus,
   isStudioOverlayEvent,
 } from './overlay-controls.mjs';
 import { defaultExpandedIds, flattenExplorerRows } from './scene-explorer.mjs';
@@ -828,6 +829,7 @@ export function createMcpLiveFeedWebGpuHud({
 
   const onPointerDown = event => {
     if (disposed || !visible || !containsEvent(event)) return false;
+    claimStudioViewportFocus(event, event?.target);
     const point = contentPoint(event);
     const hit = host.hitTest(point.x, point.y);
     captured = hit;

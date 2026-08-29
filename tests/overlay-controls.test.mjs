@@ -8,6 +8,7 @@ import {
   Label,
   OverlayHost,
   VirtualList,
+  claimStudioViewportFocus,
   isEditableStudioEvent,
   isStudioOverlayEvent,
 } from '../src/viewport/overlay-controls.mjs';
@@ -282,4 +283,30 @@ test('editable Prompt fields and overlay chrome count as typing targets', () => 
   assert.equal(isEditableStudioEvent({ target: overlay }), true);
   assert.equal(isEditableStudioEvent({ target: textarea }), true);
   assert.equal(isEditableStudioEvent({ target: canvas }), false);
+});
+
+test('clicking the viewport blurs Prompt fields and focuses the canvas', () => {
+  const overlay = { closest: selector => String(selector).includes('data-studio-overlay') ? overlay : null };
+  const textarea = {
+    tagName: 'TEXTAREA',
+    blurred: false,
+    closest: () => null,
+    blur() { this.blurred = true; },
+  };
+  const canvas = {
+    tagName: 'CANVAS',
+    focused: false,
+    tabIndex: -1,
+    closest: () => null,
+    hasAttribute() { return false; },
+    focus() { this.focused = true; },
+  };
+  const document = { activeElement: textarea };
+  assert.equal(claimStudioViewportFocus({ target: overlay }, canvas, { document }), false);
+  assert.equal(textarea.blurred, false);
+  assert.equal(canvas.focused, false);
+  assert.equal(claimStudioViewportFocus({ target: canvas }, canvas, { document }), true);
+  assert.equal(textarea.blurred, true);
+  assert.equal(canvas.focused, true);
+  assert.equal(canvas.tabIndex, -1);
 });

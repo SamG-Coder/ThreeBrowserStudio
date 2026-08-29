@@ -769,3 +769,37 @@ export function isEditableStudioEvent(event) {
     return false;
   }
 }
+
+/**
+ * Stock browsers do not move focus off a textarea when the WebGPU canvas is
+ * clicked. Native Chromium often does. Blur overlay fields and focus the
+ * viewport surface so Review keys and the caret follow the click.
+ */
+export function claimStudioViewportFocus(event, surface = null, { document: doc = globalThis.document } = {}) {
+  if (isStudioOverlayEvent(event)) return false;
+  const active = doc?.activeElement;
+  if (isEditableNode(active) && active !== surface) {
+    try {
+      active.blur?.();
+    } catch {
+      // Synthetic controls may not implement blur.
+    }
+  }
+  if (surface && typeof surface.focus === 'function') {
+    try {
+      if (!surface.hasAttribute?.('tabindex')) surface.tabIndex = -1;
+    } catch {
+      // Test surfaces may not support tabIndex.
+    }
+    try {
+      surface.focus({ preventScroll: true });
+    } catch {
+      try {
+        surface.focus();
+      } catch {
+        // The surface remains unfocused; overlay fields are already blurred.
+      }
+    }
+  }
+  return true;
+}
