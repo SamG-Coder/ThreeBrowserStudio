@@ -267,7 +267,87 @@ function blenderMath(TSL, operation, a, b, c) {
   }
 }
 
-function mixBlend(TSL, mode, a, b) {
+function rgbToHsv(TSL, color) {
+  const rgb = color.xyz;
+  const p = TSL.mix(
+    TSL.vec4(rgb.z, rgb.y, -1, 2 / 3),
+    TSL.vec4(rgb.y, rgb.z, 0, -1 / 3),
+    TSL.step(rgb.z, rgb.y),
+  );
+  const q = TSL.mix(
+    TSL.vec4(p.x, p.y, p.w, rgb.x),
+    TSL.vec4(rgb.x, p.y, p.z, p.x),
+    TSL.step(p.x, rgb.x),
+  );
+  const delta = q.x.sub(TSL.min(q.w, q.y));
+  const epsilon = 1e-10;
+  return TSL.vec3(
+    TSL.abs(q.z.add(q.w.sub(q.y).div(delta.mul(6).add(epsilon)))),
+    delta.div(q.x.add(epsilon)),
+    q.x,
+  );
+}
+
+function hsvToRgb(TSL, hsv) {
+  const shape = TSL.abs(
+    TSL.fract(TSL.vec3(hsv.x).add(TSL.vec3(0, 2 / 3, 1 / 3))).mul(6).sub(3),
+  );
+  return TSL.vec3(hsv.z).mul(TSL.mix(TSL.vec3(1), TSL.clamp(shape.sub(1), 0, 1), hsv.y));
+}
+
+function rgbToHsl(TSL, color) {
+  const rgb = color.xyz;
+  const hsv = rgbToHsv(TSL, rgb);
+  const high = TSL.max(rgb.x, TSL.max(rgb.y, rgb.z));
+  const low = TSL.min(rgb.x, TSL.min(rgb.y, rgb.z));
+  const lightness = TSL.min(1, high.add(low).mul(0.5));
+  const saturation = high.sub(low).div(
+    TSL.max(TSL.float(1).sub(TSL.abs(lightness.mul(2).sub(1))), 1e-10),
+  );
+  return TSL.vec3(hsv.x, saturation, lightness);
+}
+
+function hslToRgb(TSL, hsl) {
+  const hue = hsl.x.mul(6);
+  const shape = TSL.clamp(TSL.vec3(
+    TSL.abs(hue.sub(3)).sub(1),
+    TSL.float(2).sub(TSL.abs(hue.sub(2))),
+    TSL.float(2).sub(TSL.abs(hue.sub(4))),
+  ), 0, 1);
+  const chroma = TSL.float(1).sub(TSL.abs(hsl.z.mul(2).sub(1))).mul(hsl.y);
+  return shape.sub(0.5).mul(chroma).add(hsl.z);
+}
+
+function hueMix(TSL, left, right, amount, interpolation = 'NEAR') {
+  const delta = right.sub(left);
+  const one = TSL.float(1);
+  const direct = TSL.mix(left, right, amount);
+  const increasing = TSL.fract(TSL.mix(left, right.add(1), amount));
+  const decreasing = TSL.fract(TSL.mix(left.add(1), right, amount));
+  const isLess = edge => one.sub(TSL.step(edge, delta));
+  const isGreater = edge => one.sub(TSL.step(delta, edge));
+  const equalZero = TSL.step(TSL.abs(delta), 0);
+  let down = TSL.float(0);
+  let up = TSL.float(0);
+
+  switch (String(interpolation ?? 'NEAR').toUpperCase()) {
+    case 'NEAR':
+      down = isGreater(0.5);
+      up = isLess(-0.5);
+      break;
+    case 'FAR':
+      down = isGreater(0).mul(isLess(0.5));
+      up = equalZero.add(isLess(0).mul(isGreater(-0.5))).saturate();
+      break;
+    case 'CW': up = isLess(0); break;
+    case 'CCW': down = isGreater(0); break;
+    default: fail('shader_node_mode_unsupported', `Hue interpolation ${interpolation} is not compiled live.`, { interpolation });
+  }
+
+  return TSL.mix(TSL.mix(direct, decreasing, down), increasing, up);
+}
+
+function mixBlend(TSL, mode, a, b, valueType = 'color') {
   switch (String(mode ?? 'MIX').toUpperCase()) {
     case 'MIX': return b;
     case 'ADD': return a.add(b);
@@ -288,6 +368,29 @@ function mixBlend(TSL, mode, a, b) {
       return TSL.select(a.lessThan(0.5), low, high);
     }
     case 'SOFT_LIGHT': return TSL.mix(a.mul(b).mul(2), TSL.float(1).sub(TSL.float(2).mul(TSL.float(1).sub(a)).mul(TSL.float(1).sub(b))), a);
+    case 'HUE':
+    case 'SATURATION':
+    case 'COLOR':
+    case 'VALUE': {
+      const kind = String(valueType ?? 'color').toUpperCase();
+      if (!['COLOR', 'VEC3', 'VEC4'].includes(kind)) return b;
+      const aRgb = a.xyz;
+      const bRgb = b.xyz;
+      const aHsv = rgbToHsv(TSL, aRgb);
+      const bHsv = rgbToHsv(TSL, bRgb);
+      const hasSaturation = saturation => TSL.float(1).sub(TSL.step(saturation, 0));
+      let target;
+      if (String(mode).toUpperCase() === 'HUE') {
+        target = TSL.mix(aRgb, hsvToRgb(TSL, TSL.vec3(bHsv.x, aHsv.y, aHsv.z)), hasSaturation(bHsv.y));
+      } else if (String(mode).toUpperCase() === 'SATURATION') {
+        target = TSL.mix(aRgb, hsvToRgb(TSL, TSL.vec3(aHsv.x, bHsv.y, aHsv.z)), hasSaturation(aHsv.y));
+      } else if (String(mode).toUpperCase() === 'COLOR') {
+        target = TSL.mix(aRgb, hsvToRgb(TSL, TSL.vec3(bHsv.x, bHsv.y, aHsv.z)), hasSaturation(bHsv.y));
+      } else {
+        target = hsvToRgb(TSL, TSL.vec3(aHsv.x, aHsv.y, bHsv.z));
+      }
+      return kind === 'VEC4' ? TSL.vec4(target, a.w) : target;
+    }
     default: fail('shader_node_mode_unsupported', `Mix blend mode ${mode} is not compiled yet.`, { mode });
   }
 }
@@ -324,20 +427,102 @@ function normalMapBySpace(TSL, color, strength, space) {
   return TSL.mix(base, target, boundedStrength).normalize();
 }
 
-function colorRamp(TSL, factor, stops, interpolation = 'linear') {
+function splineRamp(TSL, factor, ordered, interpolation) {
+  const count = ordered.length;
+  let result = TSL.vec4(0, 0, 0, 0);
+
+  for (let region = 0; region <= count; region += 1) {
+    const right = ordered[Math.min(region, count - 1)];
+    const left = ordered[Math.max(0, region - 1)];
+    const next = ordered[Math.min(region + 1, count - 1)];
+    const previous = ordered[Math.max(0, region - 2)];
+    const rightPosition = region === count ? 1 : right.position;
+    const leftPosition = region === 0 ? 0 : left.position;
+    const width = leftPosition - rightPosition;
+    const amount = Math.abs(width) < 1e-7
+      ? TSL.float(region === count ? 1 : 0)
+      : TSL.clamp(factor.sub(rightPosition).div(width), 0, 1);
+    const squared = amount.mul(amount);
+    const cubed = squared.mul(amount);
+    let weights;
+
+    if (String(interpolation).toUpperCase() === 'CARDINAL') {
+      const tension = 0.71;
+      weights = [
+        cubed.mul(-tension).add(squared.mul(2 * tension)).sub(amount.mul(tension)),
+        cubed.mul(2 - tension).add(squared.mul(tension - 3)).add(1),
+        cubed.mul(tension - 2).add(squared.mul(3 - 2 * tension)).add(amount.mul(tension)),
+        cubed.mul(tension).sub(squared.mul(tension)),
+      ];
+    } else {
+      weights = [
+        cubed.mul(-1 / 6).add(squared.mul(0.5)).sub(amount.mul(0.5)).add(1 / 6),
+        cubed.mul(0.5).sub(squared).add(2 / 3),
+        cubed.mul(-0.5).add(squared.mul(0.5)).add(amount.mul(0.5)).add(1 / 6),
+        cubed.mul(1 / 6),
+      ];
+    }
+
+    const candidate = TSL.vec4(...array(previous.color, 4)).mul(weights[3])
+      .add(TSL.vec4(...array(left.color, 4)).mul(weights[2]))
+      .add(TSL.vec4(...array(right.color, 4)).mul(weights[1]))
+      .add(TSL.vec4(...array(next.color, 4)).mul(weights[0]));
+    const mask = region === 0
+      ? TSL.float(1).sub(TSL.step(ordered[0].position, factor))
+      : region === count
+        ? TSL.step(ordered[count - 1].position, factor)
+        : TSL.step(ordered[region - 1].position, factor)
+          .mul(TSL.float(1).sub(TSL.step(ordered[region].position, factor)));
+    result = result.add(candidate.mul(mask));
+  }
+
+  return TSL.clamp(result, 0, 1);
+}
+
+function colorRamp(TSL, factor, stops, interpolation = 'linear', colorMode = 'RGB', hueInterpolation = 'NEAR') {
   const ordered = [...(Array.isArray(stops) ? stops : [])].sort((a, b) => a.position - b.position);
   if (ordered.length < 2) fail('shader_ramp_invalid', 'A colour ramp requires at least two stops.');
+  const mode = String(colorMode ?? 'RGB').toUpperCase();
+  const curve = String(interpolation ?? 'LINEAR').toUpperCase();
+
+  if (mode === 'RGB' && ['CARDINAL', 'B_SPLINE'].includes(curve)) {
+    const result = splineRamp(TSL, factor, ordered, curve);
+    return { color: result.xyz, alpha: result.w };
+  }
+
+  if (!['RGB', 'HSV', 'HSL'].includes(mode)) {
+    fail('shader_node_mode_unsupported', `Colour Ramp mode ${colorMode} is not compiled live.`, { colorMode });
+  }
+
   let result = color3(TSL, ordered[0].color);
+  let alpha = scalar(TSL, ordered[0].color?.[3], 1);
   for (let index = 1; index < ordered.length; index += 1) {
     const previous = ordered[index - 1];
     const current = ordered[index];
-    const width = Math.max(1e-7, current.position - previous.position);
-    let amount = factor.sub(previous.position).div(width).saturate();
-    if (String(interpolation).toUpperCase() === 'CONSTANT') amount = TSL.step(current.position, factor);
-    else if (String(interpolation).toUpperCase() === 'SMOOTHSTEP' || String(interpolation).toUpperCase() === 'EASE') amount = TSL.smoothstep(0, 1, amount);
-    result = TSL.mix(result, color3(TSL, current.color), amount);
+    const width = current.position - previous.position;
+    let amount = Math.abs(width) < 1e-7
+      ? TSL.step(current.position, factor)
+      : factor.sub(previous.position).div(width).saturate();
+    // Blender forces non-RGB ramps to linear interpolation regardless of the
+    // selected RGB spline/constant mode.
+    if (mode === 'RGB' && curve === 'CONSTANT') amount = TSL.step(current.position, factor);
+    else if (mode === 'RGB' && ['SMOOTHSTEP', 'EASE'].includes(curve)) amount = TSL.smoothstep(0, 1, amount);
+    const currentColor = color3(TSL, current.color);
+    if (mode === 'RGB') {
+      result = TSL.mix(result, currentColor, amount);
+    } else {
+      const left = mode === 'HSV' ? rgbToHsv(TSL, result) : rgbToHsl(TSL, result);
+      const right = mode === 'HSV' ? rgbToHsv(TSL, currentColor) : rgbToHsl(TSL, currentColor);
+      const channels = TSL.vec3(
+        hueMix(TSL, left.x, right.x, amount, hueInterpolation),
+        TSL.mix(left.y, right.y, amount),
+        TSL.mix(left.z, right.z, amount),
+      );
+      result = mode === 'HSV' ? hsvToRgb(TSL, channels) : hslToRgb(TSL, channels);
+    }
+    alpha = TSL.mix(alpha, scalar(TSL, current.color?.[3], 1), amount);
   }
-  return result;
+  return { color: result, alpha };
 }
 
 function rotateXYZ(TSL, vector, rotation) {
@@ -653,7 +838,7 @@ function compileNodeFactory({ TSL, graph, parameters, textureResolver, featureTr
       const distances = TSL.mx_worley_noise_vec2(coordinate);
       return { distance: distances.x, cell: TSL.mx_cell_noise_float(TSL.floor(coordinate)) };
     }
-    if (type === 'ramp.color' || type === 'colorRamp') return { color: colorRamp(TSL, input.get(node, 'value', 0), p.stops, p.interpolation) };
+    if (type === 'ramp.color' || type === 'colorRamp') return colorRamp(TSL, input.get(node, 'value', 0), p.stops, p.interpolation);
     if (type.startsWith('math.') && !['math.mix', 'math.remap', 'math.abs', 'math.saturate'].includes(type)) {
       return { value: arithmetic(TSL, type.slice(5), input.get(node, 'a', 0), input.get(node, 'b', 0)) };
     }
@@ -849,11 +1034,8 @@ function compileNodeFactory({ TSL, graph, parameters, textureResolver, featureTr
       return { factor, color: TSL.vec3(factor, factor, factor) };
     }
     if (type === 'blender.colorRamp') {
-      if (!['RGB'].includes(String(p.colorMode ?? 'RGB').toUpperCase())) fail('shader_node_mode_unsupported', `Colour Ramp mode ${p.colorMode} is catalogued for interchange but not compiled live yet.`);
-      if (['CARDINAL', 'B_SPLINE'].includes(String(p.interpolation).toUpperCase())) fail('shader_node_mode_unsupported', `Colour Ramp interpolation ${p.interpolation} is catalogued for interchange but not compiled live yet.`);
       const factor = input.get(node, ['factor', 'value'], 0);
-      const result = colorRamp(TSL, factor, p.stops, p.interpolation);
-      return { color: result, alpha: scalar(TSL, 1) };
+      return colorRamp(TSL, factor, p.stops, p.interpolation, p.colorMode, p.hueInterpolation);
     }
     if (type === 'blender.mapRange') {
       const value = input.get(node, 'value', 0);
@@ -868,9 +1050,17 @@ function compileNodeFactory({ TSL, graph, parameters, textureResolver, featureTr
     if (type === 'blender.mix') {
       let factor = input.get(node, 'factor', 0.5);
       if (p.clampFactor !== false) factor = factor.saturate();
-      const a = input.get(node, 'a', [0, 0, 0], p.valueType === 'FLOAT' ? 'value' : 'color');
-      const b = input.get(node, 'b', [1, 1, 1], p.valueType === 'FLOAT' ? 'value' : 'color');
-      let result = TSL.mix(a, mixBlend(TSL, p.blendMode, a, b), factor);
+      const valueType = String(p.valueType ?? 'color').toUpperCase();
+      const fallback = valueType === 'FLOAT' || valueType === 'INTEGER' ? 0
+        : valueType === 'VEC2' ? [0, 0]
+          : valueType === 'VEC4' ? [0, 0, 0, 0] : [0, 0, 0];
+      const kind = valueType === 'COLOR' ? 'color' : valueType.toLowerCase();
+      let a = input.get(node, 'a', fallback, kind);
+      let b = input.get(node, 'b', fallback, kind);
+      // Studio's semantic colour sockets are RGB; authored literal colours
+      // may carry an interchange alpha component that is exposed separately.
+      if (valueType === 'COLOR') { a = a.xyz; b = b.xyz; }
+      let result = TSL.mix(a, mixBlend(TSL, p.blendMode, a, b, p.valueType), factor);
       if (p.clampResult === true) result = result.saturate();
       return { result, color: result };
     }
@@ -917,13 +1107,18 @@ function compileNodeFactory({ TSL, graph, parameters, textureResolver, featureTr
     }
     if (type === 'blender.clamp') return { result: TSL.clamp(input.get(node, 'value', 0), input.get(node, 'min', 0), input.get(node, 'max', 1)) };
     if (type === 'blender.separateColor') {
-      if (String(p.mode ?? 'RGB').toUpperCase() !== 'RGB') fail('shader_node_mode_unsupported', `Separate Color mode ${p.mode} is catalogued for interchange but not compiled live yet.`);
       const color = input.get(node, 'color', [0, 0, 0], 'color');
-      return { red: color.r ?? color.x, green: color.g ?? color.y, blue: color.b ?? color.z, alpha: color.a ?? scalar(TSL, 1) };
+      const mode = String(p.mode ?? 'RGB').toUpperCase();
+      if (!['RGB', 'HSV', 'HSL'].includes(mode)) fail('shader_node_mode_unsupported', `Separate Color mode ${p.mode} is not compiled live.`, { mode });
+      const channels = mode === 'HSV' ? rgbToHsv(TSL, color) : mode === 'HSL' ? rgbToHsl(TSL, color) : color.xyz;
+      return { red: channels.x, green: channels.y, blue: channels.z, alpha: scalar(TSL, 1) };
     }
     if (type === 'blender.combineColor') {
-      if (String(p.mode ?? 'RGB').toUpperCase() !== 'RGB') fail('shader_node_mode_unsupported', `Combine Color mode ${p.mode} is catalogued for interchange but not compiled live yet.`);
-      return { color: TSL.vec4(input.get(node, ['red', 'r'], 0), input.get(node, ['green', 'g'], 0), input.get(node, ['blue', 'b'], 0), input.get(node, ['alpha', 'a'], 1)) };
+      const mode = String(p.mode ?? 'RGB').toUpperCase();
+      if (!['RGB', 'HSV', 'HSL'].includes(mode)) fail('shader_node_mode_unsupported', `Combine Color mode ${p.mode} is not compiled live.`, { mode });
+      const channels = TSL.vec3(input.get(node, ['red', 'r'], 0), input.get(node, ['green', 'g'], 0), input.get(node, ['blue', 'b'], 0));
+      const color = mode === 'HSV' ? hsvToRgb(TSL, channels) : mode === 'HSL' ? hslToRgb(TSL, channels) : channels;
+      return { color: TSL.vec4(color, input.get(node, ['alpha', 'a'], 1)) };
     }
     if (type === 'blender.hueSaturation') {
       // Hue rotation around the neutral axis is continuous, branch-free, and preserves luminance better than channel swapping.
