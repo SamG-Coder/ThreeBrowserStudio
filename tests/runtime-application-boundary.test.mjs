@@ -259,6 +259,32 @@ test('raw live-bridge dispatch rejects unknown and oversized fields before execu
   );
 });
 
+test('native Studio publishes the stable ownership marker without tool-contract extensions', async (t) => {
+  const { application } = await applicationFixture(t);
+  const marker = JSON.parse(await readFile(application.markerPath, 'utf8'));
+
+  assert.deepEqual(Object.keys(marker).sort(), [
+    'heartbeat',
+    'pid',
+    'pipePath',
+    'projectId',
+    'projectPath',
+    'protocolVersion',
+    'revision',
+    'sessionId',
+    'token',
+    'viewportReady',
+  ]);
+  assert.equal(Object.hasOwn(marker, 'toolContractHash'), false);
+
+  const client = await LiveBridgeClient.fromMarker(application.markerPath, { timeoutMs: 1_000 });
+  t.after(() => client.close());
+  const ping = await client.ping();
+  assert.equal(ping.sessionId, marker.sessionId);
+  assert.equal(ping.pid, marker.pid);
+  assert.deepEqual(ping.serverInfo.toolContract, TOOL_CONTRACT);
+});
+
 test('project creation cannot escape the managed root or overwrite a populated directory', async (t) => {
   const { application, studioRoot } = await applicationFixture(t);
   const common = {

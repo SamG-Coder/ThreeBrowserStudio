@@ -1592,7 +1592,6 @@ export class StudioApplication {
       projectId: this.#kernel?.projectId ?? null,
       revision: this.#kernel?.revision ?? 0,
       viewportReady,
-      toolContractHash: TOOL_CONTRACT.hash,
     });
     const write = this.#markerTail.then(async () => {
       await writeSessionMarker(this.#markerPath, marker);

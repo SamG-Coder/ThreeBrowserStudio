@@ -222,12 +222,12 @@ as well as strict schemas for all nine tools. See the
 [official MCP configuration guide](https://learn.chatgpt.com/docs/extend/mcp).
 
 The adapter discovers the per-user marker automatically and reconnects when a
-new native window uses the same tool contract. Every tool contract has a
-deterministic hash published in the session marker, bridge ping, and status.
-If native Studio and the long-lived MCP adapter were built from different tool
-contracts, the adapter returns `tool_contract_mismatch` instead of exposing stale
-validation. Restart or reconnect the MCP client then so it rediscovers all nine
-tool schemas.
+new native window appears. The marker remains a backward-compatible ownership
+and discovery envelope. The authenticated bridge ping and status publish each
+tool contract with a deterministic hash, allowing refresh-aware adapters to
+rediscover all nine schemas without restarting. A contract-aware adapter that
+cannot refresh a mismatched contract returns `tool_contract_mismatch` instead
+of exposing stale validation; restart or reconnect that client to update it.
 
 ## Working first slice
 

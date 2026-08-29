@@ -122,23 +122,25 @@ test('live MCP dispatch rejects a stale native tool contract before forwarding c
   assert.equal(client.calls.close, 1);
 });
 
-test('live MCP dispatch rejects a stale marker contract before connecting', async () => {
+test('live MCP dispatch treats a transitional marker hash as advisory and trusts authenticated ping', async () => {
   let factoryCalls = 0;
+  const client = fakeClient();
   const live = createLiveMcpDispatch({
     resolveConnection: async () => ({ ...LIVE_CONNECTION, toolContractHash: 'f'.repeat(64) }),
     clientFactory() {
       factoryCalls += 1;
-      return fakeClient();
+      return client;
     },
   });
-  await assert.rejects(
-    () => live.dispatch('three_studio_status', {}),
-    error => error instanceof RpcError && error.code === 'tool_contract_mismatch',
-  );
-  assert.equal(factoryCalls, 0);
+  const result = await live.dispatch('three_studio_status', {});
+  assert.equal(result.method, 'three_studio_status');
+  assert.equal(factoryCalls, 1);
+  assert.equal(client.calls.connect, 1);
+  assert.equal(client.calls.ping, 1);
+  assert.equal(client.calls.request, 1);
 });
 
-test('live MCP dispatch refreshes a newer native contract without restarting the adapter', async () => {
+test('live MCP dispatch refreshes a newer native contract from bridge ping without a marker extension', async () => {
   const refreshed = structuredClone(TOOL_CONTRACT);
   refreshed.contractVersion = 'three-studio-tools/future-test';
   refreshed.inputSchemas.three_studio_status.properties.contractProbe = { type: 'boolean' };
@@ -150,9 +152,16 @@ test('live MCP dispatch refreshes a newer native contract without restarting the
     },
   });
   const synchronized = [];
+  let identityChecks = 0;
   const live = createLiveMcpDispatch({
-    resolveConnection: async () => ({ ...LIVE_CONNECTION, toolContractHash: refreshed.hash }),
+    resolveConnection: async () => LIVE_CONNECTION,
     clientFactory: () => client,
+    assertIdentity(marker, ping) {
+      identityChecks += 1;
+      assert.equal(marker.sessionId, ping.sessionId);
+      assert.equal(marker.pid, ping.pid);
+      return ping;
+    },
     onToolContract(contract) {
       synchronized.push(contract.hash);
     },
@@ -161,6 +170,8 @@ test('live MCP dispatch refreshes a newer native contract without restarting the
   const result = await live.dispatch('three_studio_status', {});
   assert.equal(result.method, 'three_studio_status');
   assert.deepEqual(synchronized, [refreshed.hash]);
+  assert.equal(identityChecks, 1);
+  assert.equal(client.calls.ping, 1);
   assert.equal(client.calls.request, 1);
 });
 

@@ -99,15 +99,6 @@ export function createLiveMcpDispatch({
     if (connecting) return connecting;
     connecting = (async () => {
       const connection = await resolveConnection({ argv, env });
-      if (connection.toolContractHash !== undefined
-        && connection.toolContractHash !== TOOL_CONTRACT.hash
-        && !onToolContract) {
-        throw new RpcError(
-          'tool_contract_mismatch',
-          'The live Studio marker uses a different tool contract. Restart or reconnect the MCP client so it rediscovers Studio tools.',
-          { expectedHash: TOOL_CONTRACT.hash, actualHash: connection.toolContractHash },
-        );
-      }
       const next = clientFactory(connection);
       try {
         await next.connect();
