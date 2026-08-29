@@ -32,7 +32,7 @@ import {
   validateGraph,
 } from '../graphs/index.mjs';
 import { BLENDER_CATALOG_SUMMARY, queryBlenderCatalog } from '../blender/index.mjs';
-import { TOOL_CONTRACT, TOOL_SCHEMAS } from '../mcp/tool-schemas.mjs';
+import { TOOL_CONTRACT, TOOL_CONTRACT_SUMMARY, TOOL_SCHEMAS } from '../mcp/tool-schemas.mjs';
 import { compileSceneDocument } from './scene-compiler.mjs';
 import { validateAnimationResource } from './animation-runtime.mjs';
 import { frameCameraToBounds } from '../viewport/camera-projection.mjs';
@@ -914,7 +914,7 @@ export class StudioApplication {
         maxShadowLights: 16,
         maxOperations: 128,
         implementedOperations: supportedOperationTypes(),
-        toolContract: TOOL_CONTRACT,
+        toolContract: TOOL_CONTRACT_SUMMARY,
       },
       latestEvidence: this.#latestEvidence,
     };

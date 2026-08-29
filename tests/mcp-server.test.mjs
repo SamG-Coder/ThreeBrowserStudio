@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createLiveMcpDispatch } from '../src/mcp/index.mjs';
 import { TOOL_CONTRACT } from '../src/mcp/tool-schemas.mjs';
+import { computeToolContractHash } from '../src/mcp/tool-schemas.mjs';
 import { RpcError } from '../src/bridge/protocol.mjs';
 
 const LIVE_CONNECTION = {
@@ -135,4 +136,30 @@ test('live MCP dispatch rejects a stale marker contract before connecting', asyn
     error => error instanceof RpcError && error.code === 'tool_contract_mismatch',
   );
   assert.equal(factoryCalls, 0);
+});
+
+test('live MCP dispatch refreshes a newer native contract without restarting the adapter', async () => {
+  const refreshed = structuredClone(TOOL_CONTRACT);
+  refreshed.contractVersion = 'three-studio-tools/future-test';
+  refreshed.inputSchemas.three_studio_status.properties.contractProbe = { type: 'boolean' };
+  refreshed.hash = computeToolContractHash(refreshed);
+  const client = fakeClient({
+    ping: {
+      ...LIVE_PING,
+      serverInfo: { toolContract: refreshed },
+    },
+  });
+  const synchronized = [];
+  const live = createLiveMcpDispatch({
+    resolveConnection: async () => ({ ...LIVE_CONNECTION, toolContractHash: refreshed.hash }),
+    clientFactory: () => client,
+    onToolContract(contract) {
+      synchronized.push(contract.hash);
+    },
+  });
+
+  const result = await live.dispatch('three_studio_status', {});
+  assert.equal(result.method, 'three_studio_status');
+  assert.deepEqual(synchronized, [refreshed.hash]);
+  assert.equal(client.calls.request, 1);
 });

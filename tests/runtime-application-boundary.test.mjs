@@ -12,7 +12,7 @@ import {
   createResourceDocument,
 } from '../src/core/index.mjs';
 import { LAYOUT_PATTERN_MODES } from '../src/core/layout-patterns.mjs';
-import { TOOL_CONTRACT } from '../src/mcp/tool-schemas.mjs';
+import { TOOL_CONTRACT, TOOL_CONTRACT_SUMMARY } from '../src/mcp/tool-schemas.mjs';
 import { StudioApplication, buildResourceDigest } from '../src/runtime/studio-application.mjs';
 
 class Vector3 {
@@ -664,7 +664,8 @@ test('a project switch compile failure preserves the active project and live sce
   ]);
   assert.equal(status.capabilities.maxGeometryEditCommands, 64);
   assert.equal(status.capabilities.implementedOperations.includes('geometry.edit'), true);
-  assert.deepEqual(status.capabilities.toolContract, TOOL_CONTRACT);
+  assert.deepEqual(status.capabilities.toolContract, TOOL_CONTRACT_SUMMARY);
+  assert.equal(Object.hasOwn(status.capabilities.toolContract, 'inputSchemas'), false);
   assert.deepEqual(viewport.scene.children, [liveRoot]);
   assert.equal(liveRoot.parent, viewport.scene);
 });

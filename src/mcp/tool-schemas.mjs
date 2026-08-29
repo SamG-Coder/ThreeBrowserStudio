@@ -451,10 +451,10 @@ export const TOOL_SCHEMAS = Object.freeze({
 export const STUDIO_TOOL_NAMES = Object.freeze(Object.keys(TOOL_SCHEMAS));
 
 export const MCP_SERVER_VERSION = '0.2.0';
-export const TOOL_CONTRACT_VERSION = 'three-studio-tools/2';
-const TOOL_INPUT_SCHEMAS = Object.fromEntries(
+export const TOOL_CONTRACT_VERSION = 'three-studio-tools/3';
+export const TOOL_INPUT_SCHEMAS = Object.freeze(Object.fromEntries(
   STUDIO_TOOL_NAMES.map(name => [name, z.toJSONSchema(TOOL_SCHEMAS[name], { io: 'input' })]),
-);
+));
 const TOOL_CONTRACT_LIMITS = Object.freeze({
   maxOperations: MAX_OPERATIONS_PER_TRANSACTION,
   maxControlRequestBytes: MAX_CONTROL_REQUEST_BYTES,
@@ -466,8 +466,9 @@ const TOOL_CONTRACT_LIMITS = Object.freeze({
 const TOOL_CONTRACT_FEATURES = Object.freeze({
   compactGeometrySelectionAll: true,
   resourceDigest: true,
+  liveSchemaRefresh: true,
 });
-const TOOL_CONTRACT_METADATA = Object.freeze({
+const TOOL_CONTRACT_SUMMARY_FIELDS = Object.freeze({
   contractVersion: TOOL_CONTRACT_VERSION,
   protocolVersion: PROTOCOL_VERSION,
   serverVersion: MCP_SERVER_VERSION,
@@ -477,10 +478,19 @@ const TOOL_CONTRACT_METADATA = Object.freeze({
   limits: TOOL_CONTRACT_LIMITS,
   features: TOOL_CONTRACT_FEATURES,
 });
+const TOOL_CONTRACT_METADATA = Object.freeze({
+  ...TOOL_CONTRACT_SUMMARY_FIELDS,
+  inputSchemas: TOOL_INPUT_SCHEMAS,
+});
+export function computeToolContractHash(contract) {
+  const { hash: _ignored, ...metadata } = contract ?? {};
+  return createHash('sha256').update(JSON.stringify(metadata)).digest('hex');
+}
 export const TOOL_CONTRACT = Object.freeze({
   ...TOOL_CONTRACT_METADATA,
-  hash: createHash('sha256').update(JSON.stringify({
-    ...TOOL_CONTRACT_METADATA,
-    inputSchemas: TOOL_INPUT_SCHEMAS,
-  })).digest('hex'),
+  hash: computeToolContractHash(TOOL_CONTRACT_METADATA),
+});
+export const TOOL_CONTRACT_SUMMARY = Object.freeze({
+  ...TOOL_CONTRACT_SUMMARY_FIELDS,
+  hash: TOOL_CONTRACT.hash,
 });

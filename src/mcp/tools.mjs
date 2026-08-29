@@ -1,10 +1,16 @@
-import { McpServer } from '@modelcontextprotocol/server';
+import { McpServer, fromJsonSchema } from '@modelcontextprotocol/server';
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { RpcError, safeError } from '../bridge/protocol.mjs';
-import { MCP_SERVER_VERSION, STUDIO_TOOL_NAMES, TOOL_SCHEMAS } from './tool-schemas.mjs';
+import {
+  MCP_SERVER_VERSION,
+  STUDIO_TOOL_NAMES,
+  TOOL_CONTRACT,
+  TOOL_SCHEMAS,
+  computeToolContractHash,
+} from './tool-schemas.mjs';
 
-const INITIAL_SERVER_INSTRUCTIONS = `Studio is an LLM-first WebGPU editor. Start with three_studio_status; schemas are authoritative. Query resourceDigest for dense topology. camera.frame persists exact-aspect shots. layout.pattern supports live linear, grid, radial, and deterministic seeded scatter instancing. geometry.edit performs bounded indexed-mesh edits; use selection 'all' for whole meshes. Play evaluates Action animation only. Jobs, scripts, other layout generators, passes, export, and behavior simulation are unavailable.`;
+const INITIAL_SERVER_INSTRUCTIONS = `Studio is an LLM-first WebGPU editor. Start with three_studio_status; the live-refreshed schemas and capability contract are authoritative. Use exact inspection digests before dense mesh, graph, material, or RTX edits. Play evaluates Action animation only; file-producing jobs remain capability-gated. Never infer support from an earlier Studio session.`;
 
 export const SERVER_INSTRUCTIONS = `${INITIAL_SERVER_INSTRUCTIONS.padEnd(512, ' ')}Inspect only bounded context. Mutate with exact stable IDs, the latest baseRevision, a unique idempotencyKey, and one coherent label. Dry-run risky or large changes. Never claim gameplay works while behaviorRuntime is false. Save verified milestones. Never edit project JSON, history, recovery, or session-marker files directly, and never enable trusted-project mode. Units are metres, radians, and seconds.`;
 
@@ -21,7 +27,7 @@ export const TOOL_DEFINITIONS = Object.freeze({
   },
   three_studio_apply: {
     title: 'Apply Three Studio Changeset',
-    description: 'Apply one labelled atomic changeset against an exact base revision. The schema exposes only the 18 implemented scene, RTX-lighting, entity, persistent-camera, layout-pattern, indexed-geometry, and resource operations. Supports up to 128 strict operations, idempotency, guarded deletes, aliases, and dry-run.',
+    description: 'Apply one labelled atomic changeset against an exact base revision. The live schema exposes the active native operation contract. Supports strict bounded operations, idempotency, guarded edits/deletes, aliases, and dry-run.',
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   },
   three_studio_validate: {
@@ -55,6 +61,58 @@ export const TOOL_DEFINITIONS = Object.freeze({
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
 });
+
+const REGISTERED_TOOL_HANDLES = new WeakMap();
+
+function assertRefreshableToolContract(contract) {
+  if (!contract || typeof contract !== 'object' || Array.isArray(contract)) {
+    throw new RpcError('tool_contract_invalid', 'The native Studio returned an invalid tool contract.');
+  }
+  if (computeToolContractHash(contract) !== contract.hash) {
+    throw new RpcError('tool_contract_invalid', 'The native Studio tool contract hash does not match its payload.', {
+      actualHash: contract.hash ?? null,
+    });
+  }
+  if (contract.protocolVersion !== TOOL_CONTRACT.protocolVersion) {
+    throw new RpcError('protocol_mismatch', `Expected Studio protocol ${TOOL_CONTRACT.protocolVersion}.`, {
+      expectedProtocolVersion: TOOL_CONTRACT.protocolVersion,
+      actualProtocolVersion: contract.protocolVersion ?? null,
+    });
+  }
+  const names = Object.keys(contract.inputSchemas ?? {});
+  if (names.length !== STUDIO_TOOL_NAMES.length || STUDIO_TOOL_NAMES.some(name => !names.includes(name))) {
+    throw new RpcError('tool_contract_invalid', 'The native Studio contract must preserve the nine stable MCP tools.', {
+      expectedTools: STUDIO_TOOL_NAMES,
+      actualTools: names,
+    });
+  }
+}
+
+/** Replaces registered input validators from a verified native contract. */
+export function synchronizeThreeStudioToolContract(server, contract) {
+  if (!(server instanceof McpServer)) throw new TypeError('server must be an official MCP McpServer.');
+  assertRefreshableToolContract(contract);
+  const registrations = REGISTERED_TOOL_HANDLES.get(server);
+  if (!registrations) throw new TypeError('server was not created by createThreeStudioMcpServer.');
+  if (registrations.contractHash === contract.hash) {
+    return { changed: false, hash: contract.hash, contractVersion: contract.contractVersion };
+  }
+  const parsedSchemas = Object.fromEntries(STUDIO_TOOL_NAMES.map((name) => {
+    try {
+      return [name, fromJsonSchema(contract.inputSchemas[name])];
+    } catch (error) {
+      throw new RpcError('tool_contract_invalid', `Could not materialize the live schema for ${name}.`, {
+        tool: name,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }));
+  for (const name of STUDIO_TOOL_NAMES) {
+    registrations.handles[name].update({ paramsSchema: parsedSchemas[name] });
+  }
+  registrations.contractHash = contract.hash;
+  return { changed: true, hash: contract.hash, contractVersion: contract.contractVersion };
+}
 
 export function normalizeStudioDispatch(dispatch) {
   if (typeof dispatch === 'function') return dispatch;
@@ -164,12 +222,13 @@ export function registerThreeStudioTools(server, dispatch) {
       }
     });
   }
+  REGISTERED_TOOL_HANDLES.set(server, { handles: registrations, contractHash: TOOL_CONTRACT.hash });
   return registrations;
 }
 
 export function createThreeStudioMcpServer({ dispatch, name = 'threebrowser-studio', version = MCP_SERVER_VERSION } = {}) {
   const server = new McpServer({ name, version }, {
-    capabilities: { tools: {} },
+    capabilities: { tools: { listChanged: true } },
     instructions: SERVER_INSTRUCTIONS,
   });
   registerThreeStudioTools(server, dispatch);

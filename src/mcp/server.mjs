@@ -8,7 +8,7 @@ import {
   defaultSessionMarkerPath,
   readSessionMarker,
 } from '../bridge/index.mjs';
-import { createThreeStudioMcpServer } from './tools.mjs';
+import { createThreeStudioMcpServer, synchronizeThreeStudioToolContract } from './tools.mjs';
 import { TOOL_CONTRACT } from './tool-schemas.mjs';
 
 function parseArguments(argv) {
@@ -54,9 +54,16 @@ function isRetryableLiveDisconnect(error) {
   return code === 'connection_closed' || code === 'timeout' || code === 'session_mismatch';
 }
 
-function assertToolContract(ping) {
+async function assertToolContract(ping, onToolContract) {
   const actual = ping?.serverInfo?.toolContract;
-  if (actual?.hash === TOOL_CONTRACT.hash) return actual;
+  if (actual?.hash === TOOL_CONTRACT.hash) {
+    if (onToolContract) await onToolContract(actual);
+    return actual;
+  }
+  if (onToolContract && actual?.inputSchemas) {
+    await onToolContract(actual);
+    return actual;
+  }
   throw new RpcError(
     'tool_contract_mismatch',
     'The native Studio and this MCP adapter expose different tool contracts. Restart or reconnect the MCP client so it rediscovers Studio tools.',
@@ -75,6 +82,7 @@ export function createLiveMcpDispatch({
   resolveConnection = resolveLiveConnectionOptions,
   clientFactory = (connection) => new LiveBridgeClient(connection),
   assertIdentity = assertLiveSessionIdentity,
+  onToolContract,
 } = {}) {
   let client;
   let connecting;
@@ -91,7 +99,9 @@ export function createLiveMcpDispatch({
     if (connecting) return connecting;
     connecting = (async () => {
       const connection = await resolveConnection({ argv, env });
-      if (connection.toolContractHash !== undefined && connection.toolContractHash !== TOOL_CONTRACT.hash) {
+      if (connection.toolContractHash !== undefined
+        && connection.toolContractHash !== TOOL_CONTRACT.hash
+        && !onToolContract) {
         throw new RpcError(
           'tool_contract_mismatch',
           'The live Studio marker uses a different tool contract. Restart or reconnect the MCP client so it rediscovers Studio tools.',
@@ -105,7 +115,7 @@ export function createLiveMcpDispatch({
         if (connection.sessionId !== undefined || connection.pid !== undefined) {
           assertIdentity(connection, ping);
         }
-        assertToolContract(ping);
+        await assertToolContract(ping, onToolContract);
         client = next;
         return next;
       } catch (error) {
@@ -139,12 +149,21 @@ export function createLiveMcpDispatch({
 }
 
 export async function runThreeStudioMcp({ argv = process.argv.slice(2), env = process.env, stderr = process.stderr } = {}) {
-  const live = createLiveMcpDispatch({ argv, env });
+  let server;
+  const live = createLiveMcpDispatch({
+    argv,
+    env,
+    onToolContract(contract) {
+      if (!server) throw new RpcError('tool_contract_mismatch', 'The MCP server is not ready to refresh its live tool contract.');
+      return synchronizeThreeStudioToolContract(server, contract);
+    },
+  });
+  server = createThreeStudioMcpServer({ dispatch: live.dispatch });
   const transport = new StdioServerTransport(process.stdin, process.stdout, {
     maxBufferSize: MAX_MESSAGE_BYTES,
   });
   const handle = serveStdio(
-    () => createThreeStudioMcpServer({ dispatch: live.dispatch }),
+    () => server,
     {
       transport,
       onerror(error) {

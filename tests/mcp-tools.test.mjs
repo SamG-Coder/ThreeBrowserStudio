@@ -13,9 +13,11 @@ import {
   STUDIO_TOOL_NAMES,
   TOOL_DEFINITIONS,
   TOOL_CONTRACT,
+  TOOL_CONTRACT_SUMMARY,
   TOOL_SCHEMAS,
   applySchema,
   createThreeStudioMcpServer,
+  computeToolContractHash,
   hydrateEvidenceImageBlocks,
   historySchema,
   inspectSchema,
@@ -23,6 +25,7 @@ import {
   playSchema,
   projectSchema,
   renderSchema,
+  synchronizeThreeStudioToolContract,
   toMcpToolResult,
   validateSchema,
 } from '../src/mcp/index.mjs';
@@ -65,6 +68,41 @@ test('tool contract hash covers the exact registered MCP input schemas', () => {
     inputSchemas,
   })).digest('hex');
   assert.equal(hash, expected);
+  assert.deepEqual(TOOL_CONTRACT.inputSchemas, inputSchemas);
+  assert.equal(TOOL_CONTRACT.features.liveSchemaRefresh, true);
+  assert.equal(computeToolContractHash(TOOL_CONTRACT), TOOL_CONTRACT.hash);
+  assert.equal(TOOL_CONTRACT_SUMMARY.hash, TOOL_CONTRACT.hash);
+  assert.equal(Object.hasOwn(TOOL_CONTRACT_SUMMARY, 'inputSchemas'), false);
+});
+
+test('registered MCP schemas refresh atomically from a verified native contract', () => {
+  const server = createThreeStudioMcpServer({ dispatch: async () => ({ success: true }) });
+  const refreshed = structuredClone(TOOL_CONTRACT);
+  refreshed.contractVersion = 'three-studio-tools/future-test';
+  refreshed.inputSchemas.three_studio_status.properties.contractProbe = { type: 'string', maxLength: 32 };
+  refreshed.hash = computeToolContractHash(refreshed);
+
+  const result = synchronizeThreeStudioToolContract(server, refreshed);
+  assert.deepEqual(result, {
+    changed: true,
+    hash: refreshed.hash,
+    contractVersion: refreshed.contractVersion,
+  });
+  assert.deepEqual(
+    server.toolInputSchemaJson('three_studio_status').properties.contractProbe,
+    { type: 'string', maxLength: 32 },
+  );
+  for (const name of STUDIO_TOOL_NAMES) {
+    assert.deepEqual(server.toolInputSchemaJson(name), refreshed.inputSchemas[name]);
+  }
+  assert.equal(synchronizeThreeStudioToolContract(server, refreshed).changed, false);
+
+  const tampered = structuredClone(refreshed);
+  tampered.inputSchemas.three_studio_status.properties.unhashed = { type: 'boolean' };
+  assert.throws(
+    () => synchronizeThreeStudioToolContract(server, tampered),
+    error => error?.code === 'tool_contract_invalid',
+  );
 });
 
 test('all tool inputs reject undeclared top-level fields', () => {
