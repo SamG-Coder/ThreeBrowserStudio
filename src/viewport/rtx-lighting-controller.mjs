@@ -170,20 +170,25 @@ export function selectStrongestDirectionalLight(lights = []) {
   return deepFreeze(strongest ?? { direction: [0, -1, 0], intensity: 0, strength: 0 });
 }
 
-function requireTypedArray(value, Type, label, multiple, { optional = false } = {}) {
+function requireTypedArray(value, Type, label, multiple, {
+  optional = false,
+  allowEmpty = false,
+} = {}) {
   if (value === undefined && optional) return undefined;
-  if (!(value instanceof Type) || value.length === 0 || value.length % multiple !== 0) {
-    throw new TypeError(`${label} must be a non-empty ${Type.name} with length divisible by ${multiple}.`);
+  if (!(value instanceof Type) || (!allowEmpty && value.length === 0) || value.length % multiple !== 0) {
+    throw new TypeError(
+      `${label} must be ${allowEmpty ? 'a ' : 'a non-empty '}${Type.name} with length divisible by ${multiple}.`,
+    );
   }
   return value;
 }
 
-function validateCollectedScene(value) {
+function validateCollectedScene(value, { allowEmpty = false } = {}) {
   if (!value || typeof value !== 'object') {
     throw new TypeError('RTX scene collector must return an object.');
   }
-  const positions = requireTypedArray(value.positions, Float32Array, 'positions', 3);
-  const indices = requireTypedArray(value.indices, Uint32Array, 'indices', 3);
+  const positions = requireTypedArray(value.positions, Float32Array, 'positions', 3, { allowEmpty });
+  const indices = requireTypedArray(value.indices, Uint32Array, 'indices', 3, { allowEmpty });
   const vertexCount = positions.length / 3;
   for (const index of indices) {
     if (index >= vertexCount) throw new RangeError(`RTX scene index ${index} exceeds ${vertexCount} vertices.`);
@@ -194,14 +199,14 @@ function validateCollectedScene(value) {
     Float32Array,
     'triangleRadiance',
     4,
-    { optional: true },
+    { optional: true, allowEmpty },
   );
   const triangleSurface = requireTypedArray(
     value.triangleSurface,
     Float32Array,
     'triangleSurface',
     4,
-    { optional: true },
+    { optional: true, allowEmpty },
   );
   if (triangleRadiance && triangleRadiance.length !== triangleCount * 4) {
     throw new RangeError('triangleRadiance must contain one vec4 per triangle.');
@@ -440,7 +445,7 @@ export class RtxLightingController {
     else if (this.#failed) reason = this.#reason;
     else if (this.#building) reason = 'building native static scene';
     else if (this.#stale) reason = this.#reason || 'native static scene is stale';
-    else if (!this.#configured) reason = 'not configured';
+    else if (!this.#configured) reason = this.#reason || 'not configured';
     else if (!this.#settings.lighting.enabled) reason = 'native lighting control is disabled';
     else if (active) reason = 'active';
     else reason = 'configured; awaiting a native lighting frame';
@@ -606,11 +611,30 @@ export class RtxLightingController {
         settings: this.#settings,
       });
       if (token !== this.#buildToken || this.#disposed || abort.signal.aborted) return false;
-      const staticScene = validateCollectedScene(collected);
+      const registrable = collected?.registrable !== false;
+      const staticScene = validateCollectedScene(collected, { allowEmpty: !registrable });
       this.#lastCollectionReport = deepFreeze({
         ...staticScene.collectionReport,
         buildToken: token,
       });
+
+      if (!staticScene.collectionReport.registrable) {
+        return await this.#enqueueGpu(() => {
+          if (token !== this.#buildToken || this.#disposed || abort.signal.aborted) return false;
+          this.#destroyRegistration();
+          this.#disposeTarget();
+          this.#directionalLight = selectStrongestDirectionalLight();
+          this.#staticSceneStats = null;
+          this.#configured = false;
+          this.#building = false;
+          this.#active = false;
+          this.#stale = false;
+          this.#failed = false;
+          this.#reason = 'no registrable static RTX triangles; raster WebGPU rendering remains active';
+          this.#frameIndex = 0;
+          return false;
+        });
+      }
 
       return await this.#enqueueGpu(async () => {
         if (token !== this.#buildToken || this.#disposed || abort.signal.aborted) return false;

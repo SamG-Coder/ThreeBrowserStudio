@@ -509,6 +509,65 @@ test('digest preserves bounded collector inclusion and exclusion diagnostics', a
   assert.equal(harness.controller.getDigest().collection.current, false);
 });
 
+test('an unregistrable dynamic-only collection clears prior RTX state and remains raster-only', async () => {
+  let collected = triangleScene();
+  const harness = makeHarness({ collectScene: async () => collected });
+
+  assert.equal(await harness.controller.configure({ scene: {}, width: 4, height: 4 }), true);
+  assert.equal(harness.rtx.registered, true);
+  assert.equal(harness.rtx.registrations.length, 1);
+  const priorTarget = harness.targets.at(-1);
+  assert.equal(priorTarget.disposed, false);
+
+  collected = {
+    positions: new Float32Array(),
+    indices: new Uint32Array(),
+    triangleRadiance: new Float32Array(),
+    triangleSurface: new Float32Array(),
+    lights: new Float32Array(),
+    registrable: false,
+    stats: {
+      objectsVisited: 2,
+      meshesSeen: 1,
+      meshesIncluded: 0,
+      skipped: 1,
+      skipCounts: { rtx_missing_or_ignored_geometry: 1 },
+    },
+    diagnostics: [{
+      severity: 'warning',
+      code: 'rtx_scene_empty',
+      objectId: 'scene/root',
+      message: 'No static triangles remain after excluding timeline-driven geometry.',
+    }],
+  };
+
+  assert.equal(await harness.controller.configure({ scene: {}, width: 4, height: 4 }), false);
+  assert.equal(harness.rtx.registered, false);
+  assert.equal(harness.rtx.destroyCount, 1);
+  assert.equal(harness.rtx.registrations.length, 1);
+  assert.equal(priorTarget.disposed, true);
+
+  const status = harness.controller.getStatus();
+  assert.equal(status.requested, true);
+  assert.equal(status.supported, true);
+  assert.equal(status.configured, false);
+  assert.equal(status.active, false);
+  assert.equal(status.stale, false);
+  assert.equal(status.failed, false);
+  assert.equal(status.reason, 'no registrable static RTX triangles; raster WebGPU rendering remains active');
+  assert.equal(status.staticScene, null);
+
+  const digest = harness.controller.getDigest();
+  assert.equal(digest.registeredToken, null);
+  assert.equal(digest.collection.current, false);
+  assert.equal(digest.collection.registrable, false);
+  assert.equal(digest.collection.stats.triangleCount, 0);
+  assert.equal(digest.collection.skipCounts.rtx_missing_or_ignored_geometry, 1);
+  assert.equal(digest.collection.diagnostics[0].code, 'rtx_scene_empty');
+  assert.equal(await harness.controller.render({ scene: {}, camera: makeCamera() }), false);
+  assert.equal(harness.rtx.evaluations.length, 0);
+});
+
 test('status distinguishes support, request, build, configuration, activity, stale, and off', async () => {
   const collection = deferred();
   const harness = makeHarness({ collectScene: () => collection.promise });
