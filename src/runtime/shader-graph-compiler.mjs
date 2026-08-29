@@ -292,6 +292,38 @@ function mixBlend(TSL, mode, a, b) {
   }
 }
 
+function normalMapBySpace(TSL, color, strength, space) {
+  const mode = String(space ?? 'TANGENT').toUpperCase();
+  const decoded = color.mul(2).sub(1);
+  const boundedStrength = TSL.max(strength, 0);
+
+  if (mode === 'TANGENT') {
+    // Three's normalMap() helper decodes sampled colours internally. The
+    // graph compiler receives an already-decoded vector here so it can share
+    // Blender's strength semantics with the other coordinate spaces without
+    // accidentally applying the decode twice.
+    const mapped = TSL.vec3(
+      decoded.xy.mul(boundedStrength),
+      TSL.mix(1, decoded.z, boundedStrength.saturate()),
+    );
+    return TSL.TBNViewMatrix.mul(mapped).normalize();
+  }
+
+  if (!['OBJECT', 'WORLD', 'BLENDER_OBJECT', 'BLENDER_WORLD'].includes(mode)) {
+    fail('shader_node_mode_unsupported', `Normal Map space ${space} is not compiled live.`, { space: mode });
+  }
+
+  const legacy = mode.startsWith('BLENDER_')
+    ? decoded.mul(TSL.vec3(1, -1, -1))
+    : decoded;
+  const transformed = mode.endsWith('OBJECT')
+    ? TSL.transformNormalToView(legacy)
+    : TSL.cameraViewMatrix.transformDirection(legacy);
+  const target = TSL.directionToFaceDirection(transformed).normalize();
+  const base = TSL.directionToFaceDirection(TSL.normalViewGeometry).normalize();
+  return TSL.mix(base, target, boundedStrength).normalize();
+}
+
 function colorRamp(TSL, factor, stops, interpolation = 'linear') {
   const ordered = [...(Array.isArray(stops) ? stops : [])].sort((a, b) => a.position - b.position);
   if (ordered.length < 2) fail('shader_ramp_invalid', 'A colour ramp requires at least two stops.');
@@ -860,10 +892,9 @@ function compileNodeFactory({ TSL, graph, parameters, textureResolver, featureTr
       return { normal: TSL.normalize(base.add(bumped.sub(TSL.normalLocal))) };
     }
     if (type === 'blender.normalMap') {
-      if (String(p.space ?? 'TANGENT').toUpperCase() !== 'TANGENT') fail('shader_node_mode_unsupported', `Normal Map space ${p.space} is catalogued for interchange but not compiled live yet.`);
       const color = input.get(node, 'color', [0.5, 0.5, 1], 'color');
       const strength = input.get(node, 'strength', 1);
-      return { normal: TSL.normalMap(color.mul(2).sub(1), TSL.vec2(strength, strength)) };
+      return { normal: normalMapBySpace(TSL, color, strength, p.space) };
     }
     if (type === 'blender.fresnel' || type === 'blender.layerWeight') {
       const normal = TSL.normalize(input.get(node, 'normal', TSL.normalWorld));

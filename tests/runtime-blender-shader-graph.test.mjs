@@ -21,6 +21,11 @@ class FakeNode {
   div(value) { return new FakeNode('div', [this, value]); }
   saturate() { return new FakeNode('saturate', [this]); }
   normalize() { return new FakeNode('normalize', [this]); }
+  transformDirection(value) { return new FakeNode('transformDirection', [this, value]); }
+  get x() { return new FakeNode('x', [this]); }
+  get y() { return new FakeNode('y', [this]); }
+  get z() { return new FakeNode('z', [this]); }
+  get xy() { return new FakeNode('xy', [this]); }
 }
 
 const FAKE_TSL = Object.freeze({
@@ -30,11 +35,32 @@ const FAKE_TSL = Object.freeze({
   vec4: (...values) => new FakeNode('vec4', values),
   min: (...values) => new FakeNode('min', values),
   max: (...values) => new FakeNode('max', values),
+  mix: (...values) => new FakeNode('mix', values),
   pow: (...values) => new FakeNode('pow', values),
+  directionToFaceDirection: (...values) => new FakeNode('directionToFaceDirection', values),
+  transformNormalToView: (...values) => new FakeNode('transformNormalToView', values),
+  TBNViewMatrix: new FakeNode('TBNViewMatrix'),
+  cameraViewMatrix: new FakeNode('cameraViewMatrix'),
+  normalViewGeometry: new FakeNode('normalViewGeometry'),
   time: new FakeNode('time'),
   normalLocal: new FakeNode('normalLocal'),
   positionLocal: new FakeNode('positionLocal'),
 });
+
+function operations(value, visited = new Set()) {
+  if (!(value instanceof FakeNode) || visited.has(value)) return [];
+  visited.add(value);
+  return [value.operation, ...value.arguments.flatMap(entry => operations(entry, visited))];
+}
+
+function operationNodes(value, operation, visited = new Set()) {
+  if (!(value instanceof FakeNode) || visited.has(value)) return [];
+  visited.add(value);
+  return [
+    ...(value.operation === operation ? [value] : []),
+    ...value.arguments.flatMap(entry => operationNodes(entry, operation, visited)),
+  ];
+}
 
 test('all catalogued binary math nodes compile to live TSL operations', () => {
   const expectedOperations = {
@@ -91,6 +117,47 @@ test('Time can drive a live Multiply node for animated shader phase', () => {
   assert.equal(compilation.outputs.roughness.arguments[0].operation, 'time');
   assert.equal(compilation.outputs.roughness.arguments[1].operation, 'float');
   assert.deepEqual(compilation.outputs.roughness.arguments[1].arguments, [0.22]);
+});
+
+test('Normal Map compiles every catalogued space with one decode and the correct view transform', () => {
+  const expectedTransform = {
+    TANGENT: 'TBNViewMatrix',
+    OBJECT: 'transformNormalToView',
+    WORLD: 'cameraViewMatrix',
+    BLENDER_OBJECT: 'transformNormalToView',
+    BLENDER_WORLD: 'cameraViewMatrix',
+  };
+
+  for (const [space, transform] of Object.entries(expectedTransform)) {
+    const graph = {
+      formatVersion: 1,
+      id: `shader/normal-map-${space.toLowerCase()}`,
+      domain: 'shader',
+      nodes: [{
+        id: 'normal-map',
+        type: 'ShaderNodeNormalMap',
+        params: { space },
+        inputs: { color: [0.5, 0.5, 1, 1], strength: 1.4 },
+      }],
+      edges: [],
+      outputs: { normal: { nodeId: 'normal-map', port: 'normal' } },
+    };
+
+    const result = compileShaderGraph({ TSL: FAKE_TSL, graph }).outputs.normal;
+    const trace = operations(result);
+    assert.ok(trace.includes(transform), `${space} must use ${transform}`);
+    assert.equal(trace.filter(operation => operation === 'sub').length, 1, `${space} decodes once`);
+    assert.equal(trace.includes('normalMap'), false, `${space} avoids Three's second decode`);
+    if (space.endsWith('OBJECT')) assert.equal(trace.includes('cameraViewMatrix'), false, space);
+    if (space.endsWith('WORLD')) assert.equal(trace.includes('transformNormalToView'), false, space);
+    if (space.startsWith('BLENDER_')) {
+      assert.ok(result.arguments.length > 0, `${space} produces a live expression`);
+      assert.ok(
+        operationNodes(result, 'vec3').some(node => node.arguments.join(',') === '1,-1,-1'),
+        `${space} includes the legacy Y/Z flip`,
+      );
+    }
+  }
 });
 
 test('binary math preserves vector and colour types and rejects mixed sockets', () => {
