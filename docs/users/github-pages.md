@@ -9,12 +9,14 @@ https://samg-coder.github.io/ThreeBrowserStudio/
 
 ## What you get
 
-- The same canvas viewport, bootstrap stage, Follow shot / Review, and HUD
+- The same canvas viewport, the authored starter project, Follow shot / Review, and HUD
 - Stock browser WebGPU (Chrome / Edge)
 - Three.js loaded from a CDN import map (`three@0.184.0`)
 - Settings **Import / Export** of a canonical project JSON pack. Export
-  downloads a file; Import compiles it in this tab. Nothing is written under
-  `%LOCALAPPDATA%`.
+  downloads the compiled starter (or the last import). Import replaces the
+  scene in this tab. Nothing is written under `%LOCALAPPDATA%`.
+  The wait-for-kernel bootstrap stage is desktop-only; it is not a project
+  object and the browser never keeps it.
 - A bottom **Prompt** dock (browser only) for Gemini or an HTTP chat API
   through an abstract provider catalog. API keys live in `localStorage` only
   as AES-GCM ciphertext; a PIN unlocks them. Prompt keys are never included

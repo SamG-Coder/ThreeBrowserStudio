@@ -5,12 +5,12 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const studioRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 /** Bump when Pages must ignore cached ES modules. */
-export const PAGES_ASSET_STAMP = "prompt-12";
+export const PAGES_ASSET_STAMP = "prompt-13";
 
 export function bustRelativeModuleImports(source, stamp = PAGES_ASSET_STAMP) {
   return String(source)
-    .replace(/(from\s+['"])(\.\.?\/[^'"]+?\.mjs)(?:\?[^'"]*)?(['"])/g, `$1$2?v=${stamp}$3`)
-    .replace(/(import\(\s*['"])(\.\.?\/[^'"]+?\.mjs)(?:\?[^'"]*)?(['"]\s*\))/g, `$1$2?v=${stamp}$3`);
+    .replace(/(from\s+['"])(\.\.?\/[^'"]+?\.(?:mjs|json))(?:\?[^'"]*)?(['"])/g, `$1$2?v=${stamp}$3`)
+    .replace(/(import\(\s*['"])(\.\.?\/[^'"]+?\.(?:mjs|json))(?:\?[^'"]*)?(['"]\s*\))/g, `$1$2?v=${stamp}$3`);
 }
 
 async function walkMjs(directory, files = []) {
@@ -32,6 +32,7 @@ export async function preparePages({
   await writeFile(path.join(outputDirectory, ".nojekyll"), "", "utf8");
   await cp(path.join(studioRoot, "pages"), path.join(outputDirectory, "pages"), { recursive: true });
   await cp(path.join(studioRoot, "src"), path.join(outputDirectory, "src"), { recursive: true });
+  await cp(path.join(studioRoot, "templates"), path.join(outputDirectory, "templates"), { recursive: true });
   const htmlPath = path.join(outputDirectory, "index.html");
   const html = await readFile(htmlPath, "utf8");
   await writeFile(

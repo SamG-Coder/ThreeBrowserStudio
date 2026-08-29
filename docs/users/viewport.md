@@ -35,6 +35,11 @@ create files on disk.
 Trusted-project scripts are forced to `agent-safe` on both hosts. Raw
 `ThreeStudioProject` JSON is accepted as well as a pack.
 
+The wait-for-kernel bootstrap stage (floor, plinth, ring) is **not** a project
+object. The desktop host disposes it as soon as a project compiles. The
+browser host never mounts it: it compiles the same starter project a new
+desktop project uses, so Explorer and Export match the viewport.
+
 On the GitHub Pages preview only, a **Prompt** dock sits at the bottom of the
 window for Gemini or an HTTP chat API. The native window does not show it.
 

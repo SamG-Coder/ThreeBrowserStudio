@@ -6,4 +6,4 @@
  * it — GitHub Pages can serve a cached copy of that module without new exports.
  */
 globalThis.__THREE_STUDIO_BROWSER_PREVIEW__ = true;
-await import('../src/viewport/main.mjs?v=prompt-12');
+await import('../src/viewport/main.mjs?v=prompt-13');

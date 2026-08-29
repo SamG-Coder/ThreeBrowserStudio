@@ -1,5 +1,6 @@
 import { PROTOCOL_VERSION } from './constants.mjs';
-import { createProjectDocument, normalizeProjectDocument } from './documents.mjs';
+import { normalizeProjectDocument } from './documents.mjs';
+import { createStarterProjectDocument } from './starter-project-document.mjs';
 import { StudioError } from './errors.mjs';
 import { normalizeStableId } from './ids.mjs';
 import { isPlainRecord, nowIso } from './util.mjs';
@@ -42,10 +43,7 @@ export function projectImportFolderName(name, { clock } = {}) {
 }
 
 export function createBrowserPreviewDocument() {
-  return createProjectDocument({
-    name: 'Browser preview',
-    projectId: 'project/browser-preview',
-  });
+  return createStarterProjectDocument();
 }
 
 export function createProjectPack(document, { clock } = {}) {

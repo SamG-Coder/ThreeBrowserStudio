@@ -88,8 +88,9 @@ async function main() {
     }
   };
 
+  const browserHost = browserPreview || !host.attached;
   const bootstrap = createBootstrapScene();
-  scene.add(bootstrap.root);
+  if (!browserHost) scene.add(bootstrap.root);
   const commandTelemetry = createStudioCommandTelemetry({
     onSinkError: error => console.warn("[ThreeBrowser Studio live feed]", error?.message || error),
   });
@@ -101,7 +102,7 @@ async function main() {
   let promptSheet = null;
   let application = null;
   let preview = null;
-  let bootstrapDisposed = false;
+  let bootstrapDisposed = browserHost;
   let transferBusy = false;
   const liveFeed = createMcpLiveFeedWebGpuHud({
     THREE,
@@ -146,13 +147,7 @@ async function main() {
       if (application) {
         await application.importProjectDocument(document);
       } else if (preview) {
-        await preview.show(document, {
-          onBeforeSwap() {
-            if (bootstrapDisposed) return;
-            bootstrap.dispose();
-            bootstrapDisposed = true;
-          },
-        });
+        await preview.show(document);
       } else {
         throw new Error("Project preview is not ready.");
       }
@@ -362,6 +357,7 @@ async function main() {
         viewport: viewportApi,
         getAspect: () => Math.max(1, innerWidth) / Math.max(1, innerHeight),
       });
+      await preview.show(createBrowserPreviewDocument());
     }
   } catch (error) {
     await dispose();
@@ -371,7 +367,7 @@ async function main() {
   globalThis.__THREE_STUDIO_LIVE_FEED__ = liveFeed;
   liveFeed.setProjectTransferStatus(application
     ? "Exports the open project as JSON."
-    : "Exports a starter pack. Import compiles a project in this tab.");
+    : "Exports the compiled starter. Import replaces it in this tab.");
 
   globalThis.addEventListener("resize", resize);
   globalThis.addEventListener("beforeunload", () => { void dispose(); }, { once: true });

@@ -60,7 +60,10 @@ test('parse accepts a pack, a raw project, and rejects invalid payloads', () => 
 test('browser preview document is a valid starter project', () => {
   const document = createBrowserPreviewDocument();
   assert.equal(document.projectId, 'project/browser-preview');
+  assert.equal(document.name, 'Starter Project');
   assert.equal(document.scriptTrustPolicy, 'agent-safe');
+  assert.equal(document.activeSceneId, 'scene/starter-stage');
+  assert.ok(document.scenes['scene/starter-stage'].entities['entity/starter-stage/ground']);
   const pack = createProjectPack(document);
-  assert.equal(parseProjectPack(JSON.stringify(pack)).name, 'Browser preview');
+  assert.equal(parseProjectPack(JSON.stringify(pack)).name, 'Starter Project');
 });

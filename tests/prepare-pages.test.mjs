@@ -28,6 +28,10 @@ test('pages artifact keeps the browser shell and does not replace site-entry', a
   assert.doesNotMatch(main, /^import .*studio-application/m);
   assert.doesNotMatch(main, /^import .*system-typeface/m);
   assert.match(
+    await readFile(path.join(output, 'templates', 'starter-project', 'project.threestudio.json'), 'utf8'),
+    /Starter Project/,
+  );
+  assert.match(
     bustRelativeModuleImports("import { x } from './foo.mjs';", 'n'),
     /foo\.mjs\?v=n/,
   );
