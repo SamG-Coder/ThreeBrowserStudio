@@ -6,6 +6,7 @@ import {
   MAX_INSPECT_RESPONSE_BYTES,
   MAX_OPERATIONS_PER_TRANSACTION,
 } from '../core/constants.mjs';
+import { MESH_ELEMENT_KINDS, MESH_INSPECTION_LIMITS } from '../core/mesh-inspection.mjs';
 
 const finite = z.number().finite().min(-1_000_000_000).max(1_000_000_000);
 const nonNegativeInteger = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
@@ -80,7 +81,7 @@ export const INSPECT_SLICES = Object.freeze([
 ]);
 
 export const INSPECT_QUERIES = Object.freeze([
-  'selector', 'sceneDigest', 'resourceDigest', 'changedSinceRevision',
+  'selector', 'sceneDigest', 'resourceDigest', 'meshElements', 'graphDigest', 'rtxDigest', 'changedSinceRevision',
   'unresolvedResources', 'unusedResources', 'graphCatalog', 'playState',
   'latestEvidence', 'blenderCatalog',
 ]);
@@ -90,11 +91,23 @@ export const inspectSchema = z.object({
   ...projectFields,
   query: z.enum(INSPECT_QUERIES).default('sceneDigest'),
   selector: selectorSchema.optional(),
+  element: z.enum(MESH_ELEMENT_KINDS).optional(),
   include: z.array(z.enum(INSPECT_SLICES)).max(6).optional().default(['summary']),
   sinceRevision: nonNegativeInteger.optional(),
   cursor: cursor.optional(),
   limit: z.number().int().min(1).max(200).optional().default(50),
-}).strict();
+}).strict().superRefine((value, context) => {
+  if (['meshElements', 'graphDigest'].includes(value.query) && value.selector?.ids?.length !== 1) {
+    context.addIssue({
+      code: 'custom',
+      path: ['selector', 'ids'],
+      message: `${value.query} requires exactly one resource ID.`,
+    });
+  }
+  if (value.element !== undefined && value.query !== 'meshElements') {
+    context.addIssue({ code: 'custom', path: ['element'], message: 'element is only valid for meshElements.' });
+  }
+});
 
 export const OPERATION_TYPES = Object.freeze([
   'scene.create', 'scene.patch', 'scene.delete', 'scene.setActive',
@@ -462,10 +475,16 @@ const TOOL_CONTRACT_LIMITS = Object.freeze({
   maxResourceArrayItems: MAX_RESOURCE_ARRAY_ITEMS,
   maxGeometryEditCommands: MAX_GEOMETRY_EDIT_COMMANDS,
   maxGeometryEditVertexSelection: MAX_GEOMETRY_EDIT_VERTEX_SELECTION,
+  maxMeshElementsPerPage: MESH_INSPECTION_LIMITS.maxElementsPerPage,
+  maxMeshElementAdjacency: MESH_INSPECTION_LIMITS.maxAdjacencyPerElement,
+  maxDerivedMeshEdges: MESH_INSPECTION_LIMITS.maxDerivedEdges,
 });
 const TOOL_CONTRACT_FEATURES = Object.freeze({
   compactGeometrySelectionAll: true,
   resourceDigest: true,
+  meshElements: true,
+  graphDigest: true,
+  rtxDigest: true,
   liveSchemaRefresh: true,
 });
 const TOOL_CONTRACT_SUMMARY_FIELDS = Object.freeze({

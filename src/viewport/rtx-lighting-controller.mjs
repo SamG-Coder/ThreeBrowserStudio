@@ -24,6 +24,12 @@ export const DEFAULT_RTX_LIGHTING_SETTINGS = DEFAULT_SETTINGS;
 
 const MAX_PACKED_LIGHTS = 8;
 const PACKED_LIGHT_FLOATS = 16;
+const MAX_COLLECTION_REPORT_DIAGNOSTICS = 256;
+const COLLECTION_STAT_KEYS = Object.freeze([
+  'objectsVisited', 'meshesSeen', 'meshesIncluded', 'instancesIncluded',
+  'lightsSeen', 'vertexCount', 'triangleCount', 'pointSpotLightCount',
+  'directionalLightCount', 'skipped',
+]);
 
 function finite(value, fallback) {
   const number = Number(value);
@@ -217,6 +223,31 @@ function validateCollectedScene(value) {
     throw new TypeError('instanceGroups must be an array when provided.');
   }
   const directionalLights = value.directionalLights ?? (value.directionalLight ? [value.directionalLight] : []);
+  const reportedStats = {};
+  for (const key of COLLECTION_STAT_KEYS) {
+    const candidate = value.stats?.[key];
+    if (Number.isSafeInteger(candidate) && candidate >= 0) reportedStats[key] = candidate;
+  }
+  const skipCounts = {};
+  for (const [key, count] of Object.entries(value.stats?.skipCounts ?? value.skipCounts ?? {}).slice(0, 128)) {
+    if (typeof key === 'string' && key.length <= 96 && Number.isSafeInteger(count) && count >= 0) {
+      skipCounts[key] = count;
+    }
+  }
+  const sourceDiagnostics = Array.isArray(value.diagnostics) ? value.diagnostics : [];
+  const diagnostics = sourceDiagnostics.slice(0, MAX_COLLECTION_REPORT_DIAGNOSTICS).map(item => ({
+    severity: ['info', 'warning', 'error'].includes(item?.severity) ? item.severity : 'warning',
+    code: String(item?.code ?? 'rtx_diagnostic').slice(0, 96),
+    objectId: String(item?.objectId ?? '').slice(0, 160),
+    message: String(item?.message ?? '').slice(0, 320),
+  }));
+  const stats = deepFreeze({
+    ...reportedStats,
+    vertexCount,
+    triangleCount,
+    packedLightCount: packedLights ? packedLights.length / PACKED_LIGHT_FLOATS : 0,
+    directionalLightCount: Array.isArray(directionalLights) ? directionalLights.length : 0,
+  });
   return {
     positions,
     indices,
@@ -225,11 +256,13 @@ function validateCollectedScene(value) {
     lights: packedLights,
     instanceGroups,
     directionalLight: selectStrongestDirectionalLight(directionalLights),
-    stats: deepFreeze({
-      vertexCount,
-      triangleCount,
-      packedLightCount: packedLights ? packedLights.length / PACKED_LIGHT_FLOATS : 0,
-      directionalLightCount: Array.isArray(directionalLights) ? directionalLights.length : 0,
+    stats,
+    collectionReport: deepFreeze({
+      registrable: value.registrable !== false,
+      stats,
+      skipCounts,
+      diagnostics,
+      diagnosticsTruncated: Math.max(0, sourceDiagnostics.length - diagnostics.length),
     }),
   };
 }
@@ -323,6 +356,7 @@ export class RtxLightingController {
   #frameIndex = 0;
   #directionalLight = selectStrongestDirectionalLight();
   #staticSceneStats = null;
+  #lastCollectionReport = null;
   #disposed = false;
   #gpuTail = Promise.resolve();
   #gpuPending = 0;
@@ -424,6 +458,20 @@ export class RtxLightingController {
       settings: this.#settings,
       staticScene: this.#staticSceneStats,
       runtimeFeature: feature ? { ...feature } : null,
+    });
+  }
+
+  getDigest() {
+    const status = this.getStatus();
+    return deepFreeze({
+      status,
+      registeredToken: this.#registeredToken,
+      collection: this.#lastCollectionReport
+        ? {
+            ...this.#lastCollectionReport,
+            current: Boolean(status.configured && !status.stale && !status.failed),
+          }
+        : null,
     });
   }
 
@@ -559,6 +607,10 @@ export class RtxLightingController {
       });
       if (token !== this.#buildToken || this.#disposed || abort.signal.aborted) return false;
       const staticScene = validateCollectedScene(collected);
+      this.#lastCollectionReport = deepFreeze({
+        ...staticScene.collectionReport,
+        buildToken: token,
+      });
 
       return await this.#enqueueGpu(async () => {
         if (token !== this.#buildToken || this.#disposed || abort.signal.aborted) return false;
@@ -824,6 +876,7 @@ export class RtxLightingController {
     this.#failed = false;
     this.#reason = 'disposed';
     this.#staticSceneStats = null;
+    this.#lastCollectionReport = null;
     this.#disposed = true;
   }
 }

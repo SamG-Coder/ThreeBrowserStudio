@@ -6,6 +6,7 @@ export * from './errors.mjs';
 export * from './ids.mjs';
 export * from './indexes.mjs';
 export * from './kernel.mjs';
+export * from './mesh-inspection.mjs';
 export * from './operations.mjs';
 export * from './persistence.mjs';
 export * from './rtx-settings.mjs';

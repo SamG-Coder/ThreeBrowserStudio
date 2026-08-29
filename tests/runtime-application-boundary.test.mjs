@@ -488,6 +488,119 @@ test('resource digest enforces one total response budget across a maximum-size p
   assert.equal(next.resources[0].id, `asset/budget-${String(digest.resources.length).padStart(3, '0')}`);
 });
 
+test('meshElements returns exact hash-guarded authored topology pages', async (t) => {
+  const { application } = await applicationFixture(t);
+  await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1',
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    baseRevision: 0,
+    idempotencyKey: 'mesh-elements-create-0001',
+    label: 'Create exact inspectable mesh',
+    operations: [{
+      op: 'resource.create',
+      resourceType: 'geometry',
+      resource: {
+        id: 'geometry/mesh-elements',
+        kind: 'geometry',
+        name: 'Inspectable quad',
+        recipe: {
+          kind: 'indexedMesh',
+          positions: [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0],
+          indices: [0, 1, 2, 0, 2, 3],
+          uvs: [0, 0, 1, 0, 1, 1, 0, 1],
+        },
+      },
+    }],
+  });
+  const first = await application.dispatch('three_studio_inspect', {
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    query: 'meshElements',
+    selector: { ids: ['geometry/mesh-elements'] },
+    element: 'faces',
+    limit: 1,
+  });
+  assert.equal(first.success, true);
+  assert.equal(first.revision, 1);
+  assert.equal(first.elements.length, 1);
+  assert.deepEqual(first.elements[0].vertices, [0, 1, 2]);
+  assert.match(first.resourceHash, /^[a-f0-9]{64}$/);
+  assert.match(first.topologyHash, /^[a-f0-9]{64}$/);
+  assert.match(first.nextCursor, /^[a-f0-9]{64}\.[a-f0-9]{64}\.1$/);
+  const second = await application.dispatch('three_studio_inspect', {
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    query: 'meshElements',
+    selector: { ids: ['geometry/mesh-elements'] },
+    element: 'faces',
+    cursor: first.nextCursor,
+    limit: 1,
+  });
+  assert.deepEqual(second.elements[0].vertices, [0, 2, 3]);
+  assert.equal(second.nextCursor, null);
+});
+
+test('graphDigest and rtxDigest expose exact authoring and runtime diagnostics', async (t) => {
+  const { application, viewport } = await applicationFixture(t);
+  await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1',
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    baseRevision: 0,
+    idempotencyKey: 'graph-digest-create-0001',
+    label: 'Create inspectable graph',
+    operations: [{
+      op: 'resource.create',
+      resourceType: 'graph',
+      resource: {
+        id: 'graph/inspectable',
+        kind: 'graph',
+        name: 'Inspectable graph',
+        graph: {
+          formatVersion: 1,
+          id: 'graph/inspectable',
+          domain: 'shader',
+          nodes: [{ id: 'color', type: 'constant.color', params: { value: [0.2, 0.4, 0.6] } }],
+          edges: [],
+          outputs: { baseColor: { nodeId: 'color', port: 'value' } },
+        },
+      },
+    }],
+  });
+  const graph = await application.dispatch('three_studio_inspect', {
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    query: 'graphDigest',
+    selector: { ids: ['graph/inspectable'] },
+    limit: 1,
+  });
+  assert.equal(graph.success, true);
+  assert.equal(graph.validation.valid, true);
+  assert.equal(graph.nodes[0].id, 'color');
+  assert.match(graph.resourceHash, /^[a-f0-9]{64}$/);
+  assert.match(graph.graphHash, /^[a-f0-9]{64}$/);
+
+  viewport.getRtxStatus = () => ({ supported: true, requested: false, active: false });
+  viewport.getRtxDigest = () => ({
+    status: viewport.getRtxStatus(),
+    collection: {
+      current: false,
+      skipCounts: { rtx_transparent: 2 },
+      diagnostics: [{ code: 'rtx_transparent', objectId: 'entity/glass' }],
+    },
+  });
+  const rtx = await application.dispatch('three_studio_inspect', {
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    query: 'rtxDigest',
+  });
+  assert.equal(rtx.success, true);
+  assert.match(rtx.authoredHash, /^[a-f0-9]{64}$/);
+  assert.equal(rtx.effective.collection.skipCounts.rtx_transparent, 2);
+  assert.equal(rtx.limits.maxTriangles, 2_000_000);
+});
+
 test('resource digest compacts a pathological first resource before bridge serialization', () => {
   const document = createProjectDocument({ projectId: 'project/resource-pathological', name: 'Pathological resource' });
   const id = 'asset/pathological-tag';

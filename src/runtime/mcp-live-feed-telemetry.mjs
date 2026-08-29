@@ -27,6 +27,10 @@ const PROJECT_ACTIONS = Object.freeze({
 const INSPECT_QUERIES = Object.freeze({
   selector: 'Inspect selected scene data',
   sceneDigest: 'Inspect scene digest',
+  resourceDigest: 'Inspect resource digest',
+  meshElements: 'Inspect exact mesh elements',
+  graphDigest: 'Inspect graph digest',
+  rtxDigest: 'Inspect RTX digest',
   changedSinceRevision: 'Inspect recent changes',
   unresolvedResources: 'Inspect unresolved resources',
   unusedResources: 'Inspect unused resources',

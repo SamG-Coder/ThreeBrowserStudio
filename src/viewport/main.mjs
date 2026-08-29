@@ -170,6 +170,9 @@ async function main() {
     getRtxStatus() {
       return rtxLighting.getStatus();
     },
+    getRtxDigest() {
+      return rtxLighting.getDigest();
+    },
     capture: capture.capture,
     async focusBounds(bounds) {
       const centre = new THREE.Vector3();

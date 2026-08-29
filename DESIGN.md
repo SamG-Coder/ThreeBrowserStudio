@@ -422,11 +422,22 @@ hashes and topology summaries. Dense geometry attributes are reported as
 counts/item sizes rather than echoed as raw arrays, so a model can verify that
 it authored real indexed geometry without consuming the next request budget.
 
+`meshElements` is the exact dense-geometry path. It pages vertices, unique
+edges, triangular faces, and corners with available normal/UV/colour attributes
+and bounded adjacency. Cursors include resource and topology hashes.
+`graphDigest` returns graph/resource guards plus byte-bounded nodes, edges,
+outputs, settings, and validation diagnostics. `rtxDigest` retains the native
+collector report so skipped geometry can be diagnosed without rebuilding the
+static scene during inspection.
+
 Useful special queries include:
 
 - scene digest;
 - resource digest with indexed-mesh counts, local bounds, compact components,
   and incoming references;
+- exact mesh elements and adjacency;
+- exact graph topology and validation diagnostics;
+- authored/effective RTX state and collector exclusions;
 - changed since revision;
 - unresolved resources and unused resources;
 - graph node catalog and typed ports;

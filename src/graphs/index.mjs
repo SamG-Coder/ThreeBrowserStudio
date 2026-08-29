@@ -21,3 +21,5 @@ export {
   BLENDER_SHADER_NODE_INVENTORY_SUMMARY,
   queryBlenderShaderNodeInventory,
 } from './blender-shader-node-inventory.mjs';
+
+export { buildGraphDigest } from './digest.mjs';

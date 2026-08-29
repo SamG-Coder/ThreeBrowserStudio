@@ -3,6 +3,7 @@ import path from 'node:path';
 import {
   AtomicProjectStore,
   AuthoringKernel,
+  buildMeshElements,
   MAX_INSPECT_RESPONSE_BYTES,
   ProjectIndex,
   PROTOCOL_VERSION,
@@ -27,6 +28,7 @@ import {
 } from '../bridge/index.mjs';
 import {
   BLENDER_SHADER_NODE_INVENTORY_SUMMARY,
+  buildGraphDigest,
   queryBlenderShaderNodeInventory,
   queryGraphCatalog,
   validateGraph,
@@ -38,6 +40,9 @@ import { validateAnimationResource } from './animation-runtime.mjs';
 import { frameCameraToBounds } from '../viewport/camera-projection.mjs';
 import { describeEffectiveCamera } from '../viewport/camera-evidence.mjs';
 import { LAYOUT_PATTERN_MODES } from '../core/layout-patterns.mjs';
+import { RTX_SCENE_LIMITS } from './rtx-scene-collector.mjs';
+
+const INSPECT_RESPONSE_ENVELOPE_RESERVE_BYTES = 2_048;
 
 const RESOURCE_OPERATIONS = Object.freeze({
   'geometry.put': ['geometries', 'put'],
@@ -1020,8 +1025,51 @@ export class StudioApplication {
       projectId: document.projectId,
       ...buildResourceDigest(document, params),
     };
+    if (params.query === 'meshElements') {
+      const resourceId = params.selector.ids[0];
+      const { resource } = new ProjectIndex(document).getResource(resourceId, 'geometries');
+      return {
+        success: true,
+        revision: document.revision,
+        projectId: document.projectId,
+        ...buildMeshElements(resource, {
+          ...params,
+          responseByteBudget: MAX_INSPECT_RESPONSE_BYTES - INSPECT_RESPONSE_ENVELOPE_RESERVE_BYTES,
+        }),
+      };
+    }
+    if (params.query === 'graphDigest') {
+      const resourceId = params.selector.ids[0];
+      const { resource } = new ProjectIndex(document).getResource(resourceId, 'graphs');
+      return {
+        success: true,
+        revision: document.revision,
+        projectId: document.projectId,
+        ...buildGraphDigest(resource, {
+          cursor: params.cursor,
+          nodeLimit: params.limit,
+          edgeLimit: params.limit,
+          maxResponseBytes: MAX_INSPECT_RESPONSE_BYTES - INSPECT_RESPONSE_ENVELOPE_RESERVE_BYTES,
+        }),
+      };
+    }
     const scene = document.scenes[params.sceneId ?? document.activeSceneId];
     if (!scene) throw new StudioError('scene_not_found', `Scene ${params.sceneId} does not exist.`);
+    if (params.query === 'rtxDigest') {
+      const status = this.#viewport.getRtxStatus?.() ?? null;
+      const authored = scene.settings.rtx ?? null;
+      return {
+        success: true,
+        revision: document.revision,
+        projectId: document.projectId,
+        sceneId: scene.id,
+        sceneHash: contentHash(scene),
+        authored: structuredClone(authored),
+        authoredHash: contentHash(authored),
+        effective: this.#viewport.getRtxDigest?.() ?? { status, collection: null },
+        limits: RTX_SCENE_LIMITS,
+      };
+    }
     if (params.query === 'changedSinceRevision') return { success: true, revision: document.revision, ...this.#kernel.changedSince(params.sinceRevision ?? document.revision) };
     if (params.query === 'graphCatalog') return {
       success: true,

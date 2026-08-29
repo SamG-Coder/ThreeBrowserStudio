@@ -9,7 +9,8 @@ authority. In the current lean slice:
 
 - inspect supports scene summaries and delete-guard hashes,
   ID/name/kind/tag selection, tree, transforms, components, compiled bounds,
-  incoming references, bounded resource topology/component digests,
+  incoming references, bounded resource topology/component digests, exact
+  hash-guarded mesh elements, graph structure, RTX collection diagnostics,
   resource-usage checks, changes, graph catalog, Play counters, and latest
   evidence metadata;
 - apply supports the declared scene/entity/resource operations plus persistent
@@ -32,9 +33,9 @@ Use it only after both status and the current tool schema expose it.
 ## Authoring loop
 
 1. Call status after connecting or losing context.
-   If the adapter reports `tool_contract_mismatch`, stop and reconnect the MCP
-   client so it rediscovers the current schemas; do not infer support from a
-   newer native status through an older tool declaration.
+   The adapter refreshes verified native schemas in place. If it still reports
+   `tool_contract_mismatch`, stop and reconnect because the running native
+   session predates the refresh manifest or uses another protocol.
 2. Inspect only the bounded slices needed for the next decision.
 3. Use exact stable IDs returned by inspect for every mutation.
 4. Group one coherent intent into one labelled atomic apply.
@@ -149,6 +150,10 @@ operations.
   duplicating it. Repetition amplifies silhouette and shading defects.
 - Use `resourceDigest` to verify indexed vertex/triangle counts, attributes,
   bounds, and references without requesting raw geometry arrays.
+- Use `meshElements` for exact vertices, unique edges, triangular faces, corner
+  attributes, and adjacency; continue only with its resource/topology-bound
+  cursor. Use `graphDigest` before graph edits and `rtxDigest` when geometry is
+  unexpectedly missing from native lighting.
 - For whole-mesh transforms or smoothing, use `selection: "all"`; keep explicit
   vertex-index lists for genuinely local edits.
 - Treat realism as the combination of silhouette, bevel/profile detail,

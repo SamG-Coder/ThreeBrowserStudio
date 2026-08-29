@@ -22,7 +22,7 @@ export const TOOL_DEFINITIONS = Object.freeze({
   },
   three_studio_inspect: {
     title: 'Inspect Three Studio',
-    description: 'Read paginated scene summaries plus tree/guard hashes, transform, component, compiled bounds, and incoming-reference slices; inspect bounded resource topology/components without echoing dense arrays; query changes, unresolved/unused resources, graph and Blender compatibility catalogs, animation Play state, or latest beauty evidence.',
+    description: 'Read paginated scene summaries plus tree/guard hashes, transform, component, compiled bounds, and incoming-reference slices; inspect bounded resource, exact mesh-element, graph, and RTX digests without echoing unbounded arrays; query changes, unresolved/unused resources, compatibility catalogs, Play state, or latest evidence.',
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   three_studio_apply: {

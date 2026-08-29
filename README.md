@@ -37,11 +37,12 @@ The nine-tool shape is stable, but each tool advertises only its live slice:
 
 - `inspect`: scene digest or ID/name/kind/tag selection with summary, tree and
   delete-guard hashes, transform, component, compiled-bounds, and incoming-
-  reference slices; bounded resource topology/component digests; changes,
+  reference slices; bounded resource topology/component digests; exact
+  mesh-element pages, graph digests, and RTX collector diagnostics; changes,
   unresolved/unused resources, graph and Blender compatibility catalogs,
   Play/Action state, and latest evidence metadata;
-- `apply`: 18 atomic scene, camera, layout, indexed-geometry, RTX, entity, and
-  resource operations;
+- `apply`: the live-refreshed atomic scene, camera, layout, indexed-geometry,
+  RTX, entity, and resource operation contract;
 - `validate`: whole-project interactive schema, reference, hierarchy, typed
   graph, Action/keyframe, and budget validation;
 - `render`: an exact animation frame, named camera, or explicit framing followed

@@ -255,12 +255,32 @@
       "properties": {
         "protocolVersion": { "$ref": "#/$defs/protocolVersion" }, "sessionId": { "$ref": "#/$defs/sessionId" },
         "projectId": { "$ref": "#/$defs/id" }, "sceneId": { "$ref": "#/$defs/id" },
-        "query": { "enum": ["selector", "sceneDigest", "resourceDigest", "changedSinceRevision", "unresolvedResources", "unusedResources", "graphCatalog", "playState", "latestEvidence", "blenderCatalog"] },
+        "query": { "enum": ["selector", "sceneDigest", "resourceDigest", "meshElements", "graphDigest", "rtxDigest", "changedSinceRevision", "unresolvedResources", "unusedResources", "graphCatalog", "playState", "latestEvidence", "blenderCatalog"] },
         "selector": { "$ref": "#/$defs/selector" },
+        "element": { "enum": ["vertices", "edges", "faces", "corners"] },
         "include": { "type": "array", "maxItems": 6, "items": { "enum": ["summary", "tree", "transform", "components", "bounds", "references"] } },
         "sinceRevision": { "$ref": "#/$defs/revision" }, "cursor": { "type": "string", "maxLength": 1024 },
         "limit": { "type": "integer", "minimum": 1, "maximum": 200 }
-      }
+      },
+      "allOf": [
+          {
+            "if": { "properties": { "query": { "enum": ["meshElements", "graphDigest"] } }, "required": ["query"] },
+            "then": {
+              "required": ["selector"],
+              "properties": {
+                "selector": {
+                  "type": "object",
+                  "required": ["ids"],
+                  "properties": { "ids": { "type": "array", "minItems": 1, "maxItems": 1 } }
+                }
+              }
+            }
+          },
+          {
+            "if": { "required": ["element"] },
+            "then": { "properties": { "query": { "const": "meshElements" } } }
+          }
+      ]
     },
     "operation": {
       "type": "object", "additionalProperties": false, "required": ["op"],

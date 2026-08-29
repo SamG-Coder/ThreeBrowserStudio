@@ -34,6 +34,10 @@ test('summaries use only compact allowlisted facts and sanitize control, bidi, a
     checks: ['graphs', 'references', '<unsafe>', 'graphs'],
   }), 'Validate graphs, references');
   assert.equal(sanitizeLiveFeedText(' <b>ok</b>\u0000\u202etxt& '), '‹b›ok‹/b› txt＆');
+  assert.equal(summarizeStudioCommand('three_studio_inspect', { query: 'resourceDigest' }), 'Inspect resource digest');
+  assert.equal(summarizeStudioCommand('three_studio_inspect', { query: 'meshElements' }), 'Inspect exact mesh elements');
+  assert.equal(summarizeStudioCommand('three_studio_inspect', { query: 'graphDigest' }), 'Inspect graph digest');
+  assert.equal(summarizeStudioCommand('three_studio_inspect', { query: 'rtxDigest' }), 'Inspect RTX digest');
 });
 
 test('one telemetry entry advances started to completed without retaining raw request or result data', () => {

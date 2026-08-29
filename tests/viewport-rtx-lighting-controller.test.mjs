@@ -392,6 +392,42 @@ test('collector payloads may contain no packed point or spot lights', async () =
   assert.equal(rtx.evaluations[0].directionalLightIntensity, 6);
 });
 
+test('digest preserves bounded collector inclusion and exclusion diagnostics', async () => {
+  const harness = makeHarness({
+    collectScene: async () => triangleScene({
+      stats: {
+        objectsVisited: 12,
+        meshesSeen: 5,
+        meshesIncluded: 1,
+        skipped: 4,
+        skipCounts: { rtx_hidden: 3, rtx_transparent: 1 },
+      },
+      diagnostics: [{
+        severity: 'warning',
+        code: 'rtx_transparent',
+        objectId: 'entity/window',
+        message: 'Transparent material was excluded.',
+      }],
+      registrable: true,
+    }),
+  });
+  assert.equal(await harness.controller.configure({ scene: {}, width: 4, height: 4 }), true);
+  const digest = harness.controller.getDigest();
+  assert.equal(digest.collection.current, true);
+  assert.equal(digest.collection.registrable, true);
+  assert.equal(digest.collection.stats.objectsVisited, 12);
+  assert.equal(digest.collection.stats.triangleCount, 1);
+  assert.deepEqual(digest.collection.skipCounts, { rtx_hidden: 3, rtx_transparent: 1 });
+  assert.deepEqual(digest.collection.diagnostics, [{
+    severity: 'warning',
+    code: 'rtx_transparent',
+    objectId: 'entity/window',
+    message: 'Transparent material was excluded.',
+  }]);
+  harness.controller.markStale('scene changed');
+  assert.equal(harness.controller.getDigest().collection.current, false);
+});
+
 test('status distinguishes support, request, build, configuration, activity, stale, and off', async () => {
   const collection = deferred();
   const harness = makeHarness({ collectScene: () => collection.promise });

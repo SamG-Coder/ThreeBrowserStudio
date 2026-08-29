@@ -163,7 +163,7 @@ test('apply enforces shared mutation metadata and the 128-operation bound', () =
 test('MCP contract exposes only the live inspect and mutation slice', () => {
   assert.deepEqual(INSPECT_SLICES, ['summary', 'tree', 'transform', 'components', 'bounds', 'references']);
   assert.deepEqual(INSPECT_QUERIES, [
-    'selector', 'sceneDigest', 'resourceDigest', 'changedSinceRevision',
+    'selector', 'sceneDigest', 'resourceDigest', 'meshElements', 'graphDigest', 'rtxDigest', 'changedSinceRevision',
     'unresolvedResources', 'unusedResources', 'graphCatalog', 'playState',
     'latestEvidence', 'blenderCatalog',
   ]);
@@ -179,6 +179,10 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
   assert.equal(inspectSchema.safeParse({ query: 'unresolvedResources' }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'unusedResources' }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'resourceDigest', selector: { ids: ['geometry/dense'] }, include: ['components', 'bounds', 'references'] }).success, true);
+  assert.equal(inspectSchema.safeParse({ query: 'meshElements', selector: { ids: ['geometry/dense'] }, element: 'faces' }).success, true);
+  assert.equal(inspectSchema.safeParse({ query: 'meshElements', selector: { ids: ['geometry/a', 'geometry/b'] } }).success, false);
+  assert.equal(inspectSchema.safeParse({ query: 'graphDigest', selector: { ids: ['graph/surface'] } }).success, true);
+  assert.equal(inspectSchema.safeParse({ query: 'rtxDigest' }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'codeDiagnostics' }).success, false);
   assert.equal(inspectSchema.safeParse({ query: 'selector', selector: { resourceId: 'material/hero' } }).success, false);
   assert.equal(inspectSchema.safeParse({ query: 'sceneDigest', include: ['script'] }).success, false);
