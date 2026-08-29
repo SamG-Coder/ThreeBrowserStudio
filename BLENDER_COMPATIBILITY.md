@@ -57,7 +57,7 @@ because Blender itself documents operators separately from direct
 | Geometry Nodes | Typed graph IR | Validation only |
 | Shader Editor | Typed shader graph IR | Blender RNA core compiles to TSL/WebGPU; unsupported nodes fail explicitly |
 | Compositor/View Layers | Future render graph and named passes | Beauty pass only |
-| Physics | Future solver adapter or baked Actions | Not executed |
+| Physics | Ordered Ocean geometry modifier; future solver adapter/cache resources | Bounded deterministic Ocean displacement only; no physics world or general solver |
 | Python | Project-owned validated `.mjs` design | Stored/validated internally, not executed |
 
 Collections and view layers are not the same thing as parenting. Blender lets

@@ -102,3 +102,17 @@ test('Blender catalog summary is complete, stable, and internally consistent', (
   assert.ok(Object.isFrozen(BLENDER_CATALOG_SUMMARY));
   assert.ok(Object.isFrozen(BLENDER_CATALOG_SUMMARY.byStatus));
 });
+
+test('physics catalog claims only the bounded live Ocean subset', () => {
+  const physics = BLENDER_CATALOG.entries.physics;
+  assert.equal(physics.status, 'partial');
+  assert.deepEqual(physics.supportedSubset, [
+    'bounded deterministic seeded Ocean displacement over existing local-XY geometry',
+    'timeline seek and step through authored Ocean time and timelineScale',
+    'bounded normal recalculation for the displaced surface',
+  ]);
+  assert.match(physics.runtimeNotes, /No physics world, collision solver, particle system/);
+  assert.ok(physics.unsupportedSubset.includes('collision'));
+  assert.ok(physics.unsupportedSubset.includes('particles'));
+  assert.ok(physics.unsupportedSubset.includes('simulation cache and bake'));
+});
