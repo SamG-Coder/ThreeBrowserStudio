@@ -324,6 +324,7 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
   assert.equal(inspectSchema.safeParse({ query: 'selector', selector: { tag: 'hero' }, include: ['tree', 'transform', 'bounds', 'references'] }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'selector', selector: { collectionId: 'collection/environment' } }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'graphCatalog', selector: { kind: 'shader', status: 'live-tsl' } }).success, true);
+  assert.equal(inspectSchema.safeParse({ query: 'graphCatalog', selector: { kind: 'shader', status: 'api-only' } }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'unresolvedResources' }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'unusedResources' }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'resourceDigest', selector: { ids: ['geometry/dense'] }, include: ['components', 'bounds', 'references'] }).success, true);

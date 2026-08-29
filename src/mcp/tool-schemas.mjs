@@ -87,7 +87,7 @@ const selectorSchema = z.object({
   collectionId: identifier.optional(),
   status: z.enum([
     'implemented', 'partial', 'planned', 'bake-required', 'not-applicable',
-    'live-tsl', 'layout-only', 'catalogued', 'migration-required',
+    'live-tsl', 'layout-only', 'api-only', 'catalogued', 'migration-required',
     'live-runtime', 'live-geometry',
   ]).optional(),
 }).strict();

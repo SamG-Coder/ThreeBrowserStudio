@@ -105,6 +105,7 @@ test('modifier execution classifications are conservative and internally consist
     BLENDER_LIVE_GEOMETRY_MODIFIER_TYPES,
   );
   assert.equal(BLENDER_MODIFIER_INVENTORY.byType.NODES.status, 'planned');
+  assert.match(BLENDER_MODIFIER_INVENTORY.byType.NODES.studioNotes, /typed procedural geometry graph domain and evaluator are planned/);
   assert.equal(BLENDER_MODIFIER_INVENTORY.byType.BEVEL.status, 'bake-required');
   assert.equal(BLENDER_MODIFIER_INVENTORY.byType.CLOTH.status, 'planned');
   assert.equal(BLENDER_MODIFIER_INVENTORY.byType.OCEAN.status, 'live-geometry');

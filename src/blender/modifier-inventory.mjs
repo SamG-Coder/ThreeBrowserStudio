@@ -79,7 +79,7 @@ const modifierRows = [
   ['BUILD', 'BuildModifier', 'generate', 'Build', 'Reveal or hide mesh faces sequentially over time.', 'bake-required'],
   ['DECIMATE', 'DecimateModifier', 'generate', 'Decimate', 'Reduce mesh density while approximating the original shape.', 'live-geometry', 'Studio evaluates the bounded deterministic collapse subset with a ratio or exact triangle target.'],
   ['EDGE_SPLIT', 'EdgeSplitModifier', 'generate', 'Edge Split', 'Split joined faces along selected or sharp edges.', 'live-geometry', 'Studio evaluates angle-based edge splitting; named sharp-edge attributes are not yet an input.'],
-  ['NODES', 'NodesModifier', 'generate', 'Geometry Nodes', 'Evaluate a geometry node group as a modifier.', 'planned', 'Studio validates typed geometry graph IR, but does not yet evaluate Geometry Nodes graphs. Bundled modifier assets also resolve to this RNA type.'],
+  ['NODES', 'NodesModifier', 'generate', 'Geometry Nodes', 'Evaluate a geometry node group as a modifier.', 'planned', 'A typed procedural geometry graph domain and evaluator are planned; the current shader, texture, and blueprint graph domains do not execute Geometry Nodes. Bundled modifier assets also resolve to this RNA type.'],
   ['MASK', 'MaskModifier', 'generate', 'Mask', 'Hide vertices dynamically from a vertex group or armature.', 'bake-required'],
   ['MIRROR', 'MirrorModifier', 'generate', 'Mirror', 'Mirror geometry across local axes or a mirror object.', 'live-runtime', 'Studio evaluates the supported single-axis mirror subset as non-destructive instance matrices.'],
   ['MESH_TO_VOLUME', 'MeshToVolumeModifier', 'generate', 'Mesh to Volume', 'Convert mesh geometry into a volume grid.', 'bake-required'],
