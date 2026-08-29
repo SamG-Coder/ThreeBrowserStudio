@@ -21,6 +21,9 @@ shot. Do not treat the Review pose as the camera the model is rendering.
 
 Switch modes from the header button or Settings.
 
+On the GitHub Pages preview only, Settings points at a **Prompt** tab for
+connecting chat APIs. The native window does not show that tab.
+
 ## Explorer
 
 A read-only tree of objects, groups, and collections. Collapse a group in the

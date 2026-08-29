@@ -90,6 +90,7 @@ async function main() {
     const { getSystemTypeface } = await import("./system-typeface.mjs");
     typeface = getSystemTypeface();
   }
+  let promptSheet = null;
   const liveFeed = createMcpLiveFeedWebGpuHud({
     THREE,
     scene,
@@ -98,8 +99,15 @@ async function main() {
     height: Math.max(1, innerHeight),
     pixelRatio: Math.max(1, Number(globalThis.devicePixelRatio || 1)),
     typeface,
+    promptTab: !host.attached,
     onViewModeChange(mode) {
       reviewSession.setViewMode(mode);
+    },
+    onTabChange() {
+      promptSheet?.setOpen(Boolean(liveFeed.visible && liveFeed.tab === 'prompt'));
+    },
+    onVisibilityChange() {
+      promptSheet?.setOpen(Boolean(liveFeed.visible && liveFeed.tab === 'prompt'));
     },
   });
   const rtxLighting = createRtxLightingController({
@@ -156,6 +164,7 @@ async function main() {
     const pixelRatio = Math.max(1, Number(globalThis.devicePixelRatio || 1));
     updateCameraAspect(reviewSession.renderCamera, width / height);
     liveFeed.resize(width, height, pixelRatio);
+    promptSheet?.layout();
     if (lastPresentation === '') {
       applyGpuSize(width, height, pixelRatio);
       return;
@@ -175,6 +184,8 @@ async function main() {
     disposed = true;
     renderer.setAnimationLoop(null);
     globalThis.removeEventListener("resize", resize);
+    promptSheet?.dispose();
+    promptSheet = null;
     await application?.dispose();
     liveFeed.dispose();
     commandTelemetry.dispose();
@@ -277,6 +288,21 @@ async function main() {
     } else {
       document.title = "ThreeBrowser Studio — browser preview";
       console.log("[ThreeBrowser Studio] browser host: MCP pipe and project kernel stay on the desktop runtime");
+      const { createSecretVault } = await import("../browser/secret-vault.mjs");
+      const { createBrowserMcpHarness, createUnavailableStudioDispatch } = await import("../browser/mcp-harness.mjs");
+      const { createBrowserPromptSession } = await import("../browser/prompt-session.mjs");
+      const { createBrowserPromptPanel } = await import("../browser/prompt-panel.mjs");
+      const session = createBrowserPromptSession({
+        vault: createSecretVault(),
+        harness: createBrowserMcpHarness({
+          dispatch: createUnavailableStudioDispatch(),
+        }),
+      });
+      promptSheet = createBrowserPromptPanel({
+        document,
+        session,
+        getBounds: () => liveFeed.panelBounds,
+      });
     }
   } catch (error) {
     await dispose();

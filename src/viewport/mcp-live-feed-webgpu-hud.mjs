@@ -142,6 +142,9 @@ export function createMcpLiveFeedWebGpuHud({
   onViewModeChange,
   typeface = null,
   viewMode: initialViewMode = VIEW_MODE_FOLLOW_SHOT,
+  promptTab = false,
+  onTabChange,
+  onVisibilityChange,
 } = {}) {
   const document = suppliedDocument ?? globalThis.document;
   const keyboard = eventTarget ?? globalThis;
@@ -265,20 +268,24 @@ export function createMcpLiveFeedWebGpuHud({
       setViewMode(next, { fromUi: true });
     },
   }));
+  const tabItems = [
+    { id: 'log', label: 'Log' },
+    { id: 'explorer', label: 'Explorer' },
+    { id: 'settings', label: 'Settings' },
+  ];
+  if (promptTab) tabItems.push({ id: 'prompt', label: 'Prompt' });
   const tabs = host.add(new TabStrip({
     name: 'tabs',
-    tabs: [
-      { id: 'log', label: 'Log' },
-      { id: 'explorer', label: 'Explorer' },
-      { id: 'settings', label: 'Settings' },
-    ],
+    tabs: tabItems,
     selected: 'log',
     onChange(id) {
       tab = id;
       logPage.setVisible(id === 'log');
       explorerPage.setVisible(id === 'explorer');
       settingsPage.setVisible(id === 'settings');
+      promptPage?.setVisible(id === 'prompt');
       syncStatus();
+      onTabChange?.(id);
     },
   }));
 
@@ -443,6 +450,35 @@ export function createMcpLiveFeedWebGpuHud({
     text: 'Expanded details name whitelisted operation types. Never raw arguments or results.',
     color: '#7f94ad',
   }));
+  const promptSettingsHint = promptTab ? settingsPage.add(new Label({
+    name: 'prompt-settings-hint',
+    text: 'Model connections are on the Prompt tab. Tokens stay PIN-encrypted in this browser.',
+    color: '#7f94ad',
+  })) : null;
+
+  const promptPage = promptTab ? host.add(new Control({
+    name: 'prompt-page',
+    visible: false,
+    backColor: 'rgba(8, 13, 22, 0.92)',
+  })) : null;
+  if (promptPage) {
+    promptPage.add(new Label({
+      name: 'prompt-title',
+      text: 'Prompt',
+      font: UI_FONT_BOLD,
+      color: '#9fc6f2',
+    }));
+    promptPage.add(new Label({
+      name: 'prompt-hint',
+      text: 'Connect an HTTP chat API. Bearer tokens stay in this browser, encrypted with your PIN.',
+      color: '#7f94ad',
+    }));
+    promptPage.add(new Label({
+      name: 'prompt-kernel-hint',
+      text: 'The nine MCP tools go through the browser harness. The authoring kernel is not in the page yet.',
+      color: '#7f94ad',
+    }));
+  }
 
   function layoutPages() {
     const contentY = HEADER_HEIGHT + TAB_HEIGHT;
@@ -454,6 +490,7 @@ export function createMcpLiveFeedWebGpuHud({
     logPage.setBounds(0, contentY, host.width, contentHeight);
     explorerPage.setBounds(0, contentY, host.width, contentHeight);
     settingsPage.setBounds(0, contentY, host.width, contentHeight);
+    promptPage?.setBounds(0, contentY, host.width, contentHeight);
     logToolbar.setBounds(0, 0, logPage.width, LOG_TOOLBAR_HEIGHT);
     logDetailToggle.setBounds(4, 0, Math.max(80, logPage.width - 8), LOG_TOOLBAR_HEIGHT);
     list.setBounds(0, LOG_TOOLBAR_HEIGHT, Math.max(40, logPage.width - SCROLL_WIDTH), Math.max(20, logPage.height - LOG_TOOLBAR_HEIGHT));
@@ -473,6 +510,13 @@ export function createMcpLiveFeedWebGpuHud({
     logSettingsLabel.setBounds(12, 186, settingsPage.width - 24, 20);
     settingsDetailToggle.setBounds(8, 210, settingsPage.width - 16, 28);
     logHint.setBounds(12, 242, settingsPage.width - 24, 36);
+    promptSettingsHint?.setBounds(12, 286, settingsPage.width - 24, 48);
+    if (promptPage) {
+      const [promptTitle, promptHint, promptKernelHint] = promptPage.children;
+      promptTitle.setBounds(12, 10, promptPage.width - 24, 20);
+      promptHint.setBounds(12, 36, promptPage.width - 24, 48);
+      promptKernelHint.setBounds(12, 88, promptPage.width - 24, 48);
+    }
     syncScroll();
   }
 
@@ -537,7 +581,9 @@ export function createMcpLiveFeedWebGpuHud({
       ? `${activeCount > 0 ? `${activeCount} ACTIVE` : 'IDLE'}  ·  ${latest.length} events  ·  ${first}–${last}`
       : tab === 'explorer'
         ? `Explorer  ·  ${objectCount} objects  ·  ${explorerFirst}–${explorerLast}`
-        : 'Settings';
+        : tab === 'prompt'
+          ? 'Prompt  ·  PIN-encrypted models'
+          : 'Settings';
     const nextColor = activeCount > 0 && tab === 'log' ? '#f2b45c' : '#7f94ad';
     status.setText(nextText);
     if (status.color !== nextColor) {
@@ -679,6 +725,7 @@ export function createMcpLiveFeedWebGpuHud({
     host.visible = true;
     host.invalidate();
     syncTimer();
+    onVisibilityChange?.(true);
   };
 
   const hide = () => {
@@ -687,6 +734,7 @@ export function createMcpLiveFeedWebGpuHud({
     sprite.visible = false;
     host.visible = false;
     stopTimer();
+    onVisibilityChange?.(false);
   };
 
   const toggle = () => {
@@ -812,6 +860,7 @@ export function createMcpLiveFeedWebGpuHud({
     keyboard?.removeEventListener?.('pointerup', onPointerUp, { capture: true });
     keyboard?.removeEventListener?.('pointercancel', onPointerUp, { capture: true });
     keyboard?.removeEventListener?.('wheel', onWheel, { capture: true });
+    onVisibilityChange?.(false);
     targetScene.remove(sprite);
     material.dispose?.();
     texture.dispose?.();

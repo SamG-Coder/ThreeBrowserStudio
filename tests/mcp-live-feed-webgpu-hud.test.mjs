@@ -219,7 +219,14 @@ function wheelEvent(x, y, deltaY) {
   };
 }
 
-function fixture({ now = () => 0, width = 1000, height = 700, pixelRatio = 2, maxVisibleRows = 10 } = {}) {
+function fixture({
+  now = () => 0,
+  width = 1000,
+  height = 700,
+  pixelRatio = 2,
+  maxVisibleRows = 10,
+  promptTab = false,
+} = {}) {
   const document = new FakeDocument();
   const eventTarget = new FakeEventTarget();
   const timers = fakeTimers();
@@ -227,7 +234,7 @@ function fixture({ now = () => 0, width = 1000, height = 700, pixelRatio = 2, ma
   const scene = new FakeScene();
   const hud = createMcpLiveFeedWebGpuHud({
     THREE, document, eventTarget, source: telemetry, scene,
-    width, height, pixelRatio, maxVisibleRows, now,
+    width, height, pixelRatio, maxVisibleRows, now, promptTab,
     setIntervalFn: timers.setIntervalFn,
     clearIntervalFn: timers.clearIntervalFn,
     schedulePaint: callback => callback(),
@@ -478,4 +485,23 @@ test('exact shortcut and disposal update GPU presentation state safely', () => {
   assert.equal(eventTarget.listeners.get('keydown').size, 0);
   assert.equal(eventTarget.listeners.get('pointerdown').size, 0);
   assert.equal(eventTarget.listeners.get('wheel').size, 0);
+});
+
+test('Prompt tab is browser-only and does not appear on the native HUD', () => {
+  const native = fixture();
+  const nativeTabs = native.hud.host.children.find(child => child.name === 'tabs');
+  assert.deepEqual(nativeTabs.tabs.map(tab => tab.id), ['log', 'explorer', 'settings']);
+  assert.equal(native.hud.host.children.some(child => child.name === 'prompt-page'), false);
+  native.hud.dispose();
+
+  const browser = fixture({ promptTab: true });
+  const browserTabs = browser.hud.host.children.find(child => child.name === 'tabs');
+  assert.deepEqual(browserTabs.tabs.map(tab => tab.id), ['log', 'explorer', 'settings', 'prompt']);
+  browserTabs.setSelected('prompt');
+  assert.equal(browser.hud.tab, 'prompt');
+  const promptPage = browser.hud.host.children.find(child => child.name === 'prompt-page');
+  assert.equal(promptPage.visible, true);
+  const status = browser.hud.host.children.find(child => child.name === 'status');
+  assert.equal(status.text, 'Prompt  ·  PIN-encrypted models');
+  browser.hud.dispose();
 });
