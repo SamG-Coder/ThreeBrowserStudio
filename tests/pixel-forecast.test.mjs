@@ -88,6 +88,42 @@ test('live sheen and entity transforms forecast will-move', () => {
   assert.equal(move.verdict, 'will-move');
 });
 
+test('binary math input patches forecast a live pixel change', () => {
+  const mathGraph = {
+    formatVersion: 1,
+    id: 'graph/animated-phase',
+    domain: 'shader',
+    nodes: [{
+      id: 'speed',
+      type: 'math.multiply',
+      params: { valueType: 'float' },
+      inputs: { a: 1, b: 0.22 },
+    }],
+    edges: [],
+    outputs: { roughness: { nodeId: 'speed', port: 'value' } },
+  };
+  const forecast = forecastPixelImpact({
+    before: documentWithGraph('graph/animated-phase', mathGraph),
+    operations: [{
+      type: 'resource.patch',
+      resourceType: 'graphs',
+      resourceId: 'graph/animated-phase',
+      patch: { nodeInputs: { speed: { b: 0.35 } } },
+    }],
+  });
+
+  assert.equal(forecast.verdict, 'will-move');
+  assert.deepEqual(forecast.sockets[0], {
+    resourceId: 'graph/animated-phase',
+    nodeId: 'speed',
+    port: 'b',
+    compiled: true,
+    live: true,
+    verdict: 'will-move',
+    reason: 'live-delta',
+  });
+});
+
 test('editable-mesh recalculateNormals-only edits forecast will-not-move', () => {
   const forecast = forecastPixelImpact({
     before: { resources: { geometries: {} } },

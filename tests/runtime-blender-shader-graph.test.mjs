@@ -93,6 +93,50 @@ test('Time can drive a live Multiply node for animated shader phase', () => {
   assert.deepEqual(compilation.outputs.roughness.arguments[1].arguments, [0.22]);
 });
 
+test('binary math preserves vector and colour types and rejects mixed sockets', () => {
+  const vectorGraph = {
+    formatVersion: 1,
+    id: 'shader/vector-math-add',
+    domain: 'shader',
+    nodes: [
+      { id: 'a', type: 'constant.vec3', params: { value: [1, 2, 3] } },
+      { id: 'b', type: 'constant.vec3', params: { value: [4, 5, 6] } },
+      { id: 'math', type: 'math.add', params: { valueType: 'vec3' } },
+    ],
+    edges: [
+      { from: { nodeId: 'a', port: 'value' }, to: { nodeId: 'math', port: 'a' } },
+      { from: { nodeId: 'b', port: 'value' }, to: { nodeId: 'math', port: 'b' } },
+    ],
+    outputs: { positionOffset: { nodeId: 'math', port: 'value' } },
+  };
+  const vectorCompilation = compileShaderGraph({ TSL: FAKE_TSL, graph: vectorGraph });
+  assert.equal(vectorCompilation.outputs.positionOffset.operation, 'add');
+  assert.equal(vectorCompilation.outputs.positionOffset.arguments[0].operation, 'vec3');
+  assert.equal(vectorCompilation.outputs.positionOffset.arguments[1].operation, 'vec3');
+
+  const colorGraph = structuredClone(vectorGraph);
+  colorGraph.id = 'shader/colour-math-multiply';
+  colorGraph.nodes = [
+    { id: 'a', type: 'constant.color', params: { value: [0.2, 0.4, 0.8, 1] } },
+    { id: 'b', type: 'constant.color', params: { value: [0.5, 0.75, 1, 1] } },
+    { id: 'math', type: 'math.multiply', params: { valueType: 'color' } },
+  ];
+  colorGraph.outputs = { baseColor: { nodeId: 'math', port: 'value' } };
+  const colorCompilation = compileShaderGraph({ TSL: FAKE_TSL, graph: colorGraph });
+  assert.equal(colorCompilation.outputs.baseColor.operation, 'mul');
+  assert.equal(colorCompilation.outputs.baseColor.arguments[0].operation, 'vec3');
+  assert.equal(colorCompilation.outputs.baseColor.arguments[1].operation, 'vec3');
+
+  const invalidGraph = structuredClone(vectorGraph);
+  invalidGraph.id = 'shader/mixed-math-types';
+  invalidGraph.nodes[0] = { id: 'a', type: 'constant.float', params: { value: 1 } };
+  assert.throws(
+    () => compileShaderGraph({ TSL: FAKE_TSL, graph: invalidGraph }),
+    error => error instanceof GraphValidationError
+      && error.diagnostics.some(entry => entry.code === 'port_type_mismatch'),
+  );
+});
+
 class FakePhysicalNodeMaterial {
   iorNode = null;
   clearcoatNode = null;
