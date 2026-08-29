@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "threebrowser-studio": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${workspaceFolder}/app/src/mcp/server.mjs"
+      ]
+    }
+  }
+}

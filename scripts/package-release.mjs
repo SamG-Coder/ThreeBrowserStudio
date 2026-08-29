@@ -8,6 +8,7 @@ import { resolveRuntimeRoot } from "./runtime-path.mjs";
 import {
   copyLeanHost,
   copyProductionNodeModules,
+  copyReleaseMcpBundle,
   copyStudioApp,
   releaseFolderName,
 } from "./release-layout.mjs";
@@ -98,6 +99,17 @@ MCP (after the window is open):
 - arguments: \`app\\src\\mcp\\server.mjs\`
 - working directory: \`app\`
 
+Client templates and agent rules are in this folder:
+
+- \`docs\\\` user guides and AI MCP patterns
+- \`AGENT_RULES.md\` and \`skills\\threebrowser-studio-mcp\\SKILL.md\`
+- \`mcp\\cursor\\mcp.json\` (Cursor) or \`mcp\\cursor\\workspace.mcp.json\`
+- \`mcp\\grok\\config.toml\` (Grok Build)
+- \`mcp\\codex.toml\` (Codex / ChatGPT desktop)
+- \`mcp.example.toml\` (same as the Codex template)
+
+Replace EXTRACT in those templates with this unpacked folder. See \`mcp\\README.txt\`.
+
 The compiled \`host\\build\\bin\\three_native.dll\` is required by the current
 host addon. It is the built library, not the ThreeC++ source tree.
 ${withDlss ? "\nThis pack includes the optional NVIDIA DLSS / Streamline binaries.\n" : "\nNVIDIA DLSS / Streamline binaries are omitted from this lean pack.\n"}
@@ -111,18 +123,8 @@ async function writeReleaseDocs(folder, { version, withDlss }) {
   await writeFile(path.join(folder, "README.txt"), releaseReadme({ version, withDlss }), "utf8");
   await cp(path.join(studioRoot, "LICENSE"), path.join(folder, "LICENSE"));
   await cp(path.join(studioRoot, "THIRD_PARTY_NOTICES.md"), path.join(folder, "THIRD_PARTY_NOTICES.md"));
-  await writeFile(path.join(folder, "mcp.example.toml"), `# Replace EXTRACT with the unpacked release folder.
-# command can be PATH node, or %LOCALAPPDATA%\\ThreeBrowserStudio\\node\\node.exe
-[mcp_servers.threebrowser-studio]
-command = "node"
-args = [
-  "EXTRACT\\\\app\\\\src\\\\mcp\\\\server.mjs",
-]
-cwd = "EXTRACT\\\\app"
-startup_timeout_sec = 10
-tool_timeout_sec = 120
-default_tools_approval_mode = "writes"
-`, "utf8");
+  await copyReleaseMcpBundle(studioRoot, folder);
+  await cp(path.join(folder, "mcp", "codex.toml"), path.join(folder, "mcp.example.toml"));
 }
 
 export async function packageRelease({
@@ -176,6 +178,10 @@ export async function packageRelease({
       "README.txt",
       "LICENSE",
       "THIRD_PARTY_NOTICES.md",
+      "AGENT_RULES.md",
+      "docs/",
+      "skills/",
+      "mcp/",
       "mcp.example.toml",
       "release-manifest.json",
       ...(withNode ? ["node/"] : []),

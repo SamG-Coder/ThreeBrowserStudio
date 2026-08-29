@@ -7,6 +7,8 @@ description: Author, inspect, render, validate, animate, and save Three.js WebGP
 
 Use the native Studio viewport as the shared canvas and the nine
 `three_studio_*` MCP tools as the sole project-authoring interface.
+Read `docs/ai/patterns.md` for categorized MCP patterns. `AGENT_RULES.md`
+and live `three_studio_status` stay authoritative.
 
 ## Non-negotiable authoring boundary
 

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "threebrowser-studio": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "EXTRACT/app/src/mcp/server.mjs"
+      ]
+    }
+  }
+}

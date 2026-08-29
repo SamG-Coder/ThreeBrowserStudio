@@ -1,0 +1,11 @@
+# Replace EXTRACT with the unpacked ThreeBrowser Studio folder.
+# command can be PATH node, or %LOCALAPPDATA%\ThreeBrowserStudio\node\node.exe
+[mcp_servers.threebrowser-studio]
+command = "node"
+args = [
+  "EXTRACT\\app\\src\\mcp\\server.mjs",
+]
+cwd = "EXTRACT\\app"
+startup_timeout_sec = 10
+tool_timeout_sec = 120
+default_tools_approval_mode = "writes"

@@ -9,6 +9,7 @@ import {
   RadioOption,
   ScrollBar,
   TabStrip,
+  ToggleOption,
   VirtualList,
   eventPoint,
 } from './overlay-controls.mjs';
@@ -20,6 +21,8 @@ const DEFAULT_MAX_VISIBLE_ROWS = 16;
 const PANEL_MARGIN = 12;
 const PANEL_WIDTH = 380;
 const ROW_HEIGHT = 40;
+const EXPANDED_ROW_HEIGHT = 64;
+const LOG_TOOLBAR_HEIGHT = 28;
 const EXPLORER_ROW_HEIGHT = 22;
 const HEADER_HEIGHT = 48;
 const TAB_HEIGHT = 30;
@@ -98,7 +101,7 @@ function setVector(vector, x, y, z) {
   }
 }
 
-function logLine(entry, now) {
+function logLine(entry, now, { expanded = false } = {}) {
   const stage = safeStage(entry.stage);
   const elapsed = stage === 'started'
     ? Math.max(0, now - finite(entry.startedAtMs, now))
@@ -107,10 +110,14 @@ function logLine(entry, now) {
   const tool = sanitizeLiveFeedText(entry.tool, { maximum: 48, fallback: 'three_studio_unknown' });
   const revision = Number.isSafeInteger(entry.revision) && entry.revision >= 0 ? `r${entry.revision}` : 'r\u2014';
   const summary = sanitizeLiveFeedText(entry.summary, { maximum: 160, fallback: 'Studio command' });
+  const detail = sanitizeLiveFeedText(entry.detail, { maximum: 240, fallback: '' });
+  const outcome = sanitizeLiveFeedText(entry.outcome, { maximum: 48, fallback: '' });
+  const extra = [detail && detail !== summary ? detail : '', outcome].filter(Boolean).join('  ·  ');
   return {
     stage,
     headline: `${timestamp}  ${tool}  ${stage.toUpperCase()}  ${formatElapsed(elapsed)}  ${revision}`,
     summary,
+    extra: expanded ? extra : '',
   };
 }
 
@@ -202,6 +209,7 @@ export function createMcpLiveFeedWebGpuHud({
   let viewMode = initialViewMode === VIEW_MODE_REVIEW ? VIEW_MODE_REVIEW : VIEW_MODE_FOLLOW_SHOT;
   let captured = null;
   let tab = 'log';
+  let logExpanded = false;
   let explorerOutline = Object.freeze({
     revision: 0,
     sceneId: null,
@@ -273,13 +281,23 @@ export function createMcpLiveFeedWebGpuHud({
   }));
 
   const logPage = host.add(new Control({ name: 'log-page', backColor: 'rgba(8, 13, 22, 0.92)' }));
+  const logToolbar = logPage.add(new Control({
+    name: 'log-toolbar',
+    backColor: 'rgba(10, 16, 26, 0.96)',
+  }));
+  const logDetailToggle = logToolbar.add(new ToggleOption({
+    name: 'log-expanded',
+    text: 'Expanded details',
+    selected: false,
+    onChange(selected) { setLogExpanded(selected); },
+  }));
   const list = logPage.add(new VirtualList({
     name: 'log-list',
     itemHeight: ROW_HEIGHT,
     paintItem(drawContext, drawFonts, { index, bounds }) {
       const entry = latest[index];
       if (!entry) return;
-      const line = logLine(entry, timeNow());
+      const line = logLine(entry, timeNow(), { expanded: logExpanded });
       drawContext.fillStyle = STAGE_COLORS[line.stage];
       drawContext.fillRect(bounds.x, bounds.y + 4, 3, bounds.height - 8);
       drawFonts.blit(drawContext, line.headline, bounds.x + 10, bounds.y + 14, {
@@ -292,6 +310,13 @@ export function createMcpLiveFeedWebGpuHud({
         fillStyle: line.stage === 'failed' ? '#ffadba' : '#9fb1c6',
         maxWidth: bounds.width - 16,
       });
+      if (line.extra) {
+        drawFonts.blit(drawContext, line.extra, bounds.x + 10, bounds.y + 48, {
+          font: '12px "Segoe UI", Arial, sans-serif',
+          fillStyle: '#8eb4dc',
+          maxWidth: bounds.width - 16,
+        });
+      }
       drawContext.fillStyle = 'rgba(135, 176, 224, 0.10)';
       drawContext.fillRect(bounds.x + 8, bounds.y + bounds.height - 1, bounds.width - 16, 1);
     },
@@ -401,6 +426,21 @@ export function createMcpLiveFeedWebGpuHud({
     text: 'Drag looks. WASD moves. Space up, Ctrl down. Ctrl+Shift+M hides this panel.',
     color: '#7f94ad',
   }));
+  const logSettingsLabel = settingsPage.add(new Label({
+    text: 'Log',
+    font: UI_FONT_BOLD,
+    color: '#9fc6f2',
+  }));
+  const settingsDetailToggle = settingsPage.add(new ToggleOption({
+    name: 'settings-log-expanded',
+    text: 'Expanded details',
+    selected: false,
+    onChange(selected) { setLogExpanded(selected); },
+  }));
+  const logHint = settingsPage.add(new Label({
+    text: 'Expanded details name whitelisted operation types. Never raw arguments or results.',
+    color: '#7f94ad',
+  }));
 
   function layoutPages() {
     const contentY = HEADER_HEIGHT + TAB_HEIGHT;
@@ -412,8 +452,15 @@ export function createMcpLiveFeedWebGpuHud({
     logPage.setBounds(0, contentY, host.width, contentHeight);
     explorerPage.setBounds(0, contentY, host.width, contentHeight);
     settingsPage.setBounds(0, contentY, host.width, contentHeight);
-    list.setBounds(0, 0, Math.max(40, logPage.width - SCROLL_WIDTH), logPage.height);
-    scrollBar.setBounds(logPage.width - SCROLL_WIDTH, 0, SCROLL_WIDTH, logPage.height);
+    logToolbar.setBounds(0, 0, logPage.width, LOG_TOOLBAR_HEIGHT);
+    logDetailToggle.setBounds(4, 0, Math.max(80, logPage.width - 8), LOG_TOOLBAR_HEIGHT);
+    list.setBounds(0, LOG_TOOLBAR_HEIGHT, Math.max(40, logPage.width - SCROLL_WIDTH), Math.max(20, logPage.height - LOG_TOOLBAR_HEIGHT));
+    scrollBar.setBounds(
+      logPage.width - SCROLL_WIDTH,
+      LOG_TOOLBAR_HEIGHT,
+      SCROLL_WIDTH,
+      Math.max(20, logPage.height - LOG_TOOLBAR_HEIGHT),
+    );
     explorerList.setBounds(0, 0, Math.max(40, explorerPage.width - SCROLL_WIDTH), explorerPage.height);
     explorerScroll.setBounds(explorerPage.width - SCROLL_WIDTH, 0, SCROLL_WIDTH, explorerPage.height);
     cameraLabel.setBounds(12, 10, settingsPage.width - 24, 20);
@@ -421,6 +468,9 @@ export function createMcpLiveFeedWebGpuHud({
     reviewOption.setBounds(8, 64, settingsPage.width - 16, 28);
     cameraHint.setBounds(12, 100, settingsPage.width - 24, 36);
     panelHint.setBounds(12, 138, settingsPage.width - 24, 36);
+    logSettingsLabel.setBounds(12, 186, settingsPage.width - 24, 20);
+    settingsDetailToggle.setBounds(8, 210, settingsPage.width - 16, 28);
+    logHint.setBounds(12, 242, settingsPage.width - 24, 36);
     syncScroll();
   }
 
@@ -492,6 +542,22 @@ export function createMcpLiveFeedWebGpuHud({
       status.color = nextColor;
       status.invalidate();
     }
+  }
+
+  function setLogExpanded(expanded) {
+    const next = expanded === true;
+    if (next === logExpanded) {
+      logDetailToggle.setSelected(next);
+      settingsDetailToggle.setSelected(next);
+      return;
+    }
+    logExpanded = next;
+    list.itemHeight = next ? EXPANDED_ROW_HEIGHT : ROW_HEIGHT;
+    logDetailToggle.setSelected(next);
+    settingsDetailToggle.setSelected(next);
+    list.invalidate();
+    syncLogScroll();
+    syncStatus();
   }
 
   function setViewMode(mode, { fromUi = false } = {}) {
@@ -769,6 +835,7 @@ export function createMcpLiveFeedWebGpuHud({
     setExplorerOutline,
     handlePointerDown: onPointerDown,
     get tab() { return tab; },
+    get logExpanded() { return logExpanded; },
     get viewMode() { return viewMode; },
     get visible() { return visible; },
     get drawRevision() { return host.paintGeneration; },
@@ -776,8 +843,8 @@ export function createMcpLiveFeedWebGpuHud({
     get visibleRowCount() { return Math.min(list.capacity, latest.length); },
     get visibleLogText() {
       return latest.slice(list.scrollIndex, list.scrollIndex + list.capacity).map(entry => {
-        const line = logLine(entry, timeNow());
-        return `${line.headline}\n${line.summary}`;
+        const line = logLine(entry, timeNow(), { expanded: logExpanded });
+        return line.extra ? `${line.headline}\n${line.summary}\n${line.extra}` : `${line.headline}\n${line.summary}`;
       }).join('\n');
     },
     get explorerRowCount() {

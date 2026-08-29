@@ -678,6 +678,51 @@ export class RadioOption extends Control {
   }
 }
 
+export class ToggleOption extends Control {
+  constructor({ text = '', selected = false, onChange, ...rest } = {}) {
+    super(rest);
+    this.text = text;
+    this.selected = selected;
+    this.onChange = onChange;
+  }
+
+  setSelected(selected) {
+    if (this.selected === selected) return;
+    this.selected = selected;
+    this.invalidate();
+  }
+
+  onPaint(context, fonts, clip, bounds) {
+    const cy = bounds.y + (bounds.height * 0.5);
+    const box = 12;
+    const x = bounds.x + 6;
+    const y = cy - (box * 0.5);
+    context.fillStyle = this.selected ? 'rgba(36, 58, 88, 0.98)' : 'rgba(12, 20, 32, 0.0)';
+    context.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+    context.fillStyle = this.selected ? '#7eb0e8' : '#4d6178';
+    context.fillRect(x, y, box, box);
+    if (!this.selected) {
+      context.fillStyle = 'rgba(8, 13, 22, 0.96)';
+      context.fillRect(x + 2, y + 2, box - 4, box - 4);
+    } else {
+      context.fillStyle = '#e8f1fb';
+      context.fillRect(x + 3, y + 3, box - 6, box - 6);
+    }
+    fonts.blit(context, this.text, bounds.x + 24, cy + 4, {
+      font: '13px "Segoe UI", Arial, sans-serif',
+      fillStyle: this.selected ? '#e8f1fb' : '#9fb1c6',
+      maxWidth: bounds.width - 32,
+    });
+    void clip;
+  }
+
+  onPointerDown() {
+    this.setSelected(!this.selected);
+    this.onChange?.(this.selected, this);
+    return true;
+  }
+}
+
 export function eventPoint(event) {
   if (Number.isFinite(event?.offsetX) && Number.isFinite(event?.offsetY)) {
     return { x: finite(event.offsetX, 0), y: finite(event.offsetY, 0) };

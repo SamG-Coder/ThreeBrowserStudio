@@ -298,6 +298,44 @@ test('telemetry updates a redacted log row and only active rows own the timer', 
   assert.doesNotMatch(hud.visibleLogText, /base64|private\.png/i);
 });
 
+test('expanded log toggle shows whitelisted operation types and stays redacted', () => {
+  const { hud, telemetry } = fixture();
+  telemetry.begin('three_studio_apply', {
+    baseRevision: 4,
+    label: '<script>token-private</script>',
+    operations: [
+      { op: 'entity.create', entity: { kind: 'mesh', name: 'private-mesh' } },
+      { op: 'entity.create', entity: { kind: 'mesh' } },
+      { op: 'entity.patch', entityId: 'entity/private', patch: { secret: true } },
+    ],
+  });
+  assert.equal(hud.logExpanded, false);
+  assert.match(hud.visibleLogText, /Apply 3 operations/);
+  assert.doesNotMatch(hud.visibleLogText, /entity\.create mesh|entity\.patch/);
+
+  const logToggle = hud.host.children
+    .find(child => child.name === 'log-page')
+    .children.find(child => child.name === 'log-toolbar')
+    .children.find(child => child.name === 'log-expanded');
+  logToggle.onPointerDown();
+  assert.equal(hud.logExpanded, true);
+  assert.match(hud.visibleLogText, /Apply 3 operations/);
+  assert.match(hud.visibleLogText, /entity\.create mesh ×2/);
+  assert.match(hud.visibleLogText, /entity\.patch/);
+  assert.doesNotMatch(hud.visibleLogText, /private|token|script|secret/i);
+
+  const tabs = hud.host.children.find(child => child.name === 'tabs');
+  tabs.setSelected('settings');
+  const settingsToggle = hud.host.children
+    .find(child => child.name === 'settings-page')
+    .children.find(child => child.name === 'settings-log-expanded');
+  assert.equal(settingsToggle.selected, true);
+  settingsToggle.onPointerDown();
+  assert.equal(hud.logExpanded, false);
+  tabs.setSelected('log');
+  assert.doesNotMatch(hud.visibleLogText, /entity\.create mesh/);
+});
+
 test('wheel scrolling is virtualized, pointer-bounded, and shows a scrollbar', () => {
   let milliseconds = 0;
   const { eventTarget, telemetry, hud } = fixture({

@@ -1,6 +1,8 @@
 # ThreeBrowser Studio agent rules
 
 These rules are written for the model operating the Studio MCP tools.
+Categorized how-to patterns are in `docs/ai/patterns.md`. If a pattern and
+this file or live `three_studio_status` disagree, status and this file win.
 
 ## Current capability boundary
 

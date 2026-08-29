@@ -1,5 +1,27 @@
+import { ENTITY_KINDS, RESOURCE_TYPES } from '../core/constants.mjs';
+
 const DEFAULT_HISTORY_LIMIT = 64;
 const MAX_HISTORY_LIMIT = 256;
+const MAX_DETAIL_GROUPS = 8;
+const PIXEL_FORECASTS = Object.freeze({
+  'will-move': 'pixels will move',
+  'will-not-move': 'pixels will not move',
+  unknown: 'pixel change unknown',
+});
+const PUBLIC_OPERATION_TYPES = new Set([
+  'scene.create', 'scene.patch', 'scene.delete', 'scene.setActive',
+  'scene.settings.patch', 'scene.rtx.patch', 'scene.setActiveCamera',
+  'entity.create', 'entity.patch', 'entity.patchMany', 'entity.transformMany',
+  'entity.group', 'entity.ungroup', 'entity.duplicate', 'entity.reparent', 'entity.delete',
+  'collection.create', 'collection.patch', 'collection.membership.patch',
+  'collection.reparent', 'collection.delete',
+  'camera.frame', 'layout.pattern',
+  'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
+  'geometry.edit',
+  'resource.create', 'resource.patch', 'resource.delete',
+]);
+const RESOURCE_TYPE_SET = new Set(RESOURCE_TYPES);
+const ENTITY_KIND_SET = new Set(ENTITY_KINDS);
 
 export const STUDIO_LIVE_FEED_METHODS = Object.freeze([
   'three_studio_status',
@@ -161,7 +183,7 @@ function renderSummary(params) {
 }
 
 /**
- * Produces a compact description from an explicit field allowlist. Labels,
+ * Produces a compact description from an explicit field whitelist. Labels,
  * selectors, IDs, paths, operation contents, evidence, and arbitrary values
  * are deliberately never copied into telemetry.
  */
@@ -192,6 +214,70 @@ export function summarizeStudioCommand(method, params = {}) {
     default: summary = 'Use Studio tool';
   }
   return sanitizeLiveFeedText(summary, { maximum: 160, fallback: 'Use Studio tool' });
+}
+
+function classifyOperation(operation) {
+  const type = readField(operation, 'op') ?? readField(operation, 'type');
+  if (typeof type !== 'string' || !PUBLIC_OPERATION_TYPES.has(type)) return 'other';
+  if (type.startsWith('resource.')) {
+    const resourceType = readField(operation, 'resourceType');
+    if (typeof resourceType === 'string' && RESOURCE_TYPE_SET.has(resourceType)) {
+      return `${type} ${resourceType}`;
+    }
+  }
+  if (type === 'entity.create') {
+    const kind = readField(readField(operation, 'entity'), 'kind');
+    if (typeof kind === 'string' && ENTITY_KIND_SET.has(kind)) return `${type} ${kind}`;
+  }
+  return type;
+}
+
+function applyDetail(params) {
+  const operations = readField(params, 'operations');
+  const counts = new Map();
+  let total = 0;
+  try {
+    if (!Array.isArray(operations)) return '';
+    for (const operation of operations.slice(0, 128)) {
+      total += 1;
+      const key = classifyOperation(operation);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  } catch {
+    return '';
+  }
+  if (total === 0) return '';
+  const groups = [...counts.entries()].sort((left, right) => (
+    right[1] - left[1] || left[0].localeCompare(right[0])
+  ));
+  const shown = groups.slice(0, MAX_DETAIL_GROUPS).map(([name, count]) => (
+    count === 1 ? name : `${name} \u00d7${count}`
+  ));
+  if (groups.length > MAX_DETAIL_GROUPS) shown.push(`+${groups.length - MAX_DETAIL_GROUPS} more`);
+  return shown.join(' \u00b7 ');
+}
+
+/**
+ * Compact summary plus a redacted detail line. Detail names only whitelisted
+ * operation types, resource families, and entity kinds — never IDs, labels,
+ * paths, patches, or payloads.
+ */
+export function describeStudioCommand(method, params = {}) {
+  const summary = summarizeStudioCommand(method, params);
+  if (!summary) return null;
+  const detail = method === 'three_studio_apply'
+    ? sanitizeLiveFeedText(applyDetail(params), { maximum: 240, fallback: '' })
+    : '';
+  return Object.freeze({
+    summary,
+    detail: detail && detail !== summary ? detail : '',
+  });
+}
+
+export function describeCommandOutcome(result) {
+  const forecast = readField(result, 'pixelForecast');
+  if (typeof forecast !== 'string' || !Object.hasOwn(PIXEL_FORECASTS, forecast)) return '';
+  return PIXEL_FORECASTS[forecast];
 }
 
 function revisionFrom(value, fields) {
@@ -272,6 +358,10 @@ export function createStudioCommandTelemetry({
     const id = `feed-${nextId}`;
     const sequence = nextId;
     nextId += 1;
+    const described = describeStudioCommand(method, params) ?? {
+      summary: 'Use Studio tool',
+      detail: '',
+    };
     let current = Object.freeze({
       id,
       sequence,
@@ -282,7 +372,9 @@ export function createStudioCommandTelemetry({
       finishedAtMs: null,
       elapsedMs: 0,
       revision: revisionFrom(params, ['baseRevision']),
-      summary: summarizeStudioCommand(method, params),
+      summary: described.summary,
+      detail: described.detail,
+      outcome: '',
     });
     entries.set(id, current);
     order.push(id);
@@ -299,6 +391,7 @@ export function createStudioCommandTelemetry({
         finishedAtMs,
         elapsedMs: Math.max(0, Math.round(finishedAtMs - startedAtMs)),
         revision: revisionFrom(result, ['revision', 'savedRevision']) ?? current.revision,
+        outcome: stage === 'completed' ? describeCommandOutcome(result) : '',
       });
       entries.set(id, current);
       prune();

@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   createStudioCommandTelemetry,
+  describeStudioCommand,
   isStudioLiveFeedMethod,
   sanitizeLiveFeedText,
   summarizeStudioCommand,
@@ -17,7 +18,7 @@ test('live-feed filtering includes real Studio tools but excludes bridge ping an
   assert.equal(isStudioLiveFeedMethod('other_tool'), false);
 });
 
-test('summaries use only compact allowlisted facts and sanitize control, bidi, and markup text', () => {
+test('summaries use only compact whitelisted facts and sanitize control, bidi, and markup text', () => {
   assert.equal(summarizeStudioCommand('three_studio_project', {
     action: 'open', path: 'C:\\private\\world', projectId: 'project/secret',
   }), 'Open project');
@@ -65,6 +66,8 @@ test('one telemetry entry advances started to completed without retaining raw re
   assert.equal(started.stage, 'started');
   assert.equal(started.revision, 7);
   assert.equal(started.summary, 'Apply 1 operation');
+  assert.equal(started.detail, 'entity.patch');
+  assert.equal(started.outcome, '');
 
   milliseconds += 1_234;
   lifecycle.complete({
@@ -86,6 +89,39 @@ test('one telemetry entry advances started to completed without retaining raw re
     'session-private', 'project/private', 'private-idempotency', 'entity/private',
     'request-secret', 'frame.png', 'base64-result-secret', 'result-stack-private', '<img',
   ]) assert.equal(serialized.includes(secret), false, `telemetry leaked ${secret}`);
+});
+
+test('expanded apply detail names only whitelisted operation types and kinds', () => {
+  const described = describeStudioCommand('three_studio_apply', {
+    label: '<script>token-123</script>',
+    operations: [
+      { op: 'entity.create', entity: { kind: 'mesh', name: 'secret-mesh' } },
+      { op: 'entity.create', entity: { kind: 'mesh' } },
+      { op: 'entity.create', entity: { kind: 'pointLight' } },
+      { op: 'resource.create', resourceType: 'materials', resource: { data: 'base64-secret' } },
+      { op: 'entity.patch', entityId: 'entity/private', patch: { token: 'secret' } },
+      { op: 'totally.fake', token: 'leak-me' },
+    ],
+  });
+  assert.equal(described.summary, 'Apply 6 operations');
+  assert.equal(
+    described.detail,
+    'entity.create mesh ×2 · entity.create pointLight · entity.patch · other · resource.create materials',
+  );
+  assert.doesNotMatch(described.detail, /secret|token|private|leak-me|script/i);
+
+  let milliseconds = 2_000;
+  const telemetry = createStudioCommandTelemetry({ now: () => milliseconds });
+  const lifecycle = telemetry.begin('three_studio_apply', {
+    baseRevision: 3,
+    operations: [{ op: 'entity.create', entity: { kind: 'mesh' } }],
+  });
+  milliseconds += 10;
+  lifecycle.complete({ revision: 4, pixelForecast: 'will-move', evidence: [{ path: 'C:\\private.png' }] });
+  const entry = telemetry.snapshot()[0];
+  assert.equal(entry.detail, 'entity.create mesh');
+  assert.equal(entry.outcome, 'pixels will move');
+  assert.doesNotMatch(JSON.stringify(entry), /private\.png/i);
 });
 
 test('failed lifecycle entries do not retain error messages, stacks, paths, or tokens', () => {

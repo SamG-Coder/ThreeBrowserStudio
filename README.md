@@ -13,7 +13,8 @@ Runtime as its renderer/host instead of copying runtime, RTX, game, or sample
 code into this repository.
 
 The target architecture and phased authoring-pipeline contract are in
-[`DESIGN.md`](./DESIGN.md). Model operating rules are in
+[`DESIGN.md`](./DESIGN.md). User guides and AI MCP patterns are in
+[`docs/`](./docs/README.md). Model operating rules are in
 [`AGENT_RULES.md`](./AGENT_RULES.md). Blender concept mapping and the executable
 official tutorial translation are in
 [`BLENDER_COMPATIBILITY.md`](./BLENDER_COMPATIBILITY.md).
@@ -130,7 +131,9 @@ uses Node.js 24+ from PATH, or asks to download the official Windows x64
 `node.exe` from nodejs.org into `%LOCALAPPDATA%\ThreeBrowserStudio\node`.
 User projects go to `%LOCALAPPDATA%\ThreeBrowserStudio\projects`. After the
 window is open, point an MCP client at `node` with `app\src\mcp\server.mjs`
-and working directory `app` (see `mcp.example.toml` in the zip). Pass
+and working directory `app`. The zip includes `docs/` (user guides and AI MCP patterns),
+`AGENT_RULES.md`, the Codex skill, and MCP templates for Cursor, Grok Build,
+and Codex under `mcp/`. See `mcp.example.toml` and `mcp/README.txt`. Pass
 `--with-node` to `release:pack` only when you want an air-gapped zip that
 still embeds `node.exe`.
 
@@ -179,7 +182,7 @@ Windows ACL.
 
 Press **Ctrl+Shift+M** in the native window to hide the side panel. The panel
 is retained 2D chrome (Log + Explorer + Settings), not an inspector: a
-virtualized, redacted MCP command log with a visible scrollbar, a read-only
+virtualized, redacted MCP command log with compact or expanded details, a visible scrollbar, a read-only
 scene tree of objects and groups, and Follow shot / Review camera settings.
 Follow shot is the authored camera; the first drag on the view enters a
 session-only Review look/fly camera that never writes that camera.

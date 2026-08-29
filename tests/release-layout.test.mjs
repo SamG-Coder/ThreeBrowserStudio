@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import {
   classifyHostBinary,
   copyLeanHost,
+  copyReleaseMcpBundle,
   copyStudioApp,
   includeHostRuntimeRelative,
   includeStudioAppRelative,
@@ -127,4 +128,29 @@ test("copyStudioApp omits tutorial modules from the packaged app", async () => {
   await readFile(path.join(destination, "scripts", "launch.mjs"), "utf8");
   await assert.rejects(() => readFile(path.join(destination, "src", "tutorials", "blender-fundamentals.mjs")));
   await assert.rejects(() => readFile(path.join(destination, "scripts", "package-release.mjs")));
+});
+
+test("release MCP bundle copies agent rules and Cursor, Grok, and Codex templates", async () => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), "three-studio-mcp-bundle-"));
+  const folder = path.join(temporary, "pack");
+  await mkdir(path.join(folder, "app"), { recursive: true });
+  await copyReleaseMcpBundle(root, folder);
+  assert.match(await readFile(path.join(folder, "AGENT_RULES.md"), "utf8"), /three_studio_status/);
+  assert.match(await readFile(path.join(folder, "app", "AGENT_RULES.md"), "utf8"), /three_studio_status/);
+  assert.match(
+    await readFile(path.join(folder, "skills", "threebrowser-studio-mcp", "SKILL.md"), "utf8"),
+    /three_studio_\*/,
+  );
+  const cursor = JSON.parse(await readFile(path.join(folder, "mcp", "cursor", "mcp.json"), "utf8"));
+  assert.equal(cursor.mcpServers["threebrowser-studio"].args[0], "EXTRACT/app/src/mcp/server.mjs");
+  const workspace = JSON.parse(await readFile(path.join(folder, "mcp", "cursor", "workspace.mcp.json"), "utf8"));
+  assert.equal(workspace.mcpServers["threebrowser-studio"].args[0], "${workspaceFolder}/app/src/mcp/server.mjs");
+  const grok = await readFile(path.join(folder, "mcp", "grok", "config.toml"), "utf8");
+  assert.match(grok, /EXTRACT\\\\app\\\\src\\\\mcp\\\\server\.mjs/);
+  const codex = await readFile(path.join(folder, "mcp", "codex.toml"), "utf8");
+  assert.match(codex, /EXTRACT\\\\app\\\\src\\\\mcp\\\\server\.mjs/);
+  assert.match(await readFile(path.join(folder, "mcp", "README.txt"), "utf8"), /Cursor/);
+  assert.match(await readFile(path.join(folder, "docs", "README.md"), "utf8"), /MCP is the editor/);
+  assert.match(await readFile(path.join(folder, "docs", "ai", "patterns.md"), "utf8"), /pixelForecast/);
+  assert.match(await readFile(path.join(folder, "docs", "users", "getting-started.md"), "utf8"), /ThreeBrowserStudio\.exe/);
 });

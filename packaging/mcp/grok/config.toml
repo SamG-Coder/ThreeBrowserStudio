@@ -1,0 +1,8 @@
+# Replace EXTRACT with the unpacked ThreeBrowser Studio folder.
+[mcp_servers.threebrowser-studio]
+command = "node"
+args = ["EXTRACT\\app\\src\\mcp\\server.mjs"]
+cwd = "EXTRACT\\app"
+enabled = true
+startup_timeout_sec = 10
+tool_timeout_sec = 120

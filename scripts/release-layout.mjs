@@ -43,6 +43,14 @@ export const HOST_RUNTIME_FILES = Object.freeze([
   "three-webgpu-cmd.js",
 ]);
 
+export const RELEASE_AGENT_DOCUMENTS = Object.freeze([
+  "AGENT_RULES.md",
+]);
+
+export const RELEASE_SKILL_FILES = Object.freeze([
+  "skills/threebrowser-studio-mcp/SKILL.md",
+]);
+
 export function toPosix(relativePath) {
   return String(relativePath ?? "").replaceAll("\\", "/");
 }
@@ -162,6 +170,22 @@ export async function copyStudioApp(studioRoot, destinationRoot) {
   await mkdir(path.join(destinationRoot, "scripts"), { recursive: true });
   await cp(path.join(studioRoot, "scripts", "launch.mjs"), path.join(destinationRoot, "scripts", "launch.mjs"));
   await cp(path.join(studioRoot, "scripts", "runtime-path.mjs"), path.join(destinationRoot, "scripts", "runtime-path.mjs"));
+}
+
+export async function copyReleaseMcpBundle(studioRoot, folder) {
+  const mcpSource = path.join(studioRoot, "packaging", "mcp");
+  await copyDirectoryFiltered(mcpSource, path.join(folder, "mcp"), () => true);
+  await copyDirectoryFiltered(path.join(studioRoot, "docs"), path.join(folder, "docs"), () => true);
+  for (const file of RELEASE_AGENT_DOCUMENTS) {
+    await cp(path.join(studioRoot, file), path.join(folder, file));
+    await mkdir(path.join(folder, "app"), { recursive: true });
+    await cp(path.join(studioRoot, file), path.join(folder, "app", file));
+  }
+  for (const file of RELEASE_SKILL_FILES) {
+    const destination = path.join(folder, file);
+    await mkdir(path.dirname(destination), { recursive: true });
+    await cp(path.join(studioRoot, file), destination);
+  }
 }
 
 export async function copyProductionNodeModules(studioRoot, destinationRoot) {
