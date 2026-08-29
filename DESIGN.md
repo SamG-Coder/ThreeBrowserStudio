@@ -317,8 +317,11 @@ V1 graph outputs are limited to:
 - normal;
 - emissive;
 - opacity;
-- alphaTest; and
-- positionOffset.
+- alphaTest;
+- positionOffset;
+- and, when those Principled sockets are live, coat, IOR, transmission, and
+  sheen (`sheenWeight` / `sheenRoughness` / `sheenTint`). Default-zero sheen
+  stays unbound so existing materials do not change shader variants.
 
 The model cannot provide raw TSL, WGSL, GLSL, `Fn`, `Loop`, `fragmentNode`, or
 `outputNode` through ordinary tools. This keeps stage legality, resource use,
@@ -472,11 +475,23 @@ it authored real indexed geometry without consuming the next request budget.
 
 `meshElements` is the exact dense-geometry path. It pages vertices, unique
 edges, triangular faces, and corners with available normal/UV/colour attributes
-and bounded adjacency. Cursors include resource and topology hashes.
+and bounded adjacency. Cursors include resource and topology hashes, and an
+optional `meshFilter` hash when bbox / y-range / boundary / `notAdjacentTo`
+filters are used so a stale filter cannot continue.
 `graphDigest` returns graph/resource guards plus byte-bounded nodes, edges,
-outputs, settings, and validation diagnostics. `rtxDigest` retains the native
-collector report so skipped geometry can be diagnosed without rebuilding the
-static scene during inspection.
+outputs, settings, and validation diagnostics. Each node also carries a full
+authored-versus-default socket contract; `inputs.$summary.omittedKeyCount` is
+display truncation, not missing sockets. `resource.patch` accepts `nodeInputs`
+so one Principled socket can be merged without replacing the node list.
+`beautyDigest` hashes a Studio `artifacts/studio-*.png` capture, reports
+clip/black/mean luma, exact `(x,y)` probes, optional bbox stats, and an
+optional pixel diff against another capture. `projectVisibility` projects
+authored world points or entity origins through the authored camera. Pixel
+identity after a mutation is verified by rendering, then comparing with
+`beautyDigest`; apply dry-run remains a document-level preview and does not
+sample the GPU.
+`rtxDigest` retains the native collector report so skipped geometry can be
+diagnosed without rebuilding the static scene during inspection.
 
 Useful special queries include:
 
@@ -493,7 +508,10 @@ Useful special queries include:
 - graph node catalog and typed ports;
 - Blender compatibility catalog by domain/status/query;
 - current animation Play state and Action states; and
-- latest evidence metadata.
+- latest evidence metadata;
+- beauty evidence pixel digest, probes, and capture-to-capture diff;
+- authored-camera projection / frustum visibility; and
+- mesh element filters plus group modifier-stack resolution.
 
 ### 4. `three_studio_apply`
 

@@ -4,6 +4,33 @@ import test from 'node:test';
 import { MAX_INSPECT_RESPONSE_BYTES, contentHash } from '../src/core/index.mjs';
 import { buildGraphDigest } from '../src/graphs/index.mjs';
 
+function principledGraph() {
+  return {
+    formatVersion: 1,
+    id: 'graph/principled-velvet',
+    domain: 'shader',
+    nodes: [
+      { id: 'color', type: 'constant.color', params: { value: [0.2, 0.05, 0.08] } },
+      {
+        id: 'bsdf',
+        type: 'blender.principledBSDF',
+        params: {},
+        inputs: {
+          roughness: 0.72,
+          sheenWeight: 0.4,
+          metallic: 0.1,
+          specularIorLevel: 0.35,
+        },
+      },
+    ],
+    edges: [{
+      from: { nodeId: 'color', port: 'value' },
+      to: { nodeId: 'bsdf', port: 'baseColor' },
+    }],
+    outputs: { baseColor: { nodeId: 'color', port: 'value' } },
+  };
+}
+
 function graphResource() {
   return {
     id: 'graph/digest-example',
@@ -165,4 +192,26 @@ test('bare graph and resource envelopes both expose resourceHash and graphHash',
   assert.notEqual(envelopeDigest.resourceHash, envelopeDigest.graphHash);
   assert.equal(graphDigest.resourceHash, contentHash(resource.graph));
   assert.equal(graphDigest.graphHash, envelopeDigest.graphHash);
+});
+
+test('graph digest lists authored-versus-default sockets even when compact inputs truncate', () => {
+  const digest = buildGraphDigest(principledGraph());
+  const bsdf = digest.nodes.find(node => node.id === 'bsdf');
+  assert.equal(digest.socketContract, 'full-vs-default');
+  assert.ok(bsdf.sockets.length > 16);
+  assert.ok(bsdf.inputs.$summary.omittedKeyCount > 0);
+  const roughness = bsdf.sockets.find(socket => socket.port === 'roughness');
+  const ior = bsdf.sockets.find(socket => socket.port === 'ior');
+  const baseColor = bsdf.sockets.find(socket => socket.port === 'baseColor');
+  const sheen = bsdf.sockets.find(socket => socket.port === 'sheenWeight');
+  assert.equal(roughness.source, 'authored');
+  assert.equal(roughness.value, 0.72);
+  assert.equal(ior.source, 'default');
+  assert.equal(ior.default, 1.5);
+  assert.equal(baseColor.source, 'edge');
+  assert.deepEqual(baseColor.from, { nodeId: 'color', port: 'value' });
+  assert.equal(sheen.source, 'authored');
+  assert.ok(bsdf.authoredCount >= 3);
+  assert.ok(bsdf.defaultCount >= 16);
+  assert.equal(bsdf.connectedCount, 1);
 });

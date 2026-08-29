@@ -102,6 +102,7 @@ function surface(channels, features = {}) {
     features: Object.freeze({
       transparent: Boolean(features.transparent),
       transmission: Boolean(features.transmission),
+      sheen: Boolean(features.sheen),
     }),
   });
 }
@@ -896,8 +897,10 @@ function compileNodeFactory({ TSL, graph, parameters, textureResolver, featureTr
     if (type === 'blender.principledBSDF') {
       const alphaConnected = input.connected(node, 'alpha') || input.connected(node, 'opacity');
       const transmissionConnected = input.connected(node, 'transmissionWeight') || input.connected(node, 'transmission');
+      const sheenConnected = input.connected(node, 'sheenWeight') || input.connected(node, 'sheen');
       const staticAlpha = alphaConnected ? null : input.static(node, ['alpha', 'opacity'], 1);
       const staticTransmission = transmissionConnected ? null : input.static(node, ['transmissionWeight', 'transmission'], 0);
+      const staticSheen = sheenConnected ? null : input.static(node, ['sheenWeight', 'sheen'], 0);
       return { surface: surface({
         baseColor: input.get(node, 'baseColor', [0.8, 0.8, 0.8], 'color'),
         metallic: input.get(node, ['metallic', 'metalness'], 0),
@@ -910,9 +913,13 @@ function compileNodeFactory({ TSL, graph, parameters, textureResolver, featureTr
         coatWeight: input.get(node, ['coatWeight', 'clearcoat'], 0),
         coatRoughness: input.get(node, ['coatRoughness', 'clearcoatRoughness'], 0.03),
         transmissionWeight: input.get(node, ['transmissionWeight', 'transmission'], 0),
+        sheenWeight: input.get(node, ['sheenWeight', 'sheen'], 0),
+        sheenRoughness: input.get(node, 'sheenRoughness', 0.5),
+        sheenTint: input.get(node, ['sheenTint', 'sheenColor'], [1, 1, 1], 'color'),
       }, {
         transparent: alphaConnected || (Number.isFinite(staticAlpha) && staticAlpha < 1),
         transmission: transmissionConnected || (Number.isFinite(staticTransmission) && staticTransmission > 0),
+        sheen: sheenConnected || (Number.isFinite(staticSheen) && staticSheen > 0),
       }) };
     }
     if (type === 'blender.materialOutput') {
@@ -955,7 +962,7 @@ export function compileShaderGraph({ TSL, graph, parameterValues = {}, textureRe
   });
   const outputs = {};
   for (const [name, reference] of Object.entries(canonical.outputs)) outputs[name] = compileOutput(reference.nodeId, reference.port);
-  let features = Object.freeze({ transparent: false, transmission: false });
+  let features = Object.freeze({ transparent: false, transmission: false, sheen: false });
   if (isCompiledSurface(outputs.surface)) {
     const value = outputs.surface;
     features = value.features;
@@ -969,6 +976,11 @@ export function compileShaderGraph({ TSL, graph, parameterValues = {}, textureRe
     outputs.clearcoat ??= value.coatWeight;
     outputs.clearcoatRoughness ??= value.coatRoughness;
     outputs.transmission ??= value.transmissionWeight;
+    if (features.sheen) {
+      outputs.sheen ??= value.sheenWeight;
+      outputs.sheenRoughness ??= value.sheenRoughness;
+      outputs.sheenColor ??= value.sheenTint;
+    }
   }
   return Object.freeze({
     graphId: canonical.id,

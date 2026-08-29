@@ -5,6 +5,8 @@ import {
   composeEntityTransforms,
   composeTransformMatrix,
   decomposeTransformMatrix,
+  entityWorldMatrix,
+  entityWorldPosition,
   invertTransformMatrix,
   multiplyTransformMatrices,
   relativeEntityTransform,
@@ -154,4 +156,23 @@ test('transform math rejects malformed, projective, and zero-scale inputs', () =
     () => decomposeTransformMatrix(projective),
     error => error instanceof StudioError && error.code === 'non_decomposable_transform',
   );
+});
+
+test('entity world matrix composes the authored parent chain', () => {
+  const scene = {
+    entities: {
+      'entity/parent': {
+        id: 'entity/parent',
+        parentId: null,
+        transform: { position: [2, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+      },
+      'entity/child': {
+        id: 'entity/child',
+        parentId: 'entity/parent',
+        transform: { position: [0, 3, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+      },
+    },
+  };
+  assertClose(entityWorldPosition(scene, 'entity/child'), [2, 3, 0]);
+  assertClose(entityWorldMatrix(scene, 'entity/child').slice(12, 15), [2, 3, 0]);
 });

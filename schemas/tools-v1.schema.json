@@ -952,12 +952,78 @@
       "properties": {
         "protocolVersion": { "$ref": "#/$defs/protocolVersion" }, "sessionId": { "$ref": "#/$defs/sessionId" },
         "projectId": { "$ref": "#/$defs/id" }, "sceneId": { "$ref": "#/$defs/id" },
-        "query": { "enum": ["selector", "sceneDigest", "resourceDigest", "meshElements", "graphDigest", "modifierDigest", "rtxDigest", "changedSinceRevision", "unresolvedResources", "unusedResources", "graphCatalog", "playState", "latestEvidence", "blenderCatalog"] },
+        "query": { "enum": ["selector", "sceneDigest", "resourceDigest", "meshElements", "graphDigest", "modifierDigest", "rtxDigest", "changedSinceRevision", "unresolvedResources", "unusedResources", "graphCatalog", "playState", "latestEvidence", "blenderCatalog", "beautyDigest", "projectVisibility"] },
         "selector": { "$ref": "#/$defs/selector" },
         "element": { "enum": ["vertices", "edges", "faces", "corners"] },
         "include": { "type": "array", "maxItems": 6, "items": { "enum": ["summary", "tree", "transform", "components", "bounds", "references"] } },
         "sinceRevision": { "$ref": "#/$defs/revision" }, "cursor": { "type": "string", "maxLength": 1024 },
-        "limit": { "type": "integer", "minimum": 1, "maximum": 200 }
+        "limit": { "type": "integer", "minimum": 1, "maximum": 200 },
+        "evidence": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "path": { "type": "string", "minLength": 1, "maxLength": 1024 },
+            "comparePath": { "type": "string", "minLength": 1, "maxLength": 1024 },
+            "probes": {
+              "type": "array", "maxItems": 32,
+              "items": {
+                "type": "object", "additionalProperties": false,
+                "required": ["x", "y"],
+                "properties": {
+                  "name": { "type": "string", "minLength": 1, "maxLength": 64 },
+                  "x": { "type": "integer", "minimum": 0, "maximum": 4095 },
+                  "y": { "type": "integer", "minimum": 0, "maximum": 4095 }
+                }
+              }
+            },
+            "bbox": {
+              "type": "object", "additionalProperties": false,
+              "required": ["x0", "y0", "x1", "y1"],
+              "properties": {
+                "x0": { "type": "integer", "minimum": 0, "maximum": 4095 },
+                "y0": { "type": "integer", "minimum": 0, "maximum": 4095 },
+                "x1": { "type": "integer", "minimum": 0, "maximum": 4095 },
+                "y1": { "type": "integer", "minimum": 0, "maximum": 4095 }
+              }
+            },
+            "maxChanged": { "type": "integer", "minimum": 1, "maximum": 32 }
+          }
+        },
+        "projection": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "cameraId": { "$ref": "#/$defs/id" },
+            "points": {
+              "type": "array", "maxItems": 32,
+              "items": {
+                "type": "object", "additionalProperties": false,
+                "required": ["name", "world"],
+                "properties": {
+                  "name": { "type": "string", "minLength": 1, "maxLength": 64 },
+                  "world": { "$ref": "#/$defs/vec3" }
+                }
+              }
+            },
+            "entityIds": {
+              "type": "array", "maxItems": 32, "items": { "$ref": "#/$defs/id" }
+            },
+            "width": { "type": "integer", "minimum": 1, "maximum": 4096 },
+            "height": { "type": "integer", "minimum": 1, "maximum": 4096 }
+          }
+        },
+        "meshFilter": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "min": { "$ref": "#/$defs/vec3" },
+            "max": { "$ref": "#/$defs/vec3" },
+            "yMin": { "type": "number" },
+            "yMax": { "type": "number" },
+            "boundary": { "type": "boolean" },
+            "notAdjacentTo": {
+              "type": "array", "maxItems": 64,
+              "items": { "type": "integer", "minimum": 0, "maximum": 1000000 }
+            }
+          }
+        }
       },
       "allOf": [
           {
@@ -975,6 +1041,18 @@
           },
           {
             "if": { "required": ["element"] },
+            "then": { "properties": { "query": { "const": "meshElements" } } }
+          },
+          {
+            "if": { "required": ["evidence"] },
+            "then": { "properties": { "query": { "const": "beautyDigest" } } }
+          },
+          {
+            "if": { "required": ["projection"] },
+            "then": { "properties": { "query": { "const": "projectVisibility" } } }
+          },
+          {
+            "if": { "required": ["meshFilter"] },
             "then": { "properties": { "query": { "const": "meshElements" } } }
           }
       ]

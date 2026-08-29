@@ -340,3 +340,40 @@ export function relativeEntityTransform(parentWorldMatrix, childWorldMatrix, opt
     options,
   );
 }
+
+/** Transform a world-space XYZ point by a column-major 4x4 matrix. */
+export function transformPointByMatrix(matrix, point) {
+  const source = matrix16(matrix);
+  if (!Array.isArray(point) || point.length !== 3 || !point.every(Number.isFinite)) {
+    throw new StudioError('invalid_transform', 'World point must contain three finite numbers.');
+  }
+  const [x, y, z] = point;
+  return [
+    (source[0] * x) + (source[4] * y) + (source[8] * z) + source[12],
+    (source[1] * x) + (source[5] * y) + (source[9] * z) + source[13],
+    (source[2] * x) + (source[6] * y) + (source[10] * z) + source[14],
+  ].map(cleanNegativeZero);
+}
+
+/**
+ * Compose the authored parent chain into a world matrix. Groups own the
+ * transform; children stay in local space.
+ */
+export function entityWorldMatrix(scene, entityId, memo = new Map()) {
+  if (memo.has(entityId)) return memo.get(entityId);
+  const entity = scene?.entities?.[entityId];
+  if (!entity) {
+    throw new StudioError('not_found', `Entity ${entityId} does not exist`, { id: entityId, kind: 'entity' });
+  }
+  const local = composeTransformMatrix(entity.transform);
+  const world = entity.parentId
+    ? multiplyTransformMatrices(entityWorldMatrix(scene, entity.parentId, memo), local)
+    : local;
+  memo.set(entityId, world);
+  return world;
+}
+
+export function entityWorldPosition(scene, entityId, memo = new Map()) {
+  const matrix = entityWorldMatrix(scene, entityId, memo);
+  return [matrix[12], matrix[13], matrix[14]];
+}

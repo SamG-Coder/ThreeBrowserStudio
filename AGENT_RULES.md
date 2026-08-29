@@ -11,9 +11,11 @@ authority. In the current lean slice:
   ID/name/kind/tag/collection selection, exact entity-set guards, collection
   membership/subtree guards, tree, transforms, components, compiled bounds,
   incoming references, bounded resource topology/component digests, exact
-  hash-guarded mesh elements, graph structure, RTX collection diagnostics,
-  resource-usage checks, changes, graph catalog, Play counters, and latest
-  evidence metadata;
+  hash-guarded mesh elements with optional bbox/y/boundary/adjacency filters,
+  graph structure plus authored-versus-default sockets, RTX collection
+  diagnostics, resource-usage checks, changes, graph catalog, Play counters,
+  latest evidence metadata, beauty pixel digest/probes/diff, camera
+  projection visibility, and group modifier-stack resolution;
 - apply supports the declared scene/entity/resource operations, exact guarded
   bulk patch/transform, world-preserving transform groups, independent nested
   organizational collections, persistent `camera.frame`, bounded
@@ -213,9 +215,19 @@ operations.
   bounds, and references without requesting raw geometry arrays.
 - Use `meshElements` for exact vertices, unique edges, authored triangular or
   polygon faces, per-corner layers, material slots, annotations, and adjacency;
-  continue only with its resource/topology-bound
-  cursor. Use `graphDigest` before graph edits and `rtxDigest` when geometry is
-  unexpectedly missing from native lighting.
+  continue only with its resource/topology/filter-bound cursor. Use
+  `meshFilter` (bbox, y-range, boundary, `notAdjacentTo`) instead of paging
+  an entire cloth or shell. Use `graphDigest` before graph edits and read
+  `sockets` / `source` rather than compact `inputs.$summary`; patch one socket
+  with `resource.patch` `nodeInputs` instead of replacing the graph. Use
+  `projectVisibility` before editing an object that may be off-screen. Use
+  `beautyDigest` after a render for hash, clip/black/luma, exact probes, and
+  capture diffs. Byte-identical captures after a `nodeInputs` patch mean the
+  socket is not in the live TSL subset or the delta is below 8-bit; Principled
+  `sheenWeight` / `sheenRoughness` / `sheenTint` are live. Do not treat an
+  unchanged PNG as proof the document failed to patch. Use `rtxDigest` when geometry is unexpectedly missing from
+  native lighting. `modifierDigest` accepts a group and returns descendant
+  mesh stacks.
 - For whole-mesh transforms or smoothing, use `selection: "all"`; keep explicit
   vertex-index lists for genuinely local edits.
 - Treat realism as the combination of silhouette, bevel/profile detail,

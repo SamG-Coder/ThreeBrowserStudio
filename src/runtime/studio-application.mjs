@@ -3,7 +3,9 @@ import path from 'node:path';
 import {
   AtomicProjectStore,
   AuthoringKernel,
+  buildBeautyDigest,
   buildMeshElements,
+  buildProjectVisibility,
   MAX_INSPECT_RESPONSE_BYTES,
   ProjectIndex,
   PROTOCOL_VERSION,
@@ -1147,6 +1149,50 @@ export class StudioApplication {
     throw new StudioError('project_action_not_implemented', `Project action ${params.action} is not enabled yet.`);
   }
 
+  #modifierDigestForMesh(document, entity) {
+    const geometryId = entity.components?.mesh?.geometryId ?? null;
+    const geometryResource = geometryId ? document.resources.geometries?.[geometryId] : null;
+    const sourceRecipe = geometryResource ? normalizeGeometryRecipe(geometryResource) : null;
+    const analysis = analyzeViewportModifierStack(entity, { sourceKind: sourceRecipe?.kind ?? null });
+    const digest = buildModifierDigest(entity);
+    const compiledGeometry = this.#compiled?.objects?.get(entity.id)?.geometry ?? null;
+    const positionCount = compiledGeometry?.getAttribute?.('position')?.count;
+    const indexCount = compiledGeometry?.getIndex?.()?.count ?? compiledGeometry?.index?.count;
+    const sourceCounts = sourceRecipe?.kind === 'editableMesh'
+      ? {
+          vertices: sourceRecipe.positions.length / 3,
+          faces: sourceRecipe.faceOffsets.length - 1,
+          corners: sourceRecipe.cornerVertexIndices.length,
+        }
+      : (Array.isArray(sourceRecipe?.positions) ? {
+          vertices: sourceRecipe.positions.length / 3,
+          triangles: Array.isArray(sourceRecipe.indices)
+            ? sourceRecipe.indices.length / 3
+            : sourceRecipe.positions.length / 9,
+        } : null);
+    return {
+      ...digest,
+      sourceGeometryId: geometryId,
+      sourceRecipeKind: sourceRecipe?.kind ?? null,
+      viewportEvaluation: {
+        target: analysis.target,
+        status: analysis.status,
+        ...(analysis.blocked ? { blocked: analysis.blocked } : {}),
+        ...(sourceCounts ? { sourceCounts } : {}),
+        ...(Number.isFinite(positionCount) ? {
+          previewCounts: {
+            vertices: positionCount,
+            triangles: Number.isFinite(indexCount) ? indexCount / 3 : positionCount / 3,
+          },
+        } : {}),
+      },
+      modifiers: digest.modifiers.map((modifier, index) => ({
+        ...modifier,
+        viewport: analysis.entries[index],
+      })),
+    };
+  }
+
   #inspect(params) {
     this.#assertTarget(params);
     const document = this.#kernel.document;
@@ -1165,6 +1211,7 @@ export class StudioApplication {
         projectId: document.projectId,
         ...buildMeshElements(resource, {
           ...params,
+          meshFilter: params.meshFilter,
           responseByteBudget: MAX_INSPECT_RESPONSE_BYTES - INSPECT_RESPONSE_ENVELOPE_RESERVE_BYTES,
         }),
       };
@@ -1184,63 +1231,71 @@ export class StudioApplication {
         }),
       };
     }
+    if (params.query === 'beautyDigest') {
+      return {
+        success: true,
+        revision: document.revision,
+        projectId: document.projectId,
+        ...buildBeautyDigest({
+          studioRoot: this.studioRoot,
+          latestEvidence: this.#latestEvidence,
+          evidence: params.evidence ?? {},
+        }),
+      };
+    }
     if (params.query === 'modifierDigest') {
       const entityId = params.selector.ids[0];
-      const { scene, entity } = new ProjectIndex(document).getEntity(entityId);
+      const index = new ProjectIndex(document);
+      const { scene, entity } = index.getEntity(entityId);
+      if (entity.kind === 'group') {
+        const descendantIds = index.collectSubtree(entityId).slice(1);
+        const meshes = descendantIds
+          .map(id => scene.entities[id])
+          .filter(child => child && ['mesh', 'instancedMesh'].includes(child.kind));
+        const truncated = meshes.length > 32;
+        const selected = meshes.slice(0, 32);
+        return {
+          success: true,
+          revision: document.revision,
+          projectId: document.projectId,
+          sceneId: scene.id,
+          kind: 'group',
+          entityId,
+          meshCount: meshes.length,
+          truncated,
+          children: selected.map(child => this.#modifierDigestForMesh(document, child)),
+        };
+      }
       if (!['mesh', 'instancedMesh'].includes(entity.kind)) {
-        throw new StudioError('invalid_modifier_target', 'modifierDigest requires a mesh or instancedMesh entity.', {
+        throw new StudioError('invalid_modifier_target', 'modifierDigest requires a mesh, instancedMesh, or group entity.', {
           entityId,
           kind: entity.kind,
         });
       }
-      const geometryId = entity.components?.mesh?.geometryId ?? null;
-      const geometryResource = geometryId ? document.resources.geometries?.[geometryId] : null;
-      const sourceRecipe = geometryResource ? normalizeGeometryRecipe(geometryResource) : null;
-      const analysis = analyzeViewportModifierStack(entity, { sourceKind: sourceRecipe?.kind ?? null });
-      const digest = buildModifierDigest(entity);
-      const compiledGeometry = this.#compiled?.objects?.get(entityId)?.geometry ?? null;
-      const positionCount = compiledGeometry?.getAttribute?.('position')?.count;
-      const indexCount = compiledGeometry?.getIndex?.()?.count ?? compiledGeometry?.index?.count;
-      const sourceCounts = sourceRecipe?.kind === 'editableMesh'
-        ? {
-            vertices: sourceRecipe.positions.length / 3,
-            faces: sourceRecipe.faceOffsets.length - 1,
-            corners: sourceRecipe.cornerVertexIndices.length,
-          }
-        : (Array.isArray(sourceRecipe?.positions) ? {
-            vertices: sourceRecipe.positions.length / 3,
-            triangles: Array.isArray(sourceRecipe.indices)
-              ? sourceRecipe.indices.length / 3
-              : sourceRecipe.positions.length / 9,
-          } : null);
       return {
         success: true,
         revision: document.revision,
         projectId: document.projectId,
         sceneId: scene.id,
-        ...digest,
-        sourceGeometryId: geometryId,
-        sourceRecipeKind: sourceRecipe?.kind ?? null,
-        viewportEvaluation: {
-          target: analysis.target,
-          status: analysis.status,
-          ...(analysis.blocked ? { blocked: analysis.blocked } : {}),
-          ...(sourceCounts ? { sourceCounts } : {}),
-          ...(Number.isFinite(positionCount) ? {
-            previewCounts: {
-              vertices: positionCount,
-              triangles: Number.isFinite(indexCount) ? indexCount / 3 : positionCount / 3,
-            },
-          } : {}),
-        },
-        modifiers: digest.modifiers.map((modifier, index) => ({
-          ...modifier,
-          viewport: analysis.entries[index],
-        })),
+        ...this.#modifierDigestForMesh(document, entity),
       };
     }
     const scene = document.scenes[params.sceneId ?? document.activeSceneId];
     if (!scene) throw new StudioError('scene_not_found', `Scene ${params.sceneId} does not exist.`);
+    if (params.query === 'projectVisibility') {
+      const canvas = this.#viewport.renderer?.domElement;
+      return {
+        success: true,
+        revision: document.revision,
+        projectId: document.projectId,
+        sceneId: scene.id,
+        ...buildProjectVisibility(scene, {
+          ...(params.projection ?? {}),
+          width: params.projection?.width ?? canvas?.width ?? 1280,
+          height: params.projection?.height ?? canvas?.height ?? 720,
+        }),
+      };
+    }
     if (params.query === 'rtxDigest') {
       const status = this.#viewport.getRtxStatus?.() ?? null;
       const authored = scene.settings.rtx ?? null;

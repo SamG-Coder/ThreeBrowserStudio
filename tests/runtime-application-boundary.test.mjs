@@ -10,6 +10,7 @@ import {
   contentHash,
   createProjectDocument,
   createResourceDocument,
+  encodePngRgba,
   hashExactEntitySet,
 } from '../src/core/index.mjs';
 import { LAYOUT_PATTERN_MODES } from '../src/core/layout-patterns.mjs';
@@ -123,6 +124,19 @@ function fakeThree() {
       this.isMesh = true;
     }
   }
+  class PerspectiveCamera extends Group {
+    constructor(fov = 46, aspect = 16 / 9, near = 0.05, far = 2000) {
+      super();
+      this.isCamera = true;
+      this.isPerspectiveCamera = true;
+      this.fov = fov;
+      this.aspect = aspect;
+      this.near = near;
+      this.far = far;
+    }
+
+    updateProjectionMatrix() {}
+  }
   return {
     groups,
     Group: class extends Group {
@@ -139,6 +153,7 @@ function fakeThree() {
       multiply() { return this; }
     },
     Mesh,
+    PerspectiveCamera,
     BoxGeometry: class extends Disposable {},
     MeshStandardNodeMaterial: class extends Disposable {},
     FrontSide: 0,
@@ -1027,4 +1042,210 @@ test('live collection inspection returns guarded membership and exact entity-set
   assert.equal(result.collection.membershipHash, contentHash(['entity/tree']));
   assert.match(result.collection.subtreeHash, /^[a-f0-9]{64}$/);
   assert.deepEqual(result.entities.map(entity => entity.id), ['entity/tree']);
+});
+
+test('new inspect queries and nodeInputs patches work together as an authoring demo', async (t) => {
+  const { application, studioRoot } = await applicationFixture(t);
+  const created = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1',
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    baseRevision: 0,
+    idempotencyKey: 'inspect-tools-demo-0001',
+    label: 'Author a camera, group, filtered mesh, and Principled graph',
+    operations: [
+      {
+        op: 'resource.create',
+        resourceType: 'geometry',
+        resource: {
+          id: 'geometry/demo-box',
+          kind: 'box',
+          width: 0.4,
+          height: 0.4,
+          depth: 0.4,
+        },
+      },
+      {
+        op: 'resource.create',
+        resourceType: 'geometry',
+        resource: {
+          id: 'geometry/demo-grid',
+          kind: 'geometry',
+          recipe: {
+            kind: 'indexedMesh',
+            positions: [
+              0, 0, 0, 1, 0, 0, 2, 0, 0,
+              0, 1, 0, 1, 1, 0, 2, 1, 0,
+              0, 2, 0, 1, 2, 0, 2, 2, 0,
+            ],
+            indices: [
+              0, 1, 4, 0, 4, 3, 1, 2, 5, 1, 5, 4,
+              3, 4, 7, 3, 7, 6, 4, 5, 8, 4, 8, 7,
+            ],
+          },
+        },
+      },
+      {
+        op: 'resource.create',
+        resourceType: 'material',
+        resource: { id: 'material/demo-cloth', kind: 'standard', color: '#553344' },
+      },
+      {
+        op: 'resource.create',
+        resourceType: 'graph',
+        resource: {
+          id: 'graph/demo-velvet',
+          kind: 'graph',
+          name: 'Demo velvet',
+          graph: {
+            formatVersion: 1,
+            id: 'graph/demo-velvet',
+            domain: 'shader',
+            nodes: [
+              { id: 'color', type: 'constant.color', params: { value: [0.18, 0.04, 0.07] } },
+              {
+                id: 'bsdf',
+                type: 'blender.principledBSDF',
+                params: {},
+                inputs: { roughness: 0.72, sheenWeight: 0.45, metallic: 0.05 },
+              },
+            ],
+            edges: [{
+              from: { nodeId: 'color', port: 'value' },
+              to: { nodeId: 'bsdf', port: 'baseColor' },
+            }],
+            outputs: { baseColor: { nodeId: 'color', port: 'value' } },
+          },
+        },
+      },
+      {
+        op: 'entity.create',
+        sceneId: 'scene/main',
+        entity: {
+          id: 'entity/camera',
+          kind: 'perspectiveCamera',
+          transform: { position: [0, 0, 2] },
+          components: { camera: { fov: 46, near: 0.05, far: 100 } },
+        },
+      },
+      { op: 'scene.setActiveCamera', sceneId: 'scene/main', cameraId: 'entity/camera' },
+      {
+        op: 'entity.create',
+        sceneId: 'scene/main',
+        entity: {
+          id: 'entity/still',
+          kind: 'group',
+          name: 'Still',
+        },
+      },
+      {
+        op: 'entity.create',
+        sceneId: 'scene/main',
+        entity: {
+          id: 'entity/cloth',
+          kind: 'mesh',
+          parentId: 'entity/still',
+          transform: { position: [0, 0, 0] },
+          components: { mesh: { geometryId: 'geometry/demo-box', materialIds: ['material/demo-cloth'] } },
+        },
+      },
+      {
+        op: 'entity.create',
+        sceneId: 'scene/main',
+        entity: {
+          id: 'entity/offstage',
+          kind: 'empty',
+          transform: { position: [0, 0, 6] },
+        },
+      },
+    ],
+  });
+  assert.equal(created.success, true);
+
+  const filtered = await application.dispatch('three_studio_inspect', {
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    query: 'meshElements',
+    selector: { ids: ['geometry/demo-grid'] },
+    element: 'vertices',
+    meshFilter: { yMin: 0.5, yMax: 1.5, boundary: false },
+  });
+  assert.deepEqual(filtered.elements.map(item => item.index), [4]);
+
+  const sockets = await application.dispatch('three_studio_inspect', {
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    query: 'graphDigest',
+    selector: { ids: ['graph/demo-velvet'] },
+  });
+  const bsdf = sockets.nodes.find(node => node.id === 'bsdf');
+  assert.equal(bsdf.sockets.find(socket => socket.port === 'roughness').source, 'authored');
+  assert.equal(bsdf.sockets.find(socket => socket.port === 'ior').source, 'default');
+  const sheenBefore = bsdf.sockets.find(socket => socket.port === 'sheenWeight').value;
+
+  const visibility = await application.dispatch('three_studio_inspect', {
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    query: 'projectVisibility',
+    projection: { entityIds: ['entity/cloth', 'entity/offstage'], width: 1280, height: 720 },
+  });
+  assert.equal(visibility.points.find(point => point.entityId === 'entity/cloth').visibility, 'on-screen');
+  assert.equal(visibility.points.find(point => point.entityId === 'entity/offstage').visibility, 'behind-camera');
+
+  const groupDigest = await application.dispatch('three_studio_inspect', {
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    query: 'modifierDigest',
+    selector: { ids: ['entity/still'] },
+  });
+  assert.equal(groupDigest.kind, 'group');
+  assert.equal(groupDigest.meshCount, 1);
+  assert.equal(groupDigest.children[0].entityId, 'entity/cloth');
+
+  const patched = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1',
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    baseRevision: created.revision,
+    idempotencyKey: 'inspect-tools-demo-socket-0002',
+    label: 'Raise velvet roughness without wiping sheen',
+    operations: [{
+      op: 'resource.patch',
+      resourceType: 'graph',
+      resourceId: 'graph/demo-velvet',
+      patch: { nodeInputs: { bsdf: { roughness: 0.96 } } },
+    }],
+  });
+  assert.equal(patched.success, true);
+  const after = await application.dispatch('three_studio_inspect', {
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    query: 'graphDigest',
+    selector: { ids: ['graph/demo-velvet'] },
+  });
+  const afterBsdf = after.nodes.find(node => node.id === 'bsdf');
+  assert.equal(afterBsdf.sockets.find(socket => socket.port === 'roughness').value, 0.96);
+  assert.equal(afterBsdf.sockets.find(socket => socket.port === 'sheenWeight').value, sheenBefore);
+
+  const artifacts = path.join(studioRoot, 'artifacts');
+  await mkdir(artifacts, { recursive: true });
+  const first = Buffer.alloc(8, 40);
+  first[3] = 255; first[7] = 255;
+  const second = Buffer.from(first);
+  second[0] = 255;
+  await writeFile(path.join(artifacts, 'studio-9001.png'), encodePngRgba(2, 1, first));
+  await writeFile(path.join(artifacts, 'studio-9002.png'), encodePngRgba(2, 1, second));
+  const beauty = await application.dispatch('three_studio_inspect', {
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    query: 'beautyDigest',
+    evidence: {
+      path: 'studio-9001.png',
+      comparePath: 'studio-9002.png',
+      probes: [{ name: 'left', x: 0, y: 0 }],
+    },
+  });
+  assert.equal(beauty.width, 2);
+  assert.equal(beauty.compare.changedPixelCount, 1);
+  assert.equal(beauty.probes[0].rgba[0], 40);
 });

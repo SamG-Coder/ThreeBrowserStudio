@@ -38,6 +38,8 @@ test('summaries use only compact allowlisted facts and sanitize control, bidi, a
   assert.equal(summarizeStudioCommand('three_studio_inspect', { query: 'meshElements' }), 'Inspect exact mesh elements');
   assert.equal(summarizeStudioCommand('three_studio_inspect', { query: 'graphDigest' }), 'Inspect graph digest');
   assert.equal(summarizeStudioCommand('three_studio_inspect', { query: 'rtxDigest' }), 'Inspect RTX digest');
+  assert.equal(summarizeStudioCommand('three_studio_inspect', { query: 'beautyDigest' }), 'Inspect beauty evidence pixels');
+  assert.equal(summarizeStudioCommand('three_studio_inspect', { query: 'projectVisibility' }), 'Inspect camera projection visibility');
 });
 
 test('one telemetry entry advances started to completed without retaining raw request or result data', () => {

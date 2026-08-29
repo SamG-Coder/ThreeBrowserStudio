@@ -37,6 +37,10 @@ class FakePhysicalNodeMaterial {
   clearcoatNode = null;
   clearcoatRoughnessNode = null;
   transmissionNode = null;
+  sheenNode = null;
+  sheenRoughnessNode = null;
+  sheenColorNode = null;
+  sheen = 0;
 
   constructor(values) {
     this.constructorValues = values;
@@ -105,7 +109,7 @@ test('Blender Principled-to-Material-Output flow compiles to a live surface cont
   assert.equal(compilation.graphId, 'shader/blender-socket-surface');
   assert.equal(compilation.nodesCompiled, 2);
   assert.deepEqual(compilation.outputNames, ['surface']);
-  assert.deepEqual(compilation.features, { transparent: true, transmission: false });
+  assert.deepEqual(compilation.features, { transparent: true, transmission: false, sheen: false });
   assert.equal(isCompiledSurface(compilation.outputs.surface), true);
   assert.deepEqual(compilation.outputs.baseColor.arguments, [0.04, 0.24, 0.08, 1]);
   assert.deepEqual(compilation.outputs.roughness.arguments, [0.31]);
@@ -138,11 +142,41 @@ test('createMaterial resolves graphId and binds compiled Blender surface channel
   assert.equal(material.userData.studioGraphNodesCompiled, 2);
   assert.equal(material.transparent, true);
   assert.equal(material.transmissionNode, null, 'default zero transmission must not start a transmission pass');
+  assert.equal(material.sheenNode, null, 'default zero sheen must not start a sheen lobe');
+  assert.equal(material.sheen, 0);
 
   assert.throws(
     () => createMaterial(FAKE_THREE, { id: 'material/missing', kind: 'material', graphId: 'shader/missing' }, { TSL: FAKE_TSL, graphs: {} }),
     /references missing graph shader\/missing/,
   );
+});
+
+test('authored Principled sheen sockets compile onto the physical NodeMaterial', () => {
+  const graph = blenderSurfaceGraph();
+  graph.id = 'shader/blender-sheen-surface';
+  graph.nodes[0].inputs.sheenWeight = 0.38;
+  graph.nodes[0].inputs.sheenRoughness = 0.42;
+  graph.nodes[0].inputs.sheenTint = [0.72, 0.08, 0.16, 1];
+
+  const compilation = compileShaderGraph({ TSL: FAKE_TSL, graph });
+  assert.deepEqual(compilation.features, { transparent: true, transmission: false, sheen: true });
+  assert.deepEqual(compilation.outputs.sheen.arguments, [0.38]);
+  assert.deepEqual(compilation.outputs.sheenRoughness.arguments, [0.42]);
+  assert.deepEqual(compilation.outputs.sheenColor.arguments, [0.72, 0.08, 0.16, 1]);
+
+  const material = createMaterial(FAKE_THREE, {
+    id: 'material/velvet',
+    kind: 'material',
+    materialKind: 'physical',
+    graphId: graph.id,
+  }, {
+    TSL: FAKE_TSL,
+    graphs: { [graph.id]: { id: graph.id, kind: 'graph', graph } },
+  });
+  assert.deepEqual(material.sheenNode.arguments, [0.38]);
+  assert.deepEqual(material.sheenRoughnessNode.arguments, [0.42]);
+  assert.deepEqual(material.sheenColorNode.arguments, [0.72, 0.08, 0.16, 1]);
+  assert.equal(material.sheen, 1);
 });
 
 test('unsupported Blender nodes and modes fail explicitly instead of flattening', () => {

@@ -98,8 +98,49 @@ export const INSPECT_SLICES = Object.freeze([
 export const INSPECT_QUERIES = Object.freeze([
   'selector', 'sceneDigest', 'resourceDigest', 'meshElements', 'graphDigest', 'modifierDigest', 'rtxDigest', 'changedSinceRevision',
   'unresolvedResources', 'unusedResources', 'graphCatalog', 'playState',
-  'latestEvidence', 'blenderCatalog',
+  'latestEvidence', 'blenderCatalog', 'beautyDigest', 'projectVisibility',
 ]);
+
+const inspectProbeSchema = z.object({
+  name: z.string().min(1).max(64).optional(),
+  x: z.number().int().min(0).max(4095),
+  y: z.number().int().min(0).max(4095),
+}).strict();
+
+const inspectEvidenceSchema = z.object({
+  path: z.string().min(1).max(1024).optional(),
+  comparePath: z.string().min(1).max(1024).optional(),
+  probes: z.array(inspectProbeSchema).max(32).optional(),
+  bbox: z.object({
+    x0: z.number().int().min(0).max(4095),
+    y0: z.number().int().min(0).max(4095),
+    x1: z.number().int().min(0).max(4095),
+    y1: z.number().int().min(0).max(4095),
+  }).strict().optional(),
+  maxChanged: z.number().int().min(1).max(32).optional(),
+}).strict();
+
+const inspectProjectionPointSchema = z.object({
+  name: z.string().min(1).max(64),
+  world: vec3,
+}).strict();
+
+const inspectProjectionSchema = z.object({
+  cameraId: identifier.optional(),
+  points: z.array(inspectProjectionPointSchema).max(32).optional(),
+  entityIds: z.array(identifier).max(32).optional(),
+  width: z.number().int().min(1).max(4096).optional(),
+  height: z.number().int().min(1).max(4096).optional(),
+}).strict();
+
+const inspectMeshFilterSchema = z.object({
+  min: vec3.optional(),
+  max: vec3.optional(),
+  yMin: finite.optional(),
+  yMax: finite.optional(),
+  boundary: z.boolean().optional(),
+  notAdjacentTo: z.array(z.number().int().min(0).max(1_000_000)).max(64).optional(),
+}).strict();
 
 export const inspectSchema = z.object({
   ...connectionFields,
@@ -111,6 +152,9 @@ export const inspectSchema = z.object({
   sinceRevision: nonNegativeInteger.optional(),
   cursor: cursor.optional(),
   limit: z.number().int().min(1).max(200).optional().default(50),
+  evidence: inspectEvidenceSchema.optional(),
+  projection: inspectProjectionSchema.optional(),
+  meshFilter: inspectMeshFilterSchema.optional(),
 }).strict().superRefine((value, context) => {
   if (['meshElements', 'graphDigest', 'modifierDigest'].includes(value.query) && value.selector?.ids?.length !== 1) {
     context.addIssue({
@@ -121,6 +165,26 @@ export const inspectSchema = z.object({
   }
   if (value.element !== undefined && value.query !== 'meshElements') {
     context.addIssue({ code: 'custom', path: ['element'], message: 'element is only valid for meshElements.' });
+  }
+  if (value.evidence !== undefined && value.query !== 'beautyDigest') {
+    context.addIssue({ code: 'custom', path: ['evidence'], message: 'evidence is only valid for beautyDigest.' });
+  }
+  if (value.projection !== undefined && value.query !== 'projectVisibility') {
+    context.addIssue({ code: 'custom', path: ['projection'], message: 'projection is only valid for projectVisibility.' });
+  }
+  if (value.meshFilter !== undefined && value.query !== 'meshElements') {
+    context.addIssue({ code: 'custom', path: ['meshFilter'], message: 'meshFilter is only valid for meshElements.' });
+  }
+  if (value.query === 'projectVisibility') {
+    const pointCount = value.projection?.points?.length ?? 0;
+    const entityCount = value.projection?.entityIds?.length ?? 0;
+    if (pointCount === 0 && entityCount === 0) {
+      context.addIssue({
+        code: 'custom',
+        path: ['projection'],
+        message: 'projectVisibility requires projection.points or projection.entityIds.',
+      });
+    }
   }
 });
 
@@ -1028,8 +1092,8 @@ export const TOOL_SCHEMAS = Object.freeze({
 
 export const STUDIO_TOOL_NAMES = Object.freeze(Object.keys(TOOL_SCHEMAS));
 
-export const MCP_SERVER_VERSION = '0.2.0';
-export const TOOL_CONTRACT_VERSION = 'three-studio-tools/3';
+export const MCP_SERVER_VERSION = '0.2.1';
+export const TOOL_CONTRACT_VERSION = 'three-studio-tools/4';
 export const TOOL_INPUT_SCHEMAS = Object.freeze(Object.fromEntries(
   STUDIO_TOOL_NAMES.map(name => [name, z.toJSONSchema(TOOL_SCHEMAS[name], { io: 'input' })]),
 ));
@@ -1074,7 +1138,13 @@ const TOOL_CONTRACT_FEATURES = Object.freeze({
   rasterTexturesInRtxHitShading: false,
   resourceDigest: true,
   meshElements: true,
+  meshElementFilters: true,
   graphDigest: true,
+  graphSocketDigest: true,
+  graphNodeInputPatch: true,
+  beautyDigest: true,
+  projectVisibility: true,
+  modifierDigestGroups: true,
   rtxDigest: true,
   exactBulkEntityEditing: true,
   transformGrouping: true,

@@ -6,6 +6,39 @@ import {
   createProjectDocument,
   validateProjectDocument,
 } from '../src/core/index.mjs';
+
+function principledResource(id = 'graph/velvet') {
+  return {
+    id,
+    kind: 'graph',
+    name: 'Velvet',
+    metadata: { preserved: true },
+    graph: {
+      formatVersion: 1,
+      id,
+      domain: 'shader',
+      nodes: [
+        { id: 'color', type: 'constant.color', params: { value: [0.2, 0.05, 0.08] } },
+        {
+          id: 'bsdf',
+          type: 'blender.principledBSDF',
+          params: {},
+          inputs: {
+            roughness: 0.72,
+            sheenWeight: 0.4,
+            metallic: 0.1,
+            specularIorLevel: 0.35,
+          },
+        },
+      ],
+      edges: [{
+        from: { nodeId: 'color', port: 'value' },
+        to: { nodeId: 'bsdf', port: 'baseColor' },
+      }],
+      outputs: { baseColor: { nodeId: 'color', port: 'value' } },
+    },
+  };
+}
 import { queryGraphCatalog } from '../src/graphs/index.mjs';
 import { translateToolOperation } from '../src/runtime/studio-application.mjs';
 
@@ -164,4 +197,30 @@ test('graph catalog exposes the canonical resource envelope and edge port shape'
   });
   assert.match(authoring.guidance, /resource\.graph/);
   assert.match(authoring.guidance, /nodeId and port/);
+});
+
+test('nodeInputs merges one socket without wiping the rest of a Principled node', () => {
+  const id = 'graph/velvet';
+  const project = createProjectDocument({
+    projectId: 'project/socket-merge',
+    resources: { graphs: { [id]: principledResource(id) } },
+  });
+  const translated = translateToolOperation({
+    op: 'resource.patch',
+    resourceType: 'graph',
+    resourceId: id,
+    patch: { nodeInputs: { bsdf: { roughness: 0.96 } } },
+  }, project);
+  assert.equal(Object.hasOwn(translated.patch, 'nodeInputs'), false);
+  const bsdf = translated.patch.graph.nodes.find(node => node.id === 'bsdf');
+  assert.equal(bsdf.inputs.roughness, 0.96);
+  assert.equal(bsdf.inputs.sheenWeight, 0.4);
+  assert.equal(bsdf.inputs.metallic, 0.1);
+  assert.equal(bsdf.inputs.specularIorLevel, 0.35);
+
+  const document = applyOperations(project, [translated]).document;
+  const live = document.resources.graphs[id].graph.nodes.find(node => node.id === 'bsdf');
+  assert.equal(live.inputs.roughness, 0.96);
+  assert.equal(live.inputs.sheenWeight, 0.4);
+  assert.equal(live.inputs.ior, 1.5);
 });

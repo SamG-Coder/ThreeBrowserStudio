@@ -1,6 +1,7 @@
 import { MAX_INSPECT_RESPONSE_BYTES } from '../core/constants.mjs';
 import { StudioError } from '../core/errors.mjs';
-import { contentHash, isPlainRecord } from '../core/util.mjs';
+import { contentHash, isPlainRecord, stableStringify } from '../core/util.mjs';
+import { getGraphNode } from './catalogs.mjs';
 import { validateGraph } from './validator.mjs';
 
 const ENCODER = new TextEncoder();
@@ -100,12 +101,64 @@ function compactDiagnostic(item) {
   return result;
 }
 
-function compactNode(node) {
+function valuesEqual(left, right) {
+  return stableStringify(left) === stableStringify(right);
+}
+
+function incomingEdgesByPort(edges, nodeId) {
+  const incoming = new Map();
+  for (const edge of edges) {
+    if (edge?.to?.nodeId !== nodeId) continue;
+    incoming.set(edge.to.port, {
+      nodeId: compactString(String(edge.from?.nodeId ?? ''), 128),
+      port: compactString(String(edge.from?.port ?? ''), 96),
+    });
+  }
+  return incoming;
+}
+
+/**
+ * Full catalog socket contract. `inputs.$summary.omittedKeyCount` is display
+ * truncation from compactValue, not missing sockets.
+ */
+function describeNodeSockets(node, domain, edges) {
+  const definition = getGraphNode(domain, node.type);
+  if (!definition) return undefined;
+  const incoming = incomingEdgesByPort(edges, node.id);
+  const sockets = Object.entries(definition.inputs).map(([port, spec]) => {
+    const hasValue = Object.hasOwn(node.inputs ?? {}, port);
+    const value = hasValue ? node.inputs[port] : undefined;
+    const hasDefault = Object.hasOwn(spec, 'default');
+    const connected = incoming.has(port);
+    let source = 'default';
+    if (connected) source = 'edge';
+    else if (hasValue && (!hasDefault || !valuesEqual(value, spec.default))) source = 'authored';
+    return {
+      port,
+      type: spec.type,
+      source,
+      connected,
+      ...(connected ? { from: incoming.get(port) } : {}),
+      ...(hasValue ? { value: compactSlice(value, 8) } : {}),
+      ...(hasDefault ? { default: compactSlice(spec.default, 8) } : {}),
+    };
+  });
+  return {
+    sockets,
+    authoredCount: sockets.filter(socket => socket.source === 'authored').length,
+    defaultCount: sockets.filter(socket => socket.source === 'default').length,
+    connectedCount: sockets.filter(socket => socket.source === 'edge').length,
+  };
+}
+
+function compactNode(node, domain, edges) {
+  const socketTruth = describeNodeSockets(node, domain, edges);
   return {
     id: compactString(String(node.id ?? ''), 128),
     type: compactString(String(node.type ?? ''), 128),
     ...(isPlainRecord(node.params) ? { params: compactSlice(node.params) } : {}),
     ...(isPlainRecord(node.inputs) ? { inputs: compactSlice(node.inputs) } : {}),
+    ...(socketTruth ? socketTruth : {}),
     ...(isPlainRecord(node.layout) ? { layout: compactSlice(node.layout, 32) } : {}),
   };
 }
@@ -237,6 +290,7 @@ export function buildGraphDigest(resourceOrGraph, options = {}) {
     resourceHash,
     graphHash,
     domain: typeof inspectedGraph.domain === 'string' ? inspectedGraph.domain : null,
+    socketContract: 'full-vs-default',
     validation: {
       valid: validation.valid,
       metrics: validation.metrics,
@@ -295,7 +349,7 @@ export function buildGraphDigest(resourceOrGraph, options = {}) {
 
   const nodeEnd = Math.min(nodes.length, nodeOffset + nodeLimit);
   for (let index = nodeOffset; index < nodeEnd; index += 1) {
-    const full = compactNode(nodes[index]);
+    const full = compactNode(nodes[index], inspectedGraph.domain, edges);
     let candidate = structuredClone(result);
     candidate.nodes.push(full);
     nextNodeOffset = index + 1;

@@ -18,6 +18,7 @@ import {
 import {
   composeEntityTransforms,
   composeTransformMatrix,
+  entityWorldMatrix,
   multiplyTransformMatrices,
   relativeEntityTransform,
 } from './transform-math.mjs';
@@ -274,18 +275,6 @@ function normalizeTextureResourcePatch(source) {
     if (hasData) patch.recipe.pixels = null;
   }
   return patch;
-}
-
-function entityWorldMatrix(scene, entityId, memo = new Map()) {
-  if (memo.has(entityId)) return memo.get(entityId);
-  const entity = scene.entities[entityId];
-  studioAssert(entity, 'not_found', `Entity ${entityId} does not exist`, { id: entityId, kind: 'entity' });
-  const local = composeTransformMatrix(entity.transform);
-  const world = entity.parentId
-    ? multiplyTransformMatrices(entityWorldMatrix(scene, entity.parentId, memo), local)
-    : local;
-  memo.set(entityId, world);
-  return world;
 }
 
 function entityMutationInverse(entries) {

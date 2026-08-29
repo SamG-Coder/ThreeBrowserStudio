@@ -144,12 +144,22 @@ transaction.
    schema validation or successful candidate compilation alone is not visual
    verification.
 3. Render the committed revision at a useful final resolution and inspect the
-   returned WebGPU image, not just its metadata.
-4. Inspect final scene/resource counts and `latestEvidence`, and confirm that
+   returned WebGPU image, not just its metadata. Follow the render with
+   `beautyDigest` for file/pixel hashes, clip/black/mean luma, exact `(x,y)`
+   probes, and an optional capture-to-capture diff. A byte-identical PNG after
+   a `nodeInputs` patch means the socket is not in the live TSL subset or the
+   delta is below 8-bit, not that the document failed to patch. Principled
+   `sheenWeight` / `sheenRoughness` / `sheenTint` compile live.
+4. Use `projectVisibility` before editing an object that may be off-screen.
+   Use `meshFilter` on `meshElements` instead of paging an entire cloth. Read
+   `graphDigest` `sockets` (authored vs default vs edge); `inputs.$summary`
+   is display truncation. Patch one socket with `resource.patch` `nodeInputs`.
+   `modifierDigest` accepts a group and returns descendant mesh stacks.
+5. Inspect final scene/resource counts and `latestEvidence`, and confirm that
    the evidence revision and camera match the native viewport result being
    claimed.
-5. Save with `three_studio_project` only after validation and visual review.
-6. For a recorded build, stop recording only after the final evidence and save
+6. Save with `three_studio_project` only after validation and visual review.
+7. For a recorded build, stop recording only after the final evidence and save
    are visibly complete. Preserve the resulting video path in the handoff.
 
 Completion means the fresh project can be reopened, validation passes, and the

@@ -27,6 +27,7 @@ import {
   materialTextureGraphConflicts,
   materialTextureReferences,
 } from './material-textures.mjs';
+import { getGraphNode } from '../graphs/catalogs.mjs';
 import { validateGraph } from '../graphs/validator.mjs';
 
 const PROJECT_KEYS = new Set([
@@ -253,9 +254,59 @@ export function normalizeGraphResourceEnvelope(input, { graphId } = {}) {
   return normalized;
 }
 
+function canonicalInputPort(definition, name) {
+  if (definition.inputs[name]) return name;
+  for (const [port, spec] of Object.entries(definition.inputs)) {
+    if (spec.blenderName === name || spec.blenderIdentifier === name || spec.aliases?.includes(name)) {
+      return port;
+    }
+  }
+  return null;
+}
+
+/**
+ * Merge socket values onto existing graph nodes without replacing the node list.
+ * `null` deletes a socket so catalog defaults can be re-applied.
+ */
+export function applyGraphNodeInputs(graph, nodeInputs) {
+  if (!isPlainRecord(graph)) {
+    throw new StudioError('invalid_patch', 'nodeInputs requires a graph document.');
+  }
+  if (!isPlainRecord(nodeInputs) || Object.keys(nodeInputs).length === 0) {
+    throw new StudioError('invalid_patch', 'nodeInputs must be a non-empty object keyed by node id.');
+  }
+  const next = cloneJson(graph);
+  const byId = new Map((next.nodes ?? []).map(node => [node.id, node]));
+  for (const [nodeId, sockets] of Object.entries(nodeInputs)) {
+    const node = byId.get(nodeId);
+    if (!node) {
+      throw new StudioError('invalid_patch', `nodeInputs refers to missing node ${nodeId}.`, { nodeId });
+    }
+    if (!isPlainRecord(sockets) || Object.keys(sockets).length === 0) {
+      throw new StudioError('invalid_patch', `nodeInputs.${nodeId} must be a non-empty socket map.`, { nodeId });
+    }
+    const definition = getGraphNode(next.domain, node.type);
+    if (!definition) {
+      throw new StudioError('invalid_patch', `Unknown node type ${node.type}.`, { nodeId, type: node.type });
+    }
+    node.inputs = isPlainRecord(node.inputs) ? node.inputs : {};
+    for (const [requested, value] of Object.entries(sockets)) {
+      const port = canonicalInputPort(definition, requested);
+      if (!port) {
+        throw new StudioError('invalid_patch', `Unknown socket ${requested} on ${nodeId}.`, { nodeId, port: requested });
+      }
+      if (value === null) delete node.inputs[port];
+      else node.inputs[port] = cloneJson(value);
+    }
+  }
+  return next;
+}
+
 export function normalizeGraphResourcePatch(patch, currentResource) {
   if (!isPlainRecord(patch)) throw new StudioError('invalid_patch', 'Graph resource patch must be an object.');
   const source = cloneJson(patch);
+  const nodeInputs = source.nodeInputs;
+  delete source.nodeInputs;
   const suppliedGraphId = source.id;
   const currentGraphId = currentResource?.graph?.id ?? currentResource?.id;
   if (suppliedGraphId !== undefined && currentGraphId !== undefined && suppliedGraphId !== currentGraphId) {
@@ -269,6 +320,18 @@ export function normalizeGraphResourcePatch(patch, currentResource) {
   const normalized = normalizeGraphResourceEnvelope(source, {
     graphId: suppliedGraphId ?? currentGraphId,
   });
+  const hadGraphBody = isPlainRecord(normalized.graph);
+  let nextGraph = isPlainRecord(currentResource?.graph) ? cloneJson(currentResource.graph) : undefined;
+  if (hadGraphBody) {
+    nextGraph = nextGraph ? mergePatch(nextGraph, normalized.graph) : normalized.graph;
+  }
+  if (nodeInputs !== undefined) {
+    if (!isPlainRecord(nextGraph)) {
+      throw new StudioError('invalid_patch', 'nodeInputs requires an existing graph or a graph body in the same patch.');
+    }
+    nextGraph = applyGraphNodeInputs(nextGraph, nodeInputs);
+  }
+  if ((hadGraphBody || nodeInputs !== undefined) && nextGraph) normalized.graph = nextGraph;
   if (!currentResource) return normalized;
   const candidate = createResourceDocument('graphs', mergePatch(currentResource, normalized));
   if (Object.hasOwn(normalized, 'graph')) normalized.graph = candidate.graph;

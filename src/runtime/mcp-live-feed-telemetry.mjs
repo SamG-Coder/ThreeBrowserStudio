@@ -39,6 +39,8 @@ const INSPECT_QUERIES = Object.freeze({
   playState: 'Inspect Play state',
   latestEvidence: 'Inspect latest evidence metadata',
   blenderCatalog: 'Inspect Blender catalog',
+  beautyDigest: 'Inspect beauty evidence pixels',
+  projectVisibility: 'Inspect camera projection visibility',
 });
 const HISTORY_ACTIONS = Object.freeze({
   list: 'List history',

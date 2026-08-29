@@ -143,10 +143,43 @@ function deriveEdges(mesh) {
   ));
 }
 
-function vertexPage(mesh, edges, offset, limit) {
-  const end = Math.min(mesh.positions.length / 3, offset + limit);
+function vertexAdjacency(mesh, edges) {
+  const count = mesh.positions.length / 3;
+  const states = Array.from({ length: count }, () => ({
+    neighbours: new Set(),
+    faces: new Set(),
+    boundary: false,
+  }));
+  for (const edge of edges) {
+    for (let endpoint = 0; endpoint < 2; endpoint += 1) {
+      const state = states[edge.vertices[endpoint]];
+      state.neighbours.add(edge.vertices[1 - endpoint]);
+      for (const faceIndex of edge.faces) state.faces.add(faceIndex);
+      if (edge.faces.length === 1) state.boundary = true;
+    }
+  }
+  return states;
+}
+
+function vertexRecord(mesh, index, state) {
+  const adjacentVertices = [...state.neighbours].sort((a, b) => a - b);
+  const incidentFaces = [...state.faces].sort((a, b) => a - b);
+  return {
+    index,
+    ...vertexAttributes(mesh, index),
+    adjacentVertexCount: adjacentVertices.length,
+    adjacentVertices: adjacentVertices.slice(0, MAX_ADJACENCY_PER_ELEMENT),
+    incidentFaceCount: incidentFaces.length,
+    incidentFaces: incidentFaces.slice(0, MAX_ADJACENCY_PER_ELEMENT),
+    boundary: state.boundary,
+    truncatedAdjacency: adjacentVertices.length > MAX_ADJACENCY_PER_ELEMENT
+      || incidentFaces.length > MAX_ADJACENCY_PER_ELEMENT,
+  };
+}
+
+function vertexPage(mesh, edges, indices) {
   const selected = new Map();
-  for (let index = offset; index < end; index += 1) {
+  for (const index of indices) {
     selected.set(index, { neighbours: new Set(), faces: new Set(), boundary: false });
   }
   for (const edge of edges) {
@@ -158,33 +191,19 @@ function vertexPage(mesh, edges, offset, limit) {
       if (edge.faces.length === 1) state.boundary = true;
     }
   }
-  return [...selected].map(([index, state]) => {
-    const adjacentVertices = [...state.neighbours].sort((a, b) => a - b);
-    const incidentFaces = [...state.faces].sort((a, b) => a - b);
-    return {
-      index,
-      ...vertexAttributes(mesh, index),
-      adjacentVertexCount: adjacentVertices.length,
-      adjacentVertices: adjacentVertices.slice(0, MAX_ADJACENCY_PER_ELEMENT),
-      incidentFaceCount: incidentFaces.length,
-      incidentFaces: incidentFaces.slice(0, MAX_ADJACENCY_PER_ELEMENT),
-      boundary: state.boundary,
-      truncatedAdjacency: adjacentVertices.length > MAX_ADJACENCY_PER_ELEMENT
-        || incidentFaces.length > MAX_ADJACENCY_PER_ELEMENT,
-    };
-  });
+  return indices.map(index => vertexRecord(mesh, index, selected.get(index)));
 }
 
-function edgePage(mesh, edges, offset, limit) {
+function edgeRecord(mesh, edge, index) {
   const sharp = new Set((mesh.sharpEdges ?? []).map(pair => edgeKey(pair[0], pair[1])));
   const creases = new Map((mesh.edgeCreases ?? []).map(tupleValue => [
     edgeKey(tupleValue[0], tupleValue[1]),
     tupleValue[2],
   ]));
-  return edges.slice(offset, offset + limit).map((edge, localIndex) => ({
-    index: offset + localIndex,
+  return {
+    index,
     vertices: edge.vertices,
-    endpoints: edge.vertices.map(index => vertexAttributes(mesh, index)),
+    endpoints: edge.vertices.map(vertexIndex => vertexAttributes(mesh, vertexIndex)),
     incidentFaceCount: edge.faces.length,
     incidentFaces: edge.faces.slice(0, MAX_ADJACENCY_PER_ELEMENT),
     boundary: edge.faces.length === 1,
@@ -194,31 +213,34 @@ function edgePage(mesh, edges, offset, limit) {
       crease: creases.get(edge.key) ?? 0,
     } : {}),
     truncatedAdjacency: edge.faces.length > MAX_ADJACENCY_PER_ELEMENT,
-  }));
+  };
 }
 
-function facePage(mesh, offset, limit) {
-  const faceCount = mesh.faceOffsets.length - 1;
-  const records = [];
-  for (let faceIndex = offset; faceIndex < Math.min(faceCount, offset + limit); faceIndex += 1) {
-    const start = mesh.faceOffsets[faceIndex];
-    const end = mesh.faceOffsets[faceIndex + 1];
-    const vertices = mesh.cornerVertexIndices.slice(start, end);
-    records.push({
-      index: faceIndex,
-      vertices,
-      ...(mesh.topologyKind === 'polygons'
-        ? { materialIndex: mesh.faceMaterialIndices[faceIndex] }
-        : (Array.isArray(mesh.triangleMaterialIndices)
-            ? { materialIndex: mesh.triangleMaterialIndices[faceIndex] }
-            : {})),
-      corners: vertices.map((vertexIndex, localCorner) => ({
-        ...(mesh.topologyKind === 'polygons' ? { vertexIndex } : {}),
-        ...cornerAttributes(mesh, start + localCorner),
-      })),
-    });
-  }
-  return records;
+function edgePage(mesh, edges, indices) {
+  return indices.map(index => edgeRecord(mesh, edges[index], index));
+}
+
+function faceRecord(mesh, faceIndex) {
+  const start = mesh.faceOffsets[faceIndex];
+  const end = mesh.faceOffsets[faceIndex + 1];
+  const vertices = mesh.cornerVertexIndices.slice(start, end);
+  return {
+    index: faceIndex,
+    vertices,
+    ...(mesh.topologyKind === 'polygons'
+      ? { materialIndex: mesh.faceMaterialIndices[faceIndex] }
+      : (Array.isArray(mesh.triangleMaterialIndices)
+          ? { materialIndex: mesh.triangleMaterialIndices[faceIndex] }
+          : {})),
+    corners: vertices.map((vertexIndex, localCorner) => ({
+      ...(mesh.topologyKind === 'polygons' ? { vertexIndex } : {}),
+      ...cornerAttributes(mesh, start + localCorner),
+    })),
+  };
+}
+
+function facePage(mesh, indices) {
+  return indices.map(faceIndex => faceRecord(mesh, faceIndex));
 }
 
 function faceIndexForCorner(mesh, cornerIndex) {
@@ -232,21 +254,20 @@ function faceIndexForCorner(mesh, cornerIndex) {
   return lower;
 }
 
-function cornerPage(mesh, offset, limit) {
-  const records = [];
-  const end = Math.min(mesh.cornerVertexIndices.length, offset + limit);
-  for (let cornerIndex = offset; cornerIndex < end; cornerIndex += 1) {
-    const faceIndex = faceIndexForCorner(mesh, cornerIndex);
-    const vertexIndex = mesh.cornerVertexIndices[cornerIndex];
-    records.push({
-      index: cornerIndex,
-      faceIndex,
-      faceCorner: cornerIndex - mesh.faceOffsets[faceIndex],
-      vertexIndex,
-      ...cornerAttributes(mesh, cornerIndex),
-    });
-  }
-  return records;
+function cornerRecord(mesh, cornerIndex) {
+  const faceIndex = faceIndexForCorner(mesh, cornerIndex);
+  const vertexIndex = mesh.cornerVertexIndices[cornerIndex];
+  return {
+    index: cornerIndex,
+    faceIndex,
+    faceCorner: cornerIndex - mesh.faceOffsets[faceIndex],
+    vertexIndex,
+    ...cornerAttributes(mesh, cornerIndex),
+  };
+}
+
+function cornerPage(mesh, indices) {
+  return indices.map(cornerIndex => cornerRecord(mesh, cornerIndex));
 }
 
 function elementCount(mesh, element, edgeCount) {
@@ -254,6 +275,143 @@ function elementCount(mesh, element, edgeCount) {
   if (element === 'faces') return mesh.faceOffsets.length - 1;
   if (element === 'corners') return mesh.cornerVertexIndices.length;
   return edgeCount;
+}
+
+function positionMatches(position, filter) {
+  if (!position) return false;
+  const [x, y, z] = position;
+  if (filter.min && (x < filter.min[0] || y < filter.min[1] || z < filter.min[2])) return false;
+  if (filter.max && (x > filter.max[0] || y > filter.max[1] || z > filter.max[2])) return false;
+  if (filter.yMin !== undefined && y < filter.yMin) return false;
+  if (filter.yMax !== undefined && y > filter.yMax) return false;
+  return true;
+}
+
+function centroid(positions) {
+  if (!positions.length) return null;
+  const sum = [0, 0, 0];
+  for (const position of positions) {
+    sum[0] += position[0];
+    sum[1] += position[1];
+    sum[2] += position[2];
+  }
+  return [sum[0] / positions.length, sum[1] / positions.length, sum[2] / positions.length];
+}
+
+function normalizeMeshFilter(filter) {
+  if (!isPlainFilter(filter)) return null;
+  const normalized = {};
+  if (filter.min) normalized.min = [...filter.min];
+  if (filter.max) normalized.max = [...filter.max];
+  if (filter.yMin !== undefined) normalized.yMin = filter.yMin;
+  if (filter.yMax !== undefined) normalized.yMax = filter.yMax;
+  if (filter.boundary !== undefined) normalized.boundary = filter.boundary;
+  if (Array.isArray(filter.notAdjacentTo) && filter.notAdjacentTo.length) {
+    normalized.notAdjacentTo = [...new Set(filter.notAdjacentTo)].sort((a, b) => a - b);
+  }
+  return Object.keys(normalized).length ? normalized : null;
+}
+
+function isPlainFilter(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    && Object.keys(value).some(key => value[key] !== undefined);
+}
+
+function matchingIndices(mesh, element, edges, filter) {
+  const excluded = new Set(filter.notAdjacentTo ?? []);
+  if (element === 'vertices') {
+    const states = vertexAdjacency(mesh, edges);
+    const matches = [];
+    for (let index = 0; index < states.length; index += 1) {
+      const position = tuple(mesh.positions, index, 3);
+      if (!positionMatches(position, filter)) continue;
+      if (filter.boundary !== undefined && states[index].boundary !== filter.boundary) continue;
+      if (excluded.size && (excluded.has(index) || [...states[index].neighbours].some(neighbour => excluded.has(neighbour)))) {
+        continue;
+      }
+      matches.push(index);
+    }
+    return matches;
+  }
+  if (element === 'edges') {
+    const matches = [];
+    for (let index = 0; index < edges.length; index += 1) {
+      const edge = edges[index];
+      const midpoint = centroid(edge.vertices.map(vertexIndex => tuple(mesh.positions, vertexIndex, 3)));
+      if (!positionMatches(midpoint, filter)) continue;
+      if (filter.boundary !== undefined && (edge.faces.length === 1) !== filter.boundary) continue;
+      if (excluded.size && edge.vertices.some(vertexIndex => excluded.has(vertexIndex))) continue;
+      matches.push(index);
+    }
+    return matches;
+  }
+  if (element === 'faces') {
+    const faceCount = mesh.faceOffsets.length - 1;
+    const matches = [];
+    for (let faceIndex = 0; faceIndex < faceCount; faceIndex += 1) {
+      const start = mesh.faceOffsets[faceIndex];
+      const end = mesh.faceOffsets[faceIndex + 1];
+      const vertices = mesh.cornerVertexIndices.slice(start, end);
+      const center = centroid(vertices.map(vertexIndex => tuple(mesh.positions, vertexIndex, 3)));
+      if (!positionMatches(center, filter)) continue;
+      if (filter.boundary !== undefined) {
+        const boundary = vertices.some((vertex, local) => {
+          const next = vertices[(local + 1) % vertices.length];
+          const edge = edges.find(entry => entry.key === edgeKey(vertex, next));
+          return edge?.faces.length === 1;
+        });
+        if (boundary !== filter.boundary) continue;
+      }
+      if (excluded.size && vertices.some(vertexIndex => excluded.has(vertexIndex))) continue;
+      matches.push(faceIndex);
+    }
+    return matches;
+  }
+  const matches = [];
+  for (let cornerIndex = 0; cornerIndex < mesh.cornerVertexIndices.length; cornerIndex += 1) {
+    const vertexIndex = mesh.cornerVertexIndices[cornerIndex];
+    if (!positionMatches(tuple(mesh.positions, vertexIndex, 3), filter)) continue;
+    if (excluded.has(vertexIndex)) continue;
+    if (filter.boundary !== undefined) {
+      const states = vertexAdjacency(mesh, edges ?? deriveEdges(mesh));
+      if (states[vertexIndex].boundary !== filter.boundary) continue;
+    }
+    matches.push(cornerIndex);
+  }
+  return matches;
+}
+
+function parseMeshCursor(cursor, resourceHash, topologyHash, element, filterHash) {
+  const match = /^([a-f0-9]{64})\.([a-f0-9]{64})\.(vertices|edges|faces|corners)(?:\.([a-f0-9]{64}))?\.(\d+)$/.exec(cursor);
+  if (!match) throw new StudioError('inspect_cursor_invalid', 'Mesh cursor is malformed.');
+  if (match[1] !== resourceHash || match[2] !== topologyHash) {
+    throw new StudioError('inspect_cursor_stale', 'Mesh changed after this cursor was issued.', {
+      expectedResourceHash: match[1],
+      actualResourceHash: resourceHash,
+      expectedTopologyHash: match[2],
+      actualTopologyHash: topologyHash,
+    });
+  }
+  if (match[3] !== element) {
+    throw new StudioError('inspect_cursor_mismatch', `Mesh cursor belongs to ${match[3]}, not ${element}.`, {
+      cursorElement: match[3],
+      requestedElement: element,
+    });
+  }
+  const cursorFilterHash = match[4] ?? null;
+  if (cursorFilterHash !== filterHash) {
+    throw new StudioError('inspect_cursor_mismatch', 'Mesh cursor was issued for a different meshFilter.', {
+      cursorFilterHash,
+      requestedFilterHash: filterHash,
+    });
+  }
+  return Number(match[5]);
+}
+
+function encodeMeshCursor(resourceHash, topologyHash, element, filterHash, offset) {
+  return filterHash
+    ? `${resourceHash}.${topologyHash}.${element}.${filterHash}.${offset}`
+    : `${resourceHash}.${topologyHash}.${element}.${offset}`;
 }
 
 function attributeDigest(mesh) {
@@ -289,6 +447,7 @@ export function buildMeshElements(resource, {
   element = 'vertices',
   cursor,
   limit = 50,
+  meshFilter,
   responseByteBudget = MAX_INSPECT_RESPONSE_BYTES,
 } = {}) {
   if (!MESH_ELEMENT_KINDS.includes(element)) {
@@ -297,34 +456,23 @@ export function buildMeshElements(resource, {
   const mesh = recipeFrom(resource);
   const resourceHash = contentHash(resource);
   const topologyHash = mesh.topologyHash;
-  let offset = 0;
-  if (cursor !== undefined) {
-    const match = /^([a-f0-9]{64})\.([a-f0-9]{64})\.(vertices|edges|faces|corners)\.(\d+)$/.exec(cursor);
-    if (!match) throw new StudioError('inspect_cursor_invalid', 'Mesh cursor is malformed.');
-    if (match[1] !== resourceHash || match[2] !== topologyHash) {
-      throw new StudioError('inspect_cursor_stale', 'Mesh changed after this cursor was issued.', {
-        expectedResourceHash: match[1],
-        actualResourceHash: resourceHash,
-        expectedTopologyHash: match[2],
-        actualTopologyHash: topologyHash,
-      });
-    }
-    if (match[3] !== element) {
-      throw new StudioError('inspect_cursor_mismatch', `Mesh cursor belongs to ${match[3]}, not ${element}.`, {
-        cursorElement: match[3],
-        requestedElement: element,
-      });
-    }
-    offset = Number(match[4]);
-  }
+  const filter = normalizeMeshFilter(meshFilter);
+  const filterHash = filter ? contentHash(filter) : null;
+  const offset = cursor === undefined
+    ? 0
+    : parseMeshCursor(cursor, resourceHash, topologyHash, element, filterHash);
   const boundedLimit = Math.min(MAX_MESH_ELEMENTS_PER_PAGE, Math.max(1, limit));
-  const edges = ['vertices', 'edges'].includes(element) ? deriveEdges(mesh) : null;
-  const total = elementCount(mesh, element, edges?.length);
+  const edges = ['vertices', 'edges'].includes(element) || filter ? deriveEdges(mesh) : null;
+  const indexList = filter
+    ? matchingIndices(mesh, element, edges, filter)
+    : Array.from({ length: elementCount(mesh, element, edges?.length) }, (_, index) => index);
+  const total = indexList.length;
+  const pageIndices = indexList.slice(offset, offset + boundedLimit);
   let elements;
-  if (element === 'vertices') elements = vertexPage(mesh, edges, offset, boundedLimit);
-  else if (element === 'edges') elements = edgePage(mesh, edges, offset, boundedLimit);
-  else if (element === 'faces') elements = facePage(mesh, offset, boundedLimit);
-  else elements = cornerPage(mesh, offset, boundedLimit);
+  if (element === 'vertices') elements = vertexPage(mesh, edges, pageIndices);
+  else if (element === 'edges') elements = edgePage(mesh, edges, pageIndices);
+  else if (element === 'faces') elements = facePage(mesh, pageIndices);
+  else elements = cornerPage(mesh, pageIndices);
 
   const faceCount = mesh.faceOffsets.length - 1;
   const base = {
@@ -347,6 +495,7 @@ export function buildMeshElements(resource, {
     element,
     offset,
     total,
+    ...(filter ? { meshFilter: filter, filterHash, matchedCount: total } : {}),
     responseByteBudget,
   };
   const accepted = [];
@@ -356,7 +505,7 @@ export function buildMeshElements(resource, {
       ...base,
       elements: [...accepted, record],
       nextCursor: candidateNextOffset < total
-        ? `${resourceHash}.${topologyHash}.${element}.${candidateNextOffset}`
+        ? encodeMeshCursor(resourceHash, topologyHash, element, filterHash, candidateNextOffset)
         : null,
       truncatedByByteBudget: candidateNextOffset < offset + elements.length,
     };
@@ -370,7 +519,9 @@ export function buildMeshElements(resource, {
   return {
     ...base,
     elements: accepted,
-    nextCursor: nextOffset < total ? `${resourceHash}.${topologyHash}.${element}.${nextOffset}` : null,
+    nextCursor: nextOffset < total
+      ? encodeMeshCursor(resourceHash, topologyHash, element, filterHash, nextOffset)
+      : null,
     truncatedByByteBudget: accepted.length < elements.length,
   };
 }

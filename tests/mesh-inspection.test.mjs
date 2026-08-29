@@ -115,6 +115,74 @@ test('direct legacy indexed and explicit resources remain exactly inspectable', 
   }
 });
 
+function gridResource() {
+  const positions = [];
+  for (let y = 0; y < 3; y += 1) {
+    for (let x = 0; x < 3; x += 1) positions.push(x, y, 0);
+  }
+  const indices = [
+    0, 1, 4, 0, 4, 3,
+    1, 2, 5, 1, 5, 4,
+    3, 4, 7, 3, 7, 6,
+    4, 5, 8, 4, 8, 7,
+  ];
+  return {
+    id: 'geometry/grid',
+    kind: 'geometry',
+    recipe: { kind: 'indexedMesh', positions, indices },
+  };
+}
+
+test('mesh filters page interiors without walking the whole mesh and guard the cursor', () => {
+  const resource = gridResource();
+  const interior = buildMeshElements(resource, {
+    element: 'vertices',
+    meshFilter: { yMin: 0.5, yMax: 1.5, boundary: false },
+    limit: 10,
+  });
+  assert.deepEqual(interior.elements.map(item => item.index), [4]);
+  assert.equal(interior.matchedCount, 1);
+  assert.equal(interior.nextCursor, null);
+  assert.match(interior.filterHash, /^[a-f0-9]{64}$/);
+
+  const high = buildMeshElements(resource, {
+    element: 'vertices',
+    meshFilter: { yMin: 1.5 },
+    limit: 1,
+  });
+  assert.deepEqual(high.elements.map(item => item.index), [6]);
+  assert.match(high.nextCursor, new RegExp(`^${high.resourceHash}\\.${high.topologyHash}\\.vertices\\.${high.filterHash}\\.1$`));
+  const highNext = buildMeshElements(resource, {
+    element: 'vertices',
+    meshFilter: { yMin: 1.5 },
+    cursor: high.nextCursor,
+    limit: 10,
+  });
+  assert.deepEqual(highNext.elements.map(item => item.index), [7, 8]);
+
+  const isolated = buildMeshElements(resource, {
+    element: 'vertices',
+    meshFilter: { notAdjacentTo: [0] },
+  });
+  assert.ok(!isolated.elements.some(item => [0, 1, 3, 4].includes(item.index)));
+  assert.deepEqual(isolated.elements.map(item => item.index), [2, 5, 6, 7, 8]);
+
+  const first = buildMeshElements(resource, { element: 'vertices', meshFilter: { yMin: 1.5 }, limit: 1 });
+  assert.throws(
+    () => buildMeshElements(resource, { element: 'vertices', cursor: first.nextCursor, limit: 1 }),
+    error => error?.code === 'inspect_cursor_mismatch',
+  );
+  assert.throws(
+    () => buildMeshElements(resource, {
+      element: 'vertices',
+      meshFilter: { yMin: 0 },
+      cursor: first.nextCursor,
+      limit: 1,
+    }),
+    error => error?.code === 'inspect_cursor_mismatch',
+  );
+});
+
 test('mesh inspection rejects procedural recipes instead of inspecting compiled approximations', () => {
   assert.throws(
     () => buildMeshElements({ id: 'geometry/sphere', recipe: { kind: 'sphere' } }),

@@ -302,7 +302,7 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
   assert.deepEqual(INSPECT_QUERIES, [
     'selector', 'sceneDigest', 'resourceDigest', 'meshElements', 'graphDigest', 'modifierDigest', 'rtxDigest', 'changedSinceRevision',
     'unresolvedResources', 'unusedResources', 'graphCatalog', 'playState',
-    'latestEvidence', 'blenderCatalog',
+    'latestEvidence', 'blenderCatalog', 'beautyDigest', 'projectVisibility',
   ]);
   assert.deepEqual(OPERATION_TYPES, [
     'scene.create', 'scene.patch', 'scene.delete', 'scene.setActive',
@@ -327,6 +327,29 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
   assert.equal(inspectSchema.safeParse({ query: 'modifierDigest', selector: { ids: ['entity/wall'] } }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'modifierDigest', selector: { ids: ['entity/a', 'entity/b'] } }).success, false);
   assert.equal(inspectSchema.safeParse({ query: 'rtxDigest' }).success, true);
+  assert.equal(inspectSchema.safeParse({
+    query: 'beautyDigest',
+    evidence: { path: 'studio-1.png', probes: [{ name: 'hot', x: 10, y: 20 }], comparePath: 'studio-2.png' },
+  }).success, true);
+  assert.equal(inspectSchema.safeParse({
+    query: 'sceneDigest',
+    evidence: { path: 'studio-1.png' },
+  }).success, false);
+  assert.equal(inspectSchema.safeParse({
+    query: 'projectVisibility',
+    projection: { entityIds: ['entity/pear'], width: 1280, height: 720 },
+  }).success, true);
+  assert.equal(inspectSchema.safeParse({ query: 'projectVisibility' }).success, false);
+  assert.equal(inspectSchema.safeParse({
+    query: 'meshElements',
+    selector: { ids: ['geometry/cloth'] },
+    meshFilter: { yMin: 0.74, yMax: 0.76, boundary: false, notAdjacentTo: [3, 8] },
+  }).success, true);
+  assert.equal(inspectSchema.safeParse({
+    query: 'graphDigest',
+    selector: { ids: ['graph/surface'] },
+    meshFilter: { yMin: 0 },
+  }).success, false);
   assert.equal(inspectSchema.safeParse({ query: 'codeDiagnostics' }).success, false);
   assert.equal(inspectSchema.safeParse({ query: 'selector', selector: { resourceId: 'material/hero' } }).success, false);
   assert.equal(inspectSchema.safeParse({ query: 'sceneDigest', include: ['script'] }).success, false);

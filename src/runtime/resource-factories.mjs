@@ -784,6 +784,16 @@ export function createMaterial(THREE, resource = {}, options = {}) {
   if (graphTransmission && graphOutputs.transmission && 'transmissionNode' in material) {
     material.transmissionNode = graphOutputs.transmission;
   }
+  if (graphOutputs.sheen && 'sheenNode' in material) {
+    material.sheenNode = graphOutputs.sheen;
+    if ('sheen' in material && values.sheen === undefined) material.sheen = 1;
+  }
+  if (graphOutputs.sheenRoughness && 'sheenRoughnessNode' in material) {
+    material.sheenRoughnessNode = graphOutputs.sheenRoughness;
+  }
+  if (graphOutputs.sheenColor && 'sheenColorNode' in material) {
+    material.sheenColorNode = graphOutputs.sheenColor;
+  }
   const hasAlphaMap = textureReferences.some(reference => reference.property === 'alphaMap');
   const usesAlphaCutout = Number.isFinite(values.alphaTest) && values.alphaTest > 0;
   const inferredTransparency = (Number.isFinite(values.opacity) && values.opacity < 1)
