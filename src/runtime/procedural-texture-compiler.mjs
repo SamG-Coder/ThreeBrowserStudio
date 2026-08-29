@@ -65,6 +65,7 @@ const BLENDER_HUE_INTERPOLATIONS = catalogModes('blender.colorRamp', 'hueInterpo
 const BLENDER_MIX_MODES = catalogModes('blender.mix', 'blendMode');
 const CPU_MIX_MODES = BLENDER_MIX_MODES;
 const BLENDER_COLOR_MODES = catalogModes('blender.separateColor', 'mode');
+const BLENDER_NORMAL_MAP_SPACES = catalogModes('blender.normalMap', 'space');
 const NUMERIC_VALUE_TYPES = new Set([...catalogModes('blender.mix', 'valueType')].map(value => value.toUpperCase()));
 
 const COMMON_NOISE_PARAMS = [
@@ -119,6 +120,7 @@ const NODE_SPECS = Object.freeze({
   warp: spec([['coordinate', 'vector'], ['offset']], ['coordinate', 'vector'], ['strength']),
   blur: spec([['value', 'color', 'fac']], ['value', 'color'], ['valueType', 'radius']),
   normalFromHeight: spec([['height', 'value']], ['normal'], ['strength', 'distance', 'invert']),
+  normalMap: spec([['color']], ['normal'], ['space', 'uvMap']),
   channelPack: spec([], ['value', 'color'], ['defaults']),
   image: spec([['uv', 'vector']], ['color', 'alpha'], ['assetId', 'textureId', 'colorSpace']),
   dot: spec([['a'], ['b']], ['value'], []),
@@ -197,6 +199,7 @@ function classifyNode(node) {
   if (key === 'warp') return { kind: 'warp' };
   if (key === 'blur') return { kind: 'blur' };
   if (['normalfromheight', 'bump', 'shadernodebump', 'blenderbump'].includes(key)) return { kind: 'normalFromHeight', blenderDefaults: key.startsWith('shadernode') || key.startsWith('blender') };
+  if (['normalmap', 'shadernodenormalmap', 'blendernormalmap'].includes(key)) return { kind: 'normalMap', blenderDefaults: true };
   if (key === 'channelpack') return { kind: 'channelPack' };
   if (['image', 'texturesample2d', 'imagetexture', 'shadernodeteximage'].includes(key)) return { kind: 'image' };
   if (['vectordot', 'dotproduct'].includes(key)) return { kind: 'dot' };
@@ -536,6 +539,28 @@ function validateCpuCapabilities(graph, runtimeNodes, diagnostics) {
       const mode = modeValue(params.mode, 'RGB');
       if (!BLENDER_COLOR_MODES.has(mode)) {
         invalidModeDiagnostic(diagnostics, path, node, 'mode', mode, BLENDER_COLOR_MODES);
+      }
+    }
+
+    if (classification.kind === 'normalMap') {
+      const space = modeValue(params.space, 'TANGENT');
+      if (!BLENDER_NORMAL_MAP_SPACES.has(space)) {
+        invalidModeDiagnostic(diagnostics, path, node, 'space', space, BLENDER_NORMAL_MAP_SPACES);
+      }
+      if (params.uvMap !== undefined && typeof params.uvMap !== 'string') {
+        diagnostics.push(diagnostic(
+          'procedural_invalid_node_property',
+          `${node.type} uvMap must be a string.`,
+          `${path}/params/uvMap`,
+          { nodeId: node.id, property: 'uvMap' },
+        ));
+      } else if (params.uvMap) {
+        diagnostics.push(diagnostic(
+          'procedural_node_property_unsupported',
+          `${node.type} cannot resolve named UV map ${params.uvMap} in the bounded CPU bake context.`,
+          `${path}/params/uvMap`,
+          { nodeId: node.id, property: 'uvMap', value: params.uvMap, supported: '' },
+        ));
       }
     }
   }
@@ -916,6 +941,27 @@ function normalizeVector(value) {
   const result = vector(value, 3);
   const length = Math.hypot(...result);
   return length > 1e-12 ? result.map(component => component / length) : [0, 0, 1];
+}
+
+function evaluateNormalMap(colorValue, strengthValue, spaceValue, baseNormal) {
+  const clean = value => normalizeVector(value).map(component => Object.is(component, -0) ? 0 : component);
+  const decoded = vector(colorValue, 3).map(component => (component * 2) - 1);
+  const strength = Math.max(0, scalar(strengthValue));
+  const space = modeValue(spaceValue, 'TANGENT');
+  if (space === 'TANGENT') {
+    return clean([
+      decoded[0] * strength,
+      decoded[1] * strength,
+      1 + ((decoded[2] - 1) * clamp01(strength)),
+    ]);
+  }
+  const target = space.startsWith('BLENDER_')
+    ? [decoded[0], -decoded[1], -decoded[2]]
+    : decoded;
+  const base = normalizeVector(baseNormal);
+  return clean(base.map((component, index) => (
+    component + ((target[index] - component) * strength)
+  )));
 }
 
 function srgbToLinear(value) {
@@ -1396,6 +1442,15 @@ function buildEvaluator(validation, options) {
           base[1] - (dy * strength),
           base[2],
         ]) };
+        break;
+      }
+      case 'normalMap': {
+        result = { normal: evaluateNormalMap(
+          input('color', [0.5, 0.5, 1, 1]),
+          input('strength', 1),
+          params.space ?? 'TANGENT',
+          context.normal,
+        ) };
         break;
       }
       case 'channelPack': {

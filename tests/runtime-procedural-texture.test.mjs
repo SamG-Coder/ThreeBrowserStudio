@@ -349,6 +349,39 @@ test('CPU bake evaluates Blender colour nodes with live-compatible semantics', (
   assert.ok(Math.abs(colorMix[2] - 0.25) < 1e-8);
 });
 
+test('CPU bake evaluates every Normal Map space with explicit bake-frame semantics', () => {
+  const sample = (space, strength = 1) => compileProceduralTextureGraph(singleNodeTextureGraph({
+    type: 'blender.normalMap',
+    params: { space, uvMap: '' },
+    inputs: { strength, color: [0.75, 0.25, 0.9, 1] },
+    port: 'normal',
+    output: 'normal',
+  })).sample([0.5, 0.5]).normal;
+
+  const tangent = sample('TANGENT');
+  const object = sample('OBJECT');
+  const world = sample('WORLD');
+  const blenderObject = sample('BLENDER_OBJECT');
+  const blenderWorld = sample('BLENDER_WORLD');
+  assert.ok(tangent.every(Number.isFinite));
+  assert.deepEqual(object, world);
+  assert.deepEqual(blenderObject, blenderWorld);
+  assert.ok(object[1] < 0 && object[2] > 0);
+  assert.ok(blenderObject[1] > 0 && blenderObject[2] < 0);
+  assert.deepEqual(sample('TANGENT', 0), [0, 0, 1]);
+  assert.deepEqual(sample('OBJECT', 0), [0, 0, 1]);
+
+  const namedUv = singleNodeTextureGraph({
+    type: 'blender.normalMap',
+    params: { space: 'TANGENT', uvMap: 'UVMap.001' },
+    port: 'normal',
+    output: 'normal',
+  });
+  const validation = validateProceduralTextureGraph(namedUv);
+  assert.ok(validation.errors.some(error => error.code === 'procedural_node_property_unsupported'
+    && error.property === 'uvMap'));
+});
+
 test('CPU bake executes dynamic/fractal Detail within limits and rejects exact over-budget Voronoi work', () => {
   const noiseAtLimit = singleNodeTextureGraph({
     type: 'blender.noiseTexture',
