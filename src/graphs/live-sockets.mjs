@@ -12,7 +12,7 @@ export const COMPILED_SHADER_NODE_TYPES = Object.freeze(new Set([
   'blender.reroute',
   'input.uv', 'input.worldPosition', 'input.normal', 'input.viewDirection', 'input.time',
   'uv', 'worldPosition', 'constant',
-  'image', 'texture.sample2d',
+  'texture.sample2d',
   'pattern.gradient', 'gradient',
   'pattern.checker', 'checker',
   'noise.value', 'valueNoise',

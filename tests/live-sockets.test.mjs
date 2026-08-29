@@ -39,6 +39,17 @@ test('binary math sockets report the same live support as their TSL compiler bra
   }
 });
 
+test('CPU-bake-only texture nodes are never advertised as live WebGPU nodes', () => {
+  for (const type of ['image', 'blur']) {
+    assert.equal(isCompiledShaderNodeType('texture', type), false, type);
+    assert.deepEqual(describeSocketLiveness({ id: type, type }, 'texture', 'value', new Set()), {
+      compiled: false,
+      live: false,
+      reason: 'catalog-only-node',
+    });
+  }
+});
+
 test('Principled catalog-only sockets stay unbound while live lobes follow authored values', () => {
   assert.equal(GRAPH_SOCKET_CONTRACT, 'full-vs-default+live');
   assert.equal(isCompiledShaderNodeType('shader', 'blender.principledBSDF'), true);
