@@ -47,6 +47,19 @@ export function offsetRect(rect, dx, dy) {
   return createRect((rect?.x ?? 0) + (dx || 0), (rect?.y ?? 0) + (dy || 0), rect?.width, rect?.height);
 }
 
+export function absorbRect(rects, next) {
+  if (rectEmpty(next)) return rects;
+  const incoming = copyRect(next);
+  for (let index = 0; index < rects.length; index += 1) {
+    if (!rectsIntersect(rects[index], incoming)) continue;
+    const merged = unionRect(rects[index], incoming);
+    rects.splice(index, 1);
+    return absorbRect(rects, merged);
+  }
+  rects.push(incoming);
+  return rects;
+}
+
 export function pointInRect(x, y, rect) {
   return !rectEmpty(rect)
     && x >= rect.x

@@ -66,6 +66,12 @@ class FakeCanvasContext {
   }
 
   drawImage() {}
+
+  getImageData(x, y, width, height) {
+    return { x, y, width, height, data: new Uint8ClampedArray(Math.max(0, width * height * 4)) };
+  }
+
+  putImageData() {}
 }
 
 class FakeCanvas {
@@ -416,9 +422,12 @@ test('exact shortcut and disposal update GPU presentation state safely', () => {
   assert.equal(timers.active, 1);
 
   const beforeResize = hud.drawRevision;
+  const beforeBounds = { ...hud.panelBounds };
   hud.resize(1600, 900, 2.5);
-  assert.ok(hud.drawRevision >= beforeResize);
-  assert.ok(hud.panelBounds.height > 100);
+  assert.equal(hud.drawRevision, beforeResize, 'window size must not rebuild the HUD bitmap');
+  assert.equal(hud.panelBounds.width, beforeBounds.width);
+  assert.equal(hud.panelBounds.height, beforeBounds.height);
+  assert.equal(hud.panelBounds.pixelRatio, beforeBounds.pixelRatio);
 
   hud.dispose();
   hud.dispose();

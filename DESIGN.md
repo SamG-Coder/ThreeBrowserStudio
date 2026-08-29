@@ -713,15 +713,18 @@ The scene is the interface. The viewport occupies the window.
 The only persistent chrome is a left side panel composited through one
 `CanvasTexture` sprite: Log (virtualized MCP command feed plus a visible
 scrollbar), Explorer (a read-only tree of the active scene's objects, groups,
-and collections), and Settings (Follow shot / Review). It is not an inspector.
+and collections), and Settings (Follow shot / Review). The panel bitmap is a
+fixed size; window resize only moves the sprite. It is not an inspector.
 A Follow-shot chip is the camera control; first drag on the view enters Review.
 Ctrl+Shift+M hides the panel.
 
-Controls are retained and WinForms-like: `invalidate` coalesces an update
-region, and `update` paints only that clip. Text uses a 2D font-run cache
-(`measureText` LRU, rasterize once, `drawImage` blit). Camera anchoring must
-not invalidate the canvas. One swap per frame remains; the HUD never calls
-`render()`.
+Controls are retained and WinForms-like: the panel bitmap stays cached and
+only the sprite moves with the camera. `invalidate` records dirty clips
+(not one AABB), and `update` paints only those clips. List scroll copies
+already-painted rows and paints the newly exposed strip. Text uses a 2D
+font-run cache (`measureText` LRU, rasterize once, `drawImage` blit).
+Camera anchoring must not invalidate the canvas. One swap per frame
+remains; the HUD never calls `render()`.
 
 The window has two cameras. Follow shot shows the authored / AI camera. Review
 is a session-only look/fly camera seeded from that shot; it never writes

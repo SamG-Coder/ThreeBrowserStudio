@@ -1,4 +1,5 @@
 import {
+  absorbRect,
   copyRect,
   createRect,
   intersectRect,
@@ -60,6 +61,22 @@ export class Control {
     return createRect(x, y, this.width, this.height);
   }
 
+  isShown() {
+    let node = this;
+    while (node) {
+      if (!node.visible) return false;
+      node = node.parent;
+    }
+    return true;
+  }
+
+  setVisible(visible) {
+    if (this.visible === visible) return;
+    if (this.visible && this.isShown()) this.invalidate();
+    this.visible = visible;
+    if (this.visible && this.isShown()) this.invalidate();
+  }
+
   add(child) {
     if (!child) return child;
     child.parent = this;
@@ -89,6 +106,7 @@ export class Control {
   }
 
   invalidate(rect) {
+    if (!this.isShown()) return;
     const bounds = this.absoluteBounds;
     const region = rect ? intersectRect(offsetRect(rect, bounds.x, bounds.y), bounds) : bounds;
     this.host?.invalidateRect(region);
@@ -129,8 +147,8 @@ export class Control {
 }
 
 /**
- * Canvas host. Invalidations coalesce into one update region; Update() paints
- * only that region, like WinForms WM_PAINT.
+ * Canvas host. Invalidations stay as separate clips unless they overlap.
+ * Update() paints only those clips, like WinForms WM_PAINT.
  */
 export class OverlayHost extends Control {
   constructor({
@@ -157,13 +175,13 @@ export class OverlayHost extends Control {
         return queueMicrotask(callback);
       });
     this.onPainted = onPainted;
-    this.#region = null;
+    this.#rects = [];
     this.#scheduled = false;
     this.paintGeneration = 0;
     this.paintedRects = [];
   }
 
-  #region;
+  #rects;
   #scheduled;
   #schedulePaint;
 
@@ -173,7 +191,7 @@ export class OverlayHost extends Control {
 
   invalidateRect(rect) {
     if (rectEmpty(rect)) return;
-    this.#region = this.#region ? unionRect(this.#region, rect) : copyRect(rect);
+    absorbRect(this.#rects, rect);
     if (this.#scheduled) return;
     this.#scheduled = true;
     this.#schedulePaint(() => {
@@ -182,25 +200,65 @@ export class OverlayHost extends Control {
     });
   }
 
-  /** Paint the coalesced update region now. Returns false when nothing is dirty. */
-  update() {
-    if (rectEmpty(this.#region) || !this.visible) {
-      this.#region = null;
+  copyRect(from, to) {
+    if (rectEmpty(from) || rectEmpty(to) || from.width !== to.width || from.height !== to.height) return false;
+    const ratio = this.backingRatio;
+    const sx = Math.round(from.x * ratio);
+    const sy = Math.round(from.y * ratio);
+    const dx = Math.round(to.x * ratio);
+    const dy = Math.round(to.y * ratio);
+    const width = Math.max(1, Math.round(from.width * ratio));
+    const height = Math.max(1, Math.round(from.height * ratio));
+    const canvas = this.canvas;
+    if (
+      sx < 0 || sy < 0 || dx < 0 || dy < 0
+      || sx + width > canvas.width
+      || sy + height > canvas.height
+      || dx + width > canvas.width
+      || dy + height > canvas.height
+    ) {
       return false;
     }
-    const clip = intersectRect(this.#region, this.absoluteBounds);
-    this.#region = null;
-    if (rectEmpty(clip)) return false;
     const context = this.context;
-    context.setTransform?.(this.backingRatio, 0, 0, this.backingRatio, 0, 0);
+    if (typeof context.getImageData !== 'function' || typeof context.putImageData !== 'function') return false;
     context.save?.();
-    clipContext(context, clip);
-    this.paint(context, this.fonts, clip);
-    context.restore?.();
+    context.setTransform?.(1, 0, 0, 1, 0, 0);
+    try {
+      const pixels = context.getImageData(sx, sy, width, height);
+      context.putImageData(pixels, dx, dy);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      context.restore?.();
+    }
+  }
+
+  /** Paint each dirty clip. Returns false when nothing is dirty. */
+  update() {
+    if (this.#rects.length === 0 || !this.visible) {
+      this.#rects = [];
+      return false;
+    }
+    const rects = this.#rects;
+    this.#rects = [];
+    const context = this.context;
+    let painted = false;
+    for (const raw of rects) {
+      const clip = intersectRect(raw, this.absoluteBounds);
+      if (rectEmpty(clip)) continue;
+      context.setTransform?.(this.backingRatio, 0, 0, this.backingRatio, 0, 0);
+      context.save?.();
+      clipContext(context, clip);
+      this.paint(context, this.fonts, clip);
+      context.restore?.();
+      this.paintedRects.push(copyRect(clip));
+      painted = true;
+    }
+    if (!painted) return false;
     this.paintGeneration += 1;
-    this.paintedRects.push(copyRect(clip));
-    if (this.paintedRects.length > 16) this.paintedRects.shift();
-    this.onPainted?.(clip, this.paintGeneration);
+    if (this.paintedRects.length > 16) this.paintedRects.splice(0, this.paintedRects.length - 16);
+    this.onPainted?.(this.paintedRects.at(-1), this.paintGeneration);
     return true;
   }
 
@@ -231,7 +289,7 @@ export class OverlayHost extends Control {
     this.canvas.height = nextCanvasHeight;
     this.fonts.setScale?.(this.backingRatio);
     this.performLayout();
-    this.#region = copyRect(this.absoluteBounds);
+    this.#rects = [copyRect(this.absoluteBounds)];
     return this.update();
   }
 }
@@ -311,8 +369,18 @@ export class TabStrip extends Control {
 
   setSelected(id) {
     if (this.selected === id) return;
+    const bounds = this.absoluteBounds;
+    const previous = this.tabs.findIndex(tab => tab.id === this.selected);
     this.selected = id;
-    this.invalidate();
+    const next = this.tabs.findIndex(tab => tab.id === id);
+    if (previous >= 0) {
+      const rect = this.#tabRect(previous, bounds);
+      this.invalidate(createRect(rect.x - bounds.x, rect.y - bounds.y, rect.width, rect.height));
+    }
+    if (next >= 0) {
+      const rect = this.#tabRect(next, bounds);
+      this.invalidate(createRect(rect.x - bounds.x, rect.y - bounds.y, rect.width, rect.height));
+    } else this.invalidate();
     this.onChange?.(id);
   }
 
@@ -390,8 +458,12 @@ export class ScrollBar extends Control {
   setScroll(value, { notify = true } = {}) {
     const next = Math.min(this.maximum, Math.max(this.minimum, Math.round(value)));
     if (next === this.value) return false;
+    const bounds = this.absoluteBounds;
+    const previous = this.#thumb(bounds);
     this.value = next;
-    this.invalidate();
+    const current = this.#thumb(bounds);
+    const dirty = unionRect(previous, current);
+    this.invalidate(createRect(dirty.x - bounds.x, dirty.y - bounds.y, dirty.width, dirty.height));
     if (notify) this.onScroll?.(this.value);
     return true;
   }
@@ -462,20 +534,63 @@ export class VirtualList extends Control {
     return Math.max(0, this.itemCount - this.capacity);
   }
 
-  setItems(itemCount, { followTail = false } = {}) {
-    const atTail = followTail || this.scrollIndex >= this.maxScroll;
-    this.itemCount = Math.max(0, itemCount);
-    this.scrollIndex = atTail ? this.maxScroll : Math.min(this.scrollIndex, this.maxScroll);
+  setItems(itemCount, { followTail = false, invalidate = true } = {}) {
+    const nextCount = Math.max(0, itemCount);
+    const previousCount = this.itemCount;
+    const previousScroll = this.scrollIndex;
+    const previousMax = Math.max(0, previousCount - this.capacity);
+    const atTail = followTail || previousScroll >= previousMax;
+    this.itemCount = nextCount;
+    const nextScroll = atTail ? this.maxScroll : Math.min(previousScroll, this.maxScroll);
+    if (nextCount === previousCount && nextScroll === previousScroll) return false;
+    if (!invalidate) {
+      this.scrollIndex = nextScroll;
+      return true;
+    }
+    if (previousCount > 0 && nextCount >= previousCount && nextScroll !== previousScroll) {
+      this.scrollIndex = previousScroll;
+      return this.setScrollIndex(nextScroll, { notify: false });
+    }
+    this.scrollIndex = nextScroll;
     this.invalidate();
+    return true;
   }
 
   setScrollIndex(index, { notify = true } = {}) {
     const next = Math.min(this.maxScroll, Math.max(0, Math.round(index)));
     if (next === this.scrollIndex) return false;
+    const steps = next - this.scrollIndex;
     this.scrollIndex = next;
-    this.invalidate();
+    if (!this.#scrollExistingRows(steps)) this.invalidate();
     if (notify) this.onScroll?.(this.scrollIndex);
     return true;
+  }
+
+  #scrollExistingRows(steps) {
+    if (steps === 0 || Math.abs(steps) >= this.capacity) return false;
+    const host = this.host;
+    const bounds = this.absoluteBounds;
+    const distance = steps * this.itemHeight;
+    const keepHeight = this.height - Math.abs(distance);
+    if (!host?.copyRect || keepHeight <= 0 || bounds.width <= 0) return false;
+    const from = steps > 0
+      ? createRect(bounds.x, bounds.y + distance, bounds.width, keepHeight)
+      : createRect(bounds.x, bounds.y, bounds.width, keepHeight);
+    const to = steps > 0
+      ? createRect(bounds.x, bounds.y, bounds.width, keepHeight)
+      : createRect(bounds.x, bounds.y - distance, bounds.width, keepHeight);
+    if (!host.copyRect(from, to)) return false;
+    this.invalidate(steps > 0
+      ? createRect(0, keepHeight, this.width, Math.abs(distance))
+      : createRect(0, 0, this.width, Math.abs(distance)));
+    return true;
+  }
+
+  invalidateFromIndex(index) {
+    const first = Math.max(this.scrollIndex, Math.max(0, index));
+    if (first >= this.scrollIndex + this.capacity) return;
+    const y = (first - this.scrollIndex) * this.itemHeight;
+    this.invalidate(createRect(0, y, this.width, this.height - y));
   }
 
   invalidateItem(index) {

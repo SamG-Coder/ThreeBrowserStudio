@@ -18,6 +18,7 @@ import { VIEW_MODE_FOLLOW_SHOT, VIEW_MODE_REVIEW } from './view-mode.mjs';
 const ACTIVE_REFRESH_MS = 250;
 const DEFAULT_MAX_VISIBLE_ROWS = 16;
 const PANEL_MARGIN = 12;
+const PANEL_WIDTH = 380;
 const ROW_HEIGHT = 40;
 const EXPLORER_ROW_HEIGHT = 22;
 const HEADER_HEIGHT = 48;
@@ -264,11 +265,10 @@ export function createMcpLiveFeedWebGpuHud({
     selected: 'log',
     onChange(id) {
       tab = id;
-      logPage.visible = id === 'log';
-      explorerPage.visible = id === 'explorer';
-      settingsPage.visible = id === 'settings';
+      logPage.setVisible(id === 'log');
+      explorerPage.setVisible(id === 'explorer');
+      settingsPage.setVisible(id === 'settings');
       syncStatus();
-      host.invalidate();
     },
   }));
 
@@ -358,7 +358,7 @@ export function createMcpLiveFeedWebGpuHud({
       if (!row?.expandable) return;
       if (explorerExpanded.has(row.id)) explorerExpanded.delete(row.id);
       else explorerExpanded.add(row.id);
-      refreshExplorer();
+      refreshExplorer({ fromIndex: index });
     },
   }));
   const explorerScroll = explorerPage.add(new ScrollBar({
@@ -430,7 +430,7 @@ export function createMcpLiveFeedWebGpuHud({
     scrollBar.maximum = list.maxScroll;
     scrollBar.viewportSize = list.capacity;
     scrollBar.setScroll(list.scrollIndex, { notify: false });
-    scrollBar.visible = list.maxScroll > 0;
+    scrollBar.setVisible(list.maxScroll > 0);
   }
 
   function syncExplorerScroll() {
@@ -439,7 +439,7 @@ export function createMcpLiveFeedWebGpuHud({
     explorerScroll.maximum = explorerList.maxScroll;
     explorerScroll.viewportSize = explorerList.capacity;
     explorerScroll.setScroll(explorerList.scrollIndex, { notify: false });
-    explorerScroll.visible = explorerList.maxScroll > 0;
+    explorerScroll.setVisible(explorerList.maxScroll > 0);
   }
 
   function syncScroll() {
@@ -447,8 +447,10 @@ export function createMcpLiveFeedWebGpuHud({
     syncExplorerScroll();
   }
 
-  function refreshExplorer() {
+  function refreshExplorer({ fromIndex = 0 } = {}) {
     explorerRows = flattenExplorerRows(explorerOutline, explorerExpanded);
+    explorerList.setItems(explorerRows.length, { invalidate: false });
+    if (tab === 'explorer') explorerList.invalidateFromIndex(fromIndex);
     syncExplorerScroll();
     if (tab === 'explorer') syncStatus();
   }
@@ -479,13 +481,17 @@ export function createMcpLiveFeedWebGpuHud({
       ? Math.min(explorerRows.length, explorerList.scrollIndex + explorerList.capacity)
       : 0;
     const objectCount = Object.keys(explorerOutline.entities ?? {}).length;
-    status.setText(tab === 'log'
+    const nextText = tab === 'log'
       ? `${activeCount > 0 ? `${activeCount} ACTIVE` : 'IDLE'}  ·  ${latest.length} events  ·  ${first}–${last}`
       : tab === 'explorer'
         ? `Explorer  ·  ${objectCount} objects  ·  ${explorerFirst}–${explorerLast}`
-        : 'Settings');
-    status.color = activeCount > 0 && tab === 'log' ? '#f2b45c' : '#7f94ad';
-    status.invalidate();
+        : 'Settings';
+    const nextColor = activeCount > 0 && tab === 'log' ? '#f2b45c' : '#7f94ad';
+    status.setText(nextText);
+    if (status.color !== nextColor) {
+      status.color = nextColor;
+      status.invalidate();
+    }
   }
 
   function setViewMode(mode, { fromUi = false } = {}) {
@@ -537,23 +543,21 @@ export function createMcpLiveFeedWebGpuHud({
     layoutPages();
   };
 
-  const resize = (nextWidth, nextHeight, nextPixelRatio = host.backingRatio) => {
+  const panelWidth = PANEL_WIDTH;
+  const panelHeight = HEADER_HEIGHT + TAB_HEIGHT + (ROW_HEIGHT * rowLimit);
+  const backingRatio = clamp(finite(pixelRatio, 1), 1, 2);
+
+  const resize = (nextWidth, nextHeight) => {
     if (disposed) return;
     viewportWidth = Math.max(1, Math.round(finite(nextWidth, viewportWidth)));
     viewportHeight = Math.max(1, Math.round(finite(nextHeight, viewportHeight)));
-    const safeRatio = clamp(finite(nextPixelRatio, host.backingRatio), 1, 2);
-    const availableWidth = Math.max(160, viewportWidth - (PANEL_MARGIN * 2));
-    const availableHeight = Math.max(160, viewportHeight - (PANEL_MARGIN * 2));
-    const panelWidth = Math.round(Math.min(380, availableWidth, Math.max(300, viewportWidth * 0.30)));
-    const desiredRows = Math.min(rowLimit, Math.max(6, Math.floor((availableHeight - HEADER_HEIGHT - TAB_HEIGHT) / ROW_HEIGHT)));
-    const panelHeight = Math.round(Math.min(availableHeight, HEADER_HEIGHT + TAB_HEIGHT + (ROW_HEIGHT * desiredRows)));
     originLeft = PANEL_MARGIN;
     originTop = PANEL_MARGIN;
-    if (host.width === panelWidth && host.height === panelHeight && host.backingRatio === safeRatio) {
+    if (host.width === panelWidth && host.height === panelHeight && host.backingRatio === backingRatio) {
       return;
     }
-    applyTextureFilter(safeRatio);
-    host.setBacking(panelWidth, panelHeight, safeRatio);
+    applyTextureFilter(backingRatio);
+    host.setBacking(panelWidth, panelHeight, backingRatio);
     syncStatus();
   };
 

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { createFontRunCache } from '../src/viewport/overlay-fonts.mjs';
-import { intersectRect, unionRect } from '../src/viewport/overlay-geometry.mjs';
+import { absorbRect, intersectRect, unionRect } from '../src/viewport/overlay-geometry.mjs';
 import {
   Button,
   Label,
@@ -46,6 +46,12 @@ class FakeContext {
   drawImage(image, x, y, width = image?.width, height = image?.height) {
     this.blits.push({ x, y, width, height: height ?? image?.height });
   }
+
+  getImageData(x, y, width, height) {
+    return { x, y, width, height, data: new Uint8ClampedArray(Math.max(0, width * height * 4)) };
+  }
+
+  putImageData() {}
 }
 
 class FakeCanvas {
@@ -93,6 +99,36 @@ test('update regions union and only the dirty clip is painted', () => {
   const clip = host.paintedRects.at(-1);
   assert.ok(clip.width <= 90 && clip.height <= 24);
   assert.ok(clip.y >= 80);
+});
+
+test('list scroll copies existing rows and paints only the exposed strip', () => {
+  const { host } = hostFixture();
+  const painted = [];
+  const list = host.add(new VirtualList({
+    x: 0,
+    y: 40,
+    width: 200,
+    height: 80,
+    itemHeight: 20,
+    itemCount: 8,
+    paintItem(_context, _fonts, { index }) { painted.push(index); },
+  }));
+  host.paintedRects = [];
+  painted.length = 0;
+  assert.equal(list.setScrollIndex(1), true);
+  assert.deepEqual(painted, [4]);
+  const clip = host.paintedRects.at(-1);
+  assert.ok(clip.y >= 100);
+  assert.ok(clip.height <= 24);
+
+  const generation = host.paintGeneration;
+  assert.equal(list.setItems(8), false);
+  assert.equal(host.paintGeneration, generation);
+  list.setVisible(false);
+  const afterHide = host.paintGeneration;
+  list.invalidate();
+  list.invalidateItem(4);
+  assert.equal(host.paintGeneration, afterHide);
 });
 
 test('virtual list item invalidation does not repaint the header', () => {
@@ -198,6 +234,13 @@ test('rect union/intersect stay conservative for WM_PAINT coalescing', () => {
   assert.deepEqual(united, { x: 0, y: 0, width: 18, height: 18 });
   const hit = intersectRect({ x: 0, y: 0, width: 10, height: 10 }, { x: 8, y: 0, width: 10, height: 4 });
   assert.deepEqual(hit, { x: 8, y: 0, width: 2, height: 4 });
+  const rects = [];
+  absorbRect(rects, { x: 0, y: 0, width: 10, height: 10 });
+  absorbRect(rects, { x: 20, y: 0, width: 10, height: 10 });
+  assert.equal(rects.length, 2);
+  absorbRect(rects, { x: 8, y: 0, width: 16, height: 10 });
+  assert.equal(rects.length, 1);
+  assert.deepEqual(rects[0], { x: 0, y: 0, width: 30, height: 10 });
 });
 
 test('a clean host update is a no-op and review mode does not re-seed', () => {
