@@ -186,6 +186,184 @@ function gradientNoise4D(TSL, coordinate, seed = 0) {
   return mixPairs(mixPairs(mixPairs(mixPairs(samples, fade.x), fade.y), fade.z), fade.w)[0];
 }
 
+const MAX_LIVE_VORONOI_CANDIDATE_VISITS = 2500;
+
+function dimensionCount(dimensions) {
+  const count = Number.parseInt(String(dimensions ?? '3D'), 10);
+  return Number.isInteger(count) && count >= 1 && count <= 4 ? count : 3;
+}
+
+function neighborOffsets(dimensions, radius) {
+  const result = [];
+  const visit = (values) => {
+    if (values.length === dimensions) {
+      result.push([...values, 0, 0, 0, 0].slice(0, 4));
+      return;
+    }
+    for (let offset = -radius; offset <= radius; offset += 1) visit([...values, offset]);
+  };
+  visit([]);
+  return result;
+}
+
+function voronoiDistance(TSL, delta, dimensions, metric, exponent) {
+  const values = Array.from({ length: dimensions }, (_, index) => TSL.abs(coordinateComponent(delta, index)));
+  const mode = String(metric ?? 'EUCLIDEAN').toUpperCase();
+  if (mode === 'MANHATTAN') return values.reduce((sum, value) => sum.add(value), TSL.float(0));
+  if (['CHEBYCHEV', 'CHEBYSHEV'].includes(mode)) return values.reduce((maximum, value) => TSL.max(maximum, value), TSL.float(0));
+  if (mode === 'MINKOWSKI') {
+    const power = TSL.max(exponent, 1e-6);
+    const sum = values.reduce((total, value) => total.add(TSL.pow(value, power)), TSL.float(0));
+    return TSL.pow(sum, TSL.float(1).div(power));
+  }
+  if (mode !== 'EUCLIDEAN') fail('shader_node_mode_unsupported', `Voronoi distance metric ${metric} is not compiled live.`, { distanceMetric: mode });
+  if (dimensions === 1) return values[0];
+  const vector = dimensions === 2 ? TSL.vec2(...values) : dimensions === 3 ? TSL.vec3(...values) : TSL.vec4(...values);
+  return TSL.length(vector);
+}
+
+function voronoiFeaturePoint(TSL, cell, dimensions, randomness, seed) {
+  const salts = [0x68bc21eb, 0x02e5be93, 0x967a889b, 0x368cc8b7];
+  const components = [];
+  for (let index = 0; index < 4; index += 1) {
+    if (index >= dimensions) components.push(TSL.float(0));
+    else {
+      const cellComponent = coordinateComponent(cell, index);
+      const random = hashFloatCoordinates(TSL, cell, dimensions, combineStaticSeeds(seed, salts[index]));
+      components.push(cellComponent.add(TSL.mix(0.5, random, randomness)));
+    }
+  }
+  return TSL.vec4(...components);
+}
+
+function scanVoronoiOctave(TSL, {
+  coordinate,
+  dimensions,
+  feature,
+  metric,
+  exponent,
+  randomness,
+  smoothness,
+  seed,
+}) {
+  const smooth = String(feature).toUpperCase() === 'SMOOTH_F1';
+  const offsets = neighborOffsets(dimensions, smooth ? 2 : 1);
+  const baseCell = TSL.floor(coordinate);
+  const featureMode = String(feature ?? 'F1').toUpperCase();
+  const featureMetric = ['DISTANCE_TO_EDGE', 'N_SPHERE_RADIUS'].includes(featureMode) ? 'EUCLIDEAN' : metric;
+  let first = TSL.float(1e6);
+  let second = TSL.float(1e6);
+  let smoothDistance = TSL.float(1e6);
+  let nearestPoint = TSL.vec4(0, 0, 0, 0);
+  let nearestCell = TSL.vec4(0, 0, 0, 0);
+  const smoothing = TSL.clamp(smoothness.mul(0.5), 0, 0.5);
+
+  for (const offsetValues of offsets) {
+    const cell = baseCell.add(TSL.vec4(...offsetValues));
+    const point = voronoiFeaturePoint(TSL, cell, dimensions, randomness, seed);
+    const distance = voronoiDistance(TSL, point.sub(coordinate), dimensions, featureMetric, exponent);
+    const closer = TSL.float(1).sub(TSL.step(first, distance));
+    nearestPoint = TSL.mix(nearestPoint, point, closer);
+    nearestCell = TSL.mix(nearestCell, cell, closer);
+    second = TSL.min(second, TSL.max(first, distance));
+    first = TSL.min(first, distance);
+
+    if (smooth) {
+      const amount = TSL.smoothstep(
+        0,
+        1,
+        TSL.float(0.5).add(TSL.float(0.5).mul(smoothDistance.sub(distance)).div(TSL.max(smoothing, 1e-7))),
+      );
+      const correction = smoothing.mul(amount).mul(TSL.float(1).sub(amount));
+      smoothDistance = TSL.mix(smoothDistance, distance, amount).sub(correction);
+    }
+  }
+
+  let distance = first;
+  const mode = featureMode;
+  if (mode === 'F2') distance = second;
+  else if (mode === 'SMOOTH_F1') distance = TSL.mix(first, smoothDistance, TSL.step(1e-7, smoothing));
+  else if (mode === 'DISTANCE_TO_EDGE') {
+    let edge = TSL.float(1e6);
+    for (const offsetValues of neighborOffsets(dimensions, 1)) {
+      const cell = baseCell.add(TSL.vec4(...offsetValues));
+      const point = voronoiFeaturePoint(TSL, cell, dimensions, randomness, seed);
+      const difference = point.sub(nearestPoint);
+      const differenceLength = voronoiDistance(TSL, difference, dimensions, 'EUCLIDEAN', exponent);
+      const midpoint = point.add(nearestPoint).mul(0.5).sub(coordinate);
+      const direction = difference.div(TSL.max(differenceLength, 1e-7));
+      const projected = TSL.abs(TSL.dot(midpoint, direction));
+      const valid = TSL.step(1e-7, differenceLength);
+      edge = TSL.min(edge, TSL.mix(1e6, projected, valid));
+    }
+    distance = edge;
+  } else if (mode === 'N_SPHERE_RADIUS') {
+    let diameter = TSL.float(1e6);
+    for (const offsetValues of neighborOffsets(dimensions, 1)) {
+      const cell = nearestCell.add(TSL.vec4(...offsetValues));
+      const point = voronoiFeaturePoint(TSL, cell, dimensions, randomness, seed);
+      const candidate = voronoiDistance(TSL, point.sub(nearestPoint), dimensions, 'EUCLIDEAN', exponent);
+      const valid = TSL.step(1e-7, candidate);
+      diameter = TSL.min(diameter, TSL.mix(1e6, candidate, valid));
+    }
+    distance = diameter.mul(0.5);
+  } else if (!['F1', 'F2', 'SMOOTH_F1'].includes(mode)) {
+    fail('shader_node_mode_unsupported', `Voronoi feature ${feature} is not compiled live.`, { feature: mode });
+  }
+
+  const cellValue = hashFloatCoordinates(TSL, nearestCell, dimensions, combineStaticSeeds(seed, 0x7f4a7c15));
+  const color = TSL.vec3(
+    cellValue,
+    hashFloatCoordinates(TSL, nearestCell, dimensions, combineStaticSeeds(seed, 0x9e3779b9)),
+    hashFloatCoordinates(TSL, nearestCell, dimensions, combineStaticSeeds(seed, 0x243f6a88)),
+  );
+  return { distance, first, second, nearestPoint, nearestCell, color };
+}
+
+function voronoiTexture(TSL, options) {
+  const {
+    coordinate, dimensions, feature, metric, exponent, randomness, smoothness,
+    lacunarity, roughness, octaves, seed, normalize,
+  } = options;
+  const radius = String(feature).toUpperCase() === 'SMOOTH_F1' ? 2 : 1;
+  const passes = ['DISTANCE_TO_EDGE', 'N_SPHERE_RADIUS'].includes(String(feature).toUpperCase()) ? 2 : 1;
+  const liveOctaves = String(feature).toUpperCase() === 'N_SPHERE_RADIUS' ? 1 : octaves;
+  const candidateVisits = ((radius * 2) + 1) ** dimensions * passes * liveOctaves;
+  if (candidateVisits > MAX_LIVE_VORONOI_CANDIDATE_VISITS) {
+    fail(
+      'shader_node_budget_exceeded',
+      `Voronoi candidate requires ${candidateVisits} feature visits; the live limit is ${MAX_LIVE_VORONOI_CANDIDATE_VISITS}.`,
+      { candidateVisits, limit: MAX_LIVE_VORONOI_CANDIDATE_VISITS },
+    );
+  }
+
+  let frequency = TSL.float(1);
+  let amplitude = TSL.float(1);
+  let amplitudeTotal = TSL.float(0);
+  let distance = TSL.float(0);
+  let base = null;
+  for (let octave = 0; octave < liveOctaves; octave += 1) {
+    const sample = scanVoronoiOctave(TSL, {
+      coordinate: coordinate.mul(frequency), dimensions, feature, metric, exponent,
+      randomness, smoothness, seed: combineStaticSeeds(seed, octave),
+    });
+    base ??= sample;
+    distance = distance.add(sample.distance.mul(amplitude));
+    amplitudeTotal = amplitudeTotal.add(amplitude);
+    frequency = frequency.mul(lacunarity);
+    amplitude = amplitude.mul(roughness);
+  }
+  distance = distance.div(TSL.max(amplitudeTotal, 1e-7));
+  if (normalize && String(feature).toUpperCase() !== 'N_SPHERE_RADIUS') distance = distance.saturate();
+  return {
+    distance,
+    color: base.color,
+    position: base.nearestPoint.xyz,
+    w: base.nearestPoint.w,
+    radius: String(feature).toUpperCase() === 'N_SPHERE_RADIUS' ? distance : base.first,
+  };
+}
+
 function fractalNoise4D(TSL, coordinate, octaves, lacunarity, roughness, seed) {
   let sampleCoordinate = coordinate;
   let amplitude = TSL.float(1);
@@ -1137,19 +1315,30 @@ function compileNodeFactory({ TSL, graph, parameters, textureResolver, featureTr
       return { factor, color };
     }
     if (type === 'blender.voronoiTexture') {
-      if (String(p.dimensions ?? '3D').toUpperCase() === '4D') fail('shader_node_mode_unsupported', 'Live TSL Voronoi does not yet implement Blender 4D coordinates.');
-      if (String(p.distanceMetric ?? 'EUCLIDEAN').toUpperCase() !== 'EUCLIDEAN') fail('shader_node_mode_unsupported', `Voronoi distance metric ${p.distanceMetric} is catalogued for interchange but not compiled live yet.`);
-      let coordinate = input.get(node, ['vector', 'w'], [0, 0, 0], 'vec3').mul(input.get(node, 'scale', 5));
-      if (String(p.dimensions).toUpperCase() === '1D') coordinate = TSL.vec3(input.get(node, 'w', 0).mul(input.get(node, 'scale', 5)), 0, 0);
-      else if (String(p.dimensions).toUpperCase() === '2D') coordinate = TSL.vec3(coordinate.x, coordinate.y, 0);
-      coordinate = addSeed(TSL, coordinate, p.seed);
-      const randomness = input.get(node, 'randomness', 1);
-      const distances = TSL.mx_worley_noise_vec2(coordinate, randomness);
-      const cell = TSL.mx_cell_noise_float(TSL.floor(coordinate));
+      const dimensions = dimensionCount(p.dimensions);
+      const vector = input.get(node, 'vector', [0, 0, 0], 'vec3');
+      const w = input.get(node, 'w', 0);
+      const scale = input.get(node, 'scale', 5);
+      const coordinate = dimensions === 1 ? TSL.vec4(w, 0, 0, 0).mul(scale)
+        : dimensions === 2 ? TSL.vec4(vector.x, vector.y, 0, 0).mul(scale)
+          : dimensions === 3 ? TSL.vec4(vector, 0).mul(scale)
+            : TSL.vec4(vector, w).mul(scale);
+      const detail = Math.max(0, Math.min(7, Math.floor(finite(input.static(node, 'detail', 0), 0)))) + 1;
       const feature = String(p.feature ?? 'F1').toUpperCase();
-      let distance = feature === 'DISTANCE_TO_EDGE' ? distances.y.sub(distances.x) : feature === 'F2' ? distances.y : distances.x;
-      if (p.normalize === true) distance = distance.saturate();
-      return { distance, color: TSL.vec3(cell, TSL.mx_cell_noise_float(TSL.floor(coordinate).add(17)), TSL.mx_cell_noise_float(TSL.floor(coordinate).add(41))), position: TSL.floor(coordinate).add(0.5), w: cell, radius: distances.x };
+      return voronoiTexture(TSL, {
+        coordinate,
+        dimensions,
+        feature,
+        metric: p.distanceMetric,
+        exponent: input.get(node, 'exponent', 0.5),
+        randomness: input.get(node, 'randomness', 1),
+        smoothness: input.get(node, 'smoothness', 1),
+        lacunarity: input.get(node, 'lacunarity', 2),
+        roughness: input.get(node, 'roughness', 0.5),
+        octaves: detail,
+        seed: p.seed,
+        normalize: p.normalize === true,
+      });
     }
     if (type === 'blender.waveTexture') {
       const coordinate = input.get(node, 'vector', [0, 0, 0], 'vec3');

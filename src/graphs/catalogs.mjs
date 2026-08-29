@@ -269,7 +269,7 @@ function blenderProceduralNodes(stages = []) {
     })),
     blenderNode('blender.whiteNoiseTexture', 'ShaderNodeTexWhiteNoise', 'White Noise Texture', 'texture', staged({
       cost: 6,
-      description: 'Deterministic white noise from scalar, 2D, or 3D coordinate seeds; 4D remains an explicit live-compiler rejection.',
+      description: 'Deterministic white noise from scalar, 2D, 3D, or true 4D coordinate seeds.',
       inputs: [
         ['vector', blenderSocket('vec3', 'Vector', { default: [0, 0, 0] })],
         ['w', blenderSocket('float', 'W', { default: 0 })],
@@ -364,7 +364,7 @@ function blenderProceduralNodes(stages = []) {
     })),
     blenderNode('blender.voronoiTexture', 'ShaderNodeTexVoronoi', 'Voronoi Texture', 'texture', staged({
       cost: 24,
-      description: 'Blender Worley/Voronoi features and distance metrics, including Distance to Edge for chipped paint and hammered metal.',
+      description: 'Live 1D-4D Blender Voronoi features, fractal controls, and Euclidean, Manhattan, Chebychev, or Minkowski distance metrics.',
       inputs: [
         ['vector', blenderSocket('vec3', 'Vector', { default: [0, 0, 0] })],
         ['w', blenderSocket('float', 'W', { default: 0 })],

@@ -4,6 +4,7 @@ import test from 'node:test';
 import { GRAPH_CATALOGS, GraphValidationError, validateGraph } from '../src/graphs/index.mjs';
 import {
   BLENDER_SHADER_NODE_ALIASES,
+  ShaderGraphCompileError,
   compileShaderGraph,
 } from '../src/runtime/shader-graph-compiler.mjs';
 
@@ -25,6 +26,7 @@ class TraceNode {
   get y() { return new TraceNode('y', [this]); }
   get z() { return new TraceNode('z', [this]); }
   get w() { return new TraceNode('w', [this]); }
+  get xyz() { return new TraceNode('xyz', [this]); }
 }
 
 const trace = operation => (...arguments_) => new TraceNode(operation, arguments_);
@@ -40,6 +42,7 @@ const TRACE_TSL = Object.freeze({
   abs: trace('abs'),
   min: trace('min'),
   max: trace('max'),
+  pow: trace('pow'),
   clamp: trace('clamp'),
   dot: trace('dot'),
   mix: trace('mix'),
@@ -234,6 +237,87 @@ test('Noise Texture compiles multifractal modes and every mode in true 4D', () =
         assert.ok(countOperations(compilation.outputs.roughness, 'w') > 0, noiseType);
       }
     }
+  }
+});
+
+test('Voronoi compiles every dimension, distance metric, and feature live', () => {
+  for (const dimensions of ['1D', '2D', '3D', '4D']) {
+    for (const distanceMetric of ['EUCLIDEAN', 'MANHATTAN', 'CHEBYCHEV', 'MINKOWSKI']) {
+      const graph = singleNodeGraph('ShaderNodeTexVoronoi', {
+        dimensions,
+        feature: 'F1',
+        distanceMetric,
+        normalize: false,
+        seed: 31,
+      }, 'distance');
+      graph.nodes[0].inputs = { detail: 0, exponent: 3, randomness: 0.8, w: 0.37 };
+      const compilation = compileShaderGraph({ TSL: TRACE_TSL, graph });
+      assert.equal(compilation.nodesCompiled, 1, `${dimensions} ${distanceMetric}`);
+      if (distanceMetric === 'MINKOWSKI') assert.ok(countOperations(compilation.outputs.roughness, 'pow') > 0);
+    }
+  }
+
+  for (const feature of ['F1', 'F2', 'SMOOTH_F1', 'DISTANCE_TO_EDGE', 'N_SPHERE_RADIUS']) {
+    const graph = singleNodeGraph('ShaderNodeTexVoronoi', {
+      dimensions: '4D',
+      feature,
+      distanceMetric: 'EUCLIDEAN',
+      normalize: true,
+      seed: 47,
+    }, feature === 'N_SPHERE_RADIUS' ? 'radius' : 'distance');
+    graph.nodes[0].inputs = { detail: 0, smoothness: 0.65, randomness: 1, w: 0.19 };
+    const compilation = compileShaderGraph({ TSL: TRACE_TSL, graph });
+    assert.equal(compilation.nodesCompiled, 1, feature);
+    assert.ok(countOperations(compilation.outputs.roughness, 'floatBitsToUint') > 0, feature);
+  }
+});
+
+test('Voronoi consumes fractal controls and rejects only candidates beyond its explicit live budget', () => {
+  const dynamic = {
+    formatVersion: 1,
+    id: 'shader/voronoi-dynamic-detail',
+    domain: 'shader',
+    nodes: [
+      { id: 'detail', type: 'ShaderNodeValue', params: { value: 2 } },
+      { id: 'voronoi', type: 'ShaderNodeTexVoronoi', params: { dimensions: '3D', feature: 'F1' } },
+    ],
+    edges: [{ from: { nodeId: 'detail', port: 'value' }, to: { nodeId: 'voronoi', port: 'detail' } }],
+    outputs: { roughness: { nodeId: 'voronoi', port: 'distance' } },
+  };
+  assert.throws(
+    () => compileShaderGraph({ TSL: TRACE_TSL, graph: dynamic }),
+    error => error instanceof ShaderGraphCompileError
+      && error.code === 'shader_dynamic_setting_unsupported'
+      && error.details.nodeId === 'voronoi',
+  );
+
+  const expensive = singleNodeGraph('ShaderNodeTexVoronoi', {
+    dimensions: '4D', feature: 'SMOOTH_F1', distanceMetric: 'EUCLIDEAN', seed: 3,
+  }, 'distance');
+  expensive.nodes[0].inputs = { detail: 7, smoothness: 1 };
+  assert.throws(
+    () => compileShaderGraph({ TSL: TRACE_TSL, graph: expensive }),
+    error => error instanceof ShaderGraphCompileError
+      && error.code === 'shader_node_budget_exceeded'
+      && error.details.nodeId === 'texture'
+      && error.details.candidateVisits === 5000,
+  );
+});
+
+test('Voronoi edge and N-sphere features intentionally ignore the distance metric', () => {
+  for (const feature of ['DISTANCE_TO_EDGE', 'N_SPHERE_RADIUS']) {
+    const make = distanceMetric => {
+      const graph = singleNodeGraph('ShaderNodeTexVoronoi', {
+        dimensions: '2D', feature, distanceMetric, normalize: false, seed: 19,
+      }, feature === 'N_SPHERE_RADIUS' ? 'radius' : 'distance');
+      graph.nodes[0].inputs = { detail: 0, exponent: 4, randomness: 0.7 };
+      return compileShaderGraph({ TSL: TRACE_TSL, graph }).outputs.roughness;
+    };
+    const euclidean = make('EUCLIDEAN');
+    const minkowski = make('MINKOWSKI');
+    assert.equal(countOperations(euclidean, 'pow'), 0, feature);
+    assert.equal(countOperations(minkowski, 'pow'), 0, feature);
+    assert.equal(countOperations(euclidean, 'length'), countOperations(minkowski, 'length'), feature);
   }
 });
 
