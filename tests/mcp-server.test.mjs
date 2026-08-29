@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createLiveMcpDispatch } from '../src/mcp/index.mjs';
+import { createLiveMcpDispatch, createSynchronizedMcpServerFactory } from '../src/mcp/index.mjs';
 import { TOOL_CONTRACT } from '../src/mcp/tool-schemas.mjs';
 import { computeToolContractHash } from '../src/mcp/tool-schemas.mjs';
 import { RpcError } from '../src/bridge/protocol.mjs';
@@ -162,4 +162,19 @@ test('live MCP dispatch refreshes a newer native contract without restarting the
   assert.equal(result.method, 'three_studio_status');
   assert.deepEqual(synchronized, [refreshed.hash]);
   assert.equal(client.calls.request, 1);
+});
+
+test('refresh-aware stdio factory preserves contracts across fresh SDK server instances', () => {
+  const factory = createSynchronizedMcpServerFactory({ dispatch: async () => ({ success: true }) });
+  const first = factory.create();
+  const refreshed = structuredClone(TOOL_CONTRACT);
+  refreshed.contractVersion = 'three-studio-tools/factory-test';
+  refreshed.inputSchemas.three_studio_status.properties.contractProbe = { type: 'integer' };
+  refreshed.hash = computeToolContractHash(refreshed);
+  assert.equal(factory.synchronize(refreshed).changed, true);
+  assert.deepEqual(first.toolInputSchemaJson('three_studio_status'), refreshed.inputSchemas.three_studio_status);
+
+  const second = factory.create();
+  assert.notEqual(second, first);
+  assert.deepEqual(second.toolInputSchemaJson('three_studio_status'), refreshed.inputSchemas.three_studio_status);
 });

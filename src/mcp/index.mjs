@@ -39,4 +39,9 @@ export {
   toMcpToolError,
   toMcpToolResult,
 } from './tools.mjs';
-export { createLiveMcpDispatch, resolveLiveConnectionOptions, runThreeStudioMcp } from './server.mjs';
+export {
+  createLiveMcpDispatch,
+  createSynchronizedMcpServerFactory,
+  resolveLiveConnectionOptions,
+  runThreeStudioMcp,
+} from './server.mjs';

@@ -148,22 +148,41 @@ export function createLiveMcpDispatch({
   return { dispatch, ensureClient, close: resetClient };
 }
 
+/** Keeps the latest verified native contract while preserving fresh SDK server instances. */
+export function createSynchronizedMcpServerFactory({ dispatch } = {}) {
+  let currentServer;
+  let latestContract;
+  return {
+    create() {
+      const server = createThreeStudioMcpServer({ dispatch });
+      if (latestContract) synchronizeThreeStudioToolContract(server, latestContract);
+      currentServer = server;
+      return server;
+    },
+    synchronize(contract) {
+      latestContract = contract;
+      if (!currentServer) return { changed: false, deferred: true, hash: contract.hash };
+      return synchronizeThreeStudioToolContract(currentServer, contract);
+    },
+  };
+}
+
 export async function runThreeStudioMcp({ argv = process.argv.slice(2), env = process.env, stderr = process.stderr } = {}) {
-  let server;
+  let serverFactory;
   const live = createLiveMcpDispatch({
     argv,
     env,
     onToolContract(contract) {
-      if (!server) throw new RpcError('tool_contract_mismatch', 'The MCP server is not ready to refresh its live tool contract.');
-      return synchronizeThreeStudioToolContract(server, contract);
+      if (!serverFactory) throw new RpcError('tool_contract_mismatch', 'The MCP server is not ready to refresh its live tool contract.');
+      return serverFactory.synchronize(contract);
     },
   });
-  server = createThreeStudioMcpServer({ dispatch: live.dispatch });
+  serverFactory = createSynchronizedMcpServerFactory({ dispatch: live.dispatch });
   const transport = new StdioServerTransport(process.stdin, process.stdout, {
     maxBufferSize: MAX_MESSAGE_BYTES,
   });
   const handle = serveStdio(
-    () => server,
+    () => serverFactory.create(),
     {
       transport,
       onerror(error) {
