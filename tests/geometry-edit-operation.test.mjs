@@ -287,12 +287,12 @@ test('MCP geometry.edit exposes every strict bounded command shape', () => {
   ];
   assert.equal(applySchema.safeParse(mcpRequest(edits, 'a'.repeat(64))).success, true);
   assert.deepEqual(GEOMETRY_EDIT_COMMAND_TYPES, [
-    'move', 'proportionalMove', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
+    'move', 'proportionalMove', 'sculptStroke', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
     'subdivideFaces', 'insetFaces', 'extrudeFaces', 'bevelEdges', 'deleteFaces', 'mergeVertices',
     'createUvLayer', 'deleteUvLayer', 'renameUvLayer', 'setActiveUvLayer', 'setCornerUvs',
     'transformUvs', 'projectUvs', 'createColorLayer', 'deleteColorLayer', 'renameColorLayer',
     'setActiveColorLayer', 'setCornerColors', 'assignFaceMaterials', 'setSharpEdges',
-    'setEdgeCreases', 'removeEdgeCreases',
+    'setEdgeCreases', 'removeEdgeCreases', 'paintColorStroke',
   ]);
 
   const parseEdit = edit => applySchema.safeParse(mcpRequest([edit])).success;

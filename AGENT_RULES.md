@@ -6,7 +6,7 @@ this file or live `three_studio_status` disagree, status and this file win.
 
 ## Current capability boundary
 
-Treat `three_studio_status.capabilities` and the live tool schemas as the
+Treat `three_studio_status` presets, `capabilities`, and the live tool schemas as the
 authority. In the current lean slice:
 
 - inspect supports scene summaries and delete-guard hashes,
@@ -23,8 +23,9 @@ authority. In the current lean slice:
   organizational collections, persistent `camera.frame`, bounded
   `layout.pattern`, indexed-triangle and topology-guarded editable-polygon
   `geometry.edit` with direct per-corner UV/color, face-material, sharp-edge,
-  and crease edits, bounded inline raster texture resources, and canonical
-  `scene.rtx.patch`;
+  and crease edits, bounded inline raster texture resources, canonical
+  `scene.rtx.patch`, and reusable `stroke.apply` paths for sculpting,
+  color/texture painting, tube curves, and deterministic scatter;
 - validation is whole-project, interactive document/reference/hierarchy/graph
   validation with budgets;
 - rendering is WebGPU beauty capture through the authored shot and its
@@ -256,6 +257,12 @@ operations.
   it is accumulated across distinct moving Ocean geometries in the scene.
 - For whole-mesh transforms or smoothing, use `selection: "all"`; keep explicit
   vertex-index lists for genuinely local edits.
+- Prefer one bounded stroke over large vertex/corner lists. Use per-point
+  pressure, radius, strength, opacity, normals, and color; save a reusable path
+  with `storeAsAssetId`. Attribute strokes create their color layer by default.
+- Start status with `preset: "minimal"`. On inspect, use `preset`, `select`, and
+  `format: "rows"` to request only the fields needed next. Cache `responseHash`
+  and pass it as `ifHash` when polling unchanged context.
 - Treat realism as the combination of silhouette, bevel/profile detail,
   coherent material response, scale cues, camera, and lighting. Polygon count
   alone is not evidence of realism.

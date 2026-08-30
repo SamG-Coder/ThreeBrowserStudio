@@ -39,6 +39,9 @@ Do not infer support from an earlier Studio session, a tutorial module, or
   needed for the **next** decision.
 - Inspect is paginated and hashed. Do not request the whole mesh, whole graph
   sockets as raw dumps, or unbounded arrays.
+- Explicitly use `preset: "summary"` plus dotted `select` fields for the next decision.
+  Use `format: "rows"` for collections and `ifHash` to avoid receiving an
+  unchanged payload again.
 - Use `sceneDigest` for the tree. Use `resourceDigest` for counts, hashes, and
   references. Use `meshElements` with a `meshFilter` (bbox, y-range, boundary,
   `notAdjacentTo`) instead of paging a cloth. Use `graphCatalog` before any
@@ -148,6 +151,11 @@ transaction.
   transforms. Deleting a collection never deletes members.
 - Prefer `layout.pattern` (linear, grid, radial, seeded scatter) when status
   says it is implemented. Use explicit transforms for everything else.
+- Prefer `stroke.apply` for authored paths: sculpt a local/world/surface path,
+  paint a color layer or UV data texture, turn the path into a tube, or scatter
+  an existing mesh along it. A single point can stamp; multiple points form a
+  pressure/radius/opacity-varying stroke. Persist commonly reused paths with
+  `storeAsAssetId`.
 - Keep transforms finite and scales non-zero.
 - Inspect compiled bounds before placing dependents.
 - Use `projectVisibility` before editing something that may be off-screen

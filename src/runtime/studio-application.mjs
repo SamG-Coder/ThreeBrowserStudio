@@ -31,7 +31,13 @@ import {
   normalizeDataTextureResource,
   normalizeGraphResourcePatch,
   normalizeResourceType,
-  supportedOperationTypes,
+  normalizeStroke,
+  paintDataTextureStroke,
+  strokeInstanceTransforms,
+  shapeToolResponse,
+  entityWorldMatrix,
+  invertTransformMatrix,
+  transformPointByMatrix,
   validateProjectDocument,
 } from '../core/index.mjs';
 import {
@@ -63,6 +69,7 @@ import {
 import { BLENDER_CATALOG_SUMMARY, queryBlenderCatalog } from '../blender/index.mjs';
 import {
   GEOMETRY_EDIT_COMMAND_TYPES,
+  OPERATION_TYPES,
   TOOL_CONTRACT,
   TOOL_CONTRACT_SUMMARY,
   TOOL_SCHEMAS,
@@ -80,6 +87,48 @@ import { createTransactionId } from '../core/util.mjs';
 import { bakeProceduralTextureGraph } from './procedural-texture-compiler.mjs';
 
 const INSPECT_RESPONSE_ENVELOPE_RESERVE_BYTES = 2_048;
+
+const STATUS_SELECT_PRESETS = Object.freeze({
+  minimal: [
+    'success', 'protocolVersion', 'sessionId', 'pid', 'projectId', 'projectName',
+    'revision', 'savedRevision', 'dirty', 'activeSceneId', 'mode',
+    'viewport.ready', 'viewport.renderer', 'viewport.cameraId', 'viewport.viewMode',
+    'viewport.width', 'viewport.height',
+    'rtx.supported', 'rtx.requested', 'rtx.active', 'rtx.failed', 'rtx.reason',
+    'capabilities.toolContract.contractVersion', 'capabilities.toolContract.serverVersion',
+    'capabilities.toolContract.hash',
+  ],
+  authoring: [
+    'success', 'protocolVersion', 'sessionId', 'pid', 'projectId', 'projectName',
+    'revision', 'savedRevision', 'dirty', 'activeSceneId', 'sceneCount', 'entityCount',
+    'collectionCount', 'undoAvailable', 'redoAvailable', 'mode', 'viewport.ready',
+    'viewport.renderer', 'viewport.cameraId', 'viewport.viewMode',
+    'capabilities.geometryRecipes', 'capabilities.geometryEditCommands',
+    'capabilities.layoutPatterns', 'capabilities.jobs', 'capabilities.jobKinds',
+    'capabilities.materialRecipes', 'capabilities.renderPasses',
+    'capabilities.toolContract.contractVersion', 'capabilities.toolContract.hash',
+  ],
+  rendering: [
+    'success', 'protocolVersion', 'sessionId', 'projectId', 'projectName', 'revision', 'dirty',
+    'viewport', 'rtx', 'capabilities.webgpu', 'capabilities.shadows',
+    'capabilities.renderPasses', 'capabilities.toolContract.contractVersion',
+    'capabilities.toolContract.hash', 'latestEvidence',
+  ],
+});
+
+const INSPECT_SELECT_PRESETS = Object.freeze({
+  summary: [
+    'success', 'revision', 'projectId', 'scene.id', 'scene.name', 'scene.activeCameraId',
+    'scene.entityCount', 'scene.collectionCount', 'scene.selectedEntityCount',
+    'scene.sceneHash', 'scene.selectionHash', 'entities.id', 'entities.name',
+    'entities.kind', 'entities.parentId', 'entities.visible', 'nextCursor',
+  ],
+  authoring: [
+    'success', 'revision', 'projectId', 'scene', 'collection', 'entities.id', 'entities.name',
+    'entities.kind', 'entities.parentId', 'entities.children', 'entities.visible',
+    'entities.transform', 'entities.components', 'entities.referencesTo', 'nextCursor',
+  ],
+});
 
 const RESOURCE_OPERATIONS = Object.freeze({
   'geometry.put': ['geometries', 'put'],
@@ -186,8 +235,135 @@ function resourceOperation(operation, document) {
   return { type: 'resource.create', resourceType, resource, ...(operation.alias ? { alias: operation.alias } : {}) };
 }
 
+function strokeFromOperation(operation, document) {
+  if (operation.stroke) return normalizeStroke(operation.stroke);
+  const resource = document.resources?.assets?.[operation.strokeId];
+  if (!resource || resource.kind !== 'stroke') {
+    throw new StudioError('stroke_not_found', `Stroke asset ${operation.strokeId} does not exist.`, {
+      strokeId: operation.strokeId,
+    });
+  }
+  return normalizeStroke(resource.stroke ?? resource.recipe);
+}
+
+function localStrokeForEntity(strokeValue, document, entityId) {
+  const stroke = normalizeStroke(strokeValue);
+  if (stroke.space === 'local') return stroke;
+  if (stroke.space === 'uv') throw new StudioError('stroke_space_mismatch', 'UV strokes cannot target scene geometry.');
+  const index = new ProjectIndex(document);
+  const { scene } = index.getEntity(entityId);
+  const inverse = invertTransformMatrix(entityWorldMatrix(scene, entityId));
+  const origin = transformPointByMatrix(inverse, [0, 0, 0]);
+  return {
+    ...stroke,
+    space: 'local',
+    targetEntityId: entityId,
+    points: stroke.points.map(point => ({
+      ...point,
+      position: transformPointByMatrix(inverse, point.position),
+      ...(point.normal ? {
+        normal: (() => {
+          const end = transformPointByMatrix(inverse, point.normal);
+          const value = end.map((component, axis) => component - origin[axis]);
+          const length = Math.hypot(...value);
+          return length === 0 ? [0, 0, 1] : value.map(component => component / length);
+        })(),
+      } : {}),
+    })),
+  };
+}
+
+function translateStrokeOperation(operation, document) {
+  const stroke = strokeFromOperation(operation, document);
+  const target = operation.target;
+  const lowered = [];
+  if (operation.storeAsAssetId) {
+    lowered.push({
+      type: 'resource.create',
+      resourceType: 'assets',
+      resource: { id: operation.storeAsAssetId, kind: 'stroke', stroke },
+    });
+  }
+  if (target.kind === 'sculpt' || target.kind === 'attribute') {
+    const index = new ProjectIndex(document);
+    const { entity } = index.getEntity(target.entityId);
+    if (!['mesh', 'instancedMesh'].includes(entity.kind) || !entity.components?.mesh?.geometryId) {
+      throw new StudioError('invalid_stroke_target', `${target.kind} strokes require a mesh entity.`, { entityId: target.entityId });
+    }
+    const localStroke = localStrokeForEntity(stroke, document, target.entityId);
+    const edits = [];
+    if (target.kind === 'attribute') {
+      const geometry = index.getResource(entity.components.mesh.geometryId, 'geometries').resource;
+      if (!geometry.recipe?.colorLayers?.[target.layer]) {
+        if (target.createIfMissing === false) {
+          throw new StudioError('unknown_color_layer', `Color layer ${target.layer} does not exist.`, { entityId: target.entityId });
+        }
+        edits.push({ type: 'createColorLayer', name: target.layer, fill: target.fill ?? [1, 1, 1, 1], setActive: true });
+      }
+    }
+    edits.push(target.kind === 'sculpt' ? {
+      type: 'sculptStroke', stroke: localStroke, brush: target.brush, amount: target.amount,
+      ...(target.direction ? { direction: target.direction } : {}),
+      ...(target.falloff ? { falloff: target.falloff } : {}),
+      ...(target.vertexIndices ? { vertexIndices: target.vertexIndices } : {}),
+      ...(target.selection ? { selection: target.selection } : {}),
+    } : {
+      type: 'paintColorStroke', stroke: localStroke, layer: target.layer,
+      ...(target.color ? { color: target.color } : {}),
+      ...(target.opacity === undefined ? {} : { opacity: target.opacity }),
+      ...(target.blend ? { blend: target.blend } : {}),
+      ...(target.falloff ? { falloff: target.falloff } : {}),
+      ...(target.setActive === undefined ? {} : { setActive: target.setActive }),
+    });
+    lowered.push({
+      type: 'geometry.edit',
+      resourceId: entity.components.mesh.geometryId,
+      ...(target.expectedTopologyHash ? { expectedTopologyHash: target.expectedTopologyHash } : {}),
+      edits,
+    });
+  } else if (target.kind === 'texture') {
+    const textureId = target.textureId;
+    const resource = new ProjectIndex(document).getResource(textureId, 'textures').resource;
+    const recipe = paintDataTextureStroke(resource, stroke, target);
+    delete recipe.pixels;
+    lowered.push({ type: 'resource.patch', resourceType: 'textures', resourceId: textureId, patch: { recipe } });
+  } else if (target.kind === 'curve') {
+    if (stroke.points.length < 2) throw new StudioError('invalid_stroke_curve', 'Curve strokes require at least two points.');
+    lowered.push({
+      type: 'resource.create', resourceType: 'geometries',
+      resource: {
+        id: target.geometryId,
+        recipe: {
+          kind: 'tube', points: stroke.points.map(point => point.position), radius: target.radius,
+          tubularSegments: target.tubularSegments ?? Math.min(512, Math.max(8, stroke.points.length * 4)),
+          radialSegments: target.radialSegments, closed: target.closed ?? stroke.closed,
+        },
+      },
+    });
+    lowered.push({
+      type: 'entity.create', sceneId: target.sceneId,
+      entity: {
+        id: target.entityId, kind: 'mesh', name: target.name ?? target.entityId.split('/').at(-1),
+        parentId: target.parentId ?? null,
+        components: { mesh: { geometryId: target.geometryId, materialId: target.materialId, castShadow: true, receiveShadow: true } },
+      },
+    });
+  } else if (target.kind === 'scatter') {
+    const { entity } = new ProjectIndex(document).getEntity(target.entityId);
+    if (!['mesh', 'instancedMesh'].includes(entity.kind)) throw new StudioError('invalid_stroke_target', 'Scatter strokes require a mesh entity.');
+    const localStroke = localStrokeForEntity(stroke, document, target.entityId);
+    const instances = strokeInstanceTransforms(localStroke, target);
+    lowered.push({
+      type: 'entity.patch', entityId: target.entityId,
+      patch: { kind: 'instancedMesh', components: { mesh: { instances, count: instances.length } } },
+    });
+  }
+  return lowered;
+}
+
 export function translateToolOperation(operation, document) {
   const data = operation.data ?? {};
+  if (operation.op === 'stroke.apply') return translateStrokeOperation(operation, document);
   if (DIRECT_CORE_OPERATIONS.has(operation.op)) {
     const direct = structuredClone(operation);
     if (direct.op === 'camera.frame') {
@@ -1163,7 +1339,7 @@ export class StudioApplication {
         playSimulation: 'actions-and-timeline-modifiers',
         maxShadowLights: 16,
         maxOperations: 128,
-        implementedOperations: supportedOperationTypes(),
+        implementedOperations: [...OPERATION_TYPES],
         toolContract: TOOL_CONTRACT_SUMMARY,
       },
       latestEvidence: this.#latestEvidence,
@@ -1179,7 +1355,13 @@ export class StudioApplication {
       return work();
     });
     switch (method) {
-      case 'three_studio_status': return this.status();
+      case 'three_studio_status': return shapeToolResponse(this.status(), {
+        select: params.select,
+        defaultSelect: params.preset === 'full' ? undefined : STATUS_SELECT_PRESETS[params.preset],
+        format: params.format,
+        ifHash: params.ifHash,
+        preset: params.preset,
+      });
       case 'three_studio_project': return params.action === 'list'
         ? this.#project(params)
         : this.#idempotent(params, () => exclusive(() => this.#project(params)));
@@ -1368,6 +1550,23 @@ export class StudioApplication {
   }
 
   #inspect(params) {
+    const effectiveParams = params.preset === 'authoring' && ['sceneDigest', 'selector'].includes(params.query)
+      ? { ...params, include: ['summary', 'tree', 'transform', 'components', 'bounds', 'references'] }
+      : params;
+    const raw = this.#inspectRaw(effectiveParams);
+    const projectableSelector = ['sceneDigest', 'selector'].includes(params.query);
+    return shapeToolResponse(raw, {
+      select: params.select,
+      defaultSelect: projectableSelector && params.preset !== 'full'
+        ? INSPECT_SELECT_PRESETS[params.preset]
+        : undefined,
+      format: params.format,
+      ifHash: params.ifHash,
+      preset: params.preset,
+    });
+  }
+
+  #inspectRaw(params) {
     this.#assertTarget(params);
     const document = this.#kernel.document;
     if (params.query === 'resourceDigest') return {
@@ -1598,10 +1797,13 @@ export class StudioApplication {
   async #apply(params, context = {}) {
     this.#assertTarget(params);
     const document = this.#kernel.document;
-    const operations = params.operations.map(operation => materializeCameraFrameOperation(
-      translateToolOperation(operation, document),
-      { compiled: this.#compiled, THREE: this.#THREE },
-    ));
+    const operations = params.operations.flatMap((operation) => {
+      const translated = translateToolOperation(operation, document);
+      return (Array.isArray(translated) ? translated : [translated]).map(candidate => materializeCameraFrameOperation(
+        candidate,
+        { compiled: this.#compiled, THREE: this.#THREE },
+      ));
+    });
     const pixelForecast = forecastPixelImpact({ before: document, operations });
     this.#dryRunCandidate = params.previewEvidence ? null : false;
     let response;

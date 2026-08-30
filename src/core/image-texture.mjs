@@ -344,6 +344,12 @@ export function decodeDataTexturePixels(resource) {
     : Uint8Array.from(canonical.pixels);
 }
 
+/** Encodes bytes using the same canonical padded representation accepted by resources. */
+export function encodeDataTexturePixels(bytes) {
+  if (!(bytes instanceof Uint8Array)) throw new TypeError('Texture pixels must be a Uint8Array.');
+  return encodeCanonicalBase64(bytes);
+}
+
 export function dataTextureDecodedByteLength(resource) {
   const canonical = normalizeDataTextureResource(resource?.recipe ?? resource?.parameters ?? resource);
   return canonical.width * canonical.height * canonical.channels;

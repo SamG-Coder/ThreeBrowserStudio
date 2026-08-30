@@ -14,6 +14,14 @@ import {
   EDITABLE_MESH_ATTRIBUTE_LIMITS,
 } from '../core/editable-mesh-attributes.mjs';
 import { DATA_TEXTURE_LIMITS } from '../core/image-texture.mjs';
+import {
+  SCULPT_STROKE_BRUSHES,
+  STROKE_BLEND_MODES,
+  STROKE_FALLOFFS,
+  STROKE_LIMITS,
+  STROKE_SPACES,
+} from '../core/stroke-authoring.mjs';
+import { RESPONSE_PROJECTION_LIMITS } from '../core/response-projection.mjs';
 import { MATERIAL_TEXTURE_BINDINGS } from '../core/material-textures.mjs';
 import { GEOMETRY_MODIFIER_LIMITS } from '../core/geometry-modifier-evaluator.mjs';
 import {
@@ -31,6 +39,14 @@ const label = z.string().min(1).max(240);
 const cursor = z.string().min(1).max(1024);
 const vec3 = z.tuple([finite, finite, finite]);
 const bounds3 = z.object({ min: vec3, max: vec3 }).strict();
+const responseFieldPath = z.string().min(1).max(RESPONSE_PROJECTION_LIMITS.maxPathLength)
+  .regex(/^[A-Za-z][A-Za-z0-9_-]*(?:\.[A-Za-z][A-Za-z0-9_-]*)*$/);
+const responseProjectionFields = {
+  select: z.array(responseFieldPath).min(1).max(RESPONSE_PROJECTION_LIMITS.maxFields)
+    .refine(paths => new Set(paths).size === paths.length, { message: 'select cannot contain duplicate field paths.' }).optional(),
+  format: z.enum(['object', 'rows']).optional().default('object'),
+  ifHash: z.string().length(64).regex(/^[a-f0-9]{64}$/).optional(),
+};
 
 export const jsonValueSchema = z.lazy(() => z.union([
   z.null(),
@@ -77,6 +93,8 @@ const mutationFields = {
 
 export const statusSchema = z.object({
   ...connectionFields,
+  preset: z.enum(['minimal', 'authoring', 'rendering', 'full']).optional().default('minimal'),
+  ...responseProjectionFields,
 }).strict();
 
 const selectorSchema = z.object({
@@ -158,6 +176,8 @@ export const inspectSchema = z.object({
   evidence: inspectEvidenceSchema.optional(),
   projection: inspectProjectionSchema.optional(),
   meshFilter: inspectMeshFilterSchema.optional(),
+  preset: z.enum(['summary', 'authoring', 'full']).optional().default('full'),
+  ...responseProjectionFields,
 }).strict().superRefine((value, context) => {
   if (['meshElements', 'graphDigest', 'modifierDigest'].includes(value.query) && value.selector?.ids?.length !== 1) {
     context.addIssue({
@@ -197,7 +217,7 @@ export const OPERATION_TYPES = Object.freeze([
   'entity.create', 'entity.patch', 'entity.patchMany', 'entity.transformMany',
   'entity.group', 'entity.ungroup', 'entity.duplicate', 'entity.reparent', 'entity.delete',
   'collection.create', 'collection.patch', 'collection.membership.patch', 'collection.reparent', 'collection.delete',
-  'camera.frame', 'layout.pattern',
+  'camera.frame', 'layout.pattern', 'stroke.apply',
   'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
   'geometry.edit',
   'resource.create', 'resource.patch', 'resource.delete',
@@ -660,9 +680,9 @@ const modifierStackEditSchema = z.discriminatedUnion('type', [
 export const modifierStackEditsSchema = z.array(modifierStackEditSchema).min(1).max(128);
 
 export const GEOMETRY_EDIT_COMMAND_TYPES = Object.freeze([
-  'move', 'proportionalMove', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
+  'move', 'proportionalMove', 'sculptStroke', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
   'subdivideFaces', 'insetFaces', 'extrudeFaces', 'bevelEdges', 'deleteFaces', 'mergeVertices',
-  ...EDITABLE_MESH_ATTRIBUTE_COMMAND_TYPES,
+  ...EDITABLE_MESH_ATTRIBUTE_COMMAND_TYPES, 'paintColorStroke',
 ]);
 export const MAX_GEOMETRY_EDIT_COMMANDS = 64;
 export const MAX_GEOMETRY_EDIT_VERTEX_SELECTION = 20_000;
@@ -692,6 +712,30 @@ const geometryEdges = z.array(z.tuple([
   message: 'An edge cannot reference the same vertex twice.',
 })).min(1).max(MAX_GEOMETRY_EDIT_VERTEX_SELECTION);
 const geometryScale = z.union([geometryFinite, geometryVec3]);
+const strokeColor = z.tuple([
+  z.number().finite().min(0).max(1), z.number().finite().min(0).max(1),
+  z.number().finite().min(0).max(1), z.number().finite().min(0).max(1),
+]);
+const strokePointSchema = z.object({
+  position: geometryVec3,
+  normal: geometryAxis.optional(),
+  radius: z.number().finite().gt(0).max(STROKE_LIMITS.maxRadius).optional(),
+  strength: z.number().finite().min(0).max(1).optional(),
+  pressure: z.number().finite().min(0).max(1).optional(),
+  color: strokeColor.optional(),
+  opacity: z.number().finite().min(0).max(1).optional(),
+  time: z.number().finite().min(0).max(1_000_000_000).optional(),
+}).strict();
+export const strokeSchema = z.object({
+  space: z.enum(STROKE_SPACES).optional().default('local'),
+  targetEntityId: identifier.optional(),
+  closed: z.boolean().optional().default(false),
+  defaultRadius: z.number().finite().gt(0).max(STROKE_LIMITS.maxRadius).optional().default(0.1),
+  defaultStrength: z.number().finite().min(0).max(1).optional().default(1),
+  falloff: z.enum(STROKE_FALLOFFS).optional().default('smooth'),
+  points: z.array(strokePointSchema).min(1).max(STROKE_LIMITS.maxPoints),
+  metadata: jsonObjectSchema.optional().default({}),
+}).strict();
 const geometrySelectedVariants = (type, fields) => z.union([
   z.object({ type: z.literal(type), vertexIndices: geometryVertexIndices, ...fields }).strict(),
   z.object({ type: z.literal(type), selection: z.literal('all'), ...fields }).strict(),
@@ -708,6 +752,26 @@ const geometryProportionalMoveEdit = z.object({
   axisScale: layoutPositiveVec3.optional(),
 }).strict().refine(value => value.vertexIndices === undefined || value.selection === undefined, {
   message: 'proportionalMove accepts vertexIndices or selection, not both.',
+});
+const geometrySculptStrokeEdit = z.object({
+  type: z.literal('sculptStroke'),
+  vertexIndices: geometryVertexIndices.optional(),
+  selection: z.literal('all').optional(),
+  stroke: strokeSchema,
+  brush: z.enum(SCULPT_STROKE_BRUSHES).optional(),
+  amount: z.number().finite().min(-10_000).max(10_000).optional(),
+  direction: geometryAxis.optional(),
+  falloff: z.enum(STROKE_FALLOFFS).optional(),
+}).strict().superRefine((value, context) => {
+  if (value.vertexIndices !== undefined && value.selection !== undefined) {
+    context.addIssue({ code: 'custom', message: 'sculptStroke accepts vertexIndices or selection, not both.' });
+  }
+  if (value.brush === 'grab' && value.direction === undefined) {
+    context.addIssue({ code: 'custom', path: ['direction'], message: 'grab sculpt strokes require direction.' });
+  }
+  if (value.stroke.space !== 'local') {
+    context.addIssue({ code: 'custom', path: ['stroke', 'space'], message: 'Geometry edit sculpt strokes must already be in local space; use stroke.apply for world or surface strokes.' });
+  }
 });
 const geometryScaleEdit = geometrySelectedVariants('scale', {
   scale: geometryScale,
@@ -889,6 +953,19 @@ const geometrySetCornerColorsEdit = z.object({
     context.addIssue({ code: 'custom', path: ['values'], message: 'values must contain one RGBA value per selected corner.' });
   }
 });
+const geometryPaintColorStrokeEdit = z.object({
+  type: z.literal('paintColorStroke'),
+  stroke: strokeSchema,
+  layer: geometryLayerName,
+  color: strokeColor.optional(),
+  opacity: z.number().finite().min(0).max(1).optional(),
+  blend: z.enum(STROKE_BLEND_MODES).optional(),
+  falloff: z.enum(STROKE_FALLOFFS).optional(),
+  setActive: z.boolean().optional(),
+}).strict().refine(value => value.stroke.space === 'local', {
+  message: 'Geometry edit color strokes must already be in local space; use stroke.apply for world or surface strokes.',
+  path: ['stroke', 'space'],
+});
 const geometryAssignFaceMaterialsEdit = z.object({
   type: z.literal('assignFaceMaterials'),
   faceIndices: geometryAttributeFaceIndices,
@@ -921,6 +998,7 @@ const geometryRemoveEdgeCreasesEdit = z.object({
 export const geometryEditCommandSchema = z.union([
   geometryMoveEdit,
   geometryProportionalMoveEdit,
+  geometrySculptStrokeEdit,
   geometryScaleEdit,
   geometryEulerRotateEdit,
   geometryAxisRotateEdit,
@@ -946,6 +1024,7 @@ export const geometryEditCommandSchema = z.union([
   geometryRenameColorLayerEdit,
   geometrySetActiveColorLayerEdit,
   geometrySetCornerColorsEdit,
+  geometryPaintColorStrokeEdit,
   geometryAssignFaceMaterialsEdit,
   geometrySetSharpEdgesEdit,
   geometrySetEdgeCreasesEdit,
@@ -964,7 +1043,66 @@ const cameraDirection = vec3.refine(
   { message: 'direction must not be zero.' },
 );
 
+const strokeTargetSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('sculpt'), entityId: reference, expectedTopologyHash: hash.optional(),
+    brush: z.enum(SCULPT_STROKE_BRUSHES).optional().default('draw'),
+    amount: z.number().finite().min(-10_000).max(10_000).optional().default(0.1),
+    direction: geometryAxis.optional(), falloff: z.enum(STROKE_FALLOFFS).optional(),
+    vertexIndices: geometryVertexIndices.optional(), selection: z.literal('all').optional(),
+  }).strict().superRefine((value, context) => {
+    if (value.vertexIndices !== undefined && value.selection !== undefined) context.addIssue({ code: 'custom', message: 'Sculpt target accepts vertexIndices or selection, not both.' });
+    if (value.brush === 'grab' && value.direction === undefined) context.addIssue({ code: 'custom', path: ['direction'], message: 'grab sculpt strokes require direction.' });
+  }),
+  z.object({
+    kind: z.literal('attribute'), entityId: reference, expectedTopologyHash: hash,
+    layer: geometryLayerName, color: strokeColor.optional(),
+    opacity: z.number().finite().min(0).max(1).optional(), blend: z.enum(STROKE_BLEND_MODES).optional(),
+    falloff: z.enum(STROKE_FALLOFFS).optional(), setActive: z.boolean().optional(),
+    createIfMissing: z.boolean().optional().default(true), fill: strokeColor.optional(),
+  }).strict(),
+  z.object({
+    kind: z.literal('texture'), textureId: reference, channel: z.enum(['r', 'g', 'b', 'a', 'rgba']).optional(),
+    color: strokeColor.optional(), opacity: z.number().finite().min(0).max(1).optional(),
+    blend: z.enum(STROKE_BLEND_MODES).optional(), falloff: z.enum(STROKE_FALLOFFS).optional(),
+  }).strict(),
+  z.object({
+    kind: z.literal('curve'), sceneId: reference, geometryId: identifier, entityId: identifier, materialId: reference,
+    parentId: reference.nullable().optional(), name: z.string().min(1).max(240).optional(),
+    radius: z.number().finite().gt(0).max(10_000).optional().default(0.025),
+    tubularSegments: z.number().int().min(1).max(512).optional(),
+    radialSegments: z.number().int().min(3).max(64).optional().default(8), closed: z.boolean().optional(),
+  }).strict(),
+  z.object({
+    kind: z.literal('scatter'), entityId: reference,
+    spacing: z.number().finite().gt(0).max(STROKE_LIMITS.maxRadius).optional(),
+    count: z.number().int().min(1).max(STROKE_LIMITS.maxInstances).optional(),
+    seed: z.number().int().min(-0x80000000).max(0x7fffffff).optional(),
+    jitter: z.number().finite().min(0).max(STROKE_LIMITS.maxRadius).optional(),
+    orientation: z.enum(['keep', 'tangent', 'normal', 'gravity']).optional(), gravity: geometryAxis.optional(),
+    rotationJitter: z.number().finite().min(0).max(Math.PI * 2).optional(),
+    scaleMin: layoutPositiveVec3.optional(), scaleMax: layoutPositiveVec3.optional(),
+  }).strict(),
+]);
+
 const operation = (name, fields) => z.object({ op: z.literal(name), ...fields }).strict();
+
+const strokeApplyOperation = operation('stroke.apply', {
+  stroke: strokeSchema.optional(),
+  strokeId: reference.optional(),
+  storeAsAssetId: identifier.optional(),
+  target: strokeTargetSchema,
+}).superRefine((value, context) => {
+  if ((value.stroke === undefined) === (value.strokeId === undefined)) {
+    context.addIssue({ code: 'custom', message: 'stroke.apply requires exactly one of stroke or strokeId.' });
+  }
+  if (value.storeAsAssetId !== undefined && value.stroke === undefined) {
+    context.addIssue({ code: 'custom', path: ['storeAsAssetId'], message: 'storeAsAssetId requires an inline stroke.' });
+  }
+  if (value.target.kind === 'texture' && value.stroke?.space !== undefined && value.stroke.space !== 'uv') {
+    context.addIssue({ code: 'custom', path: ['stroke', 'space'], message: 'Texture strokes must use UV space.' });
+  }
+});
 
 const transformManyPatch = z.object({
   position: vec3.optional(),
@@ -1059,6 +1197,7 @@ const directOperations = [
     lockPreviewAspect: z.boolean().optional().default(true),
   }),
   operation('layout.pattern', { entityId: reference, pattern: layoutPatternSchema }),
+  strokeApplyOperation,
   operation('modifier.create', {
     entityId: reference, modifier: modifierDocumentSchema, expectedStackHash: hash, index: modifierIndex.optional(),
   }),
@@ -1230,8 +1369,8 @@ export const TOOL_SCHEMAS = Object.freeze({
 
 export const STUDIO_TOOL_NAMES = Object.freeze(Object.keys(TOOL_SCHEMAS));
 
-export const MCP_SERVER_VERSION = '0.3.0';
-export const TOOL_CONTRACT_VERSION = 'three-studio-tools/8';
+export const MCP_SERVER_VERSION = '0.4.0';
+export const TOOL_CONTRACT_VERSION = 'three-studio-tools/9';
 export const TOOL_INPUT_SCHEMAS = Object.freeze(Object.fromEntries(
   STUDIO_TOOL_NAMES.map(name => [name, z.toJSONSchema(TOOL_SCHEMAS[name], { io: 'input' })]),
 ));
@@ -1256,8 +1395,21 @@ const TOOL_CONTRACT_LIMITS = Object.freeze({
   maxDataTextureAnisotropy: DATA_TEXTURE_LIMITS.maxAnisotropy,
   maxProjectTextureDecodedBytes: DATA_TEXTURE_LIMITS.maxProjectDecodedBytes,
   maxProjectTextureSerializedBytes: DATA_TEXTURE_LIMITS.maxProjectSerializedBytes,
+  maxStrokePoints: STROKE_LIMITS.maxPoints,
+  maxStrokeInstances: STROKE_LIMITS.maxInstances,
+  maxResponseSelectFields: RESPONSE_PROJECTION_LIMITS.maxFields,
+  maxResponseSelectDepth: RESPONSE_PROJECTION_LIMITS.maxDepth,
 });
 const TOOL_CONTRACT_FEATURES = Object.freeze({
+  reusableStrokeAssets: true,
+  strokeSculpting: Object.freeze([...SCULPT_STROKE_BRUSHES]),
+  strokeAttributePainting: true,
+  strokeTexturePainting: true,
+  strokeCurveAuthoring: true,
+  strokeScatterAuthoring: true,
+  responseFieldProjection: true,
+  responseRowFormat: true,
+  responseConditionalHash: true,
   compactGeometrySelectionAll: true,
   editableMeshUvEditing: true,
   editableMeshColorEditing: true,

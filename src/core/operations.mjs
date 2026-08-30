@@ -34,6 +34,11 @@ import {
   applyEditableMeshAttributeEdit,
 } from './editable-mesh-attributes.mjs';
 import { DATA_TEXTURE_RECIPE_KEYS } from './image-texture.mjs';
+import {
+  paintEditableMeshColorStroke,
+  sculptEditableMeshWithStroke,
+  sculptIndexedMeshWithStroke,
+} from './stroke-authoring.mjs';
 import { normalizeLayoutPattern } from './layout-patterns.mjs';
 import { DEFAULT_RTX_SETTINGS, normalizeRtxSettings } from './rtx-settings.mjs';
 import {
@@ -54,6 +59,7 @@ const GEOMETRY_RECIPE_FIELDS = Object.freeze([
 const GEOMETRY_EDIT_KEYS = new Map([
   ['move', new Set(['type', 'vertexIndices', 'selection', 'offset'])],
   ['proportionalMove', new Set(['type', 'vertexIndices', 'selection', 'center', 'radius', 'offset', 'falloff', 'axisScale'])],
+  ['sculptStroke', new Set(['type', 'vertexIndices', 'selection', 'stroke', 'brush', 'amount', 'direction', 'falloff'])],
   ['scale', new Set(['type', 'vertexIndices', 'selection', 'scale', 'pivot'])],
   ['rotate', new Set(['type', 'vertexIndices', 'selection', 'rotation', 'axis', 'angle', 'pivot'])],
   ['smooth', new Set(['type', 'vertexIndices', 'selection', 'iterations', 'factor', 'preserveBoundary'])],
@@ -78,18 +84,19 @@ const GEOMETRY_EDIT_KEYS = new Map([
   ['renameColorLayer', new Set(['type', 'name', 'newName'])],
   ['setActiveColorLayer', new Set(['type', 'name'])],
   ['setCornerColors', new Set(['type', 'layer', 'cornerIndices', 'values'])],
+  ['paintColorStroke', new Set(['type', 'stroke', 'layer', 'color', 'opacity', 'blend', 'falloff', 'setActive'])],
   ['assignFaceMaterials', new Set(['type', 'faceIndices', 'materialIndex', 'materialIndices'])],
   ['setSharpEdges', new Set(['type', 'edges', 'sharp'])],
   ['setEdgeCreases', new Set(['type', 'edges', 'weight'])],
   ['removeEdgeCreases', new Set(['type', 'edges'])],
 ]);
 const INDEXED_GEOMETRY_EDIT_TYPES = new Set([
-  'move', 'proportionalMove', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
+  'move', 'proportionalMove', 'sculptStroke', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
 ]);
 const EDITABLE_GEOMETRY_EDIT_TYPES = new Set([
-  'move', 'proportionalMove', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'subdivideFaces', 'insetFaces', 'extrudeFaces',
+  'move', 'proportionalMove', 'sculptStroke', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'subdivideFaces', 'insetFaces', 'extrudeFaces',
   'bevelEdges', 'deleteFaces', 'mergeVertices',
-  ...EDITABLE_MESH_ATTRIBUTE_COMMAND_TYPES,
+  ...EDITABLE_MESH_ATTRIBUTE_COMMAND_TYPES, 'paintColorStroke',
 ]);
 const RTX_PATCH_KEYS = new Set(['enabled', ...Object.keys(DEFAULT_RTX_SETTINGS)]);
 const MODIFIER_STACK_EDIT_KEYS = new Map([
@@ -1354,7 +1361,7 @@ function assertGeometryEditCommand(command, editIndex, recipeKind) {
     `geometry.edit command ${command.type} is not supported for ${recipeKind}.`,
     { editIndex, commandType: command.type, recipeKind },
   );
-  const supportsSelection = ['move', 'proportionalMove', 'scale', 'rotate', 'smooth', 'mergeVertices'].includes(command.type);
+  const supportsSelection = ['move', 'proportionalMove', 'sculptStroke', 'scale', 'rotate', 'smooth', 'mergeVertices'].includes(command.type);
   if (supportsSelection) {
     const hasVertexIndices = command.vertexIndices !== undefined;
     const hasCompactSelection = command.selection !== undefined;
@@ -1370,7 +1377,7 @@ function assertGeometryEditCommand(command, editIndex, recipeKind) {
       `geometry.edit edits[${editIndex}] accepts vertexIndices or selection, not both.`,
       { editIndex },
     );
-    if (!['smooth', 'proportionalMove'].includes(command.type)) {
+    if (!['smooth', 'proportionalMove', 'sculptStroke'].includes(command.type)) {
       studioAssert(
         hasVertexIndices || hasCompactSelection,
         'invalid_geometry_edit',
@@ -1467,11 +1474,19 @@ function applyGeometryEdit(draft, operation, aliases) {
     const command = edits[editIndex];
     assertGeometryEditCommand(command, editIndex, canonical.kind);
     try {
-      recipe = canonical.kind === 'editableMesh'
-        ? (EDITABLE_MESH_ATTRIBUTE_COMMAND_TYPES.includes(command.type)
-            ? applyEditableMeshAttributeEdit(recipe, command)
-            : applyEditableMeshEdit(recipe, command))
-        : applyIndexedMeshEdit(recipe, command);
+      if (command.type === 'sculptStroke') {
+        recipe = canonical.kind === 'editableMesh'
+          ? sculptEditableMeshWithStroke(recipe, command)
+          : sculptIndexedMeshWithStroke(recipe, command);
+      } else if (command.type === 'paintColorStroke') {
+        recipe = paintEditableMeshColorStroke(recipe, command);
+      } else {
+        recipe = canonical.kind === 'editableMesh'
+          ? (EDITABLE_MESH_ATTRIBUTE_COMMAND_TYPES.includes(command.type)
+              ? applyEditableMeshAttributeEdit(recipe, command)
+              : applyEditableMeshEdit(recipe, command))
+          : applyIndexedMeshEdit(recipe, command);
+      }
     } catch (error) {
       if (error instanceof StudioError) throw error;
       throw new StudioError('invalid_geometry_edit', `geometry.edit edits[${editIndex}] failed: ${error.message}`, {

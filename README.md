@@ -48,11 +48,14 @@ The nine-tool shape is stable, but each tool advertises only its live slice:
   mesh-element pages, exact modifier-stack hashes/execution classifications,
   graph digests, and RTX collector diagnostics; changes,
   unresolved/unused resources, graph and Blender compatibility catalogs,
-  Play/Action state, and latest evidence metadata;
+  Play/Action state, and latest evidence metadata. Responses support bounded
+  field `select`, row envelopes, presets, hashes, and conditional no-change;
 - `apply`: the live-refreshed atomic scene, camera, layout, indexed-triangle and
   hash-guarded editable-polygon geometry contract, including direct per-corner
   UV/color layers, per-face materials, sharp edges, crease storage, bounded
-  inline raster textures, RTX, entity, resource, and modifier-stack operations;
+  inline raster textures, RTX, entity, resource, and modifier-stack operations,
+  plus reusable `stroke.apply` paths for sculpt, color/texture paint, tubes,
+  and deterministic scatter;
 - `validate`: whole-project interactive schema, reference, hierarchy, typed
   graph, Action/keyframe, and budget validation;
 - `render`: an exact animation frame, named camera, or explicit framing followed

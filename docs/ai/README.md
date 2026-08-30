@@ -19,7 +19,7 @@ gameplay exist.
 
 | Tool | Use it for |
 | --- | --- |
-| `three_studio_status` | First call. Session, revision, capabilities, viewport |
+| `three_studio_status` | First call. Minimal session/revision by default; select richer presets only when needed |
 | `three_studio_project` | list / create / open / save |
 | `three_studio_inspect` | Bounded slices only. Exact IDs and hashes |
 | `three_studio_apply` | One labelled atomic changeset |
@@ -44,3 +44,8 @@ There is no tenth tool. There is no “just write the scene JSON” path.
 8. Save after a milestone the human can see.
 
 Read [MCP patterns](./patterns.md) before a dense mesh, graph, or camera pass.
+
+Status and inspect accept bounded dotted field `select` paths, `object` or
+`rows` output, and `ifHash` for compact unchanged polling. Authored brush paths
+use the single `stroke.apply` operation across sculpt, attribute paint, texture
+paint, tube creation, and scatter; they can also be stored as canonical assets.

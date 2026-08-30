@@ -39,7 +39,13 @@
     "label": { "type": "string", "minLength": 1, "maxLength": 240 },
     "status": {
       "type": "object", "additionalProperties": false,
-      "properties": { "protocolVersion": { "$ref": "#/$defs/protocolVersion" }, "sessionId": { "$ref": "#/$defs/sessionId" } }
+      "properties": {
+        "protocolVersion": { "$ref": "#/$defs/protocolVersion" }, "sessionId": { "$ref": "#/$defs/sessionId" },
+        "preset": { "enum": ["minimal", "authoring", "rendering", "full"] },
+        "select": { "type": "array", "minItems": 1, "maxItems": 64, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[A-Za-z][A-Za-z0-9_-]*(\\.[A-Za-z][A-Za-z0-9_-]*)*$" } },
+        "format": { "enum": ["object", "rows"] },
+        "ifHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
     },
     "selector": {
       "type": "object", "additionalProperties": false,
@@ -385,6 +391,85 @@
         { "$ref": "#/$defs/legacyTexturePlaceholderInput" }
       ]
     },
+    "stroke": {
+      "description": "A bounded reusable brush path for sculpting, painting, curves, and scatter.",
+      "type": "object", "additionalProperties": false, "required": ["points"],
+      "properties": {
+        "space": { "enum": ["local", "world", "surface", "uv"] },
+        "targetEntityId": { "$ref": "#/$defs/id" },
+        "closed": { "type": "boolean" },
+        "defaultRadius": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000000 },
+        "defaultStrength": { "type": "number", "minimum": 0, "maximum": 1 },
+        "falloff": { "enum": ["constant", "linear", "smooth", "sharp", "sphere"] },
+        "metadata": { "type": "object" },
+        "points": {
+          "type": "array", "minItems": 1, "maxItems": 2048,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["position"],
+            "properties": {
+              "position": { "$ref": "#/$defs/geometryVec3" },
+              "normal": { "$ref": "#/$defs/geometryVec3" },
+              "radius": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000000 },
+              "strength": { "type": "number", "minimum": 0, "maximum": 1 },
+              "pressure": { "type": "number", "minimum": 0, "maximum": 1 },
+              "color": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "type": "number", "minimum": 0, "maximum": 1 } },
+              "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+              "time": { "type": "number", "minimum": 0, "maximum": 1000000000 }
+            }
+          }
+        }
+      }
+    },
+    "strokeTarget": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "entityId"],
+          "properties": {
+            "kind": { "const": "sculpt" }, "entityId": { "$ref": "#/$defs/reference" }, "expectedTopologyHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "brush": { "enum": ["draw", "inflate", "crease", "flatten", "smooth", "grab"] }, "amount": { "type": "number", "minimum": -10000, "maximum": 10000 },
+            "direction": { "$ref": "#/$defs/geometryVec3" }, "falloff": { "enum": ["constant", "linear", "smooth", "sharp", "sphere"] },
+            "vertexIndices": { "$ref": "#/$defs/geometryVertexIndices" }, "selection": { "const": "all" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "entityId", "expectedTopologyHash", "layer"],
+          "properties": {
+            "kind": { "const": "attribute" }, "entityId": { "$ref": "#/$defs/reference" }, "expectedTopologyHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "layer": { "type": "string", "minLength": 1, "maxLength": 64 }, "color": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "type": "number", "minimum": 0, "maximum": 1 } },
+            "opacity": { "type": "number", "minimum": 0, "maximum": 1 }, "blend": { "enum": ["mix", "add", "subtract", "multiply", "lighten", "darken"] },
+            "falloff": { "enum": ["constant", "linear", "smooth", "sharp", "sphere"] }, "setActive": { "type": "boolean" }, "createIfMissing": { "type": "boolean" },
+            "fill": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "type": "number", "minimum": 0, "maximum": 1 } }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "textureId"],
+          "properties": {
+            "kind": { "const": "texture" }, "textureId": { "$ref": "#/$defs/reference" }, "channel": { "enum": ["r", "g", "b", "a", "rgba"] },
+            "color": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "type": "number", "minimum": 0, "maximum": 1 } }, "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+            "blend": { "enum": ["mix", "add", "subtract", "multiply", "lighten", "darken"] }, "falloff": { "enum": ["constant", "linear", "smooth", "sharp", "sphere"] }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "sceneId", "geometryId", "entityId", "materialId"],
+          "properties": {
+            "kind": { "const": "curve" }, "sceneId": { "$ref": "#/$defs/reference" }, "geometryId": { "$ref": "#/$defs/id" }, "entityId": { "$ref": "#/$defs/id" }, "materialId": { "$ref": "#/$defs/reference" },
+            "parentId": { "oneOf": [{ "$ref": "#/$defs/reference" }, { "type": "null" }] }, "name": { "type": "string", "minLength": 1, "maxLength": 240 },
+            "radius": { "type": "number", "exclusiveMinimum": 0, "maximum": 10000 }, "tubularSegments": { "type": "integer", "minimum": 1, "maximum": 512 },
+            "radialSegments": { "type": "integer", "minimum": 3, "maximum": 64 }, "closed": { "type": "boolean" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "entityId"],
+          "properties": {
+            "kind": { "const": "scatter" }, "entityId": { "$ref": "#/$defs/reference" }, "spacing": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000000 },
+            "count": { "type": "integer", "minimum": 1, "maximum": 8192 }, "seed": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+            "jitter": { "type": "number", "minimum": 0, "maximum": 1000000 }, "orientation": { "enum": ["keep", "tangent", "normal", "gravity"] },
+            "gravity": { "$ref": "#/$defs/geometryVec3" }, "rotationJitter": { "type": "number", "minimum": 0, "maximum": 6.283185307179586 },
+            "scaleMin": { "$ref": "#/$defs/positiveVec3" }, "scaleMax": { "$ref": "#/$defs/positiveVec3" }
+          }
+        }
+      ]
+    },
     "geometryEditCommand": {
       "description": "One strict indexed-triangle or editable-polygon mesh edit. Rotations use radians and either XYZ rotation or axis plus angle.",
       "oneOf": [
@@ -412,6 +497,16 @@
             "offset": { "$ref": "#/$defs/geometryVec3" },
             "falloff": { "enum": ["constant", "linear", "smooth", "sharp", "sphere"] },
             "axisScale": { "$ref": "#/$defs/positiveVec3" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["type", "stroke"],
+          "properties": {
+            "type": { "const": "sculptStroke" }, "stroke": { "$ref": "#/$defs/stroke" },
+            "vertexIndices": { "$ref": "#/$defs/geometryVertexIndices" }, "selection": { "const": "all" },
+            "brush": { "enum": ["draw", "inflate", "crease", "flatten", "smooth", "grab"] },
+            "amount": { "type": "number", "minimum": -10000, "maximum": 10000 }, "direction": { "$ref": "#/$defs/geometryVec3" },
+            "falloff": { "enum": ["constant", "linear", "smooth", "sharp", "sphere"] }
           }
         },
         {
@@ -753,6 +848,15 @@
             "type": { "const": "removeEdgeCreases" },
             "edges": { "$ref": "#/$defs/geometryEdgeSelection" }
           }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["type", "stroke", "layer"],
+          "properties": {
+            "type": { "const": "paintColorStroke" }, "stroke": { "$ref": "#/$defs/stroke" }, "layer": { "$ref": "#/$defs/geometryLayerName" },
+            "color": { "$ref": "#/$defs/geometryColorVec4" }, "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+            "blend": { "enum": ["mix", "add", "subtract", "multiply", "lighten", "darken"] },
+            "falloff": { "enum": ["constant", "linear", "smooth", "sharp", "sphere"] }, "setActive": { "type": "boolean" }
+          }
         }
       ]
     },
@@ -1002,6 +1106,10 @@
         "protocolVersion": { "$ref": "#/$defs/protocolVersion" }, "sessionId": { "$ref": "#/$defs/sessionId" },
         "projectId": { "$ref": "#/$defs/id" }, "sceneId": { "$ref": "#/$defs/id" },
         "query": { "enum": ["selector", "sceneDigest", "resourceDigest", "meshElements", "graphDigest", "modifierDigest", "rtxDigest", "changedSinceRevision", "unresolvedResources", "unusedResources", "graphCatalog", "playState", "latestEvidence", "blenderCatalog", "beautyDigest", "projectVisibility"] },
+        "preset": { "enum": ["summary", "authoring", "full"] },
+        "select": { "type": "array", "minItems": 1, "maxItems": 64, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[A-Za-z][A-Za-z0-9_-]*(\\.[A-Za-z][A-Za-z0-9_-]*)*$" } },
+        "format": { "enum": ["object", "rows"] },
+        "ifHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
         "selector": { "$ref": "#/$defs/selector" },
         "element": { "enum": ["vertices", "edges", "faces", "corners"] },
         "include": { "type": "array", "maxItems": 6, "items": { "enum": ["summary", "tree", "transform", "components", "bounds", "references"] } },
@@ -1115,7 +1223,7 @@
           "scene.create", "scene.patch", "scene.delete", "scene.setActive", "scene.settings.patch", "scene.rtx.patch", "scene.setActiveCamera",
           "entity.create", "entity.patch", "entity.patchMany", "entity.transformMany", "entity.group", "entity.ungroup", "entity.duplicate", "entity.reparent", "entity.delete",
           "collection.create", "collection.patch", "collection.membership.patch", "collection.reparent", "collection.delete",
-          "camera.frame", "layout.pattern", "modifier.create", "modifier.patch", "modifier.move", "modifier.delete", "modifier.stack.edit", "geometry.edit",
+          "camera.frame", "layout.pattern", "stroke.apply", "modifier.create", "modifier.patch", "modifier.move", "modifier.delete", "modifier.stack.edit", "geometry.edit",
           "resource.create", "resource.patch", "resource.delete"
         ] },
         "sceneId": { "$ref": "#/$defs/reference" }, "entityId": { "$ref": "#/$defs/reference" }, "collectionId": { "$ref": "#/$defs/reference" }, "cameraId": { "oneOf": [{ "$ref": "#/$defs/reference" }, { "type": "null" }] },
@@ -1137,7 +1245,8 @@
           "properties": { "position": { "$ref": "#/$defs/vec3" }, "rotation": { "$ref": "#/$defs/vec3" }, "scale": { "$ref": "#/$defs/vec3" } }
         },
         "pattern": { "$ref": "#/$defs/layoutPattern" },
-        "target": { "$ref": "#/$defs/cameraFrameTarget" },
+        "target": { "oneOf": [{ "$ref": "#/$defs/cameraFrameTarget" }, { "$ref": "#/$defs/strokeTarget" }] },
+        "stroke": { "$ref": "#/$defs/stroke" }, "strokeId": { "$ref": "#/$defs/reference" }, "storeAsAssetId": { "$ref": "#/$defs/id" },
         "aspect": { "type": "number", "minimum": 0.1, "maximum": 10 },
         "padding": { "type": "number", "minimum": 1, "maximum": 10 },
         "direction": {
@@ -1229,7 +1338,20 @@
           "if": { "properties": { "op": { "const": "camera.frame" } }, "required": ["op"] },
           "then": {
             "required": ["cameraId", "target", "aspect"],
+            "properties": { "target": { "$ref": "#/$defs/cameraFrameTarget" } },
             "propertyNames": { "enum": ["op", "cameraId", "target", "aspect", "padding", "direction", "lockPreviewAspect"] }
+          }
+        },
+        {
+          "if": { "properties": { "op": { "const": "stroke.apply" } }, "required": ["op"] },
+          "then": {
+            "required": ["target"],
+            "oneOf": [
+              { "required": ["stroke"], "not": { "required": ["strokeId"] } },
+              { "required": ["strokeId"], "not": { "required": ["stroke"] } }
+            ],
+            "properties": { "target": { "$ref": "#/$defs/strokeTarget" } },
+            "propertyNames": { "enum": ["op", "stroke", "strokeId", "storeAsAssetId", "target"] }
           }
         },
         {
