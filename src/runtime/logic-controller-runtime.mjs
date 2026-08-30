@@ -1,3 +1,5 @@
+import { createRigidBodyRuntime } from './rigid-body-runtime.mjs';
+
 const FIXED_STEP = 1 / 60;
 const MAX_FIXED_STEPS = 8;
 const MAX_EXECUTIONS_PER_EVENT = 512;
@@ -17,6 +19,8 @@ function vec3(value, fallback = [0, 0, 0]) {
     ? value
     : fallback;
 }
+
+const addVectors = (a, b) => a.map((value, axis) => value + b[axis]);
 
 function readVector(object, property) {
   const value = object?.[property];
@@ -103,6 +107,8 @@ export function createLogicControllerRuntime({ project, scene, objects, animatio
   const heldKeys = new Set();
   const diagnostics = [];
   const emitted = [];
+  const cameraBehaviors = new Map();
+  const physics = createRigidBodyRuntime({ scene, objects });
   let active = false;
   let fixedAccumulator = 0;
   let eventExecutions = 0;
@@ -131,6 +137,16 @@ export function createLogicControllerRuntime({ project, scene, objects, animatio
       case 'value.constant': value = node.params?.value; break;
       case 'entity.self': value = context.selfId; break;
       case 'entity.reference': value = node.params?.entityId; break;
+      case 'component.has': {
+        const entityId = dataValue(plan, node.id, 'entity', context, stack);
+        value = scene?.entities?.[entityId]?.components?.[node.params?.component] !== undefined;
+        break;
+      }
+      case 'physics.getVelocity': {
+        const entityId = dataValue(plan, node.id, 'entity', context, stack);
+        value = physics.getVelocity(entityId);
+        break;
+      }
       case 'state.get': value = stateFor(context.selfId).get(node.params?.key); break;
       case 'entity.getProperty': {
         const entityId = dataValue(plan, node.id, 'entity', context, stack);
@@ -144,6 +160,8 @@ export function createLogicControllerRuntime({ project, scene, objects, animatio
       case 'event.onUpdate': value = source.port === 'delta' ? context.delta : undefined; break;
       case 'event.onInput': value = source.port === 'pressed' ? context.pressed : context.value; break;
       case 'event.onEvent': value = context.payload; break;
+      case 'event.onCollisionEnter': value = source.port === 'other' ? context.otherId : context.normal; break;
+      case 'event.onCollisionExit': value = context.otherId; break;
       default: value = node?.outputs?.[source.port];
     }
     stack.delete(key);
@@ -209,9 +227,43 @@ export function createLogicControllerRuntime({ project, scene, objects, animatio
       case 'motion.setSpeed': motionFor(targetId).speed = finite(dataValue(plan, node.id, 'speed', context)); break;
       case 'motion.addSpeed': motionFor(targetId).speed += finite(dataValue(plan, node.id, 'speed', context)); break;
       case 'motion.setAngularSpeed': motionFor(targetId).angularSpeed = vec3(dataValue(plan, node.id, 'radiansPerSecond', context)); break;
+      case 'physics.setVelocity': physics.setVelocity(targetId, dataValue(plan, node.id, 'velocity', context)); break;
+      case 'physics.setAngularVelocity': physics.setAngularVelocity(targetId, dataValue(plan, node.id, 'velocity', context)); break;
+      case 'physics.addForce': physics.addForce(targetId, dataValue(plan, node.id, 'force', context)); break;
+      case 'physics.addImpulse': physics.addImpulse(targetId, dataValue(plan, node.id, 'impulse', context)); break;
+      case 'physics.setGravityScale': physics.setGravityScale(targetId, finite(dataValue(plan, node.id, 'scale', context), 1)); break;
       case 'animation.play': animationRuntime?.play?.(node.params?.clipId, { restart: node.params?.restart !== false }); break;
       case 'animation.stop': animationRuntime?.pause?.(node.params?.clipId); break;
       case 'camera.setActive': setActiveCamera?.(dataValue(plan, node.id, 'camera', context)); break;
+      case 'camera.lookAt': {
+        const camera = entityObject(dataValue(plan, node.id, 'camera', context));
+        camera?.lookAt?.(...vec3(dataValue(plan, node.id, 'target', context)));
+        break;
+      }
+      case 'camera.lookAtEntity': {
+        const camera = entityObject(dataValue(plan, node.id, 'camera', context));
+        const target = entityObject(dataValue(plan, node.id, 'target', context));
+        if (camera && target) camera.lookAt?.(...readVector(target, 'position'));
+        break;
+      }
+      case 'camera.followEntity': {
+        const cameraId = dataValue(plan, node.id, 'camera', context);
+        cameraBehaviors.set(cameraId, {
+          targetId: dataValue(plan, node.id, 'target', context),
+          offset: vec3(dataValue(plan, node.id, 'offset', context)),
+          smoothing: Math.max(0, finite(dataValue(plan, node.id, 'smoothing', context))),
+        });
+        break;
+      }
+      case 'camera.clearFollow': cameraBehaviors.delete(dataValue(plan, node.id, 'camera', context)); break;
+      case 'camera.setFov': {
+        const camera = entityObject(dataValue(plan, node.id, 'camera', context));
+        if (camera?.isPerspectiveCamera) {
+          camera.fov = Math.max(1, Math.min(179, finite(dataValue(plan, node.id, 'degrees', context), camera.fov)));
+          camera.updateProjectionMatrix?.();
+        }
+        break;
+      }
       case 'event.emit': {
         if (emitted.length < MAX_EMITTED_EVENTS) emitted.push({
           eventId: node.params?.eventId,
@@ -258,6 +310,13 @@ export function createLogicControllerRuntime({ project, scene, objects, animatio
     for (const [entityId, value] of motion) {
       const object = entityObject(entityId);
       if (!object) continue;
+      if (physics.hasBody(entityId)) {
+        const yaw = finite(object.rotation.y);
+        const current = physics.getVelocity(entityId);
+        physics.setVelocity(entityId, [-Math.sin(yaw) * value.speed, current[1], -Math.cos(yaw) * value.speed]);
+        physics.setAngularVelocity(entityId, value.angularSpeed);
+        continue;
+      }
       object.rotation.x += value.angularSpeed[0] * delta;
       object.rotation.y += value.angularSpeed[1] * delta;
       object.rotation.z += value.angularSpeed[2] * delta;
@@ -266,6 +325,21 @@ export function createLogicControllerRuntime({ project, scene, objects, animatio
       object.position.z += -Math.cos(yaw) * value.speed * delta;
       object.updateMatrix?.();
       object.updateMatrixWorld?.(true);
+    }
+  }
+
+  function updateCameras(delta) {
+    for (const [cameraId, behavior] of cameraBehaviors) {
+      const camera = entityObject(cameraId);
+      const target = entityObject(behavior.targetId);
+      if (!camera || !target) continue;
+      const desired = addVectors(readVector(target, 'position'), behavior.offset);
+      const current = readVector(camera, 'position');
+      const alpha = behavior.smoothing > 0 ? 1 - Math.exp(-behavior.smoothing * delta) : 1;
+      writeVector(camera, 'position', current.map((value, axis) => value + (desired[axis] - value) * alpha));
+      camera.lookAt?.(...readVector(target, 'position'));
+      camera.updateMatrix?.();
+      camera.updateMatrixWorld?.(true);
     }
   }
 
@@ -281,6 +355,7 @@ export function createLogicControllerRuntime({ project, scene, objects, animatio
         activationKey: settings?.activationKey ?? null,
         heldKeys: Object.freeze([...heldKeys]),
         graphCount: plans.length,
+        physics: physics.status,
         diagnostics: Object.freeze(diagnostics.slice(-32)),
         capture: settings?.capture ?? null,
       });
@@ -324,6 +399,11 @@ export function createLogicControllerRuntime({ project, scene, objects, animatio
         for (const key of heldKeys) dispatch('event.onKeyDown', { key, pressed: true, value: 1, delta: FIXED_STEP });
         dispatch('event.onFixedUpdate', { delta: FIXED_STEP });
         integrateMotion(FIXED_STEP);
+        for (const collision of physics.step(FIXED_STEP)) {
+          if (collision.selfId !== settings.entityId) continue;
+          dispatch(collision.type === 'enter' ? 'event.onCollisionEnter' : 'event.onCollisionExit', collision);
+        }
+        updateCameras(FIXED_STEP);
         fixedAccumulator -= FIXED_STEP;
         steps += 1;
       }
@@ -339,6 +419,8 @@ export function createLogicControllerRuntime({ project, scene, objects, animatio
       active = false;
       heldKeys.clear();
       motion.clear();
+      cameraBehaviors.clear();
+      physics.reset();
       states.clear();
       emitted.length = 0;
       fixedAccumulator = 0;

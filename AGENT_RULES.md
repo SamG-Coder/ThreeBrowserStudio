@@ -189,10 +189,18 @@ operations.
 - Controller transforms, state, speed, events, and animation commands live in
   the transient Play layer. Escape restores the authored scene unless the
   scene explicitly disables restoration.
+- Treat entities as Unity-like GameObjects with typed components. `entity.self`
+  returns the controlled entity; component, camera, and physics nodes operate
+  on Self or another exact entity reference.
+- `components.rigidBody` supports dynamic, kinematic, and static bodies;
+  `components.collider` supports bounded box/sphere collision and triggers.
+  This is a fixed-step Play layer, not Blender Bullet or PhysX.
+- Cameras can be activated, followed, aimed at entities or world points, and
+  assigned a bounded perspective FOV from controller graphs.
 - Use `event.onStart`, `event.onActivate`, `event.onDeactivate`,
   `event.onFixedUpdate`, `event.onUpdate`, `event.onKeyPressed`,
   `event.onKeyDown`, `event.onKeyUp`, and bounded custom events.
-- Prefer fixed-step speed/angular-speed actions for controllable movement.
+- Prefer fixed-step speed/angular-speed or rigid-body velocity/force actions for controllable movement.
   Use exact `entity.self` or stable entity references; never fuzzy lookup.
 
 ## Rendering rules

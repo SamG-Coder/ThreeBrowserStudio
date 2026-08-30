@@ -272,6 +272,14 @@ runtime-only session; Escape is globally reserved, clears input, restores the
 authored pose/UI/cursor, and returns to Author. Use only the event/action nodes
 listed by `capabilities.logicRuntime` and validate after every graph change.
 
+Entities use a Unity-like typed component model. `entity.self` supplies the
+controlled entity ID; `component.has` can branch on typed capabilities. Camera
+nodes activate, follow, aim, and adjust perspective FOV. `rigidBody` and
+`collider` components provide bounded fixed-step axis-aligned-box/sphere physics, triggers,
+and collision enter/exit events. Prefer a root entity for a moving rigid body;
+mesh colliders, joints, CCD, soft bodies, cloth, fluids, and simulation caches
+remain unsupported.
+
 `behaviorRuntime` remains false: arbitrary scripts do not run. Physics and
 uncatalogued blueprint nodes remain unavailable. Do not send script operations
 through apply or claim capabilities beyond the live controller contract.

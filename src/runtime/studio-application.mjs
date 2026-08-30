@@ -1188,7 +1188,9 @@ export class StudioApplication {
 
   getControllerStatus() {
     return this.#logicController?.status ?? Object.freeze({
-      available: false, active: false, entityId: null, activationKey: null, heldKeys: [], graphCount: 0, diagnostics: [], capture: null,
+      available: false, active: false, entityId: null, activationKey: null, heldKeys: [], graphCount: 0,
+      physics: { available: false, bodyCount: 0, colliderCount: 0, activeContactCount: 0, diagnostics: [] },
+      diagnostics: [], capture: null,
     });
   }
 
@@ -1641,7 +1643,7 @@ export class StudioApplication {
       mode: this.#mode,
       play: {
         ...this.#play,
-        simulation: 'actions-and-timeline-modifiers',
+        simulation: 'actions-controller-physics-and-timeline-modifiers',
         actions: this.#compiled?.animationStates() ?? [],
         timelineGeometryModifierIds: this.#compiled?.timelineGeometryModifierIds ?? [],
         timelineGeometrySampleCount: this.#compiled?.timelineGeometrySampleCount ?? 0,
@@ -1672,11 +1674,18 @@ export class StudioApplication {
         controllerRuntime: true,
         logicRuntime: {
           domain: 'blueprint',
-          events: ['Create', 'Activate', 'Deactivate', 'Step', 'Fixed Step', 'Key Pressed', 'Key Down', 'Key Up', 'Custom Event'],
-          actions: ['state', 'transform', 'visibility', 'speed', 'angularSpeed', 'animation', 'camera', 'customEvent'],
+          events: ['Create', 'Activate', 'Deactivate', 'Step', 'Fixed Step', 'Key Pressed', 'Key Down', 'Key Up', 'Collision Enter', 'Collision Exit', 'Custom Event'],
+          actions: ['componentQuery', 'state', 'transform', 'visibility', 'speed', 'angularSpeed', 'rigidBody', 'animation', 'cameraControl', 'customEvent'],
           globalExitKey: 'Escape',
           runtimeOnly: true,
           limits: LOGIC_CONTROLLER_LIMITS,
+        },
+        componentRuntime: {
+          model: 'entity-components',
+          executable: ['logic', 'camera', 'rigidBody', 'collider', 'animation'],
+          rigidBodyTypes: ['dynamic', 'kinematic', 'static'],
+          colliderShapes: ['box', 'sphere'],
+          collisionEvents: ['enter', 'exit'],
         },
         graphCompilation: Boolean(this.#TSL),
         graphRuntime: this.#TSL ? 'three-tsl-webgpu' : null,
@@ -1798,7 +1807,7 @@ export class StudioApplication {
         validationChecks: ['schemas', 'references', 'hierarchy', 'graphs', 'animations', 'budgets'],
         projectActions: ['list', 'create', 'open', 'save'],
         historyActions: ['list', 'inspect', 'undo', 'redo'],
-        playSimulation: 'actions-and-timeline-modifiers',
+        playSimulation: 'actions-controller-physics-and-timeline-modifiers',
         maxShadowLights: 16,
         maxOperations: 128,
         implementedOperations: [...OPERATION_TYPES],
@@ -2223,7 +2232,7 @@ export class StudioApplication {
       success: true,
       revision: document.revision,
       mode: this.#mode,
-      simulation: 'actions-and-timeline-modifiers',
+      simulation: 'actions-controller-physics-and-timeline-modifiers',
       ...this.#play,
       timeline: scene.settings.timeline,
       actions: this.#compiled?.animationStates() ?? [],
@@ -2772,7 +2781,7 @@ export class StudioApplication {
     if (params.action === 'query') return {
       success: true,
       mode: this.#mode,
-      simulation: 'actions-and-timeline-modifiers',
+      simulation: 'actions-controller-physics-and-timeline-modifiers',
       ...this.#play,
       ...animationState(),
     };
@@ -2815,7 +2824,7 @@ export class StudioApplication {
     return {
       success: true,
       mode: this.#mode,
-      simulation: 'actions-and-timeline-modifiers',
+      simulation: 'actions-controller-physics-and-timeline-modifiers',
       ...this.#play,
       ...animationState(),
       revision: this.#kernel.revision,

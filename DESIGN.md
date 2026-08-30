@@ -705,9 +705,14 @@ restores authored state on stop. It also executes a bounded GameMaker-style
 subset of blueprint graphs for one scene-owned controller entity: Create,
 Activate, Deactivate, Step, Fixed Step, Key Pressed/Down/Up, state,
 transform, visibility, speed/angular-speed, animation, camera, and custom
-events. Enter (or the configured activation key) captures the configured
-input/UI state; Escape is globally reserved and restores the authored pose.
-Arbitrary scripts, physics, spawning/destruction, delays/timers, and other
+events. Entities form a Unity-like typed component model: Self and exact entity
+references can address camera, rigid-body, collider, animation, and future
+components. The bounded fixed-step runtime supports dynamic/kinematic/static
+bodies, mass/gravity/damping, forces/impulses, box/sphere collision, triggers,
+collision enter/exit, and active/follow/look-at/FOV camera control. Enter (or
+the configured activation key) captures the configured input/UI state; Escape
+is globally reserved and restores the authored pose. Arbitrary scripts,
+full Blender Bullet/PhysX features, spawning/destruction, delays/timers, and other
 catalogued-but-unimplemented blueprint nodes remain unavailable.
 The intended broader behaviour capability is:
 

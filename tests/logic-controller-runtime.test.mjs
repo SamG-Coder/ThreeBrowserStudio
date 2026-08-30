@@ -15,6 +15,7 @@ function object() {
     updateMatrix() {}, updateMatrixWorld() {},
     rotateX(value) { this.rotation.x += value; }, rotateY(value) { this.rotation.y += value; }, rotateZ(value) { this.rotation.z += value; },
     translateX(value) { this.position.x += value; }, translateY(value) { this.position.y += value; }, translateZ(value) { this.position.z += value; },
+    lookAt(...value) { this.lastLookAt = value; },
   };
 }
 
@@ -53,8 +54,17 @@ test('controller settings and attached blueprint graphs validate as canonical sc
     projectId: 'project/controller',
     scenes: [{
       id: 'scene/main',
-      settings: { controller: { enabled: true, entityId: 'car/root', activationKey: 'Enter', capture: { keyboard: true } } },
-      entities: [{ id: 'car/root', kind: 'group', components: { logic: { graphIds: ['blueprint/drive'] } } }],
+      settings: {
+        controller: { enabled: true, entityId: 'car/root', activationKey: 'Enter', capture: { keyboard: true } },
+        physics: { enabled: true, gravity: [0, -9.81, 0] },
+      },
+      entities: [{
+        id: 'car/root', kind: 'group', components: {
+          logic: { graphIds: ['blueprint/drive'] },
+          rigidBody: { bodyType: 'dynamic', mass: 1200, gravityScale: 1, linearDamping: 0.1, angularDamping: 0.2 },
+          collider: { shape: 'box', size: [3, 1.2, 6], friction: 0.8, restitution: 0.1 },
+        },
+      }],
     }],
     resources: { graphs: [{ id: 'blueprint/drive', kind: 'graph', graph }] },
   });
@@ -115,4 +125,77 @@ test('restoration preserves nested Three.js Euler rotations with an order compon
   runtime.stop();
 
   assert.deepEqual([wheel.rotation.x, wheel.rotation.y, wheel.rotation.z], originalRotation);
+});
+
+test('controller graphs can activate and smoothly follow with an authored camera component', () => {
+  const graph = {
+    formatVersion: 1, id: 'blueprint/camera-follow', domain: 'blueprint', outputs: {},
+    nodes: [
+      { id: 'activate', type: 'event.onActivate', params: {} },
+      { id: 'camera', type: 'entity.reference', params: { entityId: 'camera/player' } },
+      { id: 'self', type: 'entity.self', params: {} },
+      { id: 'follow', type: 'camera.followEntity', params: {}, inputs: { offset: [0, 3, 6], smoothing: 0 } },
+      { id: 'active', type: 'camera.setActive', params: {} },
+    ],
+    edges: [
+      ['activate', 'out', 'follow', 'in'], ['camera', 'entity', 'follow', 'camera'], ['self', 'entity', 'follow', 'target'],
+      ['follow', 'out', 'active', 'in'], ['camera', 'entity', 'active', 'camera'],
+    ].map(([fromNode, fromPort, toNode, toPort]) => ({ from: { nodeId: fromNode, port: fromPort }, to: { nodeId: toNode, port: toPort } })),
+  };
+  assert.equal(validateGraph(graph).valid, true, JSON.stringify(validateGraph(graph).errors));
+  const player = object();
+  player.position.set(4, 1, -2);
+  const camera = object();
+  camera.isPerspectiveCamera = true;
+  let activeCamera = null;
+  const runtime = createLogicControllerRuntime({
+    project: { resources: { graphs: { 'blueprint/camera-follow': { graph } } } },
+    scene: {
+      settings: { controller: { enabled: true, entityId: 'player/root' } },
+      entities: {
+        'player/root': { id: 'player/root', components: { logic: { graphIds: ['blueprint/camera-follow'] } } },
+        'camera/player': { id: 'camera/player', components: { camera: { fov: 55 } } },
+      },
+    },
+    objects: new Map([['player/root', player], ['camera/player', camera]]),
+    setActiveCamera(id) { activeCamera = id; return true; },
+  });
+
+  runtime.activate();
+  runtime.update(1 / 60);
+
+  assert.equal(activeCamera, 'camera/player');
+  assert.deepEqual(camera.position.toArray(), [4, 4, 4]);
+  assert.deepEqual(camera.lastLookAt, [4, 1, -2]);
+});
+
+test('Self can reference its rigidBody and react to collision events', () => {
+  const graph = {
+    formatVersion: 1, id: 'blueprint/collision-response', domain: 'blueprint', outputs: {},
+    nodes: [
+      { id: 'collision', type: 'event.onCollisionEnter', params: {} },
+      { id: 'self', type: 'entity.self', params: {} },
+      { id: 'impulse', type: 'physics.addImpulse', params: {}, inputs: { impulse: [2, 0, 0] } },
+    ],
+    edges: [
+      ['collision', 'out', 'impulse', 'in'], ['self', 'entity', 'impulse', 'entity'],
+    ].map(([fromNode, fromPort, toNode, toPort]) => ({ from: { nodeId: fromNode, port: fromPort }, to: { nodeId: toNode, port: toPort } })),
+  };
+  assert.equal(validateGraph(graph).valid, true, JSON.stringify(validateGraph(graph).errors));
+  const ball = object(); ball.position.y = 1;
+  const ground = object(); ground.position.y = -0.5;
+  const runtime = createLogicControllerRuntime({
+    project: { resources: { graphs: { 'blueprint/collision-response': { graph } } } },
+    scene: {
+      settings: { controller: { enabled: true, entityId: 'ball' }, physics: { gravity: [0, -9.81, 0] } },
+      entities: {
+        ball: { id: 'ball', components: { logic: { graphIds: ['blueprint/collision-response'] }, rigidBody: { bodyType: 'dynamic', mass: 1, linearDamping: 0 }, collider: { shape: 'sphere', radius: 0.5, friction: 0 } } },
+        ground: { id: 'ground', components: { collider: { shape: 'box', size: [10, 1, 10], friction: 0 } } },
+      },
+    },
+    objects: new Map([['ball', ball], ['ground', ground]]),
+  });
+  runtime.activate();
+  for (let i = 0; i < 90; i += 1) runtime.update(1 / 60);
+  assert.ok(ball.position.x > 1);
 });

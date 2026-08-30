@@ -10,7 +10,7 @@ import {
 import { StudioError } from './errors.mjs';
 import { assertStableId, isStableId } from './ids.mjs';
 import { assertJsonValue, cloneJson, isPlainRecord, mergePatch, nowIso, uniqueSorted } from './util.mjs';
-import { entityComponentReferences, validateEntityComponents, validateSceneControllerSettings } from './component-validation.mjs';
+import { entityComponentReferences, validateEntityComponents, validateSceneControllerSettings, validateScenePhysicsSettings } from './component-validation.mjs';
 import { validateIndexedMeshRecipe } from './indexed-mesh-editing.mjs';
 import { normalizeEditableMeshRecipe } from './editable-mesh.mjs';
 import {
@@ -657,6 +657,7 @@ function validateScene(scene, key, project, diagnostics) {
       }
     }
     validateSceneControllerSettings(scene.settings.controller, `${path}.settings.controller`, diagnostics);
+    validateScenePhysicsSettings(scene.settings.physics, `${path}.settings.physics`, diagnostics);
   }
   if (!Array.isArray(scene.scriptIds)) issue(diagnostics, 'invalid_scripts', `${path}.scriptIds`, 'scriptIds must be an array');
 

@@ -125,6 +125,64 @@ function validateLogicComponent(logic, path, diagnostics) {
   }
 }
 
+function boundedNumber(value, min, max) {
+  return Number.isFinite(value) && value >= min && value <= max;
+}
+
+function booleanVector3(value) {
+  return Array.isArray(value) && value.length === 3 && value.every(item => typeof item === 'boolean');
+}
+
+function validateRigidBodyComponent(body, path, diagnostics) {
+  const at = `${path}.components.rigidBody`;
+  if (!isPlainRecord(body)) {
+    diagnostic(diagnostics, 'invalid_rigid_body', at, 'rigidBody must be an object');
+    return;
+  }
+  if (body.enabled !== undefined && typeof body.enabled !== 'boolean') diagnostic(diagnostics, 'invalid_rigid_body_enabled', `${at}.enabled`, 'enabled must be boolean');
+  if (body.bodyType !== undefined && !['dynamic', 'kinematic', 'static'].includes(body.bodyType)) diagnostic(diagnostics, 'invalid_rigid_body_type', `${at}.bodyType`, 'bodyType must be dynamic, kinematic, or static');
+  if (body.mass !== undefined && !boundedNumber(body.mass, 0.0001, 1_000_000)) diagnostic(diagnostics, 'invalid_rigid_body_mass', `${at}.mass`, 'mass must be from 0.0001 to 1000000');
+  for (const key of ['linearDamping', 'angularDamping']) {
+    if (body[key] !== undefined && !boundedNumber(body[key], 0, 100)) diagnostic(diagnostics, 'invalid_rigid_body_damping', `${at}.${key}`, `${key} must be from 0 to 100`);
+  }
+  if (body.gravityScale !== undefined && !boundedNumber(body.gravityScale, -100, 100)) diagnostic(diagnostics, 'invalid_gravity_scale', `${at}.gravityScale`, 'gravityScale must be from -100 to 100');
+  for (const key of ['velocity', 'angularVelocity']) {
+    if (body[key] !== undefined && !vector3(body[key])) diagnostic(diagnostics, 'invalid_rigid_body_velocity', `${at}.${key}`, `${key} must contain three finite numbers`);
+  }
+  for (const key of ['freezePosition', 'freezeRotation']) {
+    if (body[key] !== undefined && !booleanVector3(body[key])) diagnostic(diagnostics, 'invalid_rigid_body_constraints', `${at}.${key}`, `${key} must contain three booleans`);
+  }
+}
+
+function validateColliderComponent(collider, path, diagnostics) {
+  const at = `${path}.components.collider`;
+  if (!isPlainRecord(collider)) {
+    diagnostic(diagnostics, 'invalid_collider', at, 'collider must be an object');
+    return;
+  }
+  if (collider.enabled !== undefined && typeof collider.enabled !== 'boolean') diagnostic(diagnostics, 'invalid_collider_enabled', `${at}.enabled`, 'enabled must be boolean');
+  if (!['box', 'sphere'].includes(collider.shape)) diagnostic(diagnostics, 'invalid_collider_shape', `${at}.shape`, 'shape must be box or sphere');
+  if (collider.offset !== undefined && !vector3(collider.offset)) diagnostic(diagnostics, 'invalid_collider_offset', `${at}.offset`, 'offset must contain three finite numbers');
+  if (collider.shape === 'box' && (!vector3(collider.size) || collider.size.some(value => value <= 0 || value > 1_000_000))) diagnostic(diagnostics, 'invalid_collider_size', `${at}.size`, 'box size must contain three positive bounded numbers');
+  if (collider.shape === 'sphere' && !boundedNumber(collider.radius, 0.0001, 1_000_000)) diagnostic(diagnostics, 'invalid_collider_radius', `${at}.radius`, 'sphere radius must be from 0.0001 to 1000000');
+  for (const key of ['friction', 'restitution']) {
+    if (collider[key] !== undefined && !boundedNumber(collider[key], 0, 1)) diagnostic(diagnostics, 'invalid_collider_material', `${at}.${key}`, `${key} must be from 0 to 1`);
+  }
+  if (collider.isTrigger !== undefined && typeof collider.isTrigger !== 'boolean') diagnostic(diagnostics, 'invalid_collider_trigger', `${at}.isTrigger`, 'isTrigger must be boolean');
+  if (collider.layer !== undefined && (!Number.isInteger(collider.layer) || collider.layer < 0 || collider.layer > 31)) diagnostic(diagnostics, 'invalid_collider_layer', `${at}.layer`, 'layer must be an integer from 0 to 31');
+  if (collider.mask !== undefined && (!Number.isInteger(collider.mask) || collider.mask < 0 || collider.mask > 1_000_000_000)) diagnostic(diagnostics, 'invalid_collider_mask', `${at}.mask`, 'mask must be an MCP-safe integer from 0 to 1000000000');
+}
+
+export function validateScenePhysicsSettings(physics, path, diagnostics) {
+  if (physics === undefined || physics === null) return;
+  if (!isPlainRecord(physics)) {
+    diagnostic(diagnostics, 'invalid_physics_settings', path, 'physics must be an object or null');
+    return;
+  }
+  if (physics.enabled !== undefined && typeof physics.enabled !== 'boolean') diagnostic(diagnostics, 'invalid_physics_enabled', `${path}.enabled`, 'enabled must be boolean');
+  if (physics.gravity !== undefined && !vector3(physics.gravity)) diagnostic(diagnostics, 'invalid_physics_gravity', `${path}.gravity`, 'gravity must contain three finite numbers');
+}
+
 export function validateSceneControllerSettings(controller, path, diagnostics) {
   if (controller === undefined || controller === null) return;
   if (!isPlainRecord(controller)) {
@@ -169,6 +227,8 @@ export function validateEntityComponents(entity, path, diagnostics) {
   if (!isPlainRecord(components)) return;
   if (components.mesh !== undefined) validateMeshComponent(components.mesh, path, diagnostics);
   if (components.logic !== undefined) validateLogicComponent(components.logic, path, diagnostics);
+  if (components.rigidBody !== undefined) validateRigidBodyComponent(components.rigidBody, path, diagnostics);
+  if (components.collider !== undefined) validateColliderComponent(components.collider, path, diagnostics);
   if (components.modifiers !== undefined) {
     if (!Array.isArray(components.modifiers) || components.modifiers.length > 64) {
       diagnostic(diagnostics, 'invalid_modifiers', `${path}.components.modifiers`, 'modifiers must be an array with at most 64 entries');
