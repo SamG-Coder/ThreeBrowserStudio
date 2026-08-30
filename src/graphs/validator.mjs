@@ -535,7 +535,7 @@ export function validateGraph(rawGraph, options = {}) {
   if (rawGraph.edges.length > limits.maxEdges) errors.push(diagnostic('edge_limit_exceeded', `Graph exceeds ${limits.maxEdges} edges.`, '/edges'));
 
   let byteLength = Infinity;
-  try { byteLength = Buffer.byteLength(JSON.stringify(rawGraph)); } catch { /* reported by JSON walk */ }
+  try { byteLength = new TextEncoder().encode(JSON.stringify(rawGraph)).byteLength; } catch { /* reported by JSON walk */ }
   if (byteLength > limits.maxControlBytes) errors.push(diagnostic('graph_size_exceeded', `Graph exceeds ${limits.maxControlBytes} bytes.`, ''));
 
   let settings;

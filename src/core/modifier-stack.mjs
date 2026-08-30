@@ -70,7 +70,7 @@ function fail(code, message, modifier, details = {}) {
 }
 
 function byteLength(value) {
-  return Buffer.byteLength(stableStringify(value), 'utf8');
+  return new TextEncoder().encode(stableStringify(value)).byteLength;
 }
 
 function assertKnownKeys(modifier, extraKeys) {

@@ -222,7 +222,9 @@ export function normalizeResourceType(type) {
 }
 
 function graphValidationError(resourceId, diagnostics) {
-  return new StudioError('graph_validation_failed', `Graph ${resourceId ?? '<unknown>'} is invalid.`, { diagnostics });
+  const first = diagnostics?.[0];
+  const detail = first?.message ? ` ${first.message}${first.path ? ` (${first.path})` : ''}` : '';
+  return new StudioError('graph_validation_failed', `Graph ${resourceId ?? '<unknown>'} is invalid.${detail}`, { diagnostics });
 }
 
 /**
