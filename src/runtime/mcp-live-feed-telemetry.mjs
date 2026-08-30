@@ -156,6 +156,14 @@ function operationCount(params) {
   }
 }
 
+function estimatedJsonBytes(value) {
+  try {
+    return new TextEncoder().encode(JSON.stringify(value ?? null)).byteLength;
+  } catch {
+    return 0;
+  }
+}
+
 function validationSummary(params) {
   const checks = readField(params, 'checks');
   if (!Array.isArray(checks)) return 'Validate project';
@@ -375,6 +383,9 @@ export function createStudioCommandTelemetry({
       summary: described.summary,
       detail: described.detail,
       outcome: '',
+      requestBytes: estimatedJsonBytes(params),
+      responseBytes: 0,
+      operationCount: method === 'three_studio_apply' ? operationCount(params) : 0,
     });
     entries.set(id, current);
     order.push(id);
@@ -392,6 +403,7 @@ export function createStudioCommandTelemetry({
         elapsedMs: Math.max(0, Math.round(finishedAtMs - startedAtMs)),
         revision: revisionFrom(result, ['revision', 'savedRevision']) ?? current.revision,
         outcome: stage === 'completed' ? describeCommandOutcome(result) : '',
+        responseBytes: stage === 'completed' ? estimatedJsonBytes(result) : 0,
       });
       entries.set(id, current);
       prune();
@@ -446,5 +458,21 @@ export function createStudioCommandTelemetry({
     order.length = 0;
   };
 
-  return Object.freeze({ begin, track, subscribe, snapshot, dispose });
+  const metrics = () => {
+    const completed = snapshot().filter(entry => entry.stage !== 'started');
+    const successful = completed.filter(entry => entry.stage === 'completed');
+    const totalElapsedMs = completed.reduce((sum, entry) => sum + entry.elapsedMs, 0);
+    return Object.freeze({
+      retainedCommands: completed.length,
+      successfulCommands: successful.length,
+      failedCommands: completed.length - successful.length,
+      applyOperations: completed.reduce((sum, entry) => sum + entry.operationCount, 0),
+      totalElapsedMs,
+      averageElapsedMs: completed.length === 0 ? 0 : Math.round(totalElapsedMs / completed.length),
+      requestBytes: completed.reduce((sum, entry) => sum + entry.requestBytes, 0),
+      responseBytes: completed.reduce((sum, entry) => sum + entry.responseBytes, 0),
+    });
+  };
+
+  return Object.freeze({ begin, track, subscribe, snapshot, metrics, dispose });
 }

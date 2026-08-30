@@ -107,6 +107,7 @@ const STATUS_SELECT_PRESETS = Object.freeze({
     'capabilities.layoutPatterns', 'capabilities.jobs', 'capabilities.jobKinds',
     'capabilities.materialRecipes', 'capabilities.renderPasses',
     'capabilities.toolContract.contractVersion', 'capabilities.toolContract.hash',
+    'authoringTelemetry',
   ],
   rendering: [
     'success', 'protocolVersion', 'sessionId', 'projectId', 'projectName', 'revision', 'dirty',
@@ -810,14 +811,16 @@ export class StudioApplication {
   #disposed = false;
   #viewHash = null;
   #beginCommand = null;
+  #commandMetrics = null;
 
-  constructor({ THREE, TSL, viewport, bootstrap, markerPath, credentials, beginCommand, environment = process.env, projectsRoot } = {}) {
+  constructor({ THREE, TSL, viewport, bootstrap, markerPath, credentials, beginCommand, commandMetrics, environment = process.env, projectsRoot } = {}) {
     this.#THREE = THREE;
     this.#TSL = TSL;
     this.#viewport = viewport;
     this.#bootstrap = bootstrap;
     this.#credentials = credentials ?? createSessionCredentials();
     this.#beginCommand = typeof beginCommand === 'function' ? beginCommand : null;
+    this.#commandMetrics = typeof commandMetrics === 'function' ? commandMetrics : null;
     const env = environment ?? process.env;
     const studioRoot = env.THREE_STUDIO_ROOT ?? process.cwd();
     this.studioRoot = path.resolve(studioRoot);
@@ -1029,6 +1032,7 @@ export class StudioApplication {
         ?? this.#viewport.renderCamera?.userData?.studioEntityId
         ?? 'review-camera',
       latestEvidence: this.#latestEvidence,
+      authoringTelemetry: this.#commandMetrics?.() ?? null,
     };
   }
 

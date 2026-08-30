@@ -1410,6 +1410,7 @@ const TOOL_CONTRACT_FEATURES = Object.freeze({
   responseFieldProjection: true,
   responseRowFormat: true,
   responseConditionalHash: true,
+  boundedAuthoringTelemetry: true,
   compactGeometrySelectionAll: true,
   editableMeshUvEditing: true,
   editableMeshColorEditing: true,

@@ -388,6 +388,7 @@ async function main() {
         viewport: viewportApi,
         bootstrap,
         beginCommand: commandTelemetry.begin,
+        commandMetrics: commandTelemetry.metrics,
       });
     } else {
       document.title = "ThreeBrowser Studio — browser preview";

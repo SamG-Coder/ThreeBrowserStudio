@@ -180,3 +180,26 @@ test('subscriber failures are isolated and track preserves dispatch results and 
   assert.equal(telemetry.snapshot().at(-1).stage, 'failed');
   assert.doesNotMatch(JSON.stringify(telemetry.snapshot()), /token-private/);
 });
+
+test('bounded telemetry exposes aggregate speed-test measurements without retaining payloads', () => {
+  let milliseconds = 100;
+  const telemetry = createStudioCommandTelemetry({ now: () => milliseconds });
+  const apply = telemetry.begin('three_studio_apply', { operations: [{ op: 'entity.create' }, { op: 'entity.create' }] });
+  milliseconds = 145;
+  apply.complete({ success: true, revision: 2, changedIds: ['entity/a'] });
+  const failed = telemetry.begin('three_studio_render', { width: 640, height: 480 });
+  milliseconds = 175;
+  failed.fail();
+  const metrics = telemetry.metrics();
+  assert.deepEqual(metrics, {
+    retainedCommands: 2,
+    successfulCommands: 1,
+    failedCommands: 1,
+    applyOperations: 2,
+    totalElapsedMs: 75,
+    averageElapsedMs: 38,
+    requestBytes: 88,
+    responseBytes: 55,
+  });
+  assert.doesNotMatch(JSON.stringify(metrics), /entity\/a/);
+});
