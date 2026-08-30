@@ -55,6 +55,12 @@ Do not infer support from an earlier Studio session, a tutorial module, or
 Exact stable IDs from inspect are the only IDs you may write. Never mutate by
 fuzzy name or tag.
 
+For timed authoring runs, read `status.authoringTelemetry`. Retained counters
+describe the bounded HUD window; `cumulative` survives HUD pruning and reports
+tool totals, authored and lowered operation counts, compile/capture counts,
+PNG bytes, and elapsed time. Apply responses also expose redacted operation
+families and lowering/kernel/compile/preview timings without IDs or payloads.
+
 ---
 
 ## 3. One labelled apply

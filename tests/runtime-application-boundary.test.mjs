@@ -889,6 +889,12 @@ test('dry-run apply compiles and disposes its candidate without swapping or muta
   assert.equal(result.dryRun, true);
   assert.equal(result.revision, 0);
   assert.equal(result.expectedRevision, 1);
+  assert.equal(result.authoring.authoredOperationCount, 1);
+  assert.equal(result.authoring.loweredOperationCount, 1);
+  assert.deepEqual(result.authoring.authoredOperationTypes, [{ type: 'entity.create', count: 1 }]);
+  assert.deepEqual(result.authoring.loweredOperationTypes, [{ type: 'entity.create', count: 1 }]);
+  assert.equal(result.authoring.compileCount, 1);
+  assert.ok(result.authoring.timingsMs.total >= result.authoring.timingsMs.compile);
   assert.equal(application.kernel.revision, 0);
   assert.equal(application.kernel.document.scenes['scene/main'].entities['entity/preview'], undefined);
   assert.deepEqual(viewport.scene.children, [liveRoot]);

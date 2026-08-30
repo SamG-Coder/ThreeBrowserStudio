@@ -11,13 +11,13 @@ const PIXEL_FORECASTS = Object.freeze({
 const PUBLIC_OPERATION_TYPES = new Set([
   'scene.create', 'scene.patch', 'scene.delete', 'scene.setActive',
   'scene.settings.patch', 'scene.rtx.patch', 'scene.setActiveCamera',
-  'entity.create', 'entity.patch', 'entity.patchMany', 'entity.transformMany',
-  'entity.group', 'entity.ungroup', 'entity.duplicate', 'entity.reparent', 'entity.delete',
+  'entity.create', 'entity.createMany', 'entity.patch', 'entity.patchMany', 'entity.transformMany',
+  'entity.group', 'entity.ungroup', 'entity.duplicate', 'entity.duplicateMany', 'entity.reparent', 'entity.delete',
   'collection.create', 'collection.patch', 'collection.membership.patch',
   'collection.reparent', 'collection.delete',
-  'camera.frame', 'layout.pattern',
+  'camera.frame', 'layout.pattern', 'stroke.apply', 'lighting.rig.create',
   'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
-  'geometry.edit',
+  'geometry.edit', 'material.variant.create',
   'resource.create', 'resource.patch', 'resource.delete',
 ]);
 const RESOURCE_TYPE_SET = new Set(RESOURCE_TYPES);
@@ -267,6 +267,45 @@ function applyDetail(params) {
   return shown.join(' \u00b7 ');
 }
 
+function operationTypes(params) {
+  const operations = readField(params, 'operations');
+  if (!Array.isArray(operations)) return Object.freeze([]);
+  const counts = new Map();
+  for (const operation of operations.slice(0, 128)) {
+    const type = classifyOperation(operation);
+    counts.set(type, (counts.get(type) ?? 0) + 1);
+  }
+  return Object.freeze([...counts.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([type, count]) => Object.freeze({ type, count })));
+}
+
+function resultAuthoring(result) {
+  const authoring = readField(result, 'authoring');
+  if (!authoring || typeof authoring !== 'object') return null;
+  return authoring;
+}
+
+function captureMetrics(result) {
+  const items = [];
+  const evidence = readField(result, 'evidence');
+  if (Array.isArray(evidence)) items.push(...evidence.slice(0, 16));
+  const previewEvidence = readField(result, 'previewEvidence');
+  if (previewEvidence && typeof previewEvidence === 'object') items.push(previewEvidence);
+  let imageBytes = 0;
+  let captureCount = 0;
+  for (const item of items) {
+    if (!item || typeof item !== 'object') continue;
+    const width = readField(item, 'width');
+    const height = readField(item, 'height');
+    if (!Number.isInteger(width) || !Number.isInteger(height)) continue;
+    captureCount += 1;
+    const byteLength = readField(item, 'byteLength');
+    if (Number.isSafeInteger(byteLength) && byteLength >= 0) imageBytes += byteLength;
+  }
+  return Object.freeze({ captureCount, imageBytes });
+}
+
 /**
  * Compact summary plus a redacted detail line. Detail names only whitelisted
  * operation types, resource families, and entity kinds — never IDs, labels,
@@ -331,6 +370,20 @@ export function createStudioCommandTelemetry({
   const subscribers = new Set();
   let nextId = 1;
   let disposed = false;
+  const totals = {
+    commands: 0,
+    successfulCommands: 0,
+    failedCommands: 0,
+    applyOperations: 0,
+    loweredOperations: 0,
+    compileCount: 0,
+    captureCount: 0,
+    imageBytes: 0,
+    totalElapsedMs: 0,
+    requestBytes: 0,
+    responseBytes: 0,
+  };
+  const toolTotals = new Map();
 
   const snapshot = () => Object.freeze(order
     .filter(id => entries.has(id))
@@ -388,6 +441,11 @@ export function createStudioCommandTelemetry({
       requestBytes: estimatedJsonBytes(params),
       responseBytes: 0,
       operationCount: method === 'three_studio_apply' ? operationCount(params) : 0,
+      loweredOperationCount: 0,
+      operationTypes: method === 'three_studio_apply' ? operationTypes(params) : Object.freeze([]),
+      phaseTimingsMs: null,
+      captureCount: 0,
+      imageBytes: 0,
     });
     entries.set(id, current);
     order.push(id);
@@ -398,6 +456,12 @@ export function createStudioCommandTelemetry({
       if (finished || disposed || !entries.has(id)) return current;
       finished = true;
       const finishedAtMs = safeNow(now);
+      const authoring = stage === 'completed' ? resultAuthoring(result) : null;
+      const captures = stage === 'completed' ? captureMetrics(result) : { captureCount: 0, imageBytes: 0 };
+      const loweredOperationCount = Number.isSafeInteger(readField(authoring, 'loweredOperationCount'))
+        ? readField(authoring, 'loweredOperationCount')
+        : 0;
+      const phaseTimingsMs = readField(authoring, 'timingsMs');
       current = Object.freeze({
         ...current,
         stage,
@@ -406,7 +470,34 @@ export function createStudioCommandTelemetry({
         revision: revisionFrom(result, ['revision', 'savedRevision']) ?? current.revision,
         outcome: stage === 'completed' ? describeCommandOutcome(result) : '',
         responseBytes: stage === 'completed' ? estimatedJsonBytes(result) : 0,
+        loweredOperationCount,
+        phaseTimingsMs: phaseTimingsMs && typeof phaseTimingsMs === 'object'
+          ? Object.freeze({
+              lowering: Math.max(0, Math.round(Number(readField(phaseTimingsMs, 'lowering')) || 0)),
+              kernel: Math.max(0, Math.round(Number(readField(phaseTimingsMs, 'kernel')) || 0)),
+              compile: Math.max(0, Math.round(Number(readField(phaseTimingsMs, 'compile')) || 0)),
+              preview: Math.max(0, Math.round(Number(readField(phaseTimingsMs, 'preview')) || 0)),
+              total: Math.max(0, Math.round(Number(readField(phaseTimingsMs, 'total')) || 0)),
+            })
+          : null,
+        captureCount: captures.captureCount,
+        imageBytes: captures.imageBytes,
       });
+      totals.commands += 1;
+      totals[stage === 'completed' ? 'successfulCommands' : 'failedCommands'] += 1;
+      totals.applyOperations += current.operationCount;
+      totals.loweredOperations += current.loweredOperationCount;
+      totals.compileCount += Number(readField(authoring, 'compileCount')) || 0;
+      totals.captureCount += current.captureCount;
+      totals.imageBytes += current.imageBytes;
+      totals.totalElapsedMs += current.elapsedMs;
+      totals.requestBytes += current.requestBytes;
+      totals.responseBytes += current.responseBytes;
+      const tool = toolTotals.get(method) ?? { commands: 0, elapsedMs: 0, failures: 0 };
+      tool.commands += 1;
+      tool.elapsedMs += current.elapsedMs;
+      if (stage !== 'completed') tool.failures += 1;
+      toolTotals.set(method, tool);
       entries.set(id, current);
       prune();
       if (entries.has(id)) publish(current);
@@ -473,6 +564,13 @@ export function createStudioCommandTelemetry({
       averageElapsedMs: completed.length === 0 ? 0 : Math.round(totalElapsedMs / completed.length),
       requestBytes: completed.reduce((sum, entry) => sum + entry.requestBytes, 0),
       responseBytes: completed.reduce((sum, entry) => sum + entry.responseBytes, 0),
+      cumulative: Object.freeze({
+        ...totals,
+        averageElapsedMs: totals.commands === 0 ? 0 : Math.round(totals.totalElapsedMs / totals.commands),
+        tools: Object.freeze([...toolTotals.entries()]
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([tool, value]) => Object.freeze({ tool, ...value }))),
+      }),
     });
   };
 

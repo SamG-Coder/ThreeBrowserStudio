@@ -90,7 +90,8 @@ export function createFrameCapture({ renderer, scene, camera, getCamera, renderF
         ? `studio-${Date.now()}.png`
         : `studio-${Date.now()}-${pass}.png`);
     await mkdir(path.dirname(resolved), { recursive: true });
-    await writeFile(resolved, canvas.toBuffer("image/png"));
+    const png = canvas.toBuffer("image/png");
+    await writeFile(resolved, png);
     canvas.width = 1;
     canvas.height = 1;
     return Object.freeze({
@@ -98,6 +99,7 @@ export function createFrameCapture({ renderer, scene, camera, getCamera, renderF
       width: captureWidth,
       height: captureHeight,
       pass,
+      byteLength: png.byteLength,
       presentationAspect,
       contentViewport: {
         x: content.x,

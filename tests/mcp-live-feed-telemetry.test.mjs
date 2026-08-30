@@ -100,13 +100,16 @@ test('expanded apply detail names only whitelisted operation types and kinds', (
       { op: 'entity.create', entity: { kind: 'pointLight' } },
       { op: 'resource.create', resourceType: 'materials', resource: { data: 'base64-secret' } },
       { op: 'entity.patch', entityId: 'entity/private', patch: { token: 'secret' } },
+      { op: 'stroke.apply', strokeId: 'stroke/private' },
+      { op: 'lighting.rig.create', rigId: 'rig/private' },
+      { op: 'material.variant.create', materialId: 'material/private' },
       { op: 'totally.fake', token: 'leak-me' },
     ],
   });
-  assert.equal(described.summary, 'Apply 6 operations');
+  assert.equal(described.summary, 'Apply 9 operations');
   assert.equal(
     described.detail,
-    'entity.create mesh ×2 · entity.create pointLight · entity.patch · other · resource.create materials',
+    'entity.create mesh ×2 · entity.create pointLight · entity.patch · lighting.rig.create · material.variant.create · other · resource.create materials · stroke.apply',
   );
   assert.doesNotMatch(described.detail, /secret|token|private|leak-me|script/i);
 
@@ -121,6 +124,7 @@ test('expanded apply detail names only whitelisted operation types and kinds', (
   const entry = telemetry.snapshot()[0];
   assert.equal(entry.detail, 'entity.create mesh');
   assert.equal(entry.outcome, 'pixels will move');
+  assert.deepEqual(entry.operationTypes, [{ type: 'entity.create mesh', count: 1 }]);
   assert.doesNotMatch(JSON.stringify(entry), /private\.png/i);
 });
 
@@ -158,6 +162,7 @@ test('completed history is bounded while every active command is retained', () =
   active.complete({ revision: 4 });
   assert.equal(telemetry.snapshot().length, 2);
   assert.ok(telemetry.snapshot().some(entry => entry.id === active.id));
+  assert.equal(telemetry.metrics().cumulative.commands, 4, 'pruning must not erase session totals');
 });
 
 test('subscriber failures are isolated and track preserves dispatch results and failures', async () => {
@@ -181,12 +186,22 @@ test('subscriber failures are isolated and track preserves dispatch results and 
   assert.doesNotMatch(JSON.stringify(telemetry.snapshot()), /token-private/);
 });
 
-test('bounded telemetry exposes aggregate speed-test measurements without retaining payloads', () => {
+test('bounded telemetry exposes retained and cumulative speed-test measurements without retaining payloads', () => {
   let milliseconds = 100;
   const telemetry = createStudioCommandTelemetry({ now: () => milliseconds });
   const apply = telemetry.begin('three_studio_apply', { operations: [{ op: 'entity.create' }, { op: 'entity.create' }] });
   milliseconds = 145;
-  apply.complete({ success: true, revision: 2, changedIds: ['entity/a'] });
+  apply.complete({
+    success: true,
+    revision: 2,
+    changedIds: ['entity/a'],
+    authoring: {
+      loweredOperationCount: 3,
+      compileCount: 1,
+      timingsMs: { lowering: 2.2, kernel: 30.4, compile: 21.7, preview: 0, total: 44.6 },
+    },
+    previewEvidence: { path: 'private.png', width: 64, height: 64, byteLength: 1234 },
+  });
   const failed = telemetry.begin('three_studio_render', { width: 640, height: 480 });
   milliseconds = 175;
   failed.fail();
@@ -199,7 +214,28 @@ test('bounded telemetry exposes aggregate speed-test measurements without retain
     totalElapsedMs: 75,
     averageElapsedMs: 38,
     requestBytes: 88,
-    responseBytes: 55,
+    responseBytes: 277,
+    cumulative: {
+      commands: 2,
+      successfulCommands: 1,
+      failedCommands: 1,
+      applyOperations: 2,
+      loweredOperations: 3,
+      compileCount: 1,
+      captureCount: 1,
+      imageBytes: 1234,
+      totalElapsedMs: 75,
+      requestBytes: 88,
+      responseBytes: 277,
+      averageElapsedMs: 38,
+      tools: [
+        { tool: 'three_studio_apply', commands: 1, elapsedMs: 45, failures: 0 },
+        { tool: 'three_studio_render', commands: 1, elapsedMs: 30, failures: 1 },
+      ],
+    },
+  });
+  assert.deepEqual(telemetry.snapshot()[0].phaseTimingsMs, {
+    lowering: 2, kernel: 30, compile: 22, preview: 0, total: 45,
   });
   assert.doesNotMatch(JSON.stringify(metrics), /entity\/a/);
 });

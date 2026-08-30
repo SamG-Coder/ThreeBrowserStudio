@@ -92,6 +92,21 @@ import { bakeProceduralTextureGraph } from './procedural-texture-compiler.mjs';
 
 const INSPECT_RESPONSE_ENVELOPE_RESERVE_BYTES = 2_048;
 
+function monotonicMilliseconds() {
+  return globalThis.performance?.now?.() ?? Date.now();
+}
+
+function summarizeOperationTypes(operations) {
+  const counts = new Map();
+  for (const operation of operations) {
+    const type = operation.op ?? operation.type;
+    counts.set(type, (counts.get(type) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([type, count]) => ({ type, count }));
+}
+
 const STATUS_SELECT_PRESETS = Object.freeze({
   minimal: [
     'success', 'protocolVersion', 'sessionId', 'pid', 'projectId', 'projectName',
@@ -976,6 +991,7 @@ export class StudioApplication {
   #viewHash = null;
   #beginCommand = null;
   #commandMetrics = null;
+  #activeApplyMetrics = null;
 
   constructor({ THREE, TSL, viewport, bootstrap, markerPath, credentials, beginCommand, commandMetrics, environment = process.env, projectsRoot } = {}) {
     this.#THREE = THREE;
@@ -1123,7 +1139,16 @@ export class StudioApplication {
   }
 
   async #prepare(document, context = {}) {
-    const candidate = await this.#compile(document);
+    const compileStarted = monotonicMilliseconds();
+    let candidate;
+    try {
+      candidate = await this.#compile(document);
+    } finally {
+      if (this.#activeApplyMetrics) {
+        this.#activeApplyMetrics.compileCount += 1;
+        this.#activeApplyMetrics.compileMs += monotonicMilliseconds() - compileStarted;
+      }
+    }
     if (context.dryRun === true) {
       if (this.#dryRunCandidate !== false) {
         this.#dryRunCandidate?.dispose?.();
@@ -1984,6 +2009,10 @@ export class StudioApplication {
 
   async #apply(params, context = {}) {
     this.#assertTarget(params);
+    const applyStarted = monotonicMilliseconds();
+    const applyMetrics = { compileCount: 0, compileMs: 0 };
+    this.#activeApplyMetrics = applyMetrics;
+    try {
     const document = this.#kernel.document;
     const translationDocument = structuredClone(document);
     const operations = [];
@@ -1999,9 +2028,11 @@ export class StudioApplication {
         }
       }
     }
+    const loweringFinished = monotonicMilliseconds();
     const pixelForecast = forecastPixelImpact({ before: document, operations });
     this.#dryRunCandidate = params.previewEvidence ? null : false;
     let response;
+    const kernelStarted = monotonicMilliseconds();
     try {
       response = await this.#kernel.apply({
         protocolVersion: params.protocolVersion,
@@ -2017,8 +2048,10 @@ export class StudioApplication {
       this.#dryRunCandidate = null;
       throw error;
     }
+    const kernelFinished = monotonicMilliseconds();
     let previewEvidence;
     let previewDigest;
+    const previewStarted = monotonicMilliseconds();
     if (params.previewEvidence && this.#dryRunCandidate) {
       const candidate = this.#dryRunCandidate;
       const scene = this.#viewport.scene;
@@ -2063,15 +2096,33 @@ export class StudioApplication {
     if (response.success && params.dryRun !== true && operationsSnapFollowShot(operations)) {
       this.#viewport.followShot?.();
     }
+    const finished = monotonicMilliseconds();
     return {
       ...response,
       sessionId: this.sessionId,
       projectId: this.#kernel.projectId,
       evidenceRequested: params.evidence === true,
       pixelForecast,
+      authoring: {
+        authoredOperationCount: params.operations.length,
+        loweredOperationCount: operations.length,
+        authoredOperationTypes: summarizeOperationTypes(params.operations),
+        loweredOperationTypes: summarizeOperationTypes(operations),
+        compileCount: applyMetrics.compileCount,
+        timingsMs: {
+          lowering: Math.max(0, loweringFinished - applyStarted),
+          kernel: Math.max(0, kernelFinished - kernelStarted),
+          compile: Math.max(0, applyMetrics.compileMs),
+          preview: Math.max(0, finished - previewStarted),
+          total: Math.max(0, finished - applyStarted),
+        },
+      },
       ...(previewEvidence ? { previewEvidence } : {}),
       ...(previewDigest ? { previewDigest } : {}),
     };
+    } finally {
+      this.#activeApplyMetrics = null;
+    }
   }
 
   #validate(params) {
