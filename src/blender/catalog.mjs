@@ -522,7 +522,7 @@ const entries = [
     canonicalRepresentation: 'Duplicated entities can share immutable geometry and material resource IDs; instancedMesh is a reserved entity kind.',
     mcpWorkflow: ['three_studio_apply: entity.duplicate', 'three_studio_apply: entity.create with shared resource IDs'],
     runtimeNotes: 'Shared object data works, but production multi-instance compilation and collection/geometry-node instancing are not exposed.',
-    supportedSubset: ['linked geometry/material reuse', 'entity duplication', 'stable independent transforms'],
+    supportedSubset: ['linked geometry/material reuse', 'entity duplication', 'guarded deep assembly duplication with explicit stable ID maps', 'stable independent transforms'],
     unsupportedSubset: ['collection instances', 'face/vertex instancing', 'Geometry Nodes instances', 'make instances real', 'multi-instance draw authoring'],
     officialUrls: ['https://docs.blender.org/manual/en/latest/scene_layout/object/properties/instancing/index.html'],
   }),

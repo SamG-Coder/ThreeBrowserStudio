@@ -1114,6 +1114,10 @@
                     "entityId": {
                       "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
                     },
+                    "deep": {
+                      "default": false,
+                      "type": "boolean"
+                    },
                     "items": {
                       "minItems": 1,
                       "maxItems": 128,
@@ -1123,6 +1127,15 @@
                         "properties": {
                           "newId": {
                             "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                          },
+                          "idMap": {
+                            "type": "object",
+                            "propertyNames": {
+                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                            },
+                            "additionalProperties": {
+                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                            }
                           },
                           "name": {
                             "type": "string",

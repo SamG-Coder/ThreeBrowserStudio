@@ -1182,6 +1182,7 @@ const entityCreateBatchItem = z.object({
 }).strict();
 const entityDuplicateBatchItem = z.object({
   newId: reference,
+  idMap: z.record(identifier, reference).optional(),
   name: z.string().min(1).max(240).optional(),
   parentId: reference.nullable().optional(),
   index: insertionIndex.optional(),
@@ -1274,6 +1275,7 @@ const directOperations = [
   }),
   operation('entity.duplicateMany', {
     entityId: reference,
+    deep: z.boolean().optional().default(false),
     items: z.array(entityDuplicateBatchItem).min(1).max(128),
   }),
   operation('entity.reparent', { entityId: reference, parentId: reference.nullable(), index: insertionIndex.optional() }),

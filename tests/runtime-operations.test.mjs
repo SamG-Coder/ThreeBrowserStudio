@@ -38,6 +38,23 @@ test('runtime lowers bounded create and linked-duplicate batches into one atomic
   ]);
 });
 
+test('duplicateMany can stamp explicitly mapped reusable assemblies', () => {
+  const project = createProjectDocument({ projectId: 'project/test' });
+  assert.deepEqual(translateToolOperation({
+    op: 'entity.duplicateMany', entityId: 'assembly/wheel', deep: true,
+    items: [{
+      newId: 'assembly/wheel/rear',
+      idMap: { 'assembly/wheel': 'assembly/wheel/rear', 'assembly/wheel/tire': 'assembly/wheel/rear/tire' },
+      transform: { position: [0, 0, -3] },
+    }],
+  }, project), [{
+    type: 'entity.duplicate', entityId: 'assembly/wheel', newId: 'assembly/wheel/rear', deep: true,
+    idMap: { 'assembly/wheel': 'assembly/wheel/rear', 'assembly/wheel/tire': 'assembly/wheel/rear/tire' },
+  }, {
+    type: 'entity.patch', entityId: 'assembly/wheel/rear', patch: { transform: { position: [0, 0, -3] } },
+  }]);
+});
+
 test('runtime preserves resource.createMany as one normalized core batch', () => {
   const project = createProjectDocument({ projectId: 'project/resource-batch-lowering' });
   const operation = translateToolOperation({

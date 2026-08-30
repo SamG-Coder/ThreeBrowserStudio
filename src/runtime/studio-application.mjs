@@ -541,7 +541,8 @@ export function translateToolOperation(operation, document) {
     ...(item.alias ? { alias: item.alias } : {}), ...(item.index === undefined ? {} : { index: item.index }),
   }));
   if (operation.op === 'entity.duplicateMany') return operation.items.flatMap(item => [{
-      type: 'entity.duplicate', entityId: operation.entityId, newId: item.newId, deep: false,
+      type: 'entity.duplicate', entityId: operation.entityId, newId: item.newId, deep: operation.deep === true,
+      ...(item.idMap ? { idMap: item.idMap } : {}),
       ...(item.name ? { name: item.name } : {}),
       ...(item.parentId === undefined ? {} : { parentId: item.parentId }),
       ...(item.index === undefined ? {} : { index: item.index }),
