@@ -84,6 +84,13 @@ are not a second ID namespace across applies.
 On success, read diagnostics, invalidation scopes, the new revision, and
 `pixelForecast`. Resolve errors before adding detail.
 
+For a costly batch, dry-run once and retain the returned `candidateToken`.
+Submit the identical operation batch at the same `baseRevision` with that token
+to promote the already compiled candidate. Tokens are content guarded, keep
+only one candidate alive, and fail closed after another dry run or project
+switch. Use `resource.createMany` when provisioning several independent typed
+resources so one semantic operation and compact inverse replace many core ops.
+
 Compile-heavy tools (`apply`, `render`, `project`, `history`) have a 120s
 budget. Status and inspect stay at 15s. If apply times out, it aborted
 **before** commit. Re-inspect revision. Do **not** retry the same

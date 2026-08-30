@@ -38,6 +38,20 @@ test('runtime lowers bounded create and linked-duplicate batches into one atomic
   ]);
 });
 
+test('runtime preserves resource.createMany as one normalized core batch', () => {
+  const project = createProjectDocument({ projectId: 'project/resource-batch-lowering' });
+  const operation = translateToolOperation({
+    op: 'resource.createMany',
+    items: [
+      { resourceType: 'geometry', resource: { id: 'geometry/a', recipe: { kind: 'box' } }, alias: '$a' },
+      { resourceType: 'material', resource: { id: 'material/a', recipe: { kind: 'physical', color: '#ff0000' } } },
+    ],
+  }, project);
+  assert.equal(operation.type, 'resource.createMany');
+  assert.deepEqual(operation.items.map(item => item.resourceType), ['geometries', 'materials']);
+  assert.equal(operation.items[0].alias, '$a');
+});
+
 test('runtime forwards layout.pattern as a direct canonical core operation', () => {
   const project = createProjectDocument({ projectId: 'project/test' });
   const operation = {

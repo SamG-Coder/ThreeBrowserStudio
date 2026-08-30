@@ -225,7 +225,7 @@ export const OPERATION_TYPES = Object.freeze([
   'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
   'geometry.edit',
   'material.variant.create',
-  'resource.create', 'resource.patch', 'resource.delete',
+  'resource.create', 'resource.createMany', 'resource.patch', 'resource.delete',
 ]);
 
 const alias = z.string().min(2).max(65).regex(/^\$[a-z][a-z0-9_-]{0,63}$/);
@@ -1281,6 +1281,11 @@ const directOperations = [
     alias: alias.optional(),
   }),
   operation('resource.create', { resourceType, resource: resourceJsonObjectSchema, alias: alias.optional() }),
+  operation('resource.createMany', { items: z.array(z.object({
+    resourceType,
+    resource: resourceJsonObjectSchema,
+    alias: alias.optional(),
+  }).strict()).min(1).max(128) }),
   operation('resource.patch', { resourceType, resourceId: reference, patch: resourceJsonObjectSchema }),
   operation('resource.delete', { resourceType, resourceId: reference }),
 ];
@@ -1292,6 +1297,7 @@ export const operationSchema = z.discriminatedUnion('op', [
 export const applySchema = z.object({
   ...mutationFields,
   dryRun: z.boolean().optional().default(false),
+  candidateToken: z.string().regex(/^[a-f0-9]{64}$/u).optional(),
   previewEvidence: z.object({
     width: z.number().int().min(16).max(1920).optional().default(960),
     height: z.number().int().min(16).max(1080).optional().default(720),
@@ -1310,6 +1316,9 @@ export const applySchema = z.object({
 }).strict().refine(value => value.previewEvidence === undefined || value.dryRun === true, {
   message: 'previewEvidence requires dryRun true.',
   path: ['previewEvidence'],
+}).refine(value => value.candidateToken === undefined || value.dryRun !== true, {
+  message: 'candidateToken promotes a prior dry run and cannot be supplied on another dry run.',
+  path: ['candidateToken'],
 });
 
 export const validateSchema = z.object({

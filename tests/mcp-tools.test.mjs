@@ -249,6 +249,9 @@ test('apply enforces shared mutation metadata and the 128-operation bound', () =
     previewEvidence: { width: 640, height: 360, digest: true, probes: [{ name: 'hero', x: 320, y: 180 }] },
   }).success, true);
   assert.equal(applySchema.safeParse({ ...valid, previewEvidence: { width: 640, height: 360 } }).success, false);
+  assert.equal(applySchema.safeParse({ ...valid, candidateToken: 'a'.repeat(64) }).success, true);
+  assert.equal(applySchema.safeParse({ ...valid, candidateToken: 'not-a-token' }).success, false);
+  assert.equal(applySchema.safeParse({ ...valid, dryRun: true, candidateToken: 'a'.repeat(64) }).success, false);
 });
 
 test('MCP contract exposes only the live inspect and mutation slice', () => {
@@ -270,7 +273,7 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
     'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
     'geometry.edit',
     'material.variant.create',
-    'resource.create', 'resource.patch', 'resource.delete',
+    'resource.create', 'resource.createMany', 'resource.patch', 'resource.delete',
   ]);
   assert.equal(inspectSchema.safeParse({ query: 'selector', selector: { tag: 'hero' }, include: ['tree', 'transform', 'bounds', 'references'] }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'selector', selector: { collectionId: 'collection/environment' } }).success, true);

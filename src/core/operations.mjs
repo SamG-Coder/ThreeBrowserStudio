@@ -138,6 +138,7 @@ const OPERATION_KEYS = new Map([
   ['modifier.stack.edit', new Set(['type', 'op', 'entityId', 'changes', 'expectedStackHash'])],
   ['geometry.edit', new Set(['type', 'op', 'resourceId', 'edits', 'expectedTopologyHash'])],
   ['resource.create', new Set(['type', 'op', 'resourceType', 'resource', 'alias'])],
+  ['resource.createMany', new Set(['type', 'op', 'items'])],
   ['resource.patch', new Set(['type', 'op', 'resourceType', 'resourceId', 'patch'])],
   ['resource.delete', new Set(['type', 'op', 'resourceType', 'resourceId'])],
   ['_scene.restore', new Set(['type', 'sceneId', 'snapshot', 'index', 'activeSceneId', 'restoreActive', 'expectedCurrentHash'])],
@@ -147,6 +148,7 @@ const OPERATION_KEYS = new Map([
   ['_entity.many.restore', new Set(['type', 'entries'])],
   ['_collection.fields.restore', new Set(['type', 'collectionId', 'fields'])],
   ['_resource.restore', new Set(['type', 'resourceType', 'resourceId', 'snapshot', 'expectedCurrentHash'])],
+  ['_resource.restoreMany', new Set(['type', 'items'])],
 ]);
 
 const ENTITY_PATCH_KEYS = new Set(['kind', 'name', 'visible', 'transform', 'components', 'tags', 'scriptIds', 'metadata']);
@@ -1567,6 +1569,38 @@ function applyResourceCreate(draft, operation, aliases, resolvedIds) {
   };
 }
 
+function applyResourceCreateMany(draft, operation, aliases, resolvedIds) {
+  studioAssert(Array.isArray(operation.items) && operation.items.length > 0 && operation.items.length <= 128,
+    'invalid_operation', 'resource.createMany requires 1 to 128 items');
+  const resolvedItems = [];
+  const inverseItems = [];
+  for (const item of operation.items) {
+    studioAssert(isPlainRecord(item), 'invalid_operation', 'Each resource.createMany item must be an object');
+    assertKnownKeys(item, new Set(['resourceType', 'resource', 'alias']), 'resource.createMany item');
+    const result = applyResourceCreate(draft, { type: 'resource.create', ...item }, aliases, resolvedIds);
+    resolvedItems.push({ resourceType: result.resolved.resourceType, resource: result.resolved.resource });
+    inverseItems.unshift(result.inverse);
+  }
+  return {
+    resolved: { type: 'resource.createMany', items: resolvedItems },
+    inverse: { type: '_resource.restoreMany', items: inverseItems },
+  };
+}
+
+function applyInternalResourceRestoreMany(draft, operation) {
+  studioAssert(Array.isArray(operation.items) && operation.items.length > 0 && operation.items.length <= 128,
+    'invalid_operation', '_resource.restoreMany requires 1 to 128 items');
+  const inverseItems = [];
+  for (const item of operation.items) {
+    const result = applyInternalResourceRestore(draft, item);
+    inverseItems.unshift(result.inverse);
+  }
+  return {
+    resolved: { type: '_resource.restoreMany', items: cloneJson(operation.items) },
+    inverse: { type: '_resource.restoreMany', items: inverseItems },
+  };
+}
+
 function applyResourcePatch(draft, operation, aliases) {
   const resourceType = normalizeResourceType(operation.resourceType);
   const resourceId = resolveId(operation.resourceId, aliases, 'resourceId');
@@ -1801,6 +1835,7 @@ function applyOne(draft, operation, aliases, resolvedIds, allowInternal) {
     case 'modifier.stack.edit': return applyModifierStackEdit(draft, operation, aliases);
     case 'geometry.edit': return applyGeometryEdit(draft, operation, aliases);
     case 'resource.create': return applyResourceCreate(draft, operation, aliases, resolvedIds);
+    case 'resource.createMany': return applyResourceCreateMany(draft, operation, aliases, resolvedIds);
     case 'resource.patch': return applyResourcePatch(draft, operation, aliases);
     case 'resource.delete': return applyResourceDelete(draft, operation, aliases);
     case '_scene.restore': return applyInternalSceneRestore(draft, operation);
@@ -1810,6 +1845,7 @@ function applyOne(draft, operation, aliases, resolvedIds, allowInternal) {
     case '_entity.many.restore': return applyInternalEntityManyRestore(draft, operation);
     case '_collection.fields.restore': return applyInternalCollectionFieldsRestore(draft, operation);
     case '_resource.restore': return applyInternalResourceRestore(draft, operation);
+    case '_resource.restoreMany': return applyInternalResourceRestoreMany(draft, operation);
     default: throw new StudioError('unknown_operation', `Unknown operation ${type}`);
   }
 }
@@ -1829,7 +1865,10 @@ export function applyOperations(project, operations, { allowInternal = false } =
     const result = applyOne(draft, operation, aliases, resolvedIds, allowInternal);
     resolvedOperations.push(result.resolved);
     inverseOperations.unshift(result.inverse);
-    invalidations.push(...invalidationsFor(type, operation));
+    if (type === 'resource.createMany' || type === '_resource.restoreMany') {
+      const itemType = type === 'resource.createMany' ? 'resource.create' : '_resource.restore';
+      for (const item of operation.items) invalidations.push(...invalidationsFor(itemType, item));
+    } else invalidations.push(...invalidationsFor(type, operation));
   }
   assertValidProjectDocument(draft);
   return {

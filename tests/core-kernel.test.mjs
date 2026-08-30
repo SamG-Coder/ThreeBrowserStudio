@@ -335,6 +335,35 @@ test('dry-run prepares the candidate without committing or notifying', async () 
   assert.equal(events.length, 0);
 });
 
+test('resource.createMany is one canonical operation with atomic aliases and compact undo', async () => {
+  const kernel = new AuthoringKernel(createProjectDocument({ projectId: 'project/resource-batch' }));
+  const created = await kernel.apply(request({
+    projectId: 'project/resource-batch',
+    idempotencyKey: 'resource-create-many-0001',
+    operations: [{
+      type: 'resource.createMany',
+      items: [
+        { resourceType: 'geometries', resource: { id: 'geometry/a', recipe: { kind: 'box' } }, alias: '$geometry_a' },
+        { resourceType: 'geometries', resource: { id: 'geometry/b', recipe: { kind: 'sphere' } }, alias: '$geometry_b' },
+      ],
+    }],
+  }));
+  assert.equal(created.success, true);
+  assert.deepEqual(created.resolvedIds, { $geometry_a: 'geometry/a', $geometry_b: 'geometry/b' });
+  assert.ok(kernel.document.resources.geometries['geometry/a']);
+  assert.ok(kernel.document.resources.geometries['geometry/b']);
+
+  const undone = await kernel.undo({
+    label: 'Undo resource batch',
+    baseRevision: 1,
+    idempotencyKey: 'resource-create-many-undo-0001',
+    transactionId: created.transactionId,
+  });
+  assert.equal(undone.success, true);
+  assert.equal(kernel.document.resources.geometries['geometry/a'], undefined);
+  assert.equal(kernel.document.resources.geometries['geometry/b'], undefined);
+});
+
 test('idempotency returns the completed response and rejects key reuse', async () => {
   const kernel = createKernel();
   const firstRequest = request({

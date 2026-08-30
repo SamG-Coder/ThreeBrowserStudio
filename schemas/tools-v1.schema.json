@@ -509,6 +509,10 @@
             "default": false,
             "type": "boolean"
           },
+          "candidateToken": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
           "previewEvidence": {
             "type": "object",
             "properties": {
@@ -3565,6 +3569,44 @@
                     "op",
                     "resourceType",
                     "resource"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "op": {
+                      "type": "string",
+                      "const": "resource.createMany"
+                    },
+                    "items": {
+                      "minItems": 1,
+                      "maxItems": 128,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "resourceType": {
+                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema62"
+                          },
+                          "resource": {
+                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema60"
+                          },
+                          "alias": {
+                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
+                          }
+                        },
+                        "required": [
+                          "resourceType",
+                          "resource"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "op",
+                    "items"
                   ],
                   "additionalProperties": false
                 },

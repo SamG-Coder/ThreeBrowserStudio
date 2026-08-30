@@ -174,7 +174,7 @@ const DIRECT_CORE_OPERATIONS = new Set([
   'collection.create', 'collection.patch', 'collection.membership.patch', 'collection.reparent', 'collection.delete',
   'camera.frame', 'layout.pattern', 'geometry.edit',
   'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
-  'resource.create', 'resource.patch', 'resource.delete',
+  'resource.create', 'resource.createMany', 'resource.patch', 'resource.delete',
 ]);
 
 function isRecord(value) {
@@ -512,6 +512,17 @@ export function translateToolOperation(operation, document) {
     },
     ...(item.transform ? [{ type: 'entity.patch', entityId: item.newId, patch: { transform: item.transform } }] : []),
   ]);
+  if (operation.op === 'resource.createMany') return {
+    type: 'resource.createMany',
+    items: operation.items.map(item => {
+      const resourceType = normalizeResourceType(item.resourceType);
+      return {
+        resourceType,
+        resource: resourceType === 'graphs' ? createResourceDocument('graphs', item.resource) : item.resource,
+        ...(item.alias ? { alias: item.alias } : {}),
+      };
+    }),
+  };
   if (operation.op === 'material.variant.create') {
     const base = new ProjectIndex(document).getResource(operation.baseMaterialId, 'materials').resource;
     const resource = mergePatch(base, operation.patch);
@@ -974,6 +985,7 @@ export class StudioApplication {
   #compiled = null;
   #prepared = null;
   #dryRunCandidate = null;
+  #pendingCandidateToken = null;
   #unsubscribe = null;
   #bridge = null;
   #credentials;
@@ -1139,6 +1151,19 @@ export class StudioApplication {
   }
 
   async #prepare(document, context = {}) {
+    if (context.dryRun !== true
+        && this.#pendingCandidateToken
+        && this.#dryRunCandidate?.token === this.#pendingCandidateToken) {
+      this.#prepared?.dispose();
+      this.#prepared = this.#dryRunCandidate.compiled;
+      this.#dryRunCandidate = null;
+      if (this.#activeApplyMetrics) this.#activeApplyMetrics.promotedCandidate = true;
+      return;
+    }
+    if (context.dryRun !== true && this.#dryRunCandidate) {
+      this.#dryRunCandidate.compiled.dispose();
+      this.#dryRunCandidate = null;
+    }
     const compileStarted = monotonicMilliseconds();
     let candidate;
     try {
@@ -1150,14 +1175,14 @@ export class StudioApplication {
       }
     }
     if (context.dryRun === true) {
-      if (this.#dryRunCandidate !== false) {
-        this.#dryRunCandidate?.dispose?.();
-        this.#dryRunCandidate = candidate;
-      } else candidate.dispose();
+      this.#dryRunCandidate?.compiled.dispose();
+      this.#dryRunCandidate = this.#pendingCandidateToken
+        ? { token: this.#pendingCandidateToken, compiled: candidate }
+        : null;
+      if (!this.#dryRunCandidate) candidate.dispose();
       return;
     }
     this.#prepared?.dispose();
-    if (this.#dryRunCandidate && this.#dryRunCandidate !== false) this.#dryRunCandidate.dispose();
     this.#prepared = candidate;
   }
 
@@ -1165,7 +1190,6 @@ export class StudioApplication {
     const next = this.#prepared;
     if (!next) return;
     this.#prepared = null;
-    this.#dryRunCandidate = null;
     if (!immediate) await new Promise(resolve => (globalThis.requestAnimationFrame ?? (callback => setTimeout(callback, 0)))(resolve));
     this.#bootstrap?.dispose();
     this.#bootstrap = null;
@@ -1268,6 +1292,8 @@ export class StudioApplication {
     const previousUnsubscribe = this.#unsubscribe;
     previousUnsubscribe?.();
     this.#prepared?.dispose();
+    this.#dryRunCandidate?.compiled.dispose();
+    this.#dryRunCandidate = null;
     this.#prepared = candidate;
     this.#kernel = kernel;
     this.#projectRoot = projectRoot;
@@ -2025,12 +2051,30 @@ export class StudioApplication {
           const resourceType = normalizeResourceType(candidate.resourceType);
           const resource = createResourceDocument(resourceType, candidate.resource);
           translationDocument.resources[resourceType][resource.id] = resource;
+        } else if ((candidate.type ?? candidate.op) === 'resource.createMany') {
+          for (const item of candidate.items) {
+            if (item.alias) continue;
+            const resourceType = normalizeResourceType(item.resourceType);
+            const resource = createResourceDocument(resourceType, item.resource);
+            translationDocument.resources[resourceType][resource.id] = resource;
+          }
         }
       }
     }
     const loweringFinished = monotonicMilliseconds();
     const pixelForecast = forecastPixelImpact({ before: document, operations });
-    this.#dryRunCandidate = params.previewEvidence ? null : false;
+    const candidateToken = contentHash({
+      projectId: params.projectId,
+      baseRevision: params.baseRevision,
+      operations: params.operations,
+    });
+    if (params.candidateToken && params.candidateToken !== candidateToken) {
+      throw new StudioError('candidate_token_mismatch', 'candidateToken does not match this project revision and operation batch.');
+    }
+    if (params.candidateToken && this.#dryRunCandidate?.token !== params.candidateToken) {
+      throw new StudioError('candidate_not_available', 'The compiled dry-run candidate is no longer available for promotion. Run the dry run again.');
+    }
+    this.#pendingCandidateToken = params.dryRun === true ? candidateToken : (params.candidateToken ?? null);
     let response;
     const kernelStarted = monotonicMilliseconds();
     try {
@@ -2044,8 +2088,6 @@ export class StudioApplication {
         operations,
       }, { signal: context.signal });
     } catch (error) {
-      if (this.#dryRunCandidate && this.#dryRunCandidate !== false) this.#dryRunCandidate.dispose();
-      this.#dryRunCandidate = null;
       throw error;
     }
     const kernelFinished = monotonicMilliseconds();
@@ -2053,7 +2095,7 @@ export class StudioApplication {
     let previewDigest;
     const previewStarted = monotonicMilliseconds();
     if (params.previewEvidence && this.#dryRunCandidate) {
-      const candidate = this.#dryRunCandidate;
+      const candidate = this.#dryRunCandidate.compiled;
       const scene = this.#viewport.scene;
       const previousRootVisible = this.#compiled?.root?.visible;
       const previousBackground = scene.background;
@@ -2086,12 +2128,7 @@ export class StudioApplication {
         scene.background = previousBackground;
         scene.backgroundNode = previousBackgroundNode;
         scene.fog = previousFog;
-        candidate.dispose();
-        this.#dryRunCandidate = null;
       }
-    } else if (this.#dryRunCandidate && this.#dryRunCandidate !== false) {
-      this.#dryRunCandidate.dispose();
-      this.#dryRunCandidate = null;
     }
     if (response.success && params.dryRun !== true && operationsSnapFollowShot(operations)) {
       this.#viewport.followShot?.();
@@ -2103,12 +2140,14 @@ export class StudioApplication {
       projectId: this.#kernel.projectId,
       evidenceRequested: params.evidence === true,
       pixelForecast,
+      ...(params.dryRun === true ? { candidateToken } : {}),
       authoring: {
         authoredOperationCount: params.operations.length,
         loweredOperationCount: operations.length,
         authoredOperationTypes: summarizeOperationTypes(params.operations),
         loweredOperationTypes: summarizeOperationTypes(operations),
         compileCount: applyMetrics.compileCount,
+        promotedCandidate: applyMetrics.promotedCandidate === true,
         timingsMs: {
           lowering: Math.max(0, loweringFinished - applyStarted),
           kernel: Math.max(0, kernelFinished - kernelStarted),
@@ -2122,6 +2161,7 @@ export class StudioApplication {
     };
     } finally {
       this.#activeApplyMetrics = null;
+      this.#pendingCandidateToken = null;
     }
   }
 
@@ -2543,7 +2583,7 @@ export class StudioApplication {
       if (owned) await rm(this.#markerPath, { force: true }).catch(() => {});
     }
     this.#prepared?.dispose();
-    if (this.#dryRunCandidate && this.#dryRunCandidate !== false) this.#dryRunCandidate.dispose();
+    this.#dryRunCandidate?.compiled.dispose();
     const compiled = this.#compiled;
     if (typeof this.#viewport.setAppearance === 'function') this.#viewport.setAppearance({});
     else {

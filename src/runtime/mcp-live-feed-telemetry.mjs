@@ -18,7 +18,7 @@ const PUBLIC_OPERATION_TYPES = new Set([
   'camera.frame', 'layout.pattern', 'stroke.apply', 'lighting.rig.create',
   'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
   'geometry.edit', 'material.variant.create',
-  'resource.create', 'resource.patch', 'resource.delete',
+  'resource.create', 'resource.createMany', 'resource.patch', 'resource.delete',
 ]);
 const RESOURCE_TYPE_SET = new Set(RESOURCE_TYPES);
 const ENTITY_KIND_SET = new Set(ENTITY_KINDS);
@@ -377,6 +377,7 @@ export function createStudioCommandTelemetry({
     applyOperations: 0,
     loweredOperations: 0,
     compileCount: 0,
+    promotedCandidates: 0,
     captureCount: 0,
     imageBytes: 0,
     totalElapsedMs: 0,
@@ -444,6 +445,7 @@ export function createStudioCommandTelemetry({
       loweredOperationCount: 0,
       operationTypes: method === 'three_studio_apply' ? operationTypes(params) : Object.freeze([]),
       phaseTimingsMs: null,
+      promotedCandidate: false,
       captureCount: 0,
       imageBytes: 0,
     });
@@ -462,6 +464,7 @@ export function createStudioCommandTelemetry({
         ? readField(authoring, 'loweredOperationCount')
         : 0;
       const phaseTimingsMs = readField(authoring, 'timingsMs');
+      const promotedCandidate = readField(authoring, 'promotedCandidate') === true;
       current = Object.freeze({
         ...current,
         stage,
@@ -480,6 +483,7 @@ export function createStudioCommandTelemetry({
               total: Math.max(0, Math.round(Number(readField(phaseTimingsMs, 'total')) || 0)),
             })
           : null,
+        promotedCandidate,
         captureCount: captures.captureCount,
         imageBytes: captures.imageBytes,
       });
@@ -488,6 +492,7 @@ export function createStudioCommandTelemetry({
       totals.applyOperations += current.operationCount;
       totals.loweredOperations += current.loweredOperationCount;
       totals.compileCount += Number(readField(authoring, 'compileCount')) || 0;
+      totals.promotedCandidates += promotedCandidate ? 1 : 0;
       totals.captureCount += current.captureCount;
       totals.imageBytes += current.imageBytes;
       totals.totalElapsedMs += current.elapsedMs;

@@ -864,7 +864,7 @@ test('high-level resources may depend on resources created earlier in the same a
   });
 });
 
-test('dry-run apply compiles and disposes its candidate without swapping or mutating the project', async (t) => {
+test('dry-run apply retains one guarded candidate and promotes it without a second compile', async (t) => {
   const { application, THREE, viewport } = await applicationFixture(t);
   const liveRoot = viewport.scene.children[0];
   const groupCountBefore = THREE.groups.length;
@@ -894,13 +894,47 @@ test('dry-run apply compiles and disposes its candidate without swapping or muta
   assert.deepEqual(result.authoring.authoredOperationTypes, [{ type: 'entity.create', count: 1 }]);
   assert.deepEqual(result.authoring.loweredOperationTypes, [{ type: 'entity.create', count: 1 }]);
   assert.equal(result.authoring.compileCount, 1);
+  assert.equal(result.authoring.promotedCandidate, false);
+  assert.match(result.candidateToken, /^[a-f0-9]{64}$/u);
   assert.ok(result.authoring.timingsMs.total >= result.authoring.timingsMs.compile);
   assert.equal(application.kernel.revision, 0);
   assert.equal(application.kernel.document.scenes['scene/main'].entities['entity/preview'], undefined);
   assert.deepEqual(viewport.scene.children, [liveRoot]);
   assert.equal(viewport.titles.length, titleCountBefore);
   assert.equal(THREE.groups.length, groupCountBefore + 2, 'candidate root and entity should be compiled');
-  assert.equal(THREE.groups.at(-2).clearCount, 1, 'dry-run candidate root should be disposed');
+  assert.equal(THREE.groups.at(-2).clearCount, 0, 'candidate remains available for guarded promotion');
+
+  const promoted = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1',
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    baseRevision: 0,
+    idempotencyKey: 'promote-entity-0001',
+    label: 'Promote the previewed entity',
+    candidateToken: result.candidateToken,
+    operations: [{
+      op: 'entity.create',
+      sceneId: 'scene/main',
+      entity: { id: 'entity/preview', kind: 'group', name: 'Preview' },
+    }],
+  });
+  assert.equal(promoted.success, true);
+  assert.equal(promoted.revision, 1);
+  assert.equal(promoted.authoring.compileCount, 0);
+  assert.equal(promoted.authoring.promotedCandidate, true);
+  assert.equal(THREE.groups.length, groupCountBefore + 2, 'promotion reuses the compiled candidate');
+  assert.ok(application.kernel.document.scenes['scene/main'].entities['entity/preview']);
+
+  await assert.rejects(application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1',
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    baseRevision: 1,
+    idempotencyKey: 'stale-promote-entity-0001',
+    label: 'Reject stale candidate reuse',
+    candidateToken: result.candidateToken,
+    operations: [{ op: 'entity.patch', entityId: 'entity/preview', patch: { name: 'Changed' } }],
+  }), rejectsWithCode('candidate_token_mismatch'));
 });
 
 test('scene swaps retain the authored linear background for the viewport presentation layer', async (t) => {

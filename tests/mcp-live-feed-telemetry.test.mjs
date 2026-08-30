@@ -222,6 +222,7 @@ test('bounded telemetry exposes retained and cumulative speed-test measurements 
       applyOperations: 2,
       loweredOperations: 3,
       compileCount: 1,
+      promotedCandidates: 0,
       captureCount: 1,
       imageBytes: 1234,
       totalElapsedMs: 75,
