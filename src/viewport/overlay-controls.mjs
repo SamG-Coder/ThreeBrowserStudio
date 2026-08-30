@@ -390,13 +390,13 @@ export class TabStrip extends Control {
   }
 
   onPaint(context, fonts, clip, bounds) {
-    context.fillStyle = 'rgba(8, 13, 22, 0.96)';
+    context.fillStyle = 'rgba(8, 13, 22, 0.92)';
     context.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
     this.tabs.forEach((tab, index) => {
       const rect = this.#tabRect(index, bounds);
       if (!rectsIntersect(rect, clip)) return;
       const active = tab.id === this.selected;
-      context.fillStyle = active ? 'rgba(36, 58, 88, 0.98)' : 'rgba(12, 20, 32, 0.92)';
+      context.fillStyle = active ? 'rgba(36, 58, 88, 0.92)' : 'rgba(12, 20, 32, 0.92)';
       context.fillRect(rect.x, rect.y, rect.width, rect.height);
       fonts.blit(context, tab.label, rect.x + 12, rect.y + rect.height * 0.5 + 4, {
         font: active ? '600 13px "Segoe UI", Arial, sans-serif' : '13px "Segoe UI", Arial, sans-serif',

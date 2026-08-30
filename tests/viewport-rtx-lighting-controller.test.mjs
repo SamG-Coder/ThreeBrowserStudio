@@ -83,7 +83,23 @@ function makeThree(targets = [], materials = []) {
     constructor(geometry, material) {
       this.geometry = geometry;
       this.material = material;
-      this.scale = { x: 1, y: 1, z: 1 };
+      this.position = {
+        x: 0,
+        y: 0,
+        z: 0,
+        set(x, y, z) {
+          Object.assign(this, { x, y, z });
+        },
+      };
+      this.scale = {
+        x: 1,
+        y: 1,
+        z: 1,
+        set(x, y, z) {
+          Object.assign(this, { x, y, z });
+        },
+      };
+      this.visible = true;
       this.frustumCulled = true;
     }
   }
@@ -234,6 +250,7 @@ function makeHarness({
 } = {}) {
   const events = [];
   const renderStates = [];
+  const renderSnapshots = [];
   const presenterScales = [];
   const presenterBindings = [];
   const compiledPresenterBindings = new Map();
@@ -316,6 +333,14 @@ function makeHarness({
         target: this.currentTarget,
         outputTarget: this.currentOutputTarget,
       });
+      renderSnapshots.push({
+        scene: scene?.name || 'authored',
+        children: (scene?.children ?? []).map(child => ({
+          object: child,
+          visible: child?.visible !== false,
+          texture: child?.material?.map ?? null,
+        })),
+      });
       events.push(`render:${scene?.name || 'authored'}:shadows=${this.shadowMap.enabled}`);
     },
     async renderAsync(scene) {
@@ -332,6 +357,14 @@ function makeHarness({
         shadows: this.shadowMap.enabled,
         target: this.currentTarget,
         outputTarget: this.currentOutputTarget,
+      });
+      renderSnapshots.push({
+        scene: scene?.name || 'authored',
+        children: (scene?.children ?? []).map(child => ({
+          object: child,
+          visible: child?.visible !== false,
+          texture: child?.material?.map ?? null,
+        })),
       });
       events.push(`render:${scene?.name || 'authored'}:shadows=${this.shadowMap.enabled}`);
     },
@@ -393,6 +426,7 @@ function makeHarness({
     device,
     events,
     renderStates,
+    renderSnapshots,
     presenterScales,
     presenterBindings,
     targets,
@@ -668,6 +702,72 @@ test('native frame order is raster, evaluate on a fresh encoder, submit, then fu
   assert.equal(controller.getStatus().staticScene.packedLightCount, 1);
 });
 
+test('RTX presentation composites the HUD after lighting without a second renderer swap', async () => {
+  const harness = makeHarness();
+  const {
+    controller, THREE, events, renderSnapshots, rtx, targets,
+  } = harness;
+  const hudTexture = new THREE.Texture();
+  hudTexture.name = 'Studio HUD canvas texture';
+  const hudObject = {
+    name: 'Three Studio side panel',
+    visible: true,
+  };
+  const world = {
+    name: 'authored world',
+    children: [hudObject],
+  };
+
+  assert.equal(await controller.configure({ scene: world, width: 1280, height: 720 }), true);
+  events.length = 0;
+  renderSnapshots.length = 0;
+
+  assert.equal(await controller.render({
+    scene: world,
+    camera: makeCamera(),
+    width: 1280,
+    height: 720,
+    overlay: {
+      object: hudObject,
+      texture: hudTexture,
+      bounds: { left: 12, top: 12, width: 380, height: 696 },
+      viewport: { width: 1280, height: 720 },
+      visible: true,
+    },
+  }), true);
+
+  const authored = events.indexOf('render:authored world:shadows=false');
+  const evaluate = events.indexOf('rtx:evaluate');
+  const submit = events.indexOf('queue:submit');
+  const present = events.indexOf('render:ThreeBrowser Studio RTX presentation:shadows=true');
+  assert.ok(authored >= 0);
+  assert.ok(authored < evaluate);
+  assert.ok(evaluate < submit);
+  assert.ok(submit < present);
+  assert.deepEqual(
+    events.filter(event => event.startsWith('render:')),
+    [
+      'render:authored world:shadows=false',
+      'render:ThreeBrowser Studio RTX presentation:shadows=true',
+    ],
+  );
+
+  const baseSnapshot = renderSnapshots.find(snapshot => snapshot.scene === 'authored world');
+  assert.equal(baseSnapshot.children.find(child => child.object === hudObject)?.visible, false);
+  assert.equal(hudObject.visible, true);
+
+  const presenterSnapshot = renderSnapshots.find(
+    snapshot => snapshot.scene === 'ThreeBrowser Studio RTX presentation',
+  );
+  assert.equal(presenterSnapshot.children[0].texture, targets[0].texture);
+  assert.equal(
+    presenterSnapshot.children.filter(child => child.texture === hudTexture && child.visible).length,
+    1,
+  );
+  assert.equal(rtx.evaluations[0].color.texture, targets[0].texture.native);
+  assert.notEqual(rtx.evaluations[0].color.texture, hudTexture);
+});
+
 test('RTX payload reconstructs world positions with matrixWorld times projectionMatrixInverse', async () => {
   const harness = makeHarness();
   const camera = makeNumericCamera();
@@ -743,10 +843,11 @@ test('live and evidence RTX frames serialize incompatible attachment sizes', asy
   assert.notEqual(rtx.evaluations[0].color.texture, rtx.evaluations[1].color.texture);
   assert.equal(targets.at(-2).disposed, true);
   assert.deepEqual(presenterBindings, [targets.at(-2).texture, targets.at(-1).texture]);
-  assert.equal(materials.length, 3);
+  assert.equal(materials.length, 4);
   assert.equal(materials[0].disposed, true);
-  assert.equal(materials[1].disposed, true);
-  assert.equal(materials[2].disposed, false);
+  assert.equal(materials[1].disposed, false);
+  assert.equal(materials[2].disposed, true);
+  assert.equal(materials[3].disposed, false);
   assert.deepEqual(
     renderStates.filter(({ scene }) => scene === 'ThreeBrowser Studio RTX presentation')
       .map(({ outputTarget }) => outputTarget),

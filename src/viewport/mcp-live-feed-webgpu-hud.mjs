@@ -30,6 +30,7 @@ const HEADER_HEIGHT = 48;
 const TAB_HEIGHT = 30;
 const SCROLL_WIDTH = 10;
 const MAX_RETAINED_SOURCE_ENTRIES = 256;
+const PANEL_BACKGROUND = 'rgba(8, 13, 22, 0.92)';
 const STAGE_COLORS = Object.freeze({
   started: '#f2b45c',
   completed: '#58dc90',
@@ -246,7 +247,7 @@ export function createMcpLiveFeedWebGpuHud({
     context,
     fonts,
     ...(schedulePaint ? { schedulePaint } : {}),
-    backColor: 'rgba(8, 13, 22, 0.92)',
+    backColor: PANEL_BACKGROUND,
     onPainted() {
       texture.needsUpdate = true;
     },
@@ -293,10 +294,10 @@ export function createMcpLiveFeedWebGpuHud({
     },
   }));
 
-  const logPage = host.add(new Control({ name: 'log-page', backColor: 'rgba(8, 13, 22, 0.92)' }));
+  const logPage = host.add(new Control({ name: 'log-page', backColor: PANEL_BACKGROUND }));
   const logToolbar = logPage.add(new Control({
     name: 'log-toolbar',
-    backColor: 'rgba(10, 16, 26, 0.96)',
+    backColor: PANEL_BACKGROUND,
   }));
   const logDetailToggle = logToolbar.add(new ToggleOption({
     name: 'log-expanded',
@@ -347,7 +348,7 @@ export function createMcpLiveFeedWebGpuHud({
   const explorerPage = host.add(new Control({
     name: 'explorer-page',
     visible: false,
-    backColor: 'rgba(8, 13, 22, 0.92)',
+    backColor: PANEL_BACKGROUND,
   }));
   const explorerList = explorerPage.add(new VirtualList({
     name: 'explorer-list',
@@ -412,7 +413,7 @@ export function createMcpLiveFeedWebGpuHud({
   const settingsPage = host.add(new Control({
     name: 'settings-page',
     visible: false,
-    backColor: 'rgba(8, 13, 22, 0.92)',
+    backColor: PANEL_BACKGROUND,
   }));
   const cameraLabel = settingsPage.add(new Label({
     text: 'Camera',
@@ -500,7 +501,7 @@ export function createMcpLiveFeedWebGpuHud({
   const promptPage = promptTab ? host.add(new Control({
     name: 'prompt-page',
     visible: false,
-    backColor: 'rgba(8, 13, 22, 0.92)',
+    backColor: PANEL_BACKGROUND,
   })) : null;
   if (promptPage) {
     promptPage.add(new Label({

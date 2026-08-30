@@ -395,12 +395,23 @@ async function main() {
       renderer.setMRT(null);
       const activeCamera = reviewSession.renderCamera;
       liveFeed.updateCamera(activeCamera);
+      const panelBounds = liveFeed.panelBounds;
       const renderedWithRtx = await rtxLighting.render({
         scene,
         camera: activeCamera,
         width: renderer.domElement.width,
         height: renderer.domElement.height,
         outputTarget: null,
+        overlay: {
+          object: liveFeed.sprite,
+          texture: liveFeed.texture,
+          bounds: panelBounds,
+          viewport: {
+            width: Math.max(1, Number(innerWidth) || 1),
+            height: Math.max(1, Number(innerHeight) || 1),
+          },
+          visible: liveFeed.visible,
+        },
       });
       if (!renderedWithRtx) renderer.render(scene, activeCamera);
     } finally {

@@ -255,6 +255,7 @@ test('side panel is visible by default and camera updates do not invalidate', ()
   assert.equal(hud.material.map, hud.texture);
   assert.equal(hud.material.depthTest, false);
   assert.equal(hud.texture.colorSpace, 'srgb');
+  assert.equal(hud.host.backColor, 'rgba(8, 13, 22, 0.92)', 'HUD backing keeps its intentional translucency');
   assert.equal(hud.panelBounds.left, 12);
   assert.equal(hud.panelBounds.pixelRatio, 1);
   assert.equal(hud.canvas.width, Math.round(hud.panelBounds.width * hud.panelBounds.pixelRatio));

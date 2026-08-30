@@ -713,10 +713,71 @@ export class RtxLightingController {
     const scene = new THREE.Scene();
     scene.name = 'ThreeBrowser Studio RTX presentation';
     scene.add(quad);
+
+    // The Studio panel is presentation chrome, not ray-lit world geometry.
+    // Keep a second quad in this same presenter scene so the final WebGPU
+    // render remains one swap while the panel is blended after native RTX.
+    const overlayGeometry = new THREE.PlaneGeometry(2, 2);
+    const overlayMaterial = new THREE.MeshBasicMaterial({
+      map: null,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+      fog: false,
+      toneMapped: false,
+    });
+    overlayMaterial.transparent = true;
+    overlayMaterial.depthTest = false;
+    overlayMaterial.depthWrite = false;
+    overlayMaterial.toneMapped = false;
+    const overlayQuad = new THREE.Mesh(overlayGeometry, overlayMaterial);
+    overlayQuad.name = 'ThreeBrowser Studio RTX presentation overlay';
+    overlayQuad.frustumCulled = false;
+    overlayQuad.renderOrder = 1;
+    overlayQuad.visible = false;
+    scene.add(overlayQuad);
+
     const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 2);
     camera.position.z = 1;
     camera.updateProjectionMatrix?.();
-    return { geometry, material, quad, scene, camera };
+    return {
+      geometry,
+      material,
+      quad,
+      overlayGeometry,
+      overlayMaterial,
+      overlayQuad,
+      scene,
+      camera,
+    };
+  }
+
+  #setPresenterOverlay(value) {
+    const presenter = this.#presenter;
+    if (!presenter?.overlayQuad || !presenter.overlayMaterial) return;
+    const overlay = value && typeof value === 'object' ? value : null;
+    const bounds = overlay?.bounds;
+    const viewport = overlay?.viewport;
+    const texture = overlay?.texture ?? null;
+    const viewportWidth = Math.max(1, finite(viewport?.width, this.#width));
+    const viewportHeight = Math.max(1, finite(viewport?.height, this.#height));
+    const width = Math.max(0, finite(bounds?.width, 0));
+    const height = Math.max(0, finite(bounds?.height, 0));
+    const visible = Boolean(overlay?.visible !== false && texture && width > 0 && height > 0);
+
+    presenter.overlayQuad.visible = visible;
+    if (!visible) return;
+    if (presenter.overlayMaterial.map !== texture) {
+      presenter.overlayMaterial.map = texture;
+      presenter.overlayMaterial.needsUpdate = true;
+    }
+
+    const centreX = finite(bounds?.left, 0) + width * 0.5;
+    const centreY = finite(bounds?.top, 0) + height * 0.5;
+    const x = (centreX / viewportWidth) * 2 - 1;
+    const y = 1 - (centreY / viewportHeight) * 2;
+    presenter.overlayQuad.position?.set?.(x, y, 0.5);
+    presenter.overlayQuad.scale?.set?.(width / viewportWidth, height / viewportHeight, 1);
   }
 
   #disposeTarget() {
@@ -810,11 +871,12 @@ export class RtxLightingController {
     }
   }
 
-  async #present(outputTarget) {
+  async #present(outputTarget, overlay) {
     const previousTarget = this.#renderer.getRenderTarget?.() ?? null;
     const previousOutputTarget = this.#renderer.getOutputRenderTarget();
     const previousMrt = this.#renderer.getMRT?.() ?? null;
     try {
+      this.#setPresenterOverlay(overlay);
       this.#renderer.setMRT?.(null);
       this.#renderer.setOutputRenderTarget(outputTarget);
       this.#renderer.setRenderTarget(outputTarget);
@@ -832,6 +894,7 @@ export class RtxLightingController {
     width = this.#width,
     height = this.#height,
     outputTarget = null,
+    overlay = null,
   } = {}) {
     if (this.#disposed || !this.#settings.enabled || !this.#settings.lighting.enabled) return false;
     if (!this.#isSupported() || !this.#configured || this.#building || this.#stale || this.#failed) return false;
@@ -840,7 +903,16 @@ export class RtxLightingController {
 
     try {
       camera?.updateMatrixWorld?.();
-      await this.#renderBase(scene, camera);
+      const overlayObject = overlay?.object ?? null;
+      const previousOverlayVisibility = overlayObject?.visible;
+      try {
+        if (overlayObject) overlayObject.visible = false;
+        await this.#renderBase(scene, camera);
+      } finally {
+        if (overlayObject && previousOverlayVisibility !== undefined) {
+          overlayObject.visible = previousOverlayVisibility;
+        }
+      }
 
       const nativeColor = this.#renderer.backend?.get?.(this.#target.texture)?.texture;
       const nativeDepth = this.#renderer.backend?.get?.(this.#target.depthTexture)?.texture;
@@ -874,7 +946,7 @@ export class RtxLightingController {
       if (result?.queued !== true) throw new Error(result?.reason || 'native ray lighting dispatch was rejected');
       const commandBuffer = encoder.finish();
       this.#device.queue.submit([commandBuffer]);
-      await this.#present(outputTarget);
+      await this.#present(outputTarget, overlay);
       this.#frameIndex += 1;
       this.#active = true;
       this.#failed = false;
@@ -907,6 +979,8 @@ export class RtxLightingController {
     this.#disposeTarget();
     this.#presenter?.geometry?.dispose?.();
     this.#presenter?.material?.dispose?.();
+    this.#presenter?.overlayGeometry?.dispose?.();
+    this.#presenter?.overlayMaterial?.dispose?.();
     this.#presenter = null;
     this.#configured = false;
     this.#active = false;
