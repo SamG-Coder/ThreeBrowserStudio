@@ -8,7 +8,11 @@ function vector(x = 0, y = 0, z = 0) {
 }
 
 function object(position = [0, 0, 0], scale = [1, 1, 1]) {
-  return { position: vector(...position), rotation: vector(), scale: vector(...scale), userData: {}, parent: null, updateMatrix() {}, updateMatrixWorld() {} };
+  return {
+    position: vector(...position), rotation: vector(), scale: vector(...scale), userData: {}, parent: null,
+    rotateX(value) { this.rotation.x += value; }, rotateY(value) { this.rotation.y += value; }, rotateZ(value) { this.rotation.z += value; },
+    updateMatrix() {}, updateMatrixWorld() {},
+  };
 }
 
 test('dynamic rigid bodies apply mass, gravity, impulses, and resolve box collisions', () => {
@@ -77,33 +81,12 @@ test('scaled terrain and child tyre colliders form one compound rigid body', () 
   assert.ok(events.some(event => event.selfId === 'tyre' && event.otherId === 'grass'));
 });
 
-test('dynamic bodies cap acceleration and brake progressively', () => {
-  const car = object();
-  const scene = {
-    settings: { physics: { enabled: true, gravity: [0, 0, 0] } },
-    entities: {
-      car: { id: 'car', components: { rigidBody: { bodyType: 'dynamic', mass: 1, linearDamping: 0, maxLinearSpeed: 10 } } },
-    },
-  };
-  const runtime = createRigidBodyRuntime({ scene, objects: new Map([['car', car]]) });
-  runtime.addForce('car', [0, 0, -100]);
-  runtime.step(1);
-  assert.equal(runtime.getBodyState('car').speed, 10);
-
-  runtime.applyBrake('car', 4);
-  runtime.step(1);
-  assert.equal(runtime.getBodyState('car').speed, 6);
-  runtime.applyBrake('car', 20);
-  runtime.step(1);
-  assert.equal(runtime.getBodyState('car').speed, 0);
-});
-
 test('compound tyres retain longitudinal drive force while gripping scaled ground', () => {
   const car = object([0, 0.18, 0]);
   car.userData.studioEntityId = 'car';
   const objects = new Map([['car', car]]);
   const entities = {
-    car: { id: 'car', components: { rigidBody: { bodyType: 'dynamic', mass: 1350, linearDamping: 0, maxLinearSpeed: 28 } } },
+    car: { id: 'car', components: { rigidBody: { bodyType: 'dynamic', mass: 1350, linearDamping: 0 } } },
     ground: { id: 'ground', components: { collider: { shape: 'box', size: [9, 0.12, 110], friction: 1, layer: 0, mask: 2 } } },
   };
   const ground = object([0, -0.13, -55], [20, 1, 3]);
@@ -152,43 +135,4 @@ test('compound tyres settle without resting-contact camera jitter', () => {
 
   assert.ok(Math.max(...settledHeights) - Math.min(...settledHeights) < 0.002);
   assert.ok(Math.abs(runtime.getBodyState('car').velocity[1]) < 0.01);
-});
-
-test('vehicle steering turns front wheels and derives yaw from longitudinal speed', () => {
-  const car = object();
-  car.userData.studioEntityId = 'car';
-  const left = object([-1, 0, -2]); left.parent = car; left.userData.studioEntityId = 'front-left';
-  const right = object([1, 0, -2]); right.parent = car; right.userData.studioEntityId = 'front-right';
-  const scene = {
-    settings: { physics: { gravity: [0, 0, 0] } },
-    entities: {
-      car: { id: 'car', components: { rigidBody: { bodyType: 'dynamic', mass: 1, linearDamping: 0, angularDamping: 0, velocity: [0, 0, -10], wheelBase: 4, trackWidth: 2, wheelRadius: 0.5, steeringWheelIds: ['front-left', 'front-right'], rollingWheelIds: ['front-left', 'front-right'] } } },
-      'front-left': { id: 'front-left', parentId: 'car', components: {} },
-      'front-right': { id: 'front-right', parentId: 'car', components: {} },
-    },
-  };
-  const runtime = createRigidBodyRuntime({ scene, objects: new Map([['car', car], ['front-left', left], ['front-right', right]]) });
-  runtime.setSteering('car', 0.4);
-  runtime.step(0.1);
-  assert.ok(left.rotation.y > 0 && left.rotation.y < 0.4, 'steering should build progressively');
-  assert.ok(left.rotation.y > right.rotation.y, 'inside wheel should use the sharper Ackermann angle');
-  assert.ok(Math.abs(left.rotation.x) > 0, 'wheel pivots should roll with longitudinal travel');
-  assert.ok(Math.abs(left.rotation.x) < Math.abs(right.rotation.x), 'inside wheel should roll more slowly around a turn');
-  assert.ok(runtime.getBodyState('car').angularVelocity[1] > 0);
-  const forwardSpeed = Math.abs(runtime.getBodyState('car').forwardSpeed);
-  const lateralSpeed = Math.abs(runtime.getBodyState('car').lateralSpeed);
-  assert.ok(lateralSpeed < forwardSpeed * 0.01, 'tyre grip should keep velocity aligned with the car');
-
-  runtime.setVelocity('car', [0, 0, 10]);
-  runtime.step(0.1);
-  assert.ok(runtime.getBodyState('car').angularVelocity[1] < 0, 'reverse should invert the yaw response');
-
-  runtime.addForce('car', [0, 0, -1]);
-  runtime.reset();
-  assert.equal(left.rotation.y, 0);
-  assert.equal(right.rotation.y, 0);
-  assert.equal(left.rotation.x, 0);
-  assert.equal(right.rotation.x, 0);
-  assert.equal(runtime.getBodyState('car').steeringAngle, 0);
-  assert.equal(runtime.getBodyState('car').forceApplicationCount, 0);
 });

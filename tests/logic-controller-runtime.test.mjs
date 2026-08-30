@@ -235,34 +235,6 @@ test('local rigid-body force follows Self yaw for vehicle controls', () => {
   assert.ok(Math.abs(car.position.z) < 1e-9);
 });
 
-test('blueprint brakes reduce a controlled rigid body progressively', () => {
-  const car = object();
-  const graph = {
-    formatVersion: 1, id: 'blueprint/brake', domain: 'blueprint', outputs: {},
-    nodes: [
-      { id: 'space', type: 'event.onKeyDown', params: { key: 'Space' } },
-      { id: 'self', type: 'entity.self', params: {} },
-      { id: 'brake', type: 'physics.applyBrake', params: {}, inputs: { deceleration: 5 } },
-    ],
-    edges: [
-      { from: { nodeId: 'space', port: 'out' }, to: { nodeId: 'brake', port: 'in' } },
-      { from: { nodeId: 'self', port: 'entity' }, to: { nodeId: 'brake', port: 'entity' } },
-    ],
-  };
-  const scene = {
-    settings: { physics: { enabled: true, gravity: [0, 0, 0] }, controller: { enabled: true, entityId: 'car', activationKey: 'Enter' } },
-    entities: { car: { id: 'car', components: { logic: { graphIds: ['blueprint/brake'] }, rigidBody: { bodyType: 'dynamic', mass: 1, linearDamping: 0, velocity: [0, 0, -10] } } } },
-  };
-  assert.equal(validateGraph(graph).valid, true, JSON.stringify(validateGraph(graph).errors));
-  const runtime = createLogicControllerRuntime({ project: { resources: { graphs: { 'blueprint/brake': { graph } } } }, scene, objects: new Map([['car', car]]) });
-  runtime.activate();
-  runtime.keyDown('Space');
-  runtime.update(1);
-
-  assert.ok(runtime.status.physics.controlledBody.speed < 10);
-  assert.ok(runtime.status.physics.controlledBody.speed > 9);
-});
-
 test('releasing one held steering key does not block the opposite held key', () => {
   const graph = {
     formatVersion: 1, id: 'blueprint/combined-steering', domain: 'blueprint', outputs: {},
@@ -298,6 +270,41 @@ test('releasing one held steering key does not block the opposite held key', () 
 
   assert.deepEqual(runtime.status.heldKeys, ['KeyD']);
   assert.ok(runtime.status.physics.controlledBody.angularVelocity[1] < 0);
+});
+
+test('scene logic separates steering pivots from local-axis wheel rotation', () => {
+  const graph = {
+    formatVersion: 1, id: 'blueprint/generic-wheel-animation', domain: 'blueprint', outputs: {},
+    nodes: [
+      { id: 'w', type: 'event.onKeyDown', params: { key: 'KeyW' } },
+      { id: 'a', type: 'event.onKeyDown', params: { key: 'KeyA' } },
+      { id: 'tire-ref', type: 'entity.reference', params: { entityId: 'wheel/tire' } },
+      { id: 'pivot-ref', type: 'entity.reference', params: { entityId: 'wheel/pivot' } },
+      { id: 'roll', type: 'transform.rotate', params: { space: 'local' }, inputs: { radians: [0, 0, 0.2] } },
+      { id: 'steer', type: 'transform.set', params: {}, inputs: { rotation: [0, 0.35, 0] } },
+    ],
+    edges: [
+      ['w', 'out', 'roll', 'in'], ['tire-ref', 'entity', 'roll', 'entity'],
+      ['a', 'out', 'steer', 'in'], ['pivot-ref', 'entity', 'steer', 'entity'],
+    ].map(([fromNode, fromPort, toNode, toPort]) => ({ from: { nodeId: fromNode, port: fromPort }, to: { nodeId: toNode, port: toPort } })),
+  };
+  const car = object();
+  const pivot = object();
+  const tire = object(); tire.rotation.y = Math.PI / 2;
+  const runtime = createLogicControllerRuntime({
+    project: { resources: { graphs: { [graph.id]: { graph } } } },
+    scene: { settings: { controller: { enabled: true, entityId: 'car' } }, entities: {
+      car: { id: 'car', components: { logic: { graphIds: [graph.id] } } },
+      'wheel/pivot': { id: 'wheel/pivot', components: {} },
+      'wheel/tire': { id: 'wheel/tire', components: {} },
+    } },
+    objects: new Map([['car', car], ['wheel/pivot', pivot], ['wheel/tire', tire]]),
+  });
+  runtime.activate(); runtime.keyDown('KeyW'); runtime.keyDown('KeyA'); runtime.update(1 / 60);
+
+  assert.deepEqual(pivot.rotation.toArray(), [0, 0.35, 0]);
+  assert.equal(tire.rotation.y, Math.PI / 2);
+  assert.equal(tire.rotation.z, 0.2);
 });
 
 test('Self can reference its rigidBody and react to collision events', () => {

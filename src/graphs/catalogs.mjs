@@ -909,8 +909,6 @@ const blueprintNodes = [
   node('physics.setAngularVelocity', 'Set Angular Velocity', 'physics', { inputs: [execIn, entityIn, ['velocity', port('vec3', { required: true })]], outputs: [execOut] }),
   node('physics.addForce', 'Add Force', 'physics', { inputs: [execIn, entityIn, ['force', port('vec3', { required: true })]], outputs: [execOut], params: [['space', param('enum', { values: ['local', 'world'], default: 'world' })]] }),
   node('physics.addImpulse', 'Add Impulse', 'physics', { inputs: [execIn, entityIn, ['impulse', port('vec3', { required: true })]], outputs: [execOut], params: [['space', param('enum', { values: ['local', 'world'], default: 'world' })]] }),
-  node('physics.applyBrake', 'Apply Brake', 'physics', { inputs: [execIn, entityIn, ['deceleration', port('float', { required: true })]], outputs: [execOut] }),
-  node('physics.setSteering', 'Set Vehicle Steering', 'physics', { inputs: [execIn, entityIn, ['angle', port('float', { required: true })]], outputs: [execOut] }),
   node('physics.setGravityScale', 'Set Gravity Scale', 'physics', { inputs: [execIn, entityIn, ['scale', port('float', { required: true })]], outputs: [execOut] }),
   node('visibility.set', 'Set Visibility', 'entity', { inputs: [execIn, entityIn, ['visible', port('boolean', { required: true })]], outputs: [execOut] }),
   node('entity.spawn', 'Spawn', 'entity', { cost: 4, inputs: [execIn, ['position', port('vec3')]], outputs: [execOut, ['entity', port('entityId')]], params: [['prefabId', param('stableId', { required: true })]] }),
