@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildMeshElements, contentHash } from '../src/core/index.mjs';
+import { buildMeshElements, buildMeshSelection, contentHash } from '../src/core/index.mjs';
 
 const resource = {
   id: 'geometry/quad',
@@ -181,6 +181,28 @@ test('mesh filters page interiors without walking the whole mesh and guard the c
     }),
     error => error?.code === 'inspect_cursor_mismatch',
   );
+});
+
+test('mesh selection returns compact exact indices for spatial, normal, and material criteria', () => {
+  const selected = buildMeshSelection({
+    ...resource,
+    recipe: { ...resource.recipe, triangleMaterialIndices: [2, 5] },
+  }, {
+    element: 'faces',
+    meshFilter: {
+      center: [0.25, 0.25, 0],
+      radius: 0.75,
+      normal: [0, 0, 1],
+      minNormalDot: 0.99,
+      materialIndex: 2,
+    },
+  });
+  assert.deepEqual(selected.indices, [0]);
+  assert.equal(selected.matchedCount, 1);
+  assert.match(selected.selectionHash, /^[a-f0-9]{64}$/u);
+  assert.notEqual(selected.selectionHash, buildMeshSelection(resource, {
+    element: 'faces', meshFilter: { materialIndex: 0 },
+  }).selectionHash);
 });
 
 test('mesh inspection rejects procedural recipes instead of inspecting compiled approximations', () => {

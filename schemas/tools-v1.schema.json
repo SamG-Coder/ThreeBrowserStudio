@@ -138,6 +138,7 @@
               "sceneDigest",
               "resourceDigest",
               "meshElements",
+              "meshSelection",
               "graphDigest",
               "modifierDigest",
               "rtxDigest",
@@ -403,6 +404,43 @@
               },
               "boundary": {
                 "type": "boolean"
+              },
+              "nonManifold": {
+                "type": "boolean"
+              },
+              "sharp": {
+                "type": "boolean"
+              },
+              "minCrease": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "materialIndex": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 31
+              },
+              "center": {
+                "$ref": "#/$defs/toolSchemas/three_studio_inspect/$defs/__schema1"
+              },
+              "radius": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 1000000
+              },
+              "normal": {
+                "minItems": 3,
+                "maxItems": 3,
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/toolSchemas/three_studio_inspect/$defs/__schema2"
+                }
+              },
+              "minNormalDot": {
+                "type": "number",
+                "minimum": -1,
+                "maximum": 1
               },
               "notAdjacentTo": {
                 "maxItems": 64,
@@ -2306,1208 +2344,7 @@
                       "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
                     },
                     "edits": {
-                      "minItems": 1,
-                      "maxItems": 64,
-                      "type": "array",
-                      "items": {
-                        "anyOf": [
-                          {
-                            "anyOf": [
-                              {
-                                "type": "object",
-                                "properties": {
-                                  "type": {
-                                    "type": "string",
-                                    "const": "move"
-                                  },
-                                  "vertexIndices": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema22"
-                                  },
-                                  "offset": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
-                                  }
-                                },
-                                "required": [
-                                  "type",
-                                  "vertexIndices",
-                                  "offset"
-                                ],
-                                "additionalProperties": false
-                              },
-                              {
-                                "type": "object",
-                                "properties": {
-                                  "type": {
-                                    "type": "string",
-                                    "const": "move"
-                                  },
-                                  "selection": {
-                                    "type": "string",
-                                    "const": "all"
-                                  },
-                                  "offset": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
-                                  }
-                                },
-                                "required": [
-                                  "type",
-                                  "selection",
-                                  "offset"
-                                ],
-                                "additionalProperties": false
-                              }
-                            ]
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "proportionalMove"
-                              },
-                              "vertexIndices": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema22"
-                              },
-                              "selection": {
-                                "type": "string",
-                                "const": "all"
-                              },
-                              "center": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
-                              },
-                              "radius": {
-                                "type": "number",
-                                "exclusiveMinimum": 0,
-                                "maximum": 1000000
-                              },
-                              "offset": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
-                              },
-                              "falloff": {
-                                "type": "string",
-                                "enum": [
-                                  "constant",
-                                  "linear",
-                                  "smooth",
-                                  "sharp",
-                                  "sphere"
-                                ]
-                              },
-                              "axisScale": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema16"
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "center",
-                              "radius",
-                              "offset"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "sculptStroke"
-                              },
-                              "vertexIndices": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema22"
-                              },
-                              "selection": {
-                                "type": "string",
-                                "const": "all"
-                              },
-                              "stroke": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema17"
-                              },
-                              "brush": {
-                                "type": "string",
-                                "enum": [
-                                  "draw",
-                                  "inflate",
-                                  "crease",
-                                  "flatten",
-                                  "smooth",
-                                  "grab"
-                                ]
-                              },
-                              "amount": {
-                                "type": "number",
-                                "minimum": -10000,
-                                "maximum": 10000
-                              },
-                              "direction": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema20"
-                              },
-                              "falloff": {
-                                "type": "string",
-                                "enum": [
-                                  "constant",
-                                  "linear",
-                                  "smooth",
-                                  "sharp",
-                                  "sphere"
-                                ]
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "stroke"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "transformRegion"
-                              },
-                              "bounds": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema12"
-                              },
-                              "offset": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
-                              },
-                              "scale": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema37"
-                              },
-                              "rotation": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
-                              },
-                              "pivot": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "bounds"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "anyOf": [
-                              {
-                                "type": "object",
-                                "properties": {
-                                  "type": {
-                                    "type": "string",
-                                    "const": "scale"
-                                  },
-                                  "vertexIndices": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema22"
-                                  },
-                                  "scale": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema37"
-                                  },
-                                  "pivot": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema38"
-                                  }
-                                },
-                                "required": [
-                                  "type",
-                                  "vertexIndices",
-                                  "scale"
-                                ],
-                                "additionalProperties": false
-                              },
-                              {
-                                "type": "object",
-                                "properties": {
-                                  "type": {
-                                    "type": "string",
-                                    "const": "scale"
-                                  },
-                                  "selection": {
-                                    "type": "string",
-                                    "const": "all"
-                                  },
-                                  "scale": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema37"
-                                  },
-                                  "pivot": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema38"
-                                  }
-                                },
-                                "required": [
-                                  "type",
-                                  "selection",
-                                  "scale"
-                                ],
-                                "additionalProperties": false
-                              }
-                            ]
-                          },
-                          {
-                            "anyOf": [
-                              {
-                                "type": "object",
-                                "properties": {
-                                  "type": {
-                                    "type": "string",
-                                    "const": "rotate"
-                                  },
-                                  "vertexIndices": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema22"
-                                  },
-                                  "rotation": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
-                                  },
-                                  "pivot": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema39"
-                                  }
-                                },
-                                "required": [
-                                  "type",
-                                  "vertexIndices",
-                                  "rotation"
-                                ],
-                                "additionalProperties": false
-                              },
-                              {
-                                "type": "object",
-                                "properties": {
-                                  "type": {
-                                    "type": "string",
-                                    "const": "rotate"
-                                  },
-                                  "selection": {
-                                    "type": "string",
-                                    "const": "all"
-                                  },
-                                  "rotation": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
-                                  },
-                                  "pivot": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema39"
-                                  }
-                                },
-                                "required": [
-                                  "type",
-                                  "selection",
-                                  "rotation"
-                                ],
-                                "additionalProperties": false
-                              }
-                            ]
-                          },
-                          {
-                            "anyOf": [
-                              {
-                                "type": "object",
-                                "properties": {
-                                  "type": {
-                                    "type": "string",
-                                    "const": "rotate"
-                                  },
-                                  "vertexIndices": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema22"
-                                  },
-                                  "axis": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema20"
-                                  },
-                                  "angle": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema19"
-                                  },
-                                  "pivot": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema40"
-                                  }
-                                },
-                                "required": [
-                                  "type",
-                                  "vertexIndices",
-                                  "axis",
-                                  "angle"
-                                ],
-                                "additionalProperties": false
-                              },
-                              {
-                                "type": "object",
-                                "properties": {
-                                  "type": {
-                                    "type": "string",
-                                    "const": "rotate"
-                                  },
-                                  "selection": {
-                                    "type": "string",
-                                    "const": "all"
-                                  },
-                                  "axis": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema20"
-                                  },
-                                  "angle": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema19"
-                                  },
-                                  "pivot": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema40"
-                                  }
-                                },
-                                "required": [
-                                  "type",
-                                  "selection",
-                                  "axis",
-                                  "angle"
-                                ],
-                                "additionalProperties": false
-                              }
-                            ]
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "smooth"
-                              },
-                              "vertexIndices": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema22"
-                              },
-                              "selection": {
-                                "type": "string",
-                                "const": "all"
-                              },
-                              "iterations": {
-                                "type": "integer",
-                                "minimum": 1,
-                                "maximum": 100
-                              },
-                              "factor": {
-                                "type": "number",
-                                "minimum": 0,
-                                "maximum": 1
-                              },
-                              "preserveBoundary": {
-                                "type": "boolean"
-                              }
-                            },
-                            "required": [
-                              "type"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "recalculateNormals"
-                              }
-                            },
-                            "required": [
-                              "type"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "weld"
-                              },
-                              "tolerance": {
-                                "type": "number",
-                                "minimum": 1e-9,
-                                "maximum": 1000000
-                              }
-                            },
-                            "required": [
-                              "type"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "triangulate"
-                              }
-                            },
-                            "required": [
-                              "type"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "anyOf": [
-                              {
-                                "type": "object",
-                                "properties": {
-                                  "type": {
-                                    "type": "string",
-                                    "const": "subdivideFaces"
-                                  },
-                                  "faceIndices": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema41"
-                                  }
-                                },
-                                "required": [
-                                  "type",
-                                  "faceIndices"
-                                ],
-                                "additionalProperties": false
-                              },
-                              {
-                                "type": "object",
-                                "properties": {
-                                  "type": {
-                                    "type": "string",
-                                    "const": "subdivideFaces"
-                                  },
-                                  "selection": {
-                                    "type": "string",
-                                    "const": "all"
-                                  }
-                                },
-                                "required": [
-                                  "type",
-                                  "selection"
-                                ],
-                                "additionalProperties": false
-                              }
-                            ]
-                          },
-                          {
-                            "anyOf": [
-                              {
-                                "type": "object",
-                                "properties": {
-                                  "type": {
-                                    "type": "string",
-                                    "const": "insetFaces"
-                                  },
-                                  "faceIndices": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema41"
-                                  },
-                                  "factor": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema42"
-                                  }
-                                },
-                                "required": [
-                                  "type",
-                                  "faceIndices"
-                                ],
-                                "additionalProperties": false
-                              },
-                              {
-                                "type": "object",
-                                "properties": {
-                                  "type": {
-                                    "type": "string",
-                                    "const": "insetFaces"
-                                  },
-                                  "selection": {
-                                    "type": "string",
-                                    "const": "all"
-                                  },
-                                  "factor": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema42"
-                                  }
-                                },
-                                "required": [
-                                  "type",
-                                  "selection"
-                                ],
-                                "additionalProperties": false
-                              }
-                            ]
-                          },
-                          {
-                            "anyOf": [
-                              {
-                                "type": "object",
-                                "properties": {
-                                  "type": {
-                                    "type": "string",
-                                    "const": "extrudeFaces"
-                                  },
-                                  "faceIndices": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema41"
-                                  },
-                                  "mode": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema43"
-                                  },
-                                  "offset": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema44"
-                                  },
-                                  "distance": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema45"
-                                  },
-                                  "sideMaterialIndex": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema46"
-                                  }
-                                },
-                                "required": [
-                                  "type",
-                                  "faceIndices"
-                                ],
-                                "additionalProperties": false
-                              },
-                              {
-                                "type": "object",
-                                "properties": {
-                                  "type": {
-                                    "type": "string",
-                                    "const": "extrudeFaces"
-                                  },
-                                  "selection": {
-                                    "type": "string",
-                                    "const": "all"
-                                  },
-                                  "mode": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema43"
-                                  },
-                                  "offset": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema44"
-                                  },
-                                  "distance": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema45"
-                                  },
-                                  "sideMaterialIndex": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema46"
-                                  }
-                                },
-                                "required": [
-                                  "type",
-                                  "selection"
-                                ],
-                                "additionalProperties": false
-                              }
-                            ]
-                          },
-                          {
-                            "anyOf": [
-                              {
-                                "type": "object",
-                                "properties": {
-                                  "type": {
-                                    "type": "string",
-                                    "const": "bevelEdges"
-                                  },
-                                  "edges": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema47"
-                                  },
-                                  "factor": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema48"
-                                  },
-                                  "materialIndex": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema49"
-                                  }
-                                },
-                                "required": [
-                                  "type",
-                                  "edges"
-                                ],
-                                "additionalProperties": false
-                              },
-                              {
-                                "type": "object",
-                                "properties": {
-                                  "type": {
-                                    "type": "string",
-                                    "const": "bevelEdges"
-                                  },
-                                  "edgeVertexIndices": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema47"
-                                  },
-                                  "factor": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema48"
-                                  },
-                                  "materialIndex": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema49"
-                                  }
-                                },
-                                "required": [
-                                  "type",
-                                  "edgeVertexIndices"
-                                ],
-                                "additionalProperties": false
-                              }
-                            ]
-                          },
-                          {
-                            "anyOf": [
-                              {
-                                "type": "object",
-                                "properties": {
-                                  "type": {
-                                    "type": "string",
-                                    "const": "deleteFaces"
-                                  },
-                                  "faceIndices": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema41"
-                                  }
-                                },
-                                "required": [
-                                  "type",
-                                  "faceIndices"
-                                ],
-                                "additionalProperties": false
-                              },
-                              {
-                                "type": "object",
-                                "properties": {
-                                  "type": {
-                                    "type": "string",
-                                    "const": "deleteFaces"
-                                  },
-                                  "selection": {
-                                    "type": "string",
-                                    "const": "all"
-                                  }
-                                },
-                                "required": [
-                                  "type",
-                                  "selection"
-                                ],
-                                "additionalProperties": false
-                              }
-                            ]
-                          },
-                          {
-                            "anyOf": [
-                              {
-                                "type": "object",
-                                "properties": {
-                                  "type": {
-                                    "type": "string",
-                                    "const": "mergeVertices"
-                                  },
-                                  "vertexIndices": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema22"
-                                  },
-                                  "targetVertexIndex": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema50"
-                                  },
-                                  "position": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema51"
-                                  }
-                                },
-                                "required": [
-                                  "type",
-                                  "vertexIndices"
-                                ],
-                                "additionalProperties": false
-                              },
-                              {
-                                "type": "object",
-                                "properties": {
-                                  "type": {
-                                    "type": "string",
-                                    "const": "mergeVertices"
-                                  },
-                                  "selection": {
-                                    "type": "string",
-                                    "const": "all"
-                                  },
-                                  "targetVertexIndex": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema50"
-                                  },
-                                  "position": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema51"
-                                  }
-                                },
-                                "required": [
-                                  "type",
-                                  "selection"
-                                ],
-                                "additionalProperties": false
-                              }
-                            ]
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "createUvLayer"
-                              },
-                              "name": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
-                              },
-                              "fill": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema52"
-                              },
-                              "values": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema54"
-                              },
-                              "setActive": {
-                                "type": "boolean"
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "name"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "deleteUvLayer"
-                              },
-                              "name": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
-                              },
-                              "nextActiveLayer": {
-                                "anyOf": [
-                                  {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
-                                  },
-                                  {
-                                    "type": "null"
-                                  }
-                                ]
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "name"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "renameUvLayer"
-                              },
-                              "name": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
-                              },
-                              "newName": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "name",
-                              "newName"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "setActiveUvLayer"
-                              },
-                              "name": {
-                                "anyOf": [
-                                  {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
-                                  },
-                                  {
-                                    "type": "null"
-                                  }
-                                ]
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "name"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "setCornerUvs"
-                              },
-                              "layer": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
-                              },
-                              "cornerIndices": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema55"
-                              },
-                              "values": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema54"
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "layer",
-                              "cornerIndices",
-                              "values"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "transformUvs"
-                              },
-                              "layer": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
-                              },
-                              "cornerIndices": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema55"
-                              },
-                              "translation": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema52"
-                              },
-                              "scale": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema56"
-                              },
-                              "rotation": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema19"
-                              },
-                              "pivot": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema52"
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "layer",
-                              "cornerIndices"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "projectUvs"
-                              },
-                              "layer": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
-                              },
-                              "cornerIndices": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema55"
-                              },
-                              "projection": {
-                                "type": "string",
-                                "enum": [
-                                  "planar",
-                                  "box",
-                                  "cylindrical",
-                                  "spherical"
-                                ]
-                              },
-                              "axis": {
-                                "type": "string",
-                                "enum": [
-                                  "xy",
-                                  "xz",
-                                  "yz",
-                                  "x",
-                                  "y",
-                                  "z"
-                                ]
-                              },
-                              "center": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
-                              },
-                              "scale": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema56"
-                              },
-                              "offset": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema52"
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "layer",
-                              "cornerIndices"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "createColorLayer"
-                              },
-                              "name": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
-                              },
-                              "fill": {
-                                "minItems": 4,
-                                "maxItems": 4,
-                                "type": "array",
-                                "items": {
-                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema57"
-                                }
-                              },
-                              "values": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema58"
-                              },
-                              "setActive": {
-                                "type": "boolean"
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "name"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "deleteColorLayer"
-                              },
-                              "name": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
-                              },
-                              "nextActiveLayer": {
-                                "anyOf": [
-                                  {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
-                                  },
-                                  {
-                                    "type": "null"
-                                  }
-                                ]
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "name"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "renameColorLayer"
-                              },
-                              "name": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
-                              },
-                              "newName": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "name",
-                              "newName"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "setActiveColorLayer"
-                              },
-                              "name": {
-                                "anyOf": [
-                                  {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
-                                  },
-                                  {
-                                    "type": "null"
-                                  }
-                                ]
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "name"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "setCornerColors"
-                              },
-                              "layer": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
-                              },
-                              "cornerIndices": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema55"
-                              },
-                              "values": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema58"
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "layer",
-                              "cornerIndices",
-                              "values"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "paintColorStroke"
-                              },
-                              "stroke": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema17"
-                              },
-                              "layer": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
-                              },
-                              "color": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema21"
-                              },
-                              "opacity": {
-                                "type": "number",
-                                "minimum": 0,
-                                "maximum": 1
-                              },
-                              "blend": {
-                                "type": "string",
-                                "enum": [
-                                  "mix",
-                                  "add",
-                                  "subtract",
-                                  "multiply",
-                                  "lighten",
-                                  "darken"
-                                ]
-                              },
-                              "falloff": {
-                                "type": "string",
-                                "enum": [
-                                  "constant",
-                                  "linear",
-                                  "smooth",
-                                  "sharp",
-                                  "sphere"
-                                ]
-                              },
-                              "setActive": {
-                                "type": "boolean"
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "stroke",
-                              "layer"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "assignFaceMaterials"
-                              },
-                              "faceIndices": {
-                                "anyOf": [
-                                  {
-                                    "type": "string",
-                                    "const": "all"
-                                  },
-                                  {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema41"
-                                  }
-                                ]
-                              },
-                              "materialIndex": {
-                                "type": "integer",
-                                "minimum": 0,
-                                "maximum": 255
-                              },
-                              "materialIndices": {
-                                "minItems": 1,
-                                "maxItems": 20000,
-                                "type": "array",
-                                "items": {
-                                  "type": "integer",
-                                  "minimum": 0,
-                                  "maximum": 255
-                                }
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "faceIndices"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "setSharpEdges"
-                              },
-                              "edges": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema59"
-                              },
-                              "sharp": {
-                                "type": "boolean"
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "edges",
-                              "sharp"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "setEdgeCreases"
-                              },
-                              "edges": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema59"
-                              },
-                              "weight": {
-                                "type": "number",
-                                "minimum": 0,
-                                "maximum": 1
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "edges",
-                              "weight"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "removeEdgeCreases"
-                              },
-                              "edges": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema59"
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "edges"
-                            ],
-                            "additionalProperties": false
-                          }
-                        ]
-                      }
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema37"
                     },
                     "expectedTopologyHash": {
                       "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
@@ -3578,7 +2415,7 @@
                                     }
                                   },
                                   "transform": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema60"
+                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema61"
                                   }
                                 },
                                 "required": [
@@ -3621,7 +2458,7 @@
                                     }
                                   },
                                   "transform": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema60"
+                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema61"
                                   }
                                 },
                                 "additionalProperties": false
@@ -3693,6 +2530,107 @@
                   "properties": {
                     "op": {
                       "type": "string",
+                      "const": "geometry.selection.edit"
+                    },
+                    "resourceId": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                    },
+                    "element": {
+                      "type": "string",
+                      "enum": [
+                        "vertices",
+                        "faces"
+                      ]
+                    },
+                    "meshFilter": {
+                      "type": "object",
+                      "properties": {
+                        "min": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema10"
+                        },
+                        "max": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema10"
+                        },
+                        "yMin": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema3"
+                        },
+                        "yMax": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema3"
+                        },
+                        "boundary": {
+                          "type": "boolean"
+                        },
+                        "nonManifold": {
+                          "type": "boolean"
+                        },
+                        "sharp": {
+                          "type": "boolean"
+                        },
+                        "minCrease": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1
+                        },
+                        "materialIndex": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 31
+                        },
+                        "center": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema10"
+                        },
+                        "radius": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 1000000
+                        },
+                        "normal": {
+                          "minItems": 3,
+                          "maxItems": 3,
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema3"
+                          }
+                        },
+                        "minNormalDot": {
+                          "type": "number",
+                          "minimum": -1,
+                          "maximum": 1
+                        },
+                        "notAdjacentTo": {
+                          "maxItems": 64,
+                          "type": "array",
+                          "items": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 1000000
+                          }
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "expectedSelectionHash": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
+                    },
+                    "edits": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema37"
+                    }
+                  },
+                  "required": [
+                    "op",
+                    "resourceId",
+                    "element",
+                    "meshFilter",
+                    "expectedSelectionHash",
+                    "edits"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "op": {
+                      "type": "string",
                       "const": "material.variant.create"
                     },
                     "baseMaterialId": {
@@ -3702,7 +2640,7 @@
                       "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
                     },
                     "patch": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema61"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema62"
                     },
                     "alias": {
                       "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
@@ -3724,10 +2662,10 @@
                       "const": "resource.create"
                     },
                     "resourceType": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema63"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema64"
                     },
                     "resource": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema61"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema62"
                     },
                     "alias": {
                       "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
@@ -3755,10 +2693,10 @@
                         "type": "object",
                         "properties": {
                           "resourceType": {
-                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema63"
+                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema64"
                           },
                           "resource": {
-                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema61"
+                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema62"
                           },
                           "alias": {
                             "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
@@ -3786,13 +2724,13 @@
                       "const": "resource.patch"
                     },
                     "resourceType": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema63"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema64"
                     },
                     "resourceId": {
                       "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
                     },
                     "patch": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema61"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema62"
                     }
                   },
                   "required": [
@@ -3811,7 +2749,7 @@
                       "const": "resource.delete"
                     },
                     "resourceType": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema63"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema64"
                     },
                     "resourceId": {
                       "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
@@ -6342,6 +5280,1210 @@
             ]
           },
           "__schema37": {
+            "minItems": 1,
+            "maxItems": 64,
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "move"
+                        },
+                        "vertexIndices": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema22"
+                        },
+                        "offset": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "vertexIndices",
+                        "offset"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "move"
+                        },
+                        "selection": {
+                          "type": "string",
+                          "const": "all"
+                        },
+                        "offset": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "selection",
+                        "offset"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "proportionalMove"
+                    },
+                    "vertexIndices": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema22"
+                    },
+                    "selection": {
+                      "type": "string",
+                      "const": "all"
+                    },
+                    "center": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
+                    },
+                    "radius": {
+                      "type": "number",
+                      "exclusiveMinimum": 0,
+                      "maximum": 1000000
+                    },
+                    "offset": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
+                    },
+                    "falloff": {
+                      "type": "string",
+                      "enum": [
+                        "constant",
+                        "linear",
+                        "smooth",
+                        "sharp",
+                        "sphere"
+                      ]
+                    },
+                    "axisScale": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema16"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "center",
+                    "radius",
+                    "offset"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "sculptStroke"
+                    },
+                    "vertexIndices": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema22"
+                    },
+                    "selection": {
+                      "type": "string",
+                      "const": "all"
+                    },
+                    "stroke": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema17"
+                    },
+                    "brush": {
+                      "type": "string",
+                      "enum": [
+                        "draw",
+                        "inflate",
+                        "crease",
+                        "flatten",
+                        "smooth",
+                        "grab"
+                      ]
+                    },
+                    "amount": {
+                      "type": "number",
+                      "minimum": -10000,
+                      "maximum": 10000
+                    },
+                    "direction": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema20"
+                    },
+                    "falloff": {
+                      "type": "string",
+                      "enum": [
+                        "constant",
+                        "linear",
+                        "smooth",
+                        "sharp",
+                        "sphere"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "stroke"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "transformRegion"
+                    },
+                    "bounds": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema12"
+                    },
+                    "offset": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
+                    },
+                    "scale": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema38"
+                    },
+                    "rotation": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
+                    },
+                    "pivot": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "bounds"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "scale"
+                        },
+                        "vertexIndices": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema22"
+                        },
+                        "scale": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema38"
+                        },
+                        "pivot": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema39"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "vertexIndices",
+                        "scale"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "scale"
+                        },
+                        "selection": {
+                          "type": "string",
+                          "const": "all"
+                        },
+                        "scale": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema38"
+                        },
+                        "pivot": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema39"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "selection",
+                        "scale"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "rotate"
+                        },
+                        "vertexIndices": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema22"
+                        },
+                        "rotation": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
+                        },
+                        "pivot": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema40"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "vertexIndices",
+                        "rotation"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "rotate"
+                        },
+                        "selection": {
+                          "type": "string",
+                          "const": "all"
+                        },
+                        "rotation": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
+                        },
+                        "pivot": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema40"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "selection",
+                        "rotation"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "rotate"
+                        },
+                        "vertexIndices": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema22"
+                        },
+                        "axis": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema20"
+                        },
+                        "angle": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema19"
+                        },
+                        "pivot": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema41"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "vertexIndices",
+                        "axis",
+                        "angle"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "rotate"
+                        },
+                        "selection": {
+                          "type": "string",
+                          "const": "all"
+                        },
+                        "axis": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema20"
+                        },
+                        "angle": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema19"
+                        },
+                        "pivot": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema41"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "selection",
+                        "axis",
+                        "angle"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "smooth"
+                    },
+                    "vertexIndices": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema22"
+                    },
+                    "selection": {
+                      "type": "string",
+                      "const": "all"
+                    },
+                    "iterations": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100
+                    },
+                    "factor": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "preserveBoundary": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "recalculateNormals"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "weld"
+                    },
+                    "tolerance": {
+                      "type": "number",
+                      "minimum": 1e-9,
+                      "maximum": 1000000
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "triangulate"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "subdivideFaces"
+                        },
+                        "faceIndices": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema42"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "faceIndices"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "subdivideFaces"
+                        },
+                        "selection": {
+                          "type": "string",
+                          "const": "all"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "selection"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "insetFaces"
+                        },
+                        "faceIndices": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema42"
+                        },
+                        "factor": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema43"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "faceIndices"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "insetFaces"
+                        },
+                        "selection": {
+                          "type": "string",
+                          "const": "all"
+                        },
+                        "factor": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema43"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "selection"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "extrudeFaces"
+                        },
+                        "faceIndices": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema42"
+                        },
+                        "mode": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema44"
+                        },
+                        "offset": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema45"
+                        },
+                        "distance": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema46"
+                        },
+                        "sideMaterialIndex": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema47"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "faceIndices"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "extrudeFaces"
+                        },
+                        "selection": {
+                          "type": "string",
+                          "const": "all"
+                        },
+                        "mode": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema44"
+                        },
+                        "offset": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema45"
+                        },
+                        "distance": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema46"
+                        },
+                        "sideMaterialIndex": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema47"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "selection"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "bevelEdges"
+                        },
+                        "edges": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema48"
+                        },
+                        "factor": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema49"
+                        },
+                        "materialIndex": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema50"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "edges"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "bevelEdges"
+                        },
+                        "edgeVertexIndices": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema48"
+                        },
+                        "factor": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema49"
+                        },
+                        "materialIndex": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema50"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "edgeVertexIndices"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "deleteFaces"
+                        },
+                        "faceIndices": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema42"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "faceIndices"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "deleteFaces"
+                        },
+                        "selection": {
+                          "type": "string",
+                          "const": "all"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "selection"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "mergeVertices"
+                        },
+                        "vertexIndices": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema22"
+                        },
+                        "targetVertexIndex": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema51"
+                        },
+                        "position": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema52"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "vertexIndices"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "mergeVertices"
+                        },
+                        "selection": {
+                          "type": "string",
+                          "const": "all"
+                        },
+                        "targetVertexIndex": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema51"
+                        },
+                        "position": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema52"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "selection"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "createUvLayer"
+                    },
+                    "name": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
+                    },
+                    "fill": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema53"
+                    },
+                    "values": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema55"
+                    },
+                    "setActive": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "deleteUvLayer"
+                    },
+                    "name": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
+                    },
+                    "nextActiveLayer": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "renameUvLayer"
+                    },
+                    "name": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
+                    },
+                    "newName": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "name",
+                    "newName"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "setActiveUvLayer"
+                    },
+                    "name": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "setCornerUvs"
+                    },
+                    "layer": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
+                    },
+                    "cornerIndices": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema56"
+                    },
+                    "values": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema55"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "layer",
+                    "cornerIndices",
+                    "values"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "transformUvs"
+                    },
+                    "layer": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
+                    },
+                    "cornerIndices": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema56"
+                    },
+                    "translation": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema53"
+                    },
+                    "scale": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema57"
+                    },
+                    "rotation": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema19"
+                    },
+                    "pivot": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema53"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "layer",
+                    "cornerIndices"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "projectUvs"
+                    },
+                    "layer": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
+                    },
+                    "cornerIndices": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema56"
+                    },
+                    "projection": {
+                      "type": "string",
+                      "enum": [
+                        "planar",
+                        "box",
+                        "cylindrical",
+                        "spherical"
+                      ]
+                    },
+                    "axis": {
+                      "type": "string",
+                      "enum": [
+                        "xy",
+                        "xz",
+                        "yz",
+                        "x",
+                        "y",
+                        "z"
+                      ]
+                    },
+                    "center": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
+                    },
+                    "scale": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema57"
+                    },
+                    "offset": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema53"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "layer",
+                    "cornerIndices"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "createColorLayer"
+                    },
+                    "name": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
+                    },
+                    "fill": {
+                      "minItems": 4,
+                      "maxItems": 4,
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema58"
+                      }
+                    },
+                    "values": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema59"
+                    },
+                    "setActive": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "deleteColorLayer"
+                    },
+                    "name": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
+                    },
+                    "nextActiveLayer": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "renameColorLayer"
+                    },
+                    "name": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
+                    },
+                    "newName": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "name",
+                    "newName"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "setActiveColorLayer"
+                    },
+                    "name": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "setCornerColors"
+                    },
+                    "layer": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
+                    },
+                    "cornerIndices": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema56"
+                    },
+                    "values": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema59"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "layer",
+                    "cornerIndices",
+                    "values"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "paintColorStroke"
+                    },
+                    "stroke": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema17"
+                    },
+                    "layer": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
+                    },
+                    "color": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema21"
+                    },
+                    "opacity": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "blend": {
+                      "type": "string",
+                      "enum": [
+                        "mix",
+                        "add",
+                        "subtract",
+                        "multiply",
+                        "lighten",
+                        "darken"
+                      ]
+                    },
+                    "falloff": {
+                      "type": "string",
+                      "enum": [
+                        "constant",
+                        "linear",
+                        "smooth",
+                        "sharp",
+                        "sphere"
+                      ]
+                    },
+                    "setActive": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "stroke",
+                    "layer"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "assignFaceMaterials"
+                    },
+                    "faceIndices": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "const": "all"
+                        },
+                        {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema42"
+                        }
+                      ]
+                    },
+                    "materialIndex": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 255
+                    },
+                    "materialIndices": {
+                      "minItems": 1,
+                      "maxItems": 20000,
+                      "type": "array",
+                      "items": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 255
+                      }
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "faceIndices"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "setSharpEdges"
+                    },
+                    "edges": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema60"
+                    },
+                    "sharp": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "edges",
+                    "sharp"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "setEdgeCreases"
+                    },
+                    "edges": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema60"
+                    },
+                    "weight": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "edges",
+                    "weight"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "removeEdgeCreases"
+                    },
+                    "edges": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema60"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "edges"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "__schema38": {
             "anyOf": [
               {
                 "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema19"
@@ -6351,9 +6493,6 @@
               }
             ]
           },
-          "__schema38": {
-            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
-          },
           "__schema39": {
             "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
           },
@@ -6361,6 +6500,9 @@
             "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
           },
           "__schema41": {
+            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
+          },
+          "__schema42": {
             "minItems": 1,
             "maxItems": 20000,
             "type": "array",
@@ -6370,27 +6512,27 @@
               "maximum": 999999
             }
           },
-          "__schema42": {
+          "__schema43": {
             "type": "number",
             "exclusiveMinimum": 0,
             "exclusiveMaximum": 1
           },
-          "__schema43": {
+          "__schema44": {
             "type": "string",
             "const": "individual"
           },
-          "__schema44": {
+          "__schema45": {
             "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
           },
-          "__schema45": {
+          "__schema46": {
             "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema19"
           },
-          "__schema46": {
+          "__schema47": {
             "type": "integer",
             "minimum": 0,
             "maximum": 255
           },
-          "__schema47": {
+          "__schema48": {
             "minItems": 1,
             "maxItems": 20000,
             "type": "array",
@@ -6405,50 +6547,50 @@
               }
             }
           },
-          "__schema48": {
+          "__schema49": {
             "type": "number",
             "exclusiveMinimum": 0,
             "exclusiveMaximum": 0.5
           },
-          "__schema49": {
+          "__schema50": {
             "type": "integer",
             "minimum": 0,
             "maximum": 255
           },
-          "__schema50": {
+          "__schema51": {
             "type": "integer",
             "minimum": 0,
             "maximum": 999999
           },
-          "__schema51": {
+          "__schema52": {
             "type": "string",
             "enum": [
               "average",
               "target"
             ]
           },
-          "__schema52": {
+          "__schema53": {
             "minItems": 2,
             "maxItems": 2,
             "type": "array",
             "items": {
-              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema53"
+              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema54"
             }
           },
-          "__schema53": {
+          "__schema54": {
             "type": "number",
             "minimum": -1000000,
             "maximum": 1000000
           },
-          "__schema54": {
+          "__schema55": {
             "minItems": 2,
             "maxItems": 2000000,
             "type": "array",
             "items": {
-              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema53"
+              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema54"
             }
           },
-          "__schema55": {
+          "__schema56": {
             "anyOf": [
               {
                 "type": "string",
@@ -6466,41 +6608,41 @@
               }
             ]
           },
-          "__schema56": {
+          "__schema57": {
             "anyOf": [
               {
-                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema53"
+                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema54"
               },
               {
-                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema52"
+                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema53"
               }
             ]
           },
-          "__schema57": {
+          "__schema58": {
             "type": "number",
             "minimum": 0,
             "maximum": 1
           },
-          "__schema58": {
+          "__schema59": {
             "minItems": 4,
             "maxItems": 4000000,
             "type": "array",
             "items": {
-              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema57"
+              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema58"
             }
           },
-          "__schema59": {
+          "__schema60": {
             "anyOf": [
               {
                 "type": "string",
                 "const": "all"
               },
               {
-                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema47"
+                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema48"
               }
             ]
           },
-          "__schema60": {
+          "__schema61": {
             "type": "object",
             "properties": {
               "translation": {
@@ -6515,17 +6657,17 @@
             },
             "additionalProperties": false
           },
-          "__schema61": {
+          "__schema62": {
             "type": "object",
             "propertyNames": {
               "type": "string",
               "maxLength": 160
             },
             "additionalProperties": {
-              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema62"
+              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema63"
             }
           },
-          "__schema62": {
+          "__schema63": {
             "anyOf": [
               {
                 "type": "null"
@@ -6544,7 +6686,7 @@
                 "maxItems": 6000000,
                 "type": "array",
                 "items": {
-                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema62"
+                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema63"
                 }
               },
               {
@@ -6554,12 +6696,12 @@
                   "maxLength": 160
                 },
                 "additionalProperties": {
-                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema62"
+                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema63"
                 }
               }
             ]
           },
-          "__schema63": {
+          "__schema64": {
             "type": "string",
             "enum": [
               "geometries",

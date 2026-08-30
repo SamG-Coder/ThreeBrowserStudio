@@ -5,6 +5,7 @@ import {
   AuthoringKernel,
   buildBeautyDigest,
   buildMeshElements,
+  buildMeshSelection,
   buildProjectVisibility,
   MAX_INSPECT_RESPONSE_BYTES,
   ProjectIndex,
@@ -695,6 +696,48 @@ function materializeLoftEditOperation(operation, document) {
     resourceType: 'geometries',
     resourceId: operation.resourceId,
     patch: { recipe: { sections } },
+  };
+}
+
+const VERTEX_SELECTION_EDIT_TYPES = new Set([
+  'move', 'proportionalMove', 'sculptStroke', 'scale', 'rotate', 'smooth', 'mergeVertices',
+]);
+const FACE_SELECTION_EDIT_TYPES = new Set([
+  'subdivideFaces', 'insetFaces', 'extrudeFaces', 'deleteFaces', 'assignFaceMaterials',
+]);
+
+function materializeGeometrySelectionEdit(operation, document) {
+  const { resource } = new ProjectIndex(document).getResource(operation.resourceId, 'geometries');
+  const selection = buildMeshSelection(resource, {
+    element: operation.element,
+    meshFilter: operation.meshFilter,
+  });
+  if (selection.selectionHash !== operation.expectedSelectionHash) {
+    throw new StudioError('mesh_selection_conflict', 'The semantic mesh selection changed after inspection.', {
+      expectedSelectionHash: operation.expectedSelectionHash,
+      actualSelectionHash: selection.selectionHash,
+      matchedCount: selection.matchedCount,
+    });
+  }
+  if (selection.indices.length === 0) throw new StudioError('empty_selection', 'The semantic mesh selection matched no elements.');
+  const allowed = operation.element === 'vertices' ? VERTEX_SELECTION_EDIT_TYPES : FACE_SELECTION_EDIT_TYPES;
+  const field = operation.element === 'vertices' ? 'vertexIndices' : 'faceIndices';
+  const edits = operation.edits.map(edit => {
+    if (!allowed.has(edit.type)) {
+      throw new StudioError('selection_domain_mismatch', `${edit.type} does not accept a ${operation.element} semantic selection.`);
+    }
+    const materialized = structuredClone(edit);
+    delete materialized.selection;
+    delete materialized.vertexIndices;
+    delete materialized.faceIndices;
+    materialized[field] = selection.indices;
+    return materialized;
+  });
+  return {
+    type: 'geometry.edit',
+    resourceId: operation.resourceId,
+    expectedTopologyHash: selection.topologyHash,
+    edits,
   };
 }
 
@@ -1880,6 +1923,19 @@ export class StudioApplication {
         }),
       };
     }
+    if (params.query === 'meshSelection') {
+      const resourceId = params.selector.ids[0];
+      const { resource } = new ProjectIndex(document).getResource(resourceId, 'geometries');
+      return {
+        success: true,
+        revision: document.revision,
+        projectId: document.projectId,
+        ...buildMeshSelection(resource, {
+          element: params.element,
+          meshFilter: params.meshFilter,
+        }),
+      };
+    }
     if (params.query === 'graphDigest') {
       const resourceId = params.selector.ids[0];
       const { resource } = new ProjectIndex(document).getResource(resourceId, 'graphs');
@@ -2117,6 +2173,8 @@ export class StudioApplication {
         ? materializeGeometryRealizeOperation(operation, { document: translationDocument, THREE: this.#THREE })
         : operation.op === 'geometry.loft.edit'
           ? materializeLoftEditOperation(operation, translationDocument)
+          : operation.op === 'geometry.selection.edit'
+            ? materializeGeometrySelectionEdit(operation, translationDocument)
           : translateToolOperation(operation, translationDocument);
       for (const candidateValue of (Array.isArray(translated) ? translated : [translated])) {
         const candidate = materializeCameraFrameOperation(candidateValue, { compiled: this.#compiled, THREE: this.#THREE });

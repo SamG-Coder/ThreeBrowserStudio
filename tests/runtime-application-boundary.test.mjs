@@ -922,6 +922,35 @@ test('geometry.realize turns a procedural resource into editable vertices in the
     { type: 'resource.create', count: 1 },
     { type: 'resource.patch', count: 2 },
   ]);
+
+  const selection = await application.dispatch('three_studio_inspect', {
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    query: 'meshSelection',
+    selector: { ids: ['geometry/realized-loft'] },
+    element: 'vertices',
+    meshFilter: { center: [0, 0, 2], radius: 0.8 },
+  });
+  assert.ok(selection.matchedCount > 0);
+  assert.ok(selection.indices.length < recipe.positions.length / 3);
+  const edited = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1',
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    baseRevision: 1,
+    idempotencyKey: 'semantic-edit-loft-0001',
+    label: 'Move the selected crown vertices',
+    operations: [{
+      op: 'geometry.selection.edit',
+      resourceId: 'geometry/realized-loft',
+      element: 'vertices',
+      meshFilter: { center: [0, 0, 2], radius: 0.8 },
+      expectedSelectionHash: selection.selectionHash,
+      edits: [{ type: 'move', selection: 'all', offset: [0, 0, 0.25] }],
+    }],
+  });
+  assert.equal(edited.success, true);
+  assert.deepEqual(edited.authoring.loweredOperationTypes, [{ type: 'geometry.edit', count: 1 }]);
 });
 
 test('dry-run apply retains one guarded candidate and promotes it without a second compile', async (t) => {

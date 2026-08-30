@@ -117,7 +117,7 @@ export const INSPECT_SLICES = Object.freeze([
 ]);
 
 export const INSPECT_QUERIES = Object.freeze([
-  'selector', 'sceneDigest', 'resourceDigest', 'meshElements', 'graphDigest', 'modifierDigest', 'rtxDigest', 'changedSinceRevision',
+  'selector', 'sceneDigest', 'resourceDigest', 'meshElements', 'meshSelection', 'graphDigest', 'modifierDigest', 'rtxDigest', 'changedSinceRevision',
   'unresolvedResources', 'unusedResources', 'graphCatalog', 'playState',
   'latestEvidence', 'blenderCatalog', 'beautyDigest', 'projectVisibility',
   'operationCatalog', 'geometryCatalog',
@@ -163,6 +163,14 @@ const inspectMeshFilterSchema = z.object({
   yMin: finite.optional(),
   yMax: finite.optional(),
   boundary: z.boolean().optional(),
+  nonManifold: z.boolean().optional(),
+  sharp: z.boolean().optional(),
+  minCrease: z.number().finite().min(0).max(1).optional(),
+  materialIndex: z.number().int().min(0).max(31).optional(),
+  center: vec3.optional(),
+  radius: z.number().finite().gt(0).max(1_000_000).optional(),
+  normal: vec3.refine(value => value.some(component => component !== 0), { message: 'normal must not be zero.' }).optional(),
+  minNormalDot: z.number().finite().min(-1).max(1).optional(),
   notAdjacentTo: z.array(z.number().int().min(0).max(1_000_000)).max(64).optional(),
 }).strict();
 
@@ -182,15 +190,15 @@ export const inspectSchema = z.object({
   preset: z.enum(['summary', 'authoring', 'full']).optional().default('full'),
   ...responseProjectionFields,
 }).strict().superRefine((value, context) => {
-  if (['meshElements', 'graphDigest', 'modifierDigest'].includes(value.query) && value.selector?.ids?.length !== 1) {
+  if (['meshElements', 'meshSelection', 'graphDigest', 'modifierDigest'].includes(value.query) && value.selector?.ids?.length !== 1) {
     context.addIssue({
       code: 'custom',
       path: ['selector', 'ids'],
       message: `${value.query} requires exactly one resource ID.`,
     });
   }
-  if (value.element !== undefined && value.query !== 'meshElements') {
-    context.addIssue({ code: 'custom', path: ['element'], message: 'element is only valid for meshElements.' });
+  if (value.element !== undefined && !['meshElements', 'meshSelection'].includes(value.query)) {
+    context.addIssue({ code: 'custom', path: ['element'], message: 'element is only valid for meshElements or meshSelection.' });
   }
   if (value.evidence !== undefined && value.query !== 'beautyDigest') {
     context.addIssue({ code: 'custom', path: ['evidence'], message: 'evidence is only valid for beautyDigest.' });
@@ -198,8 +206,14 @@ export const inspectSchema = z.object({
   if (value.projection !== undefined && value.query !== 'projectVisibility') {
     context.addIssue({ code: 'custom', path: ['projection'], message: 'projection is only valid for projectVisibility.' });
   }
-  if (value.meshFilter !== undefined && value.query !== 'meshElements') {
-    context.addIssue({ code: 'custom', path: ['meshFilter'], message: 'meshFilter is only valid for meshElements.' });
+  if (value.meshFilter !== undefined && !['meshElements', 'meshSelection'].includes(value.query)) {
+    context.addIssue({ code: 'custom', path: ['meshFilter'], message: 'meshFilter is only valid for meshElements or meshSelection.' });
+  }
+  if ((value.meshFilter?.center === undefined) !== (value.meshFilter?.radius === undefined)) {
+    context.addIssue({ code: 'custom', path: ['meshFilter'], message: 'meshFilter center and radius must be supplied together.' });
+  }
+  if (value.meshFilter?.minNormalDot !== undefined && value.meshFilter?.normal === undefined) {
+    context.addIssue({ code: 'custom', path: ['meshFilter', 'normal'], message: 'minNormalDot requires normal.' });
   }
   if (value.query === 'projectVisibility') {
     const pointCount = value.projection?.points?.length ?? 0;
@@ -223,7 +237,7 @@ export const OPERATION_TYPES = Object.freeze([
   'camera.frame', 'layout.pattern', 'stroke.apply',
   'lighting.rig.create',
   'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
-  'geometry.edit', 'geometry.realize', 'geometry.loft.edit',
+  'geometry.edit', 'geometry.realize', 'geometry.loft.edit', 'geometry.selection.edit',
   'material.variant.create',
   'resource.create', 'resource.createMany', 'resource.patch', 'resource.delete',
 ]);
@@ -1297,6 +1311,13 @@ const directOperations = [
   operation('geometry.edit', { resourceId: reference, edits: geometryEditsSchema, expectedTopologyHash: hash.optional() }),
   operation('geometry.realize', { resourceId: identifier, expectedResourceHash: hash.optional() }),
   operation('geometry.loft.edit', { resourceId: identifier, changes: loftChangesSchema, expectedResourceHash: hash.optional() }),
+  operation('geometry.selection.edit', {
+    resourceId: identifier,
+    element: z.enum(['vertices', 'faces']),
+    meshFilter: inspectMeshFilterSchema,
+    expectedSelectionHash: hash,
+    edits: geometryEditsSchema,
+  }),
   operation('material.variant.create', {
     baseMaterialId: reference,
     materialId: identifier,

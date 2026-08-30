@@ -257,7 +257,7 @@ test('apply enforces shared mutation metadata and the 128-operation bound', () =
 test('MCP contract exposes only the live inspect and mutation slice', () => {
   assert.deepEqual(INSPECT_SLICES, ['summary', 'tree', 'transform', 'components', 'bounds', 'references']);
   assert.deepEqual(INSPECT_QUERIES, [
-    'selector', 'sceneDigest', 'resourceDigest', 'meshElements', 'graphDigest', 'modifierDigest', 'rtxDigest', 'changedSinceRevision',
+    'selector', 'sceneDigest', 'resourceDigest', 'meshElements', 'meshSelection', 'graphDigest', 'modifierDigest', 'rtxDigest', 'changedSinceRevision',
     'unresolvedResources', 'unusedResources', 'graphCatalog', 'playState',
     'latestEvidence', 'blenderCatalog', 'beautyDigest', 'projectVisibility',
     'operationCatalog', 'geometryCatalog',
@@ -271,7 +271,7 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
     'camera.frame', 'layout.pattern', 'stroke.apply',
     'lighting.rig.create',
     'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
-    'geometry.edit', 'geometry.realize', 'geometry.loft.edit',
+    'geometry.edit', 'geometry.realize', 'geometry.loft.edit', 'geometry.selection.edit',
     'material.variant.create',
     'resource.create', 'resource.createMany', 'resource.patch', 'resource.delete',
   ]);
@@ -285,6 +285,10 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
   assert.equal(inspectSchema.safeParse({ query: 'unusedResources' }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'resourceDigest', selector: { ids: ['geometry/dense'] }, include: ['components', 'bounds', 'references'] }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'meshElements', selector: { ids: ['geometry/dense'] }, element: 'faces' }).success, true);
+  assert.equal(inspectSchema.safeParse({
+    query: 'meshSelection', selector: { ids: ['geometry/dense'] }, element: 'faces',
+    meshFilter: { materialIndex: 2, normal: [0, 1, 0], minNormalDot: 0.8 },
+  }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'meshElements', selector: { ids: ['geometry/a', 'geometry/b'] } }).success, false);
   assert.equal(inspectSchema.safeParse({ query: 'graphDigest', selector: { ids: ['graph/surface'] } }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'modifierDigest', selector: { ids: ['entity/wall'] } }).success, true);

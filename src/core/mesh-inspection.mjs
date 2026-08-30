@@ -5,6 +5,7 @@ import { contentHash } from './util.mjs';
 
 export const MESH_ELEMENT_KINDS = Object.freeze(['vertices', 'edges', 'faces', 'corners']);
 export const MAX_MESH_ELEMENTS_PER_PAGE = 200;
+export const MAX_MESH_SELECTION_INDICES = 20_000;
 const MAX_ADJACENCY_PER_ELEMENT = 64;
 const MAX_DERIVED_EDGES = 1_000_000;
 const ENCODER = new TextEncoder();
@@ -306,10 +307,55 @@ function normalizeMeshFilter(filter) {
   if (filter.yMin !== undefined) normalized.yMin = filter.yMin;
   if (filter.yMax !== undefined) normalized.yMax = filter.yMax;
   if (filter.boundary !== undefined) normalized.boundary = filter.boundary;
+  if (filter.nonManifold !== undefined) normalized.nonManifold = filter.nonManifold;
+  if (filter.sharp !== undefined) normalized.sharp = filter.sharp;
+  if (filter.minCrease !== undefined) normalized.minCrease = filter.minCrease;
+  if (filter.materialIndex !== undefined) normalized.materialIndex = filter.materialIndex;
+  if (filter.center) normalized.center = [...filter.center];
+  if (filter.radius !== undefined) normalized.radius = filter.radius;
+  if (filter.normal) normalized.normal = [...filter.normal];
+  if (filter.minNormalDot !== undefined) normalized.minNormalDot = filter.minNormalDot;
   if (Array.isArray(filter.notAdjacentTo) && filter.notAdjacentTo.length) {
     normalized.notAdjacentTo = [...new Set(filter.notAdjacentTo)].sort((a, b) => a - b);
   }
   return Object.keys(normalized).length ? normalized : null;
+}
+
+function extendedPositionMatches(position, filter) {
+  if (!positionMatches(position, filter)) return false;
+  if (filter.center && filter.radius !== undefined
+      && Math.hypot(...position.map((value, axis) => value - filter.center[axis])) > filter.radius) return false;
+  return true;
+}
+
+function meshFaceMaterial(mesh, faceIndex) {
+  return mesh.topologyKind === 'polygons'
+    ? mesh.faceMaterialIndices[faceIndex]
+    : (mesh.triangleMaterialIndices?.[faceIndex] ?? 0);
+}
+
+function meshFaceNormal(mesh, faceIndex) {
+  const start = mesh.faceOffsets[faceIndex];
+  const end = mesh.faceOffsets[faceIndex + 1];
+  const normal = [0, 0, 0];
+  for (let corner = start; corner < end; corner += 1) {
+    const current = tuple(mesh.positions, mesh.cornerVertexIndices[corner], 3);
+    const next = tuple(mesh.positions, mesh.cornerVertexIndices[corner + 1 === end ? start : corner + 1], 3);
+    normal[0] += (current[1] - next[1]) * (current[2] + next[2]);
+    normal[1] += (current[2] - next[2]) * (current[0] + next[0]);
+    normal[2] += (current[0] - next[0]) * (current[1] + next[1]);
+  }
+  const length = Math.hypot(...normal);
+  return length > 1e-12 ? normal.map(value => value / length) : [0, 0, 0];
+}
+
+function normalMatches(mesh, faceIndex, filter) {
+  if (!filter.normal) return true;
+  const targetLength = Math.hypot(...filter.normal);
+  if (!(targetLength > 0)) return false;
+  const normal = meshFaceNormal(mesh, faceIndex);
+  const dot = normal.reduce((sum, value, axis) => sum + value * filter.normal[axis] / targetLength, 0);
+  return dot >= (filter.minNormalDot ?? 0.5);
 }
 
 function isPlainFilter(value) {
@@ -324,8 +370,10 @@ function matchingIndices(mesh, element, edges, filter) {
     const matches = [];
     for (let index = 0; index < states.length; index += 1) {
       const position = tuple(mesh.positions, index, 3);
-      if (!positionMatches(position, filter)) continue;
+      if (!extendedPositionMatches(position, filter)) continue;
       if (filter.boundary !== undefined && states[index].boundary !== filter.boundary) continue;
+      if (filter.materialIndex !== undefined
+          && ![...states[index].faces].some(faceIndex => meshFaceMaterial(mesh, faceIndex) === filter.materialIndex)) continue;
       if (excluded.size && (excluded.has(index) || [...states[index].neighbours].some(neighbour => excluded.has(neighbour)))) {
         continue;
       }
@@ -338,8 +386,15 @@ function matchingIndices(mesh, element, edges, filter) {
     for (let index = 0; index < edges.length; index += 1) {
       const edge = edges[index];
       const midpoint = centroid(edge.vertices.map(vertexIndex => tuple(mesh.positions, vertexIndex, 3)));
-      if (!positionMatches(midpoint, filter)) continue;
+      if (!extendedPositionMatches(midpoint, filter)) continue;
       if (filter.boundary !== undefined && (edge.faces.length === 1) !== filter.boundary) continue;
+      if (filter.nonManifold !== undefined && (edge.faces.length > 2) !== filter.nonManifold) continue;
+      const sharp = new Set((mesh.sharpEdges ?? []).map(pair => edgeKey(pair[0], pair[1]))).has(edge.key);
+      if (filter.sharp !== undefined && sharp !== filter.sharp) continue;
+      const crease = new Map((mesh.edgeCreases ?? []).map(value => [edgeKey(value[0], value[1]), value[2]])).get(edge.key) ?? 0;
+      if (filter.minCrease !== undefined && crease < filter.minCrease) continue;
+      if (filter.materialIndex !== undefined
+          && !edge.faces.some(faceIndex => meshFaceMaterial(mesh, faceIndex) === filter.materialIndex)) continue;
       if (excluded.size && edge.vertices.some(vertexIndex => excluded.has(vertexIndex))) continue;
       matches.push(index);
     }
@@ -353,7 +408,9 @@ function matchingIndices(mesh, element, edges, filter) {
       const end = mesh.faceOffsets[faceIndex + 1];
       const vertices = mesh.cornerVertexIndices.slice(start, end);
       const center = centroid(vertices.map(vertexIndex => tuple(mesh.positions, vertexIndex, 3)));
-      if (!positionMatches(center, filter)) continue;
+      if (!extendedPositionMatches(center, filter)) continue;
+      if (filter.materialIndex !== undefined && meshFaceMaterial(mesh, faceIndex) !== filter.materialIndex) continue;
+      if (!normalMatches(mesh, faceIndex, filter)) continue;
       if (filter.boundary !== undefined) {
         const boundary = vertices.some((vertex, local) => {
           const next = vertices[(local + 1) % vertices.length];
@@ -370,7 +427,7 @@ function matchingIndices(mesh, element, edges, filter) {
   const matches = [];
   for (let cornerIndex = 0; cornerIndex < mesh.cornerVertexIndices.length; cornerIndex += 1) {
     const vertexIndex = mesh.cornerVertexIndices[cornerIndex];
-    if (!positionMatches(tuple(mesh.positions, vertexIndex, 3), filter)) continue;
+    if (!extendedPositionMatches(tuple(mesh.positions, vertexIndex, 3), filter)) continue;
     if (excluded.has(vertexIndex)) continue;
     if (filter.boundary !== undefined) {
       const states = vertexAdjacency(mesh, edges ?? deriveEdges(mesh));
@@ -523,5 +580,39 @@ export function buildMeshElements(resource, {
       ? encodeMeshCursor(resourceHash, topologyHash, element, filterHash, nextOffset)
       : null,
     truncatedByByteBudget: accepted.length < elements.length,
+  };
+}
+
+/** Returns one compact, exact server-side selection suitable for a guarded edit. */
+export function buildMeshSelection(resource, { element = 'vertices', meshFilter } = {}) {
+  if (!MESH_ELEMENT_KINDS.includes(element)) {
+    throw new StudioError('mesh_element_kind_invalid', `Unknown mesh element kind ${element}.`);
+  }
+  const mesh = recipeFrom(resource);
+  const resourceHash = contentHash(resource);
+  const topologyHash = mesh.topologyHash;
+  const filter = normalizeMeshFilter(meshFilter) ?? {};
+  const edges = deriveEdges(mesh);
+  const indices = Object.keys(filter).length
+    ? matchingIndices(mesh, element, edges, filter)
+    : Array.from({ length: elementCount(mesh, element, edges.length) }, (_, index) => index);
+  if (indices.length > MAX_MESH_SELECTION_INDICES) {
+    throw new StudioError(
+      'mesh_selection_too_large',
+      `Mesh selection matched ${indices.length} elements; refine it below ${MAX_MESH_SELECTION_INDICES}.`,
+      { matchedCount: indices.length, maximum: MAX_MESH_SELECTION_INDICES },
+    );
+  }
+  const filterHash = contentHash(filter);
+  return {
+    resourceId: resource.id,
+    resourceHash,
+    topologyHash,
+    element,
+    meshFilter: filter,
+    filterHash,
+    matchedCount: indices.length,
+    indices,
+    selectionHash: contentHash({ resourceHash, topologyHash, element, filterHash, indices }),
   };
 }

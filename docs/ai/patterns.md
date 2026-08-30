@@ -44,7 +44,11 @@ Do not infer support from an earlier Studio session, a tutorial module, or
   unchanged payload again.
 - Use `sceneDigest` for the tree. Use `resourceDigest` for counts, hashes, and
   references. Use `meshElements` with a `meshFilter` (bbox, y-range, boundary,
-  `notAdjacentTo`) instead of paging a cloth. Use `operationCatalog` to find
+  `notAdjacentTo`) instead of paging a cloth. Use `meshSelection` when an edit
+  needs all matching indices at once; it supports bounds, radius, boundary,
+  manifold, sharp/crease, material, and face-normal criteria and returns an
+  exact `selectionHash`. Feed that hash to `geometry.selection.edit` so a
+  spatial or material selection cannot silently drift before mutation. Use `operationCatalog` to find
   the exact typed mutation name, `geometryCatalog` to inspect supported recipes,
   defaults, and budgets, and `graphCatalog` before graph authoring. Use
   `graphDigest` and read `sockets` (`source`, `compiled`,
