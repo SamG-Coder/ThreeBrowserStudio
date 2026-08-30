@@ -7,6 +7,8 @@ export const STROKE_LIMITS = Object.freeze({
   maxInstances: 8192,
   maxRadius: 1_000_000,
   maxTexturePixelsVisited: 8_000_000,
+  maxSmoothingIterations: 20,
+  maxSurfaceProjectionTests: 2_000_000,
 });
 
 export const STROKE_SPACES = Object.freeze(['local', 'world', 'surface', 'uv']);
@@ -35,7 +37,10 @@ function normalized(value, label) {
 /** Validates and canonicalizes one reusable AI-authored brush stroke. */
 export function normalizeStroke(value) {
   if (!isPlainRecord(value)) throw new TypeError('stroke must be an object.');
-  const allowed = new Set(['space', 'targetEntityId', 'closed', 'defaultRadius', 'defaultStrength', 'falloff', 'points', 'metadata']);
+  const allowed = new Set([
+    'space', 'targetEntityId', 'closed', 'defaultRadius', 'defaultStrength', 'falloff',
+    'spacing', 'smoothingIterations', 'snap', 'symmetryAxes', 'pressureExponent', 'points', 'metadata',
+  ]);
   for (const key of Object.keys(value)) if (!allowed.has(key)) throw new TypeError(`stroke contains unknown property ${key}.`);
   const space = value.space ?? 'local';
   if (!STROKE_SPACES.includes(space)) throw new TypeError(`stroke.space must be one of ${STROKE_SPACES.join(', ')}.`);
@@ -68,9 +73,77 @@ export function normalizeStroke(value) {
     defaultRadius,
     defaultStrength,
     falloff,
+    ...(value.spacing === undefined ? {} : { spacing: finite(value.spacing, 'stroke.spacing', Number.MIN_VALUE, STROKE_LIMITS.maxRadius) }),
+    smoothingIterations: (() => {
+      const iterations = finite(value.smoothingIterations ?? 0, 'stroke.smoothingIterations', 0, STROKE_LIMITS.maxSmoothingIterations);
+      if (!Number.isInteger(iterations)) throw new TypeError('stroke.smoothingIterations must be an integer.');
+      return iterations;
+    })(),
+    ...(value.snap === undefined ? {} : { snap: finite(value.snap, 'stroke.snap', Number.MIN_VALUE, STROKE_LIMITS.maxRadius) }),
+    symmetryAxes: [...new Set(value.symmetryAxes ?? [])].map(axis => {
+      if (!['x', 'y', 'z'].includes(axis)) throw new TypeError('stroke.symmetryAxes entries must be x, y, or z.');
+      return axis;
+    }).sort(),
+    pressureExponent: finite(value.pressureExponent ?? 1, 'stroke.pressureExponent', 0.01, 8),
     points,
     metadata: cloneJson(value.metadata ?? {}),
   };
+}
+
+function interpolatePoint(first, second, amount) {
+  const result = {
+    ...first,
+    position: mix(first.position, second.position, amount),
+    radius: first.radius + (second.radius - first.radius) * amount,
+    strength: first.strength + (second.strength - first.strength) * amount,
+    pressure: first.pressure + (second.pressure - first.pressure) * amount,
+    opacity: first.opacity + (second.opacity - first.opacity) * amount,
+  };
+  if (first.normal || second.normal) result.normal = first.normal && second.normal
+    ? normalized(mix(first.normal, second.normal, amount), 'interpolated stroke normal')
+    : [...(first.normal ?? second.normal)];
+  if (first.color || second.color) result.color = first.color && second.color
+    ? mix(first.color, second.color, amount) : [...(first.color ?? second.color)];
+  return result;
+}
+
+function resamplePoints(points, spacing) {
+  if (!spacing || points.length < 2) return points.map(point => cloneJson(point));
+  const result = [cloneJson(points[0])];
+  let carry = 0;
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const first = points[index]; const second = points[index + 1];
+    const length = Math.hypot(...second.position.map((value, axis) => value - first.position[axis]));
+    if (length === 0) continue;
+    for (let distance = spacing - carry; distance < length; distance += spacing) {
+      result.push(interpolatePoint(first, second, distance / length));
+      if (result.length >= STROKE_LIMITS.maxPoints) throw new RangeError('Stroke spacing exceeds the bounded point budget.');
+    }
+    carry = (carry + length) % spacing;
+  }
+  const last = points.at(-1);
+  if (Math.hypot(...result.at(-1).position.map((value, axis) => value - last.position[axis])) > 1e-9) result.push(cloneJson(last));
+  return result;
+}
+
+/** Applies deterministic snapping, smoothing, spacing, and pressure shaping once. */
+export function prepareStroke(value) {
+  const stroke = normalizeStroke(value);
+  let points = stroke.points.map(point => ({
+    ...point,
+    position: stroke.snap ? point.position.map(component => Math.round(component / stroke.snap) * stroke.snap) : [...point.position],
+    pressure: point.pressure ** stroke.pressureExponent,
+  }));
+  for (let iteration = 0; iteration < stroke.smoothingIterations && points.length > 2; iteration += 1) {
+    points = points.map((point, index) => {
+      if (!stroke.closed && (index === 0 || index === points.length - 1)) return point;
+      const previous = points[(index - 1 + points.length) % points.length];
+      const next = points[(index + 1) % points.length];
+      return { ...point, position: point.position.map((value, axis) => (previous.position[axis] + value * 2 + next.position[axis]) / 4) };
+    });
+  }
+  points = resamplePoints(points, stroke.spacing);
+  return { ...stroke, spacing: undefined, snap: undefined, smoothingIterations: 0, pressureExponent: 1, points };
 }
 
 function mix(left, right, amount) {
@@ -99,15 +172,29 @@ function closestOnSegment(point, first, second) {
 }
 
 export function closestStrokeSample(position, strokeValue) {
-  const stroke = strokeValue.points ? strokeValue : normalizeStroke(strokeValue);
-  if (stroke.points.length === 1) return closestOnSegment(position, stroke.points[0], stroke.points[0]);
-  const segments = stroke.closed
+  const stroke = strokeValue.points ? strokeValue : prepareStroke(strokeValue);
+  const segments = stroke.points.length === 1
+    ? [[stroke.points[0], stroke.points[0]]]
+    : stroke.closed
     ? stroke.points.map((point, index) => [point, stroke.points[(index + 1) % stroke.points.length]])
     : stroke.points.slice(0, -1).map((point, index) => [point, stroke.points[index + 1]]);
   let closest = null;
-  for (const [first, second] of segments) {
-    const candidate = closestOnSegment(position, first, second);
-    if (!closest || candidate.distance < closest.distance) closest = candidate;
+  const axes = stroke.symmetryAxes ?? [];
+  const masks = Array.from({ length: 2 ** axes.length }, (_, index) => index);
+  for (const mask of masks) {
+    const reflected = [...position];
+    axes.forEach((axisName, index) => { if (mask & (1 << index)) reflected[{ x: 0, y: 1, z: 2 }[axisName]] *= -1; });
+    for (const [first, second] of segments) {
+      const candidate = closestOnSegment(reflected, first, second);
+      axes.forEach((axisName, index) => {
+        if (!(mask & (1 << index))) return;
+        const axis = { x: 0, y: 1, z: 2 }[axisName];
+        candidate.center[axis] *= -1;
+        candidate.tangent[axis] *= -1;
+        if (candidate.normal) candidate.normal[axis] *= -1;
+      });
+      if (!closest || candidate.distance < closest.distance) closest = candidate;
+    }
   }
   return closest;
 }
@@ -136,7 +223,7 @@ function adjacency(vertexCount, indices) {
 /** Applies a complete bounded sculpt stroke in one geometry edit command. */
 export function sculptIndexedMeshWithStroke(recipe, command = {}) {
   const mesh = recalculateVertexNormals(validateIndexedMeshRecipe(recipe));
-  const stroke = normalizeStroke(command.stroke);
+  const stroke = prepareStroke(command.stroke);
   if (!['local'].includes(stroke.space)) throw new TypeError('sculptStroke requires a local-space stroke after operation lowering.');
   const brush = command.brush ?? 'draw';
   if (!SCULPT_STROKE_BRUSHES.includes(brush)) throw new TypeError(`Unsupported sculpt stroke brush ${brush}.`);
@@ -214,7 +301,7 @@ function blendScalar(before, target, amount, mode) {
 }
 
 export function paintEditableMeshColorStroke(recipe, command = {}) {
-  const stroke = normalizeStroke(command.stroke);
+  const stroke = prepareStroke(command.stroke);
   if (stroke.space !== 'local') throw new TypeError('paintColorStroke requires a local-space stroke after operation lowering.');
   const mode = command.blend ?? 'mix';
   if (!STROKE_BLEND_MODES.includes(mode)) throw new TypeError(`Unsupported stroke blend mode ${mode}.`);
@@ -244,7 +331,7 @@ export function paintEditableMeshColorStroke(recipe, command = {}) {
 /** Paints a UV-space stroke into an existing canonical inline data texture. */
 export function paintDataTextureStroke(resource, strokeValue, options = {}) {
   const recipe = normalizeDataTextureResource(resource?.recipe ?? resource?.parameters ?? resource);
-  const stroke = normalizeStroke(strokeValue);
+  const stroke = prepareStroke(strokeValue);
   if (stroke.space !== 'uv') throw new TypeError('Texture painting requires stroke.space uv.');
   const pixels = decodeDataTexturePixels(recipe);
   const mode = options.blend ?? 'mix';
@@ -296,7 +383,7 @@ function normalEuler(normal, twist = 0) {
 
 /** Converts a stroke to explicit canonical instance transforms. */
 export function strokeInstanceTransforms(strokeValue, options = {}) {
-  const stroke = normalizeStroke(strokeValue);
+  const stroke = prepareStroke(strokeValue);
   if (!['local'].includes(stroke.space)) throw new TypeError('Stroke scatter requires local-space points after operation lowering.');
   const spacing = finite(options.spacing ?? stroke.defaultRadius * 2, 'spacing', Number.MIN_VALUE, STROKE_LIMITS.maxRadius);
   const maximum = Math.min(STROKE_LIMITS.maxInstances, options.count ?? STROKE_LIMITS.maxInstances);

@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  closestStrokeSample,
   normalizeStroke,
   paintDataTextureStroke,
   paintEditableMeshColorStroke,
+  prepareStroke,
   sculptIndexedMeshWithStroke,
   strokeInstanceTransforms,
 } from '../src/core/stroke-authoring.mjs';
@@ -29,6 +31,25 @@ test('stroke normalization is bounded, strict, and preserves expressive per-poin
   assert.deepEqual(stroke.points[1].color, [1, 0, 0, 1]);
   assert.throws(() => normalizeStroke({ ...localStroke, typo: true }), /unknown property/);
   assert.throws(() => normalizeStroke({ ...localStroke, points: [] }), /1 to/);
+});
+
+test('stroke conditioning provides deterministic smoothing, spacing, snapping, pressure, and symmetry', () => {
+  const prepared = prepareStroke({
+    space: 'local', spacing: 0.25, smoothingIterations: 2, snap: 0.1,
+    symmetryAxes: ['x'], pressureExponent: 2,
+    points: [
+      { position: [0.03, 0, 0], pressure: 0.5 },
+      { position: [0.51, 0.3, 0], pressure: 0.75 },
+      { position: [1.02, 0, 0], pressure: 1 },
+    ],
+  });
+  assert.ok(prepared.points.length > 3);
+  assert.equal(prepared.points[0].position[0], 0);
+  assert.equal(prepared.points[0].pressure, 0.25);
+  assert.deepEqual(prepared.symmetryAxes, ['x']);
+  const mirrored = closestStrokeSample([-1, 0, 0], prepared);
+  assert.ok(mirrored.distance < 0.2);
+  assert.ok(mirrored.center[0] < 0);
 });
 
 test('sculpt strokes deform a whole influence path rather than requiring vertex lists', () => {
@@ -159,4 +180,26 @@ test('stroke.apply is strict at the MCP boundary and provisions a missing paint 
   });
   const [edit] = translateToolOperation(request.operations[0], project);
   assert.deepEqual(edit.edits.map(command => command.type), ['createColorLayer', 'paintColorStroke']);
+});
+
+test('surface strokes project to the nearest authored triangle before sculpt lowering', () => {
+  const project = createProjectDocument({
+    projectId: 'project/surface-stroke',
+    resources: {
+      geometries: [{ id: 'geometry/surface', recipe: {
+        kind: 'indexedMesh', positions: [-1, -1, 0, 1, -1, 0, 0, 1, 0], indices: [0, 1, 2],
+      } }],
+      materials: [{ id: 'material/surface', recipe: { kind: 'standard' } }],
+    },
+    scenes: [{ id: 'scene/main', rootEntityIds: ['entity/surface'], entities: [{
+      id: 'entity/surface', kind: 'mesh', components: { mesh: { geometryId: 'geometry/surface', materialId: 'material/surface' } },
+    }] }],
+  });
+  const [edit] = translateToolOperation({
+    op: 'stroke.apply',
+    stroke: { space: 'surface', targetEntityId: 'entity/surface', points: [{ position: [0, 0, 2] }] },
+    target: { kind: 'sculpt', entityId: 'entity/surface' },
+  }, project);
+  assert.deepEqual(edit.edits[0].stroke.points[0].position, [0, 0, 0]);
+  assert.deepEqual(edit.edits[0].stroke.points[0].normal, [0, 0, 1]);
 });

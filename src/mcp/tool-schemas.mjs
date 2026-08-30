@@ -747,6 +747,11 @@ export const strokeSchema = z.object({
   defaultRadius: z.number().finite().gt(0).max(STROKE_LIMITS.maxRadius).optional().default(0.1),
   defaultStrength: z.number().finite().min(0).max(1).optional().default(1),
   falloff: z.enum(STROKE_FALLOFFS).optional().default('smooth'),
+  spacing: z.number().finite().gt(0).max(STROKE_LIMITS.maxRadius).optional(),
+  smoothingIterations: z.number().int().min(0).max(STROKE_LIMITS.maxSmoothingIterations).optional().default(0),
+  snap: z.number().finite().gt(0).max(STROKE_LIMITS.maxRadius).optional(),
+  symmetryAxes: z.array(z.enum(['x', 'y', 'z'])).max(3).refine(value => new Set(value).size === value.length, { message: 'symmetryAxes must be unique.' }).optional().default([]),
+  pressureExponent: z.number().finite().min(0.01).max(8).optional().default(1),
   points: z.array(strokePointSchema).min(1).max(STROKE_LIMITS.maxPoints),
   metadata: jsonObjectSchema.optional().default({}),
 }).strict();

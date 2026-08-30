@@ -401,6 +401,11 @@
         "defaultRadius": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000000 },
         "defaultStrength": { "type": "number", "minimum": 0, "maximum": 1 },
         "falloff": { "enum": ["constant", "linear", "smooth", "sharp", "sphere"] },
+        "spacing": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000000 },
+        "smoothingIterations": { "type": "integer", "minimum": 0, "maximum": 20 },
+        "snap": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000000 },
+        "symmetryAxes": { "type": "array", "maxItems": 3, "uniqueItems": true, "items": { "enum": ["x", "y", "z"] } },
+        "pressureExponent": { "type": "number", "minimum": 0.01, "maximum": 8 },
         "metadata": { "type": "object" },
         "points": {
           "type": "array", "minItems": 1, "maxItems": 2048,

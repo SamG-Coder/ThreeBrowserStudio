@@ -32,7 +32,9 @@ import {
   normalizeGraphResourcePatch,
   normalizeResourceType,
   normalizeStroke,
+  prepareStroke,
   paintDataTextureStroke,
+  STROKE_LIMITS,
   strokeInstanceTransforms,
   shapeToolResponse,
   entityWorldMatrix,
@@ -247,15 +249,86 @@ function strokeFromOperation(operation, document) {
   return normalizeStroke(resource.stroke ?? resource.recipe);
 }
 
+function subtract3(left, right) { return left.map((value, axis) => value - right[axis]); }
+function addScaled3(origin, vector, amount) { return origin.map((value, axis) => value + vector[axis] * amount); }
+function dot3(left, right) { return left.reduce((sum, value, axis) => sum + value * right[axis], 0); }
+
+function closestPointOnTriangle(point, a, b, c) {
+  const ab = subtract3(b, a); const ac = subtract3(c, a); const ap = subtract3(point, a);
+  const d1 = dot3(ab, ap); const d2 = dot3(ac, ap);
+  if (d1 <= 0 && d2 <= 0) return a;
+  const bp = subtract3(point, b); const d3 = dot3(ab, bp); const d4 = dot3(ac, bp);
+  if (d3 >= 0 && d4 <= d3) return b;
+  const vc = d1 * d4 - d3 * d2;
+  if (vc <= 0 && d1 >= 0 && d3 <= 0) return addScaled3(a, ab, d1 / (d1 - d3));
+  const cp = subtract3(point, c); const d5 = dot3(ab, cp); const d6 = dot3(ac, cp);
+  if (d6 >= 0 && d5 <= d6) return c;
+  const vb = d5 * d2 - d1 * d6;
+  if (vb <= 0 && d2 >= 0 && d6 <= 0) return addScaled3(a, ac, d2 / (d2 - d6));
+  const va = d3 * d6 - d5 * d4;
+  if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) return addScaled3(b, subtract3(c, b), (d4 - d3) / ((d4 - d3) + (d5 - d6)));
+  const denominator = 1 / (va + vb + vc);
+  return a.map((value, axis) => value + ab[axis] * vb * denominator + ac[axis] * vc * denominator);
+}
+
+function localTriangles(recipe) {
+  if (recipe?.kind === 'indexedMesh' || recipe?.kind === 'explicit') {
+    return Array.from({ length: recipe.indices.length / 3 }, (_, triangle) => recipe.indices.slice(triangle * 3, triangle * 3 + 3));
+  }
+  if (recipe?.kind === 'editableMesh') {
+    const triangles = [];
+    for (let face = 0; face < recipe.faceOffsets.length - 1; face += 1) {
+      const vertices = recipe.cornerVertexIndices.slice(recipe.faceOffsets[face], recipe.faceOffsets[face + 1]);
+      for (let index = 1; index < vertices.length - 1; index += 1) triangles.push([vertices[0], vertices[index], vertices[index + 1]]);
+    }
+    return triangles;
+  }
+  return null;
+}
+
+function projectLocalStrokeToSurface(stroke, recipe, entityId) {
+  const triangles = localTriangles(recipe);
+  if (!triangles) throw new StudioError(
+    'surface_projection_unavailable',
+    'Surface strokes require indexedMesh, explicit, or editableMesh geometry; convert procedural geometry before projecting.',
+    { entityId, geometryKind: recipe?.kind },
+  );
+  if (triangles.length * stroke.points.length > STROKE_LIMITS.maxSurfaceProjectionTests) {
+    throw new StudioError('surface_projection_limit', 'Surface stroke exceeds the bounded triangle-test budget.', {
+      entityId, pointCount: stroke.points.length, triangleCount: triangles.length,
+      maximum: STROKE_LIMITS.maxSurfaceProjectionTests,
+    });
+  }
+  const positionAt = index => recipe.positions.slice(index * 3, index * 3 + 3);
+  return {
+    ...stroke,
+    points: stroke.points.map(point => {
+      let best = null;
+      for (const triangle of triangles) {
+        const a = positionAt(triangle[0]); const b = positionAt(triangle[1]); const c = positionAt(triangle[2]);
+        const projected = closestPointOnTriangle(point.position, a, b, c);
+        const distance = dot3(subtract3(point.position, projected), subtract3(point.position, projected));
+        if (!best || distance < best.distance) {
+          const ab = subtract3(b, a); const ac = subtract3(c, a);
+          const normal = [ab[1] * ac[2] - ab[2] * ac[1], ab[2] * ac[0] - ab[0] * ac[2], ab[0] * ac[1] - ab[1] * ac[0]];
+          const length = Math.hypot(...normal) || 1;
+          best = { distance, position: projected, normal: normal.map(value => value / length) };
+        }
+      }
+      return { ...point, position: best.position, normal: best.normal };
+    }),
+  };
+}
+
 function localStrokeForEntity(strokeValue, document, entityId) {
   const stroke = normalizeStroke(strokeValue);
   if (stroke.space === 'local') return stroke;
   if (stroke.space === 'uv') throw new StudioError('stroke_space_mismatch', 'UV strokes cannot target scene geometry.');
   const index = new ProjectIndex(document);
-  const { scene } = index.getEntity(entityId);
+  const { scene, entity } = index.getEntity(entityId);
   const inverse = invertTransformMatrix(entityWorldMatrix(scene, entityId));
   const origin = transformPointByMatrix(inverse, [0, 0, 0]);
-  return {
+  const local = {
     ...stroke,
     space: 'local',
     targetEntityId: entityId,
@@ -272,6 +345,14 @@ function localStrokeForEntity(strokeValue, document, entityId) {
       } : {}),
     })),
   };
+  if (stroke.space !== 'surface') return local;
+  if (stroke.targetEntityId && stroke.targetEntityId !== entityId) throw new StudioError(
+    'stroke_target_mismatch', `Surface stroke targets ${stroke.targetEntityId}, not ${entityId}.`,
+    { targetEntityId: stroke.targetEntityId, entityId },
+  );
+  const geometryId = entity.components?.mesh?.geometryId;
+  const geometry = index.getResource(geometryId, 'geometries').resource;
+  return projectLocalStrokeToSurface(local, geometry.recipe ?? geometry, entityId);
 }
 
 function translateStrokeOperation(operation, document) {
@@ -329,15 +410,16 @@ function translateStrokeOperation(operation, document) {
     delete recipe.pixels;
     lowered.push({ type: 'resource.patch', resourceType: 'textures', resourceId: textureId, patch: { recipe } });
   } else if (target.kind === 'curve') {
-    if (stroke.points.length < 2) throw new StudioError('invalid_stroke_curve', 'Curve strokes require at least two points.');
+    const prepared = prepareStroke(stroke);
+    if (prepared.points.length < 2) throw new StudioError('invalid_stroke_curve', 'Curve strokes require at least two points.');
     lowered.push({
       type: 'resource.create', resourceType: 'geometries',
       resource: {
         id: target.geometryId,
         recipe: {
-          kind: 'tube', points: stroke.points.map(point => point.position), radius: target.radius,
-          tubularSegments: target.tubularSegments ?? Math.min(512, Math.max(8, stroke.points.length * 4)),
-          radialSegments: target.radialSegments, closed: target.closed ?? stroke.closed,
+          kind: 'tube', points: prepared.points.map(point => point.position), radius: target.radius,
+          tubularSegments: target.tubularSegments ?? Math.min(512, Math.max(8, prepared.points.length * 4)),
+          radialSegments: target.radialSegments, closed: target.closed ?? prepared.closed,
         },
       },
     });
