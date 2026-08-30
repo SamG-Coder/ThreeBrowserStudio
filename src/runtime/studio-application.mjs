@@ -8,6 +8,7 @@ import {
   buildMeshSelection,
   buildMeshQuality,
   buildProjectVisibility,
+  cameraEulerForDirection,
   MAX_INSPECT_RESPONSE_BYTES,
   ProjectIndex,
   PROTOCOL_VERSION,
@@ -346,7 +347,13 @@ function lightingRigOperations(operation) {
     type: 'entity.create', sceneId: operation.sceneId,
     entity: {
       id: `${operation.rigId}/${suffix}`, kind, name, parentId: operation.rigId,
-      transform: { position: position(offset), rotation: [0, 0, 0], scale: [1, 1, 1] },
+      transform: {
+        position: position(offset),
+        rotation: kind === 'areaLight'
+          ? cameraEulerForDirection(offset.map(value => -value))
+          : [0, 0, 0],
+        scale: [1, 1, 1],
+      },
       components: { light: { ...light, intensity: light.intensity * intensity } },
       tags: ['lighting', `rig-${operation.preset}`],
     },
@@ -364,6 +371,8 @@ function lightingRigOperations(operation) {
     result.push(entity('key', 'pointLight', 'Key light', [4, 5, 5], { color: product ? [1, 0.93, 0.84] : [1, 0.72, 0.5], intensity: product ? 65 : 42, distance: 30 * scale, decay: 2, castShadow: true, shadowMapSize: 2048 }));
     result.push(entity('fill', 'pointLight', 'Fill light', [-4, 3, 2], { color: [0.48, 0.68, 1], intensity: cinematic ? 20 : 34, distance: 28 * scale, decay: 2, castShadow: false }));
     result.push(entity('rim', 'pointLight', 'Rim light', [1, 4, -5], { color: cinematic ? [0.9, 0.25, 0.12] : [0.65, 0.82, 1], intensity: cinematic ? 52 : 38, distance: 26 * scale, decay: 2, castShadow: false }));
+    result.push(entity('key-softbox', 'areaLight', 'Key softbox', [4.5, 5.5, 4], { color: product ? [1, 0.94, 0.86] : [1, 0.76, 0.58], intensity: product ? 8 : 5, width: 4.5 * scale, height: 3.2 * scale, castShadow: false }));
+    result.push(entity('rim-strip', 'areaLight', 'Rim strip', [-3.5, 3, -4.5], { color: [0.55, 0.72, 1], intensity: cinematic ? 6 : 4, width: 1.2 * scale, height: 4.8 * scale, castShadow: false }));
   }
   if (operation.rtx !== 'auto') result.push({
     type: 'scene.rtx.patch', sceneId: operation.sceneId,

@@ -58,6 +58,9 @@ test('beauty digest hashes pixels, probes clips, and diffs another capture', asy
   assert.match(digest.pixelHash, /^[a-f0-9]{64}$/);
   assert.equal(digest.stats.pixelCount, 8);
   assert.equal(digest.stats.clipCount, 1);
+  assert.equal(digest.stats.highlightClipCount, 1);
+  assert.equal(digest.stats.shadowClipCount, 0);
+  assert.deepEqual(digest.stats.lumaPercentiles, { p01: 19, p50: 19, p99: 54 });
   assert.equal(digest.stats.blackCount, 0);
   assert.equal(digest.probes[0].clip, true);
   assert.deepEqual(digest.probes[0].rgba, [255, 0, 0, 255]);
@@ -66,6 +69,17 @@ test('beauty digest hashes pixels, probes clips, and diffs another capture', asy
   assert.equal(digest.compare.changedPixelCount, 1);
   assert.deepEqual(digest.compare.changed[0].x, 0);
   assert.deepEqual(digest.compare.changed[0].otherRgba, [0, 0, 0, 255]);
+});
+
+test('zero in one colour channel is not reported as clipped exposure', async (t) => {
+  const { studioRoot, artifacts } = await withArtifacts(t);
+  const pixels = rgbaFill(1, 1, [42, 0, 84, 255]);
+  await writeFile(path.join(artifacts, 'studio-300.png'), encodePngRgba(1, 1, pixels));
+  const digest = buildBeautyDigest({ studioRoot, evidence: { path: 'studio-300.png', probes: [{ x: 0, y: 0 }] } });
+  assert.equal(digest.stats.clipCount, 0);
+  assert.equal(digest.probes[0].clip, false);
+  assert.equal(digest.probes[0].highlightClip, false);
+  assert.equal(digest.probes[0].shadowClip, false);
 });
 
 test('beauty digest bbox isolates a region and identical captures compare cleanly', async (t) => {

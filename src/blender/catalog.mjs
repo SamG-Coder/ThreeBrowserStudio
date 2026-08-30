@@ -243,8 +243,8 @@ const entries = [
     canonicalRepresentation: 'Directional, point, spot, and ambient light entities with typed component parameters and transforms.',
     mcpWorkflow: ['three_studio_apply: entity.create kind directionalLight|pointLight|spotLight|ambientLight', 'three_studio_render'],
     runtimeNotes: 'Lights compile to external Three.js WebGPU objects; authored shadow settings are intentionally bounded.',
-    supportedSubset: ['directional', 'point', 'spot', 'ambient', 'color', 'intensity', 'cast shadow', 'position and direction through transforms'],
-    unsupportedSubset: ['area lights', 'light node trees', 'IES profiles', 'light linking', 'Cycles-specific sampling controls'],
+    supportedSubset: ['directional', 'point', 'spot', 'ambient', 'hemisphere', 'rectangular area lights', 'color', 'intensity', 'cast shadow', 'position and direction through transforms', 'softbox and rim-strip rig presets'],
+    unsupportedSubset: ['light node trees', 'IES profiles', 'light linking', 'Cycles-specific sampling controls'],
     officialUrls: ['https://docs.blender.org/manual/en/latest/render/lights/light_object.html'],
   }),
   capability({

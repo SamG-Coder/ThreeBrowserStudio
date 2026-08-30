@@ -100,13 +100,17 @@ function samplePixel(rgba, width, height, x, y) {
   const b = rgba[offset + 2];
   const a = rgba[offset + 3];
   const luma = (LUMA_R * r) + (LUMA_G * g) + (LUMA_B * b);
+  const highlightClip = r === 255 || g === 255 || b === 255;
+  const shadowClip = r === 0 && g === 0 && b === 0;
   return {
     x,
     y,
     rgba: [r, g, b, a],
     luma,
-    clip: r === 0 || r === 255 || g === 0 || g === 255 || b === 0 || b === 255,
-    black: r === 0 && g === 0 && b === 0,
+    clip: highlightClip || shadowClip,
+    highlightClip,
+    shadowClip,
+    black: shadowClip,
   };
 }
 
@@ -115,20 +119,38 @@ function accumulateStats(rgba, width, height, x0, y0, x1, y1) {
   let blackCount = 0;
   let lumaTotal = 0;
   let pixels = 0;
+  let highlightClipCount = 0;
+  let shadowClipCount = 0;
+  const lumaHistogram = new Uint32Array(256);
   for (let y = y0; y <= y1; y += 1) {
     for (let x = x0; x <= x1; x += 1) {
       const sample = samplePixel(rgba, width, height, x, y);
       pixels += 1;
       lumaTotal += sample.luma;
       if (sample.clip) clipCount += 1;
+      if (sample.highlightClip) highlightClipCount += 1;
+      if (sample.shadowClip) shadowClipCount += 1;
       if (sample.black) blackCount += 1;
+      lumaHistogram[Math.max(0, Math.min(255, Math.round(sample.luma)))] += 1;
     }
   }
+  const percentile = fraction => {
+    const target = Math.max(1, Math.ceil(pixels * fraction));
+    let seen = 0;
+    for (let index = 0; index < lumaHistogram.length; index += 1) {
+      seen += lumaHistogram[index];
+      if (seen >= target) return index;
+    }
+    return 0;
+  };
   return {
     pixelCount: pixels,
     clipCount,
+    highlightClipCount,
+    shadowClipCount,
     blackCount,
     meanLuma: pixels === 0 ? 0 : lumaTotal / pixels,
+    lumaPercentiles: { p01: percentile(0.01), p50: percentile(0.5), p99: percentile(0.99) },
   };
 }
 
