@@ -842,6 +842,28 @@ test('live apply canonicalizes and validates an unused flat singular graph resou
   assert.equal(validation.success, true);
 });
 
+test('high-level resources may depend on resources created earlier in the same atomic apply', async (t) => {
+  const { application } = await applicationFixture(t);
+  const result = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1', sessionId: application.sessionId,
+    projectId: 'project/active', baseRevision: 0,
+    idempotencyKey: 'same-apply-material-variant-0001', label: 'Create base and inherited material',
+    operations: [
+      { op: 'resource.create', resourceType: 'materials', resource: {
+        id: 'material/base', recipe: { kind: 'physical', color: '#334455', roughness: 0.5 },
+      } },
+      { op: 'material.variant.create', baseMaterialId: 'material/base', materialId: 'material/variant', patch: {
+        recipe: { roughness: 0.1, metalness: 0.8 },
+      } },
+    ],
+  });
+  assert.equal(result.success, true);
+  assert.equal(result.revision, 1);
+  assert.deepEqual(application.kernel.document.resources.materials['material/variant'].recipe, {
+    kind: 'physical', color: '#334455', roughness: 0.1, metalness: 0.8,
+  });
+});
+
 test('dry-run apply compiles and disposes its candidate without swapping or mutating the project', async (t) => {
   const { application, THREE, viewport } = await applicationFixture(t);
   const liveRoot = viewport.scene.children[0];

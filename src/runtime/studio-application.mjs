@@ -1962,13 +1962,20 @@ export class StudioApplication {
   async #apply(params, context = {}) {
     this.#assertTarget(params);
     const document = this.#kernel.document;
-    const operations = params.operations.flatMap((operation) => {
-      const translated = translateToolOperation(operation, document);
-      return (Array.isArray(translated) ? translated : [translated]).map(candidate => materializeCameraFrameOperation(
-        candidate,
-        { compiled: this.#compiled, THREE: this.#THREE },
-      ));
-    });
+    const translationDocument = structuredClone(document);
+    const operations = [];
+    for (const operation of params.operations) {
+      const translated = translateToolOperation(operation, translationDocument);
+      for (const candidateValue of (Array.isArray(translated) ? translated : [translated])) {
+        const candidate = materializeCameraFrameOperation(candidateValue, { compiled: this.#compiled, THREE: this.#THREE });
+        operations.push(candidate);
+        if ((candidate.type ?? candidate.op) === 'resource.create' && !candidate.alias) {
+          const resourceType = normalizeResourceType(candidate.resourceType);
+          const resource = createResourceDocument(resourceType, candidate.resource);
+          translationDocument.resources[resourceType][resource.id] = resource;
+        }
+      }
+    }
     const pixelForecast = forecastPixelImpact({ before: document, operations });
     this.#dryRunCandidate = params.previewEvidence ? null : false;
     let response;
