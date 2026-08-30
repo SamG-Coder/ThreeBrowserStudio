@@ -17,7 +17,7 @@ const PUBLIC_OPERATION_TYPES = new Set([
   'collection.reparent', 'collection.delete',
   'camera.frame', 'layout.pattern', 'stroke.apply', 'lighting.rig.create',
   'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
-  'geometry.edit', 'geometry.realize', 'geometry.loft.edit', 'geometry.selection.edit', 'material.variant.create',
+  'geometry.edit', 'geometry.realize', 'geometry.loft.edit', 'geometry.selection.edit', 'material.variant.create', 'material.look.create',
   'resource.create', 'resource.createMany', 'resource.patch', 'resource.delete',
 ]);
 const RESOURCE_TYPE_SET = new Set(RESOURCE_TYPES);

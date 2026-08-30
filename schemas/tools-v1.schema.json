@@ -2660,6 +2660,40 @@
                   "properties": {
                     "op": {
                       "type": "string",
+                      "const": "material.look.create"
+                    },
+                    "materialId": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                    },
+                    "look": {
+                      "type": "string",
+                      "enum": [
+                        "automotivePaint",
+                        "rubber",
+                        "brushedMetal",
+                        "glass",
+                        "emissiveLens",
+                        "fabric",
+                        "organicSkin"
+                      ]
+                    },
+                    "color": {
+                      "type": "string",
+                      "pattern": "^#[0-9a-fA-F]{6}$"
+                    }
+                  },
+                  "required": [
+                    "op",
+                    "materialId",
+                    "look"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "op": {
+                      "type": "string",
                       "const": "resource.create"
                     },
                     "resourceType": {

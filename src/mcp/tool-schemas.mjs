@@ -238,7 +238,7 @@ export const OPERATION_TYPES = Object.freeze([
   'lighting.rig.create',
   'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
   'geometry.edit', 'geometry.realize', 'geometry.loft.edit', 'geometry.selection.edit',
-  'material.variant.create',
+  'material.variant.create', 'material.look.create',
   'resource.create', 'resource.createMany', 'resource.patch', 'resource.delete',
 ]);
 
@@ -1342,6 +1342,11 @@ const directOperations = [
     materialId: identifier,
     patch: resourceJsonObjectSchema,
     alias: alias.optional(),
+  }),
+  operation('material.look.create', {
+    materialId: identifier,
+    look: z.enum(['automotivePaint', 'rubber', 'brushedMetal', 'glass', 'emissiveLens', 'fabric', 'organicSkin']),
+    color: z.string().regex(/^#[0-9a-fA-F]{6}$/u).optional(),
   }),
   operation('resource.create', { resourceType, resource: resourceJsonObjectSchema, alias: alias.optional() }),
   operation('resource.createMany', { items: z.array(z.object({

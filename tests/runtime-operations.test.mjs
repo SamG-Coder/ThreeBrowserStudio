@@ -150,6 +150,20 @@ test('material variants inherit a canonical base and apply one typed merge patch
   });
 });
 
+test('semantic material looks lower to editable physical material resources', () => {
+  const project = createProjectDocument({ projectId: 'project/material-look' });
+  assert.deepEqual(translateToolOperation({
+    op: 'material.look.create', materialId: 'material/paint', look: 'automotivePaint',
+    color: '#cc1122',
+  }, project), {
+    type: 'resource.create', resourceType: 'materials',
+    resource: {
+      id: 'material/paint', name: 'Automotive Paint', metadata: { studioLook: 'automotivePaint' },
+      recipe: { kind: 'physical', color: '#cc1122', roughness: 0.22, metalness: 0.16, clearcoat: 1, clearcoatRoughness: 0.055 },
+    },
+  });
+});
+
 test('typed lighting rigs lower to raster-safe lights with explicit optional RTX policy', () => {
   const project = createProjectDocument({ projectId: 'project/lighting-rig' });
   const automatic = translateToolOperation({

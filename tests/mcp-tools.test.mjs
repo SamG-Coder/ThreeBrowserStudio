@@ -144,7 +144,7 @@ test('checked-in JSON contract is generated exactly from compact live schemas', 
     inputSchemas: TOOL_INPUT_SCHEMAS,
   }));
   const encoder = new TextEncoder();
-  assert.ok(encoder.encode(JSON.stringify(TOOL_INPUT_SCHEMAS.three_studio_apply)).byteLength <= 70_000);
+  assert.ok(encoder.encode(JSON.stringify(TOOL_INPUT_SCHEMAS.three_studio_apply)).byteLength <= 71_000);
   assert.ok(encoder.encode(JSON.stringify(TOOL_INPUT_SCHEMAS)).byteLength <= 85_000);
 });
 
@@ -272,7 +272,7 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
     'lighting.rig.create',
     'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
     'geometry.edit', 'geometry.realize', 'geometry.loft.edit', 'geometry.selection.edit',
-    'material.variant.create',
+    'material.variant.create', 'material.look.create',
     'resource.create', 'resource.createMany', 'resource.patch', 'resource.delete',
   ]);
   assert.equal(inspectSchema.safeParse({ query: 'selector', selector: { tag: 'hero' }, include: ['tree', 'transform', 'bounds', 'references'] }).success, true);
@@ -290,6 +290,11 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
     meshFilter: { materialIndex: 2, normal: [0, 1, 0], minNormalDot: 0.8 },
   }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'meshQuality', selector: { ids: ['geometry/dense'] } }).success, true);
+  assert.equal(applySchema.safeParse({
+    protocolVersion: 'three-studio/1', sessionId: 'live-session', projectId: 'project/demo', baseRevision: 0,
+    idempotencyKey: 'look-0001', label: 'Create paint',
+    operations: [{ op: 'material.look.create', materialId: 'material/paint', look: 'automotivePaint', color: '#cc1122' }],
+  }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'meshElements', selector: { ids: ['geometry/a', 'geometry/b'] } }).success, false);
   assert.equal(inspectSchema.safeParse({ query: 'graphDigest', selector: { ids: ['graph/surface'] } }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'modifierDigest', selector: { ids: ['entity/wall'] } }).success, true);

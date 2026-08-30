@@ -374,6 +374,32 @@ function lightingRigOperations(operation) {
   return result;
 }
 
+const MATERIAL_LOOK_RECIPES = Object.freeze({
+  automotivePaint: Object.freeze({ kind: 'physical', color: '#8a1018', roughness: 0.22, metalness: 0.16, clearcoat: 1, clearcoatRoughness: 0.055 }),
+  rubber: Object.freeze({ kind: 'physical', color: '#111316', roughness: 0.78, metalness: 0, clearcoat: 0.04, clearcoatRoughness: 0.7 }),
+  brushedMetal: Object.freeze({ kind: 'physical', color: '#8c939b', roughness: 0.3, metalness: 1, anisotropy: 0.72 }),
+  glass: Object.freeze({ kind: 'physical', color: '#dcecff', roughness: 0.055, metalness: 0, transmission: 1, opacity: 1, ior: 1.5, thickness: 0.08 }),
+  emissiveLens: Object.freeze({ kind: 'physical', color: '#4a0802', roughness: 0.2, metalness: 0, clearcoat: 0.65, clearcoatRoughness: 0.08, emissive: '#ff3b08', emissiveIntensity: 4 }),
+  fabric: Object.freeze({ kind: 'physical', color: '#30343a', roughness: 0.9, metalness: 0, sheen: 0.7, sheenRoughness: 0.72, sheenColor: '#657080' }),
+  organicSkin: Object.freeze({ kind: 'physical', color: '#8e1522', roughness: 0.36, metalness: 0, clearcoat: 0.38, clearcoatRoughness: 0.2, sheen: 0.08, sheenRoughness: 0.6 }),
+});
+
+export function materialLookResource(operation) {
+  const recipe = { ...MATERIAL_LOOK_RECIPES[operation.look] };
+  if (!recipe.kind) throw new StudioError('material_look_unsupported', `Material look ${operation.look} is not supported.`);
+  for (const key of ['roughness', 'metalness', 'clearcoat', 'clearcoatRoughness', 'transmission', 'opacity', 'emissiveIntensity', 'anisotropy']) {
+    if (operation[key] !== undefined) recipe[key] = operation[key];
+  }
+  if (operation.color !== undefined) recipe.color = operation.color;
+  if (operation.emissive !== undefined) recipe.emissive = operation.emissive;
+  return {
+    id: operation.materialId,
+    name: operation.name ?? operation.look.replace(/([A-Z])/gu, ' $1').replace(/^./u, value => value.toUpperCase()),
+    recipe,
+    metadata: { studioLook: operation.look },
+  };
+}
+
 function localStrokeForEntity(strokeValue, document, entityId) {
   const stroke = normalizeStroke(strokeValue);
   if (stroke.space === 'local') return stroke;
@@ -534,6 +560,10 @@ export function translateToolOperation(operation, document) {
       ...(operation.alias ? { alias: operation.alias } : {}),
     };
   }
+  if (operation.op === 'material.look.create') return {
+    type: 'resource.create', resourceType: 'materials', resource: materialLookResource(operation),
+    ...(operation.alias ? { alias: operation.alias } : {}),
+  };
   if (operation.op === 'lighting.rig.create') return lightingRigOperations(operation);
   if (DIRECT_CORE_OPERATIONS.has(operation.op)) {
     const direct = structuredClone(operation);
