@@ -168,7 +168,7 @@ const entries = [
     canonicalRepresentation: 'Geometry resources include procedural recipes, indexed triangles, and editable polygon-corner meshes with topology hashes, layers, material slots, sharp edges, and creases.',
     mcpWorkflow: ['three_studio_inspect: meshElements for exact topology and topologyHash', 'three_studio_apply: geometry.edit with guarded bounded commands', 'three_studio_apply: entity.create with components.mesh'],
     runtimeNotes: 'Geometry edits are exact canonical mutations rather than UI selection state; topology and corner attributes propagate together and compile to indexed WebGPU geometry.',
-    supportedSubset: ['procedural primitives and curves', 'indexed and editable polygon meshes', 'exact vertex/edge/face selections', 'move/scale/rotate/smooth/proportional move', 'subdivide/inset/extrude/bevel/delete/merge', 'normals', 'UV and color layers', 'face materials', 'sharp edges and creases'],
+    supportedSubset: ['procedural primitives and curves', 'indexed and editable polygon meshes', 'exact vertex/edge/face selections', 'move/scale/rotate/smooth/proportional move', 'subdivide/inset/extrude/bevel/delete/merge', 'ordered boundary fill', 'equal-count loop bridging', 'compact mesh-quality diagnostics', 'normals', 'UV and color layers', 'face materials', 'sharp edges and creases'],
     unsupportedSubset: ['loop cut', 'dissolve', 'shape keys', 'interactive selection mode', 'sculpt topology'],
     officialUrls: ['https://docs.blender.org/manual/en/latest/modeling/meshes/editing/introduction.html'],
   }),

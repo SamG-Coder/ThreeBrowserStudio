@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildMeshElements, buildMeshSelection, contentHash } from '../src/core/index.mjs';
+import { buildMeshElements, buildMeshQuality, buildMeshSelection, contentHash } from '../src/core/index.mjs';
 
 const resource = {
   id: 'geometry/quad',
@@ -203,6 +203,24 @@ test('mesh selection returns compact exact indices for spatial, normal, and mate
   assert.notEqual(selected.selectionHash, buildMeshSelection(resource, {
     element: 'faces', meshFilter: { materialIndex: 0 },
   }).selectionHash);
+});
+
+test('mesh quality reports bounded topology defects without echoing geometry arrays', () => {
+  const quality = buildMeshQuality({
+    id: 'geometry/quality',
+    recipe: {
+      kind: 'indexedMesh',
+      positions: [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 9, 9, 9],
+      indices: [0, 1, 2, 0, 3, 1],
+    },
+  });
+  assert.equal(quality.vertexCount, 5);
+  assert.equal(quality.isolatedVertexCount, 1);
+  assert.equal(quality.duplicatePositionCount, 1);
+  assert.equal(quality.degenerateFaceCount, 1);
+  assert.equal(quality.watertight, false);
+  assert.ok(quality.issueCount >= 3);
+  assert.equal(JSON.stringify(quality).includes('positions'), false);
 });
 
 test('mesh inspection rejects procedural recipes instead of inspecting compiled approximations', () => {

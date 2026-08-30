@@ -431,3 +431,39 @@ test('generic edit dispatcher rejects unknown commands and bounds command batche
     /cannot be compiled/,
   );
 });
+
+test('fillVertices caps an ordered boundary and bridgeLoops connects equal loops', () => {
+  const openLoops = {
+    kind: 'editableMesh',
+    positions: [
+      -1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0,
+      -1, -1, 1, 1, -1, 1, 1, 1, 1, -1, 1, 1,
+    ],
+    faceOffsets: [0],
+    cornerVertexIndices: [],
+    uvLayers: {},
+    colorLayers: {},
+    activeUvLayer: null,
+    activeColorLayer: null,
+    faceMaterialIndices: [],
+    sharpEdges: [],
+    edgeCreases: [],
+  };
+  const bridged = applyEditableMeshEdit(openLoops, {
+    type: 'bridgeLoops',
+    firstLoop: [0, 1, 2, 3],
+    secondLoop: [4, 5, 6, 7],
+    materialIndex: 2,
+  });
+  assert.deepEqual(bridged.faceOffsets, [0, 4, 8, 12, 16]);
+  assert.deepEqual(bridged.faceMaterialIndices, [2, 2, 2, 2]);
+
+  const filled = applyEditableMeshEdit(bridged, {
+    type: 'fillVertices',
+    vertexIndices: [3, 2, 1, 0],
+    materialIndex: 1,
+  });
+  assert.deepEqual(filled.faceOffsets, [0, 4, 8, 12, 16, 20]);
+  assert.equal(filled.faceMaterialIndices.at(-1), 1);
+  assert.equal(filled.cornerVertexIndices.length, 20);
+});

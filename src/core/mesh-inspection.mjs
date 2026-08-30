@@ -616,3 +616,61 @@ export function buildMeshSelection(resource, { element = 'vertices', meshFilter 
     selectionHash: contentHash({ resourceHash, topologyHash, element, filterHash, indices }),
   };
 }
+
+/** Computes bounded topology diagnostics without returning authored arrays. */
+export function buildMeshQuality(resource) {
+  const mesh = recipeFrom(resource);
+  const edges = deriveEdges(mesh);
+  const vertexCount = mesh.positions.length / 3;
+  const faceCount = mesh.faceOffsets.length - 1;
+  const usedVertices = new Set(mesh.cornerVertexIndices);
+  const positionKeys = new Map();
+  for (let vertex = 0; vertex < vertexCount; vertex += 1) {
+    const key = tuple(mesh.positions, vertex, 3).join('\u0000');
+    positionKeys.set(key, (positionKeys.get(key) ?? 0) + 1);
+  }
+  const degenerateFaces = [];
+  let maximumFaceArity = 0;
+  for (let face = 0; face < faceCount; face += 1) {
+    const arity = mesh.faceOffsets[face + 1] - mesh.faceOffsets[face];
+    maximumFaceArity = Math.max(maximumFaceArity, arity);
+    const normal = meshFaceNormal(mesh, face);
+    if (Math.hypot(...normal) <= 1e-12) degenerateFaces.push(face);
+  }
+  const zeroLengthEdges = edges.filter(edge => {
+    const first = tuple(mesh.positions, edge.vertices[0], 3);
+    const second = tuple(mesh.positions, edge.vertices[1], 3);
+    return Math.hypot(...first.map((value, axis) => value - second[axis])) <= 1e-12;
+  });
+  const boundaryEdges = edges.filter(edge => edge.faces.length === 1);
+  const nonManifoldEdges = edges.filter(edge => edge.faces.length > 2);
+  const isolatedVertexCount = vertexCount - usedVertices.size;
+  const duplicatePositionCount = [...positionKeys.values()].reduce((sum, count) => sum + Math.max(0, count - 1), 0);
+  const issueCount = degenerateFaces.length + zeroLengthEdges.length + nonManifoldEdges.length
+    + isolatedVertexCount + duplicatePositionCount;
+  return {
+    resourceId: resource.id,
+    resourceHash: contentHash(resource),
+    topologyHash: mesh.topologyHash,
+    topologyKind: mesh.topologyKind,
+    vertexCount,
+    edgeCount: edges.length,
+    faceCount,
+    cornerCount: mesh.cornerVertexIndices.length,
+    boundaryEdgeCount: boundaryEdges.length,
+    nonManifoldEdgeCount: nonManifoldEdges.length,
+    zeroLengthEdgeCount: zeroLengthEdges.length,
+    isolatedVertexCount,
+    duplicatePositionCount,
+    degenerateFaceCount: degenerateFaces.length,
+    maximumFaceArity,
+    issueCount,
+    manifold: nonManifoldEdges.length === 0,
+    watertight: boundaryEdges.length === 0 && nonManifoldEdges.length === 0,
+    samples: {
+      nonManifoldEdges: nonManifoldEdges.slice(0, 32).map(edge => edge.vertices),
+      zeroLengthEdges: zeroLengthEdges.slice(0, 32).map(edge => edge.vertices),
+      degenerateFaces: degenerateFaces.slice(0, 32),
+    },
+  };
+}

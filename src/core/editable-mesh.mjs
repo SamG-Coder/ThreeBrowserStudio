@@ -46,6 +46,8 @@ const EDIT_COMMAND_KEYS = new Map([
   ['bevelEdges', new Set(['type', 'expectedTopologyHash', 'edges', 'edgeVertexIndices', 'factor', 'width', 'materialIndex'])],
   ['deleteFaces', new Set(['type', 'expectedTopologyHash', 'faceIndices', 'selection'])],
   ['mergeVertices', new Set(['type', 'expectedTopologyHash', 'vertexIndices', 'selection', 'targetVertexIndex', 'position', 'tolerance'])],
+  ['fillVertices', new Set(['type', 'expectedTopologyHash', 'vertexIndices', 'materialIndex'])],
+  ['bridgeLoops', new Set(['type', 'expectedTopologyHash', 'firstLoop', 'secondLoop', 'materialIndex', 'twist'])],
 ]);
 
 export const EDITABLE_MESH_LIMITS = Object.freeze({
@@ -1255,6 +1257,46 @@ export function mergeEditableMeshVertices(recipe, command = {}) {
   return flattenFaces(positions, compactFaces, annotations.sharpEdges, annotations.edgeCreases, mesh);
 }
 
+function blankFace(mesh, vertices, materialIndex) {
+  return {
+    sourceFaceIndex: -1,
+    vertices,
+    materialIndex,
+    uv: Object.fromEntries(Object.keys(mesh.uvLayers).map(name => [name, vertices.map(() => [0, 0])])),
+    color: Object.fromEntries(Object.keys(mesh.colorLayers).map(name => [name, vertices.map(() => [1, 1, 1, 1])])),
+  };
+}
+
+/** Fills one exact ordered boundary with an n-gon. */
+export function fillEditableMeshVertices(recipe, command = {}) {
+  const mesh = normalizeEditableMeshRecipe(recipe);
+  const vertexCount = mesh.positions.length / 3;
+  const vertices = selectedIndices(command.vertexIndices, vertexCount, 'vertexIndices', { minimum: 3 });
+  const materialIndex = integer(command.materialIndex ?? 0, 'materialIndex', 0, MAX_MATERIAL_SLOTS_PER_MESH - 1);
+  const faces = faceRecords(mesh);
+  faces.push(blankFace(mesh, vertices, materialIndex));
+  return flattenFaces(mesh.positions, faces, mesh.sharpEdges, mesh.edgeCreases, mesh);
+}
+
+/** Bridges two exact, equal-size ordered loops with a deterministic quad strip. */
+export function bridgeEditableMeshLoops(recipe, command = {}) {
+  const mesh = normalizeEditableMeshRecipe(recipe);
+  const vertexCount = mesh.positions.length / 3;
+  const first = selectedIndices(command.firstLoop, vertexCount, 'firstLoop', { minimum: 2 });
+  const second = selectedIndices(command.secondLoop, vertexCount, 'secondLoop', { minimum: 2 });
+  if (first.length !== second.length) throw new RangeError('bridgeLoops requires equal-size loops.');
+  if (first.some(index => second.includes(index))) throw new RangeError('bridgeLoops loops cannot share vertices.');
+  const twist = integer(command.twist ?? 0, 'twist', -second.length, second.length);
+  const materialIndex = integer(command.materialIndex ?? 0, 'materialIndex', 0, MAX_MATERIAL_SLOTS_PER_MESH - 1);
+  const shifted = second.map((_, index) => second[(index + twist + second.length) % second.length]);
+  const faces = faceRecords(mesh);
+  for (let index = 0; index < first.length; index += 1) {
+    const next = (index + 1) % first.length;
+    faces.push(blankFace(mesh, [first[index], first[next], shifted[next], shifted[index]], materialIndex));
+  }
+  return flattenFaces(mesh.positions, faces, mesh.sharpEdges, mesh.edgeCreases, mesh);
+}
+
 /** Applies one serializable editable-mesh command. */
 export function applyEditableMeshEdit(recipe, command) {
   if (!isPlainRecord(command)) throw new TypeError('Editable mesh edit command must be a plain object.');
@@ -1290,6 +1332,8 @@ export function applyEditableMeshEdit(recipe, command) {
     case 'bevelEdges': return bevelEditableMeshEdges(recipe, command);
     case 'deleteFaces': return deleteEditableMeshFaces(recipe, command);
     case 'mergeVertices': return mergeEditableMeshVertices(recipe, command);
+    case 'fillVertices': return fillEditableMeshVertices(recipe, command);
+    case 'bridgeLoops': return bridgeEditableMeshLoops(recipe, command);
     default: throw new TypeError(`Unsupported editable mesh edit command: ${String(command.type)}.`);
   }
 }

@@ -117,7 +117,7 @@ export const INSPECT_SLICES = Object.freeze([
 ]);
 
 export const INSPECT_QUERIES = Object.freeze([
-  'selector', 'sceneDigest', 'resourceDigest', 'meshElements', 'meshSelection', 'graphDigest', 'modifierDigest', 'rtxDigest', 'changedSinceRevision',
+  'selector', 'sceneDigest', 'resourceDigest', 'meshElements', 'meshSelection', 'meshQuality', 'graphDigest', 'modifierDigest', 'rtxDigest', 'changedSinceRevision',
   'unresolvedResources', 'unusedResources', 'graphCatalog', 'playState',
   'latestEvidence', 'blenderCatalog', 'beautyDigest', 'projectVisibility',
   'operationCatalog', 'geometryCatalog',
@@ -190,7 +190,7 @@ export const inspectSchema = z.object({
   preset: z.enum(['summary', 'authoring', 'full']).optional().default('full'),
   ...responseProjectionFields,
 }).strict().superRefine((value, context) => {
-  if (['meshElements', 'meshSelection', 'graphDigest', 'modifierDigest'].includes(value.query) && value.selector?.ids?.length !== 1) {
+  if (['meshElements', 'meshSelection', 'meshQuality', 'graphDigest', 'modifierDigest'].includes(value.query) && value.selector?.ids?.length !== 1) {
     context.addIssue({
       code: 'custom',
       path: ['selector', 'ids'],
@@ -711,6 +711,7 @@ export const modifierStackEditsSchema = z.array(modifierStackEditSchema).min(1).
 export const GEOMETRY_EDIT_COMMAND_TYPES = Object.freeze([
   'move', 'proportionalMove', 'sculptStroke', 'transformRegion', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
   'subdivideFaces', 'insetFaces', 'extrudeFaces', 'bevelEdges', 'deleteFaces', 'mergeVertices',
+  'fillVertices', 'bridgeLoops',
   ...EDITABLE_MESH_ATTRIBUTE_COMMAND_TYPES, 'paintColorStroke',
 ]);
 export const MAX_GEOMETRY_EDIT_COMMANDS = 64;
@@ -875,6 +876,22 @@ const geometryMergeVerticesEdit = geometrySelectedVariants('mergeVertices', {
   targetVertexIndex: z.number().int().min(0).max(999_999).optional(),
   position: z.enum(['average', 'target']).optional(),
 });
+const orderedLoopIndices = z.array(z.number().int().min(0).max(999_999))
+  .min(2).max(MAX_GEOMETRY_EDIT_VERTEX_SELECTION)
+  .refine(indices => new Set(indices).size === indices.length, { message: 'Loop indices must be unique.' });
+const geometryFillVerticesEdit = z.object({
+  type: z.literal('fillVertices'),
+  vertexIndices: z.array(z.number().int().min(0).max(999_999)).min(3).max(MAX_GEOMETRY_EDIT_VERTEX_SELECTION)
+    .refine(indices => new Set(indices).size === indices.length, { message: 'vertexIndices must be unique.' }),
+  materialIndex: z.number().int().min(0).max(MAX_MATERIAL_SLOTS_PER_MESH - 1).optional(),
+}).strict();
+const geometryBridgeLoopsEdit = z.object({
+  type: z.literal('bridgeLoops'),
+  firstLoop: orderedLoopIndices,
+  secondLoop: orderedLoopIndices,
+  materialIndex: z.number().int().min(0).max(MAX_MATERIAL_SLOTS_PER_MESH - 1).optional(),
+  twist: z.number().int().min(-20_000).max(20_000).optional(),
+}).strict();
 
 const geometryLayerName = z.string().min(1).max(EDITABLE_MESH_ATTRIBUTE_LIMITS.maxLayerNameLength)
   .refine(value => value.trim() === value && !/[\u0000-\u001f\u007f]/u.test(value), {
@@ -1049,6 +1066,8 @@ export const geometryEditCommandSchema = z.union([
   geometryBevelEdgesEdit,
   geometryDeleteFacesEdit,
   geometryMergeVerticesEdit,
+  geometryFillVerticesEdit,
+  geometryBridgeLoopsEdit,
   geometryCreateUvLayerEdit,
   geometryDeleteUvLayerEdit,
   geometryRenameUvLayerEdit,

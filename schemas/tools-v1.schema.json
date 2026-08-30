@@ -139,6 +139,7 @@
               "resourceDigest",
               "meshElements",
               "meshSelection",
+              "meshQuality",
               "graphDigest",
               "modifierDigest",
               "rtxDigest",
@@ -2415,7 +2416,7 @@
                                     }
                                   },
                                   "transform": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema61"
+                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema62"
                                   }
                                 },
                                 "required": [
@@ -2458,7 +2459,7 @@
                                     }
                                   },
                                   "transform": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema61"
+                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema62"
                                   }
                                 },
                                 "additionalProperties": false
@@ -2640,7 +2641,7 @@
                       "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
                     },
                     "patch": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema62"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema63"
                     },
                     "alias": {
                       "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
@@ -2662,10 +2663,10 @@
                       "const": "resource.create"
                     },
                     "resourceType": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema64"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema65"
                     },
                     "resource": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema62"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema63"
                     },
                     "alias": {
                       "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
@@ -2693,10 +2694,10 @@
                         "type": "object",
                         "properties": {
                           "resourceType": {
-                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema64"
+                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema65"
                           },
                           "resource": {
-                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema62"
+                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema63"
                           },
                           "alias": {
                             "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
@@ -2724,13 +2725,13 @@
                       "const": "resource.patch"
                     },
                     "resourceType": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema64"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema65"
                     },
                     "resourceId": {
                       "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
                     },
                     "patch": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema62"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema63"
                     }
                   },
                   "required": [
@@ -2749,7 +2750,7 @@
                       "const": "resource.delete"
                     },
                     "resourceType": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema64"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema65"
                     },
                     "resourceId": {
                       "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
@@ -5997,16 +5998,76 @@
                   "properties": {
                     "type": {
                       "type": "string",
+                      "const": "fillVertices"
+                    },
+                    "vertexIndices": {
+                      "minItems": 3,
+                      "maxItems": 20000,
+                      "type": "array",
+                      "items": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 999999
+                      }
+                    },
+                    "materialIndex": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 255
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "vertexIndices"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "bridgeLoops"
+                    },
+                    "firstLoop": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema53"
+                    },
+                    "secondLoop": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema53"
+                    },
+                    "materialIndex": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 255
+                    },
+                    "twist": {
+                      "type": "integer",
+                      "minimum": -20000,
+                      "maximum": 20000
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "firstLoop",
+                    "secondLoop"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
                       "const": "createUvLayer"
                     },
                     "name": {
                       "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
                     },
                     "fill": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema53"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema54"
                     },
                     "values": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema55"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema56"
                     },
                     "setActive": {
                       "type": "boolean"
@@ -6101,10 +6162,10 @@
                       "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
                     },
                     "cornerIndices": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema56"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema57"
                     },
                     "values": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema55"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema56"
                     }
                   },
                   "required": [
@@ -6126,19 +6187,19 @@
                       "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
                     },
                     "cornerIndices": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema56"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema57"
                     },
                     "translation": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema53"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema54"
                     },
                     "scale": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema57"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema58"
                     },
                     "rotation": {
                       "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema19"
                     },
                     "pivot": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema53"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema54"
                     }
                   },
                   "required": [
@@ -6159,7 +6220,7 @@
                       "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
                     },
                     "cornerIndices": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema56"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema57"
                     },
                     "projection": {
                       "type": "string",
@@ -6185,10 +6246,10 @@
                       "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
                     },
                     "scale": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema57"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema58"
                     },
                     "offset": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema53"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema54"
                     }
                   },
                   "required": [
@@ -6213,11 +6274,11 @@
                       "maxItems": 4,
                       "type": "array",
                       "items": {
-                        "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema58"
+                        "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema59"
                       }
                     },
                     "values": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema59"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema60"
                     },
                     "setActive": {
                       "type": "boolean"
@@ -6312,10 +6373,10 @@
                       "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
                     },
                     "cornerIndices": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema56"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema57"
                     },
                     "values": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema59"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema60"
                     }
                   },
                   "required": [
@@ -6427,7 +6488,7 @@
                       "const": "setSharpEdges"
                     },
                     "edges": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema60"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema61"
                     },
                     "sharp": {
                       "type": "boolean"
@@ -6448,7 +6509,7 @@
                       "const": "setEdgeCreases"
                     },
                     "edges": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema60"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema61"
                     },
                     "weight": {
                       "type": "number",
@@ -6471,7 +6532,7 @@
                       "const": "removeEdgeCreases"
                     },
                     "edges": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema60"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema61"
                     }
                   },
                   "required": [
@@ -6571,26 +6632,36 @@
           },
           "__schema53": {
             "minItems": 2,
-            "maxItems": 2,
+            "maxItems": 20000,
             "type": "array",
             "items": {
-              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema54"
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 999999
             }
           },
           "__schema54": {
+            "minItems": 2,
+            "maxItems": 2,
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema55"
+            }
+          },
+          "__schema55": {
             "type": "number",
             "minimum": -1000000,
             "maximum": 1000000
           },
-          "__schema55": {
+          "__schema56": {
             "minItems": 2,
             "maxItems": 2000000,
             "type": "array",
             "items": {
-              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema54"
+              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema55"
             }
           },
-          "__schema56": {
+          "__schema57": {
             "anyOf": [
               {
                 "type": "string",
@@ -6608,30 +6679,30 @@
               }
             ]
           },
-          "__schema57": {
+          "__schema58": {
             "anyOf": [
               {
-                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema54"
+                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema55"
               },
               {
-                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema53"
+                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema54"
               }
             ]
           },
-          "__schema58": {
+          "__schema59": {
             "type": "number",
             "minimum": 0,
             "maximum": 1
           },
-          "__schema59": {
+          "__schema60": {
             "minItems": 4,
             "maxItems": 4000000,
             "type": "array",
             "items": {
-              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema58"
+              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema59"
             }
           },
-          "__schema60": {
+          "__schema61": {
             "anyOf": [
               {
                 "type": "string",
@@ -6642,7 +6713,7 @@
               }
             ]
           },
-          "__schema61": {
+          "__schema62": {
             "type": "object",
             "properties": {
               "translation": {
@@ -6657,17 +6728,17 @@
             },
             "additionalProperties": false
           },
-          "__schema62": {
+          "__schema63": {
             "type": "object",
             "propertyNames": {
               "type": "string",
               "maxLength": 160
             },
             "additionalProperties": {
-              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema63"
+              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema64"
             }
           },
-          "__schema63": {
+          "__schema64": {
             "anyOf": [
               {
                 "type": "null"
@@ -6686,7 +6757,7 @@
                 "maxItems": 6000000,
                 "type": "array",
                 "items": {
-                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema63"
+                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema64"
                 }
               },
               {
@@ -6696,12 +6767,12 @@
                   "maxLength": 160
                 },
                 "additionalProperties": {
-                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema63"
+                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema64"
                 }
               }
             ]
           },
-          "__schema64": {
+          "__schema65": {
             "type": "string",
             "enum": [
               "geometries",

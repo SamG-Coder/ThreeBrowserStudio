@@ -52,6 +52,7 @@ const INSPECT_QUERIES = Object.freeze({
   resourceDigest: 'Inspect resource digest',
   meshElements: 'Inspect exact mesh elements',
   meshSelection: 'Select exact mesh elements',
+  meshQuality: 'Inspect mesh quality',
   graphDigest: 'Inspect graph digest',
   modifierDigest: 'Inspect exact modifier stack',
   rtxDigest: 'Inspect RTX digest',

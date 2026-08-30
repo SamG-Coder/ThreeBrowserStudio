@@ -6,6 +6,7 @@ import {
   buildBeautyDigest,
   buildMeshElements,
   buildMeshSelection,
+  buildMeshQuality,
   buildProjectVisibility,
   MAX_INSPECT_RESPONSE_BYTES,
   ProjectIndex,
@@ -1934,6 +1935,16 @@ export class StudioApplication {
           element: params.element,
           meshFilter: params.meshFilter,
         }),
+      };
+    }
+    if (params.query === 'meshQuality') {
+      const resourceId = params.selector.ids[0];
+      const { resource } = new ProjectIndex(document).getResource(resourceId, 'geometries');
+      return {
+        success: true,
+        revision: document.revision,
+        projectId: document.projectId,
+        quality: buildMeshQuality(resource),
       };
     }
     if (params.query === 'graphDigest') {

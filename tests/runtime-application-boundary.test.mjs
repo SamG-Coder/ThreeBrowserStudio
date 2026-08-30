@@ -1101,6 +1101,7 @@ test('a project switch compile failure preserves the active project and live sce
   assert.deepEqual(status.capabilities.geometryEditCommands, [
     'move', 'proportionalMove', 'sculptStroke', 'transformRegion', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
     'subdivideFaces', 'insetFaces', 'extrudeFaces', 'bevelEdges', 'deleteFaces', 'mergeVertices',
+    'fillVertices', 'bridgeLoops',
     'createUvLayer', 'deleteUvLayer', 'renameUvLayer', 'setActiveUvLayer', 'setCornerUvs',
     'transformUvs', 'projectUvs', 'createColorLayer', 'deleteColorLayer', 'renameColorLayer',
     'setActiveColorLayer', 'setCornerColors', 'assignFaceMaterials', 'setSharpEdges',
