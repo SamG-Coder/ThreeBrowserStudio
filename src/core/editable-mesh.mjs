@@ -32,6 +32,7 @@ const RECIPE_KEYS = new Set([
 const EDIT_COMMAND_KEYS = new Map([
   ['move', new Set(['type', 'expectedTopologyHash', 'vertexIndices', 'selection', 'offset', 'delta'])],
   ['moveVertices', new Set(['type', 'expectedTopologyHash', 'vertexIndices', 'selection', 'offset', 'delta'])],
+  ['proportionalMove', new Set(['type', 'expectedTopologyHash', 'vertexIndices', 'selection', 'center', 'radius', 'offset', 'falloff', 'axisScale'])],
   ['scale', new Set(['type', 'expectedTopologyHash', 'vertexIndices', 'selection', 'scale', 'factor', 'pivot'])],
   ['scaleVertices', new Set(['type', 'expectedTopologyHash', 'vertexIndices', 'selection', 'scale', 'factor', 'pivot'])],
   ['rotate', new Set(['type', 'expectedTopologyHash', 'vertexIndices', 'selection', 'rotation', 'euler', 'axis', 'angle', 'pivot'])],
@@ -466,6 +467,38 @@ function withEditedVertices(recipe, command, edit) {
 export function moveEditableMeshVertices(recipe, command = {}) {
   const offset = vector3(command.offset ?? command.delta, 'offset');
   return withEditedVertices(recipe, command, position => position.map((value, axis) => value + offset[axis]));
+}
+
+/** Moves vertices through a compact ellipsoidal influence field with deterministic falloff. */
+export function proportionalMoveEditableMeshVertices(recipe, command = {}) {
+  const mesh = normalizeEditableMeshRecipe(recipe);
+  const selection = selectedIndices(
+    command.vertexIndices ?? command.selection,
+    mesh.positions.length / 3,
+    'vertexIndices',
+    { defaultAll: true },
+  );
+  const center = vector3(command.center, 'center');
+  const radius = finiteNumber(command.radius, 'radius', Number.MIN_VALUE, MAX_COORDINATE);
+  const offset = vector3(command.offset, 'offset');
+  const axisScale = vector3(command.axisScale ?? [1, 1, 1], 'axisScale');
+  if (axisScale.some(value => value <= 0)) throw new RangeError('axisScale entries must be greater than zero.');
+  const falloff = command.falloff ?? 'smooth';
+  if (!['constant', 'linear', 'smooth', 'sharp', 'sphere'].includes(falloff)) throw new TypeError('Unsupported proportional falloff.');
+  const weight = (distance) => {
+    if (distance > radius) return 0;
+    const t = distance / radius;
+    if (falloff === 'constant') return 1;
+    if (falloff === 'sharp') return (1 - t) ** 2;
+    if (falloff === 'sphere') return Math.sqrt(Math.max(0, 1 - t * t));
+    if (falloff === 'smooth') return 1 - (3 * t * t - 2 * t * t * t);
+    return 1 - t;
+  };
+  return withEditedVertices(mesh, { vertexIndices: selection }, (position) => {
+    const distance = Math.hypot(...position.map((value, axis) => (value - center[axis]) / axisScale[axis]));
+    const influence = weight(distance);
+    return position.map((value, axis) => value + offset[axis] * influence);
+  });
 }
 
 /** Scales an exact vertex selection around an explicit pivot or its centroid. */
@@ -1241,6 +1274,7 @@ export function applyEditableMeshEdit(recipe, command) {
   switch (command.type) {
     case 'move':
     case 'moveVertices': return moveEditableMeshVertices(recipe, command);
+    case 'proportionalMove': return proportionalMoveEditableMeshVertices(recipe, command);
     case 'scale':
     case 'scaleVertices': return scaleEditableMeshVertices(recipe, command);
     case 'rotate':

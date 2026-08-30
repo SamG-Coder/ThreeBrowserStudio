@@ -10,10 +10,19 @@ import {
   insetEditableMeshFaces,
   mergeEditableMeshVertices,
   normalizeEditableMeshRecipe,
+  proportionalMoveEditableMeshVertices,
   smoothEditableMeshVertices,
   subdivideEditableMeshFaces,
   triangulateEditableMesh,
 } from '../src/core/editable-mesh.mjs';
+
+test('editable mesh proportional move supports compact smooth influence fields', () => {
+  const result = proportionalMoveEditableMeshVertices(quad(), {
+    center: [0, 0, 0], radius: 2.1, offset: [0, 0, 2], falloff: 'smooth',
+  });
+  assert.equal(result.positions[2], 2);
+  assert.ok(result.positions[5] > 0 && result.positions[5] < 2);
+});
 
 function quad() {
   return {

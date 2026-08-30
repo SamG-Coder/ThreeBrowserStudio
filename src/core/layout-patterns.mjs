@@ -6,8 +6,9 @@ export const MAX_LAYOUT_PATTERN_INSTANCES = 8192;
 export const MIN_LAYOUT_SCATTER_SEED = -2_147_483_648;
 export const MAX_LAYOUT_SCATTER_SEED = 2_147_483_647;
 export const MAX_LAYOUT_PATTERN_COMPONENT = 1_000_000_000;
-export const LAYOUT_PATTERN_MODES = Object.freeze(['linear', 'grid', 'radial', 'scatter']);
+export const LAYOUT_PATTERN_MODES = Object.freeze(['linear', 'grid', 'radial', 'scatter', 'surface']);
 export const LAYOUT_PATTERN_ORIENTATIONS = Object.freeze(['keep', 'radial', 'tangent']);
+export const LAYOUT_SURFACE_ORIENTATIONS = Object.freeze(['keep', 'normal', 'gravity']);
 
 const COMMON_KEYS = new Set(['id', 'mode']);
 const MODIFIER_KEYS = new Set(['type', 'enabled', 'enabledViewport', 'enabledRender']);
@@ -16,6 +17,10 @@ const MODE_KEYS = Object.freeze({
   grid: new Set(['counts', 'spacing']),
   radial: new Set(['count', 'axis', 'center', 'radius', 'startAngle', 'arc', 'closed', 'orientation']),
   scatter: new Set(['count', 'seed', 'bounds', 'rotationMin', 'rotationMax', 'scaleMin', 'scaleMax']),
+  surface: new Set([
+    'count', 'seed', 'targetEntityId', 'orientation', 'normalAxis', 'gravity',
+    'offset', 'minDistance', 'rotationMin', 'rotationMax', 'scaleMin', 'scaleMax',
+  ]),
 });
 
 function invalid(message, details = {}) {
@@ -158,7 +163,7 @@ export function normalizeLayoutPattern(input, { modifier = false } = {}) {
     output.arc = input.arc;
     output.closed = input.closed;
     output.orientation = input.orientation;
-  } else {
+  } else if (mode === 'scatter') {
     output.count = instanceCount(input.count);
     if (!Number.isInteger(input.seed)
         || input.seed < MIN_LAYOUT_SCATTER_SEED
@@ -174,6 +179,41 @@ export function normalizeLayoutPattern(input, { modifier = false } = {}) {
     const scale = scatterVectorRange(input, 'scaleMin', 'scaleMax', [1, 1, 1], { positive: true });
     output.rotationMin = rotation.minimum;
     output.rotationMax = rotation.maximum;
+    output.scaleMin = scale.minimum;
+    output.scaleMax = scale.maximum;
+  } else {
+    output.count = instanceCount(input.count);
+    if (!Number.isInteger(input.seed)
+        || input.seed < MIN_LAYOUT_SCATTER_SEED
+        || input.seed > MAX_LAYOUT_SCATTER_SEED) {
+      invalid(`seed must be a signed 32-bit integer.`, { field: 'seed', value: input.seed });
+    }
+    output.seed = input.seed;
+    output.targetEntityId = assertStableId(input.targetEntityId, 'surface target entity id');
+    output.orientation = input.orientation ?? 'normal';
+    if (!LAYOUT_SURFACE_ORIENTATIONS.includes(output.orientation)) {
+      invalid(`orientation must be one of ${LAYOUT_SURFACE_ORIENTATIONS.join(', ')}.`, { orientation: input.orientation });
+    }
+    output.normalAxis = input.normalAxis ?? 'z';
+    if (!['x', 'y', 'z'].includes(output.normalAxis)) invalid('normalAxis must be x, y, or z.');
+    output.gravity = boundedVector3(input.gravity ?? [0, -1, 0], 'gravity');
+    if (Math.hypot(...output.gravity) === 0) invalid('gravity must be non-zero.');
+    output.offset = input.offset ?? 0;
+    if (!Number.isFinite(output.offset) || Math.abs(output.offset) > MAX_LAYOUT_PATTERN_COMPONENT) {
+      invalid('offset must be a bounded finite number.', { offset: input.offset });
+    }
+    output.minDistance = input.minDistance ?? 0;
+    if (!Number.isFinite(output.minDistance) || output.minDistance < 0 || output.minDistance > MAX_LAYOUT_PATTERN_COMPONENT) {
+      invalid('minDistance must be a bounded non-negative number.', { minDistance: input.minDistance });
+    }
+    const rotationMinimum = input.rotationMin ?? input.rotationMax ?? 0;
+    const rotationMaximum = input.rotationMax ?? input.rotationMin ?? 0;
+    if (!Number.isFinite(rotationMinimum) || !Number.isFinite(rotationMaximum) || rotationMinimum > rotationMaximum) {
+      invalid('rotationMin and rotationMax must be finite and ordered.');
+    }
+    output.rotationMin = rotationMinimum;
+    output.rotationMax = rotationMaximum;
+    const scale = scatterVectorRange(input, 'scaleMin', 'scaleMax', [1, 1, 1], { positive: true });
     output.scaleMin = scale.minimum;
     output.scaleMax = scale.maximum;
   }

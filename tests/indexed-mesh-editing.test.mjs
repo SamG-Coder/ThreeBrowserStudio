@@ -4,6 +4,7 @@ import {
   applyIndexedMeshEdit,
   laplacianSmooth,
   moveVertices,
+  proportionalMoveVertices,
   recalculateVertexNormals,
   rotateVertices,
   scaleVertices,
@@ -11,6 +12,15 @@ import {
   validateIndexedMeshRecipe,
   weldVertices,
 } from '../src/core/indexed-mesh-editing.mjs';
+
+test('proportional move applies smooth ellipsoidal falloff without enumerating vertices', () => {
+  const result = proportionalMoveVertices(quadRecipe(), {
+    center: [0, 0, 0], radius: 3, offset: [0, 0, 1], falloff: 'linear', axisScale: [1, 2, 1],
+  });
+  assert.equal(result.positions[2], 1);
+  assert.ok(result.positions[5] > 0 && result.positions[5] < 1);
+  assert.equal(result.normals, undefined);
+});
 
 function quadRecipe() {
   return {

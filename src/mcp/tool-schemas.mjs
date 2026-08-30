@@ -276,6 +276,22 @@ const layoutPatternUnion = z.discriminatedUnion('mode', [
     scaleMin: layoutPositiveVec3.optional(),
     scaleMax: layoutPositiveVec3.optional(),
   }).strict(),
+  z.object({
+    id: identifier,
+    mode: z.literal('surface'),
+    count: layoutCount,
+    seed: layoutScatterSeed,
+    targetEntityId: reference,
+    orientation: z.enum(['keep', 'normal', 'gravity']).optional(),
+    normalAxis: z.enum(['x', 'y', 'z']).optional(),
+    gravity: vec3.refine(axis => axis.some(component => component !== 0), { message: 'gravity must not be zero.' }).optional(),
+    offset: finite.min(-1_000_000_000).max(1_000_000_000).optional(),
+    minDistance: finite.min(0).max(1_000_000_000).optional(),
+    rotationMin: finite.optional(),
+    rotationMax: finite.optional(),
+    scaleMin: layoutPositiveVec3.optional(),
+    scaleMax: layoutPositiveVec3.optional(),
+  }).strict(),
 ]);
 export const layoutPatternSchema = layoutPatternUnion.superRefine((pattern, context) => {
   if (pattern.mode === 'grid') {
@@ -304,6 +320,16 @@ export const layoutPatternSchema = layoutPatternUnion.superRefine((pattern, cont
         });
       });
     }
+  }
+  if (pattern.mode === 'surface') {
+    if ((pattern.rotationMin ?? pattern.rotationMax ?? 0) > (pattern.rotationMax ?? pattern.rotationMin ?? 0)) {
+      context.addIssue({ code: 'custom', path: ['rotationMin'], message: 'rotationMin must not exceed rotationMax.' });
+    }
+    const minimum = pattern.scaleMin ?? pattern.scaleMax ?? [1, 1, 1];
+    const maximum = pattern.scaleMax ?? pattern.scaleMin ?? [1, 1, 1];
+    minimum.forEach((value, index) => {
+      if (value > maximum[index]) context.addIssue({ code: 'custom', path: ['scaleMin', index], message: 'scale minimum must not exceed maximum.' });
+    });
   }
 });
 
@@ -350,6 +376,21 @@ const patternModifierUnion = z.discriminatedUnion('mode', [
     scaleMin: layoutPositiveVec3.optional(),
     scaleMax: layoutPositiveVec3.optional(),
   }),
+  modifierDocument('pattern', {
+    mode: z.literal('surface'),
+    count: layoutCount,
+    seed: layoutScatterSeed,
+    targetEntityId: reference,
+    orientation: z.enum(['keep', 'normal', 'gravity']).optional(),
+    normalAxis: z.enum(['x', 'y', 'z']).optional(),
+    gravity: vec3.refine(axis => axis.some(component => component !== 0), { message: 'gravity must not be zero.' }).optional(),
+    offset: finite.min(-1_000_000_000).max(1_000_000_000).optional(),
+    minDistance: finite.min(0).max(1_000_000_000).optional(),
+    rotationMin: finite.optional(),
+    rotationMax: finite.optional(),
+    scaleMin: layoutPositiveVec3.optional(),
+    scaleMax: layoutPositiveVec3.optional(),
+  }),
 ]).superRefine((pattern, context) => {
   if (pattern.mode === 'grid') {
     const product = pattern.counts[0] * pattern.counts[1] * pattern.counts[2];
@@ -373,6 +414,16 @@ const patternModifierUnion = z.discriminatedUnion('mode', [
         });
       });
     }
+  }
+  if (pattern.mode === 'surface') {
+    if ((pattern.rotationMin ?? pattern.rotationMax ?? 0) > (pattern.rotationMax ?? pattern.rotationMin ?? 0)) {
+      context.addIssue({ code: 'custom', path: ['rotationMin'], message: 'rotationMin must not exceed rotationMax.' });
+    }
+    const minimum = pattern.scaleMin ?? pattern.scaleMax ?? [1, 1, 1];
+    const maximum = pattern.scaleMax ?? pattern.scaleMin ?? [1, 1, 1];
+    minimum.forEach((value, index) => {
+      if (value > maximum[index]) context.addIssue({ code: 'custom', path: ['scaleMin', index], message: 'scale minimum must not exceed maximum.' });
+    });
   }
 });
 const recalculateNormalsField = { recalculateNormals: z.boolean().optional() };
@@ -609,7 +660,7 @@ const modifierStackEditSchema = z.discriminatedUnion('type', [
 export const modifierStackEditsSchema = z.array(modifierStackEditSchema).min(1).max(128);
 
 export const GEOMETRY_EDIT_COMMAND_TYPES = Object.freeze([
-  'move', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
+  'move', 'proportionalMove', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
   'subdivideFaces', 'insetFaces', 'extrudeFaces', 'bevelEdges', 'deleteFaces', 'mergeVertices',
   ...EDITABLE_MESH_ATTRIBUTE_COMMAND_TYPES,
 ]);
@@ -646,6 +697,18 @@ const geometrySelectedVariants = (type, fields) => z.union([
   z.object({ type: z.literal(type), selection: z.literal('all'), ...fields }).strict(),
 ]);
 const geometryMoveEdit = geometrySelectedVariants('move', { offset: geometryVec3 });
+const geometryProportionalMoveEdit = z.object({
+  type: z.literal('proportionalMove'),
+  vertexIndices: geometryVertexIndices.optional(),
+  selection: z.literal('all').optional(),
+  center: geometryVec3,
+  radius: z.number().finite().gt(0).max(1_000_000),
+  offset: geometryVec3,
+  falloff: z.enum(['constant', 'linear', 'smooth', 'sharp', 'sphere']).optional(),
+  axisScale: layoutPositiveVec3.optional(),
+}).strict().refine(value => value.vertexIndices === undefined || value.selection === undefined, {
+  message: 'proportionalMove accepts vertexIndices or selection, not both.',
+});
 const geometryScaleEdit = geometrySelectedVariants('scale', {
   scale: geometryScale,
   pivot: geometryVec3.optional(),
@@ -847,6 +910,7 @@ const geometryRemoveEdgeCreasesEdit = z.object({
 
 export const geometryEditCommandSchema = z.union([
   geometryMoveEdit,
+  geometryProportionalMoveEdit,
   geometryScaleEdit,
   geometryEulerRotateEdit,
   geometryAxisRotateEdit,

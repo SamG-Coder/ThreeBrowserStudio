@@ -682,7 +682,7 @@ function validateScene(scene, key, project, diagnostics) {
       if (!project.scripts?.[scriptId]) issue(diagnostics, 'missing_script', `${path}.entities.${entity.id}.scriptIds`, `Script ${scriptId} does not exist`);
     }
     for (const reference of entityComponentReferences(entity)) {
-      if (['constraintTarget', 'lightTarget'].includes(reference.kind)) {
+      if (['constraintTarget', 'lightTarget', 'surfaceTarget'].includes(reference.kind)) {
         if (!scene.entities[reference.targetId]) issue(diagnostics, 'missing_entity_reference', `${path}.entities.${entity.id}.${reference.path}`, `Entity ${reference.targetId} does not exist`);
         continue;
       }

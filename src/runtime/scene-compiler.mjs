@@ -14,6 +14,12 @@ import {
   evaluateGeometryModifierStack,
 } from '../core/geometry-modifier-evaluator.mjs';
 import { analyzeViewportModifierStack } from '../core/modifier-stack.mjs';
+import {
+  entityWorldMatrix,
+  invertTransformMatrix,
+  multiplyTransformMatrices,
+  transformPointByMatrix,
+} from '../core/transform-math.mjs';
 
 function colorFrom(THREE, value, fallback = [0.035, 0.045, 0.06]) {
   const color = new THREE.Color();
@@ -95,6 +101,29 @@ function compileError(code, message, details) {
   error.code = code;
   if (details !== undefined) error.details = details;
   return error;
+}
+
+function transformSurfaceRecipe(recipe, matrix) {
+  const inverse = invertTransformMatrix(matrix);
+  const positions = [];
+  for (let offset = 0; offset < recipe.positions.length; offset += 3) {
+    positions.push(...transformPointByMatrix(matrix, recipe.positions.slice(offset, offset + 3)));
+  }
+  let normals;
+  if (Array.isArray(recipe.normals) && recipe.normals.length === recipe.positions.length) {
+    normals = [];
+    for (let offset = 0; offset < recipe.normals.length; offset += 3) {
+      const [x, y, z] = recipe.normals.slice(offset, offset + 3);
+      const transformed = [
+        inverse[0] * x + inverse[1] * y + inverse[2] * z,
+        inverse[4] * x + inverse[5] * y + inverse[6] * z,
+        inverse[8] * x + inverse[9] * y + inverse[10] * z,
+      ];
+      const magnitude = Math.hypot(...transformed) || 1;
+      normals.push(...transformed.map(value => value / magnitude));
+    }
+  }
+  return { ...recipe, positions, ...(normals ? { normals } : {}) };
 }
 
 function canonicalEntities(document) {
@@ -217,6 +246,18 @@ function instantiateEntity(THREE, entity, context) {
       entity,
       context.diagnostics,
       geometryResult.plan.previewModifiers,
+      {
+        resolveSurface: context.resolveSurface,
+        onSurfaceShortfall(pattern, accepted) {
+          context.diagnostics.push({
+            severity: 'warning',
+            code: 'runtime_surface_pattern_spacing_shortfall',
+            id: entity.id,
+            modifierId: pattern.id,
+            message: `Surface pattern ${pattern.id} placed ${accepted} of ${pattern.count} instances because minDistance exhausted the bounded sampler.`,
+          });
+        },
+      },
     );
     const shouldInstance = entity.kind === 'instancedMesh' || instanceMatrices.length > 1 || hasAuthoredInstances;
     if (shouldInstance) {
@@ -487,6 +528,26 @@ export function compileSceneDocument({ THREE, TSL, project, sceneId = project.ac
   const objects = new Map();
   const entities = canonicalEntities(document);
   const shadowLights = { count: 0, limit: 16 };
+  const surfaceRecipeCache = new Map();
+  const resolveSurface = (sourceEntity, targetEntityId) => {
+    if (sourceEntity.id === targetEntityId) {
+      throw compileError('runtime_surface_pattern_self_target', `Entity ${sourceEntity.id} cannot scatter onto itself.`);
+    }
+    const targetEntity = document.entities?.[targetEntityId];
+    const geometryId = targetEntity?.components?.mesh?.geometryId;
+    if (!targetEntity || !geometryId) {
+      throw compileError('runtime_surface_pattern_target_invalid', `Surface target ${targetEntityId} must be a mesh in the active scene.`);
+    }
+    const sourceWorld = entityWorldMatrix(document, sourceEntity.id);
+    const targetWorld = entityWorldMatrix(document, targetEntity.id);
+    const relative = multiplyTransformMatrices(invertTransformMatrix(sourceWorld), targetWorld);
+    const targetGeometry = geometry(geometryId, targetEntity).value;
+    const cacheKey = JSON.stringify([sourceEntity.id, targetEntity.id, relative, targetGeometry.userData?.studioModifierStackHash]);
+    if (!surfaceRecipeCache.has(cacheKey)) {
+      surfaceRecipeCache.set(cacheKey, transformSurfaceRecipe(indexedMeshRecipeFromBufferGeometry(targetGeometry), relative));
+    }
+    return surfaceRecipeCache.get(cacheKey);
+  };
   for (const entity of entities) {
     try {
       objects.set(entity.id, instantiateEntity(THREE, entity, {
@@ -496,6 +557,7 @@ export function compileSceneDocument({ THREE, TSL, project, sceneId = project.ac
         aspect,
         shadowLights,
         diagnostics,
+        resolveSurface: targetEntityId => resolveSurface(entity, targetEntityId),
       }));
     } catch (error) {
       diagnostics.push({

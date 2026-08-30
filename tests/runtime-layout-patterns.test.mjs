@@ -230,3 +230,50 @@ test('seeded scatter is byte-deterministic, channel-stable, and bounded', () => 
   const otherSeed = evaluateInstanceStack(THREE, subject({ ...pattern, seed: pattern.seed + 1 }));
   assert.notEqual(Buffer.compare(bytes(first), bytes(otherSeed)), 0);
 });
+
+test('surface pattern samples target triangles with spacing, contact offset, and normal alignment', () => {
+  const diagnostics = [];
+  const pattern = {
+    id: 'modifier/surface',
+    mode: 'surface',
+    count: 4,
+    seed: 73,
+    targetEntityId: 'entity/apple',
+    orientation: 'gravity',
+    normalAxis: 'z',
+    gravity: [0, -1, 0],
+    offset: 0.1,
+    minDistance: 0.2,
+    rotationMin: -0.2,
+    rotationMax: 0.2,
+    scaleMin: [0.5, 0.8, 0.2],
+    scaleMax: [0.9, 1.4, 0.35],
+  };
+  const recipe = {
+    positions: [-2, 0, 0, 2, 0, 0, 2, 2, 0, -2, 2, 0],
+    indices: [0, 1, 2, 0, 2, 3],
+    normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1],
+  };
+  const matrices = evaluateInstanceStack(THREE, subject(pattern), diagnostics, undefined, {
+    resolveSurface(targetId) {
+      assert.equal(targetId, 'entity/apple');
+      return recipe;
+    },
+  });
+  assert.equal(matrices.length, 4);
+  for (const matrix of matrices) {
+    const [x, y, z] = matrixTranslation(matrix);
+    assert.ok(x >= -2 && x <= 2);
+    assert.ok(y >= 0 && y <= 2);
+    assert.ok(Math.abs(z - 0.1) < 1e-12);
+    assert.ok(matrix.elements[10] > 0, 'local z axis follows the surface normal');
+  }
+  for (let left = 0; left < matrices.length; left += 1) {
+    for (let right = left + 1; right < matrices.length; right += 1) {
+      const a = matrixTranslation(matrices[left]);
+      const b = matrixTranslation(matrices[right]);
+      assert.ok(Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) >= 0.2);
+    }
+  }
+  assert.deepEqual(diagnostics, []);
+});

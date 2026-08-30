@@ -53,6 +53,7 @@ const GEOMETRY_RECIPE_FIELDS = Object.freeze([
 ]);
 const GEOMETRY_EDIT_KEYS = new Map([
   ['move', new Set(['type', 'vertexIndices', 'selection', 'offset'])],
+  ['proportionalMove', new Set(['type', 'vertexIndices', 'selection', 'center', 'radius', 'offset', 'falloff', 'axisScale'])],
   ['scale', new Set(['type', 'vertexIndices', 'selection', 'scale', 'pivot'])],
   ['rotate', new Set(['type', 'vertexIndices', 'selection', 'rotation', 'axis', 'angle', 'pivot'])],
   ['smooth', new Set(['type', 'vertexIndices', 'selection', 'iterations', 'factor', 'preserveBoundary'])],
@@ -83,10 +84,10 @@ const GEOMETRY_EDIT_KEYS = new Map([
   ['removeEdgeCreases', new Set(['type', 'edges'])],
 ]);
 const INDEXED_GEOMETRY_EDIT_TYPES = new Set([
-  'move', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
+  'move', 'proportionalMove', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
 ]);
 const EDITABLE_GEOMETRY_EDIT_TYPES = new Set([
-  'move', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'subdivideFaces', 'insetFaces', 'extrudeFaces',
+  'move', 'proportionalMove', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'subdivideFaces', 'insetFaces', 'extrudeFaces',
   'bevelEdges', 'deleteFaces', 'mergeVertices',
   ...EDITABLE_MESH_ATTRIBUTE_COMMAND_TYPES,
 ]);
@@ -1006,7 +1007,28 @@ function applyLayoutPattern(draft, operation, aliases) {
   studioAssert(isPlainRecord(entity.components?.mesh), 'invalid_layout_source', 'layout.pattern source requires components.mesh', {
     entityId,
   });
-  const modifier = normalizeLayoutPattern(operation.pattern);
+  const authoredPattern = cloneJson(operation.pattern);
+  if (authoredPattern.mode === 'surface') {
+    authoredPattern.targetEntityId = resolveId(authoredPattern.targetEntityId, aliases, 'pattern.targetEntityId');
+  }
+  const modifier = normalizeLayoutPattern(authoredPattern);
+  if (modifier.mode === 'surface') {
+    const target = scene.entities[modifier.targetEntityId];
+    studioAssert(target, 'not_found', `Surface target ${modifier.targetEntityId} does not exist in scene ${scene.id}.`, {
+      entityId: modifier.targetEntityId,
+      kind: 'entity',
+    });
+    studioAssert(target.id !== entityId, 'invalid_layout_target', 'A surface pattern cannot target its source entity.', {
+      entityId,
+      targetEntityId: target.id,
+    });
+    studioAssert(
+      ['mesh', 'instancedMesh'].includes(target.kind) && isPlainRecord(target.components?.mesh),
+      'invalid_layout_target',
+      'Surface pattern target must be a mesh entity.',
+      { targetEntityId: target.id, kind: target.kind },
+    );
+  }
   const components = cloneJson(entity.components);
   studioAssert(
     components.modifiers === undefined || Array.isArray(components.modifiers),
@@ -1332,7 +1354,7 @@ function assertGeometryEditCommand(command, editIndex, recipeKind) {
     `geometry.edit command ${command.type} is not supported for ${recipeKind}.`,
     { editIndex, commandType: command.type, recipeKind },
   );
-  const supportsSelection = ['move', 'scale', 'rotate', 'smooth', 'mergeVertices'].includes(command.type);
+  const supportsSelection = ['move', 'proportionalMove', 'scale', 'rotate', 'smooth', 'mergeVertices'].includes(command.type);
   if (supportsSelection) {
     const hasVertexIndices = command.vertexIndices !== undefined;
     const hasCompactSelection = command.selection !== undefined;
@@ -1348,7 +1370,7 @@ function assertGeometryEditCommand(command, editIndex, recipeKind) {
       `geometry.edit edits[${editIndex}] accepts vertexIndices or selection, not both.`,
       { editIndex },
     );
-    if (command.type !== 'smooth') {
+    if (!['smooth', 'proportionalMove'].includes(command.type)) {
       studioAssert(
         hasVertexIndices || hasCompactSelection,
         'invalid_geometry_edit',

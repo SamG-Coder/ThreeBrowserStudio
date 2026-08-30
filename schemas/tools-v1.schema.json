@@ -146,6 +146,25 @@
             "scaleMin": { "$ref": "#/$defs/positiveVec3" },
             "scaleMax": { "$ref": "#/$defs/positiveVec3" }
           }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["id", "mode", "count", "seed", "targetEntityId"],
+          "properties": {
+            "id": { "$ref": "#/$defs/id" }, "mode": { "const": "surface" },
+            "count": { "type": "integer", "minimum": 1, "maximum": 8192 },
+            "seed": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+            "targetEntityId": { "$ref": "#/$defs/reference" },
+            "orientation": { "enum": ["keep", "normal", "gravity"] },
+            "normalAxis": { "enum": ["x", "y", "z"] },
+            "gravity": { "$ref": "#/$defs/vec3" },
+            "offset": { "type": "number", "minimum": -1000000000, "maximum": 1000000000 },
+            "minDistance": { "type": "number", "minimum": 0, "maximum": 1000000000 },
+            "rotationMin": { "type": "number", "minimum": -1000000000, "maximum": 1000000000 },
+            "rotationMax": { "type": "number", "minimum": -1000000000, "maximum": 1000000000 },
+            "scaleMin": { "$ref": "#/$defs/positiveVec3" },
+            "scaleMax": { "$ref": "#/$defs/positiveVec3" }
+          }
         }
       ]
     },
@@ -378,6 +397,21 @@
             "vertexIndices": { "$ref": "#/$defs/geometryVertexIndices" },
             "selection": { "const": "all" },
             "offset": { "$ref": "#/$defs/geometryVec3" }
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false,
+          "required": ["type", "center", "radius", "offset"],
+          "not": { "required": ["vertexIndices", "selection"] },
+          "properties": {
+            "type": { "const": "proportionalMove" },
+            "vertexIndices": { "$ref": "#/$defs/geometryVertexIndices" },
+            "selection": { "const": "all" },
+            "center": { "$ref": "#/$defs/geometryVec3" },
+            "radius": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000000 },
+            "offset": { "$ref": "#/$defs/geometryVec3" },
+            "falloff": { "enum": ["constant", "linear", "smooth", "sharp", "sphere"] },
+            "axisScale": { "$ref": "#/$defs/positiveVec3" }
           }
         },
         {
@@ -783,6 +817,10 @@
             {
               "type": "object", "additionalProperties": false, "required": ["id", "type", "mode", "count", "seed", "bounds"],
               "properties": { "id": { "$ref": "#/$defs/id" }, "type": { "const": "pattern" }, "mode": { "const": "scatter" }, "count": { "type": "integer", "minimum": 1, "maximum": 8192 }, "seed": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 }, "bounds": { "$ref": "#/$defs/bounds3" }, "rotationMin": { "$ref": "#/$defs/vec3" }, "rotationMax": { "$ref": "#/$defs/vec3" }, "scaleMin": { "$ref": "#/$defs/positiveVec3" }, "scaleMax": { "$ref": "#/$defs/positiveVec3" }, "enabled": { "type": "boolean" }, "enabledViewport": { "type": "boolean" }, "enabledRender": { "type": "boolean" } }
+            },
+            {
+              "type": "object", "additionalProperties": false, "required": ["id", "type", "mode", "count", "seed", "targetEntityId"],
+              "properties": { "id": { "$ref": "#/$defs/id" }, "type": { "const": "pattern" }, "mode": { "const": "surface" }, "count": { "type": "integer", "minimum": 1, "maximum": 8192 }, "seed": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 }, "targetEntityId": { "$ref": "#/$defs/reference" }, "orientation": { "enum": ["keep", "normal", "gravity"] }, "normalAxis": { "enum": ["x", "y", "z"] }, "gravity": { "$ref": "#/$defs/vec3" }, "offset": { "type": "number", "minimum": -1000000000, "maximum": 1000000000 }, "minDistance": { "type": "number", "minimum": 0, "maximum": 1000000000 }, "rotationMin": { "type": "number", "minimum": -1000000000, "maximum": 1000000000 }, "rotationMax": { "type": "number", "minimum": -1000000000, "maximum": 1000000000 }, "scaleMin": { "$ref": "#/$defs/positiveVec3" }, "scaleMax": { "$ref": "#/$defs/positiveVec3" }, "enabled": { "type": "boolean" }, "enabledViewport": { "type": "boolean" }, "enabledRender": { "type": "boolean" } }
             }
           ]
         },

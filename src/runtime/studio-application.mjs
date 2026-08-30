@@ -19,7 +19,6 @@ import {
   createResourceDocument,
   DATA_TEXTURE_LIMITS,
   dataTextureGpuByteLength,
-  EDITABLE_MESH_ATTRIBUTE_COMMAND_TYPES,
   hashExactEntitySet,
   LIVE_EDITABLE_MESH_GEOMETRY_MODIFIERS,
   LIVE_INSTANCE_MODIFIER_TYPES,
@@ -62,7 +61,12 @@ import {
   validateGraph,
 } from '../graphs/index.mjs';
 import { BLENDER_CATALOG_SUMMARY, queryBlenderCatalog } from '../blender/index.mjs';
-import { TOOL_CONTRACT, TOOL_CONTRACT_SUMMARY, TOOL_SCHEMAS } from '../mcp/tool-schemas.mjs';
+import {
+  GEOMETRY_EDIT_COMMAND_TYPES,
+  TOOL_CONTRACT,
+  TOOL_CONTRACT_SUMMARY,
+  TOOL_SCHEMAS,
+} from '../mcp/tool-schemas.mjs';
 import { compileSceneDocument } from './scene-compiler.mjs';
 import { validateAnimationResource } from './animation-runtime.mjs';
 import { frameCameraToBounds } from '../viewport/camera-projection.mjs';
@@ -1053,11 +1057,7 @@ export class StudioApplication {
         ],
         geometryRecipes: ['box', 'plane', 'sphere', 'capsule', 'circle', 'cone', 'cylinder', 'torus', 'torusKnot', 'lathe', 'tube', 'shape', 'extrude', 'explicit', 'indexedMesh', 'editableMesh'],
         geometryEditing: true,
-        geometryEditCommands: [
-          'move', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
-          'subdivideFaces', 'insetFaces', 'extrudeFaces', 'bevelEdges', 'deleteFaces', 'mergeVertices',
-          ...EDITABLE_MESH_ATTRIBUTE_COMMAND_TYPES,
-        ],
+        geometryEditCommands: [...GEOMETRY_EDIT_COMMAND_TYPES],
         editableMesh: {
           topology: 'polygon-corner-csr',
           topologyHashGuards: true,

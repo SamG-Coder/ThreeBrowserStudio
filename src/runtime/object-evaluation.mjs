@@ -1,6 +1,7 @@
 import { RUNTIME_CONSTRAINT_TYPES, RUNTIME_MODIFIER_TYPES } from '../core/component-validation.mjs';
 import { isGeometryModifierType } from '../core/geometry-modifier-evaluator.mjs';
 import { MAX_LAYOUT_PATTERN_INSTANCES, normalizeLayoutPattern } from '../core/layout-patterns.mjs';
+import { sampleIndexedMeshSurface, surfaceVectorMath } from '../core/surface-sampling.mjs';
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
@@ -100,7 +101,75 @@ function scatterMatrices(THREE, pattern) {
   });
 }
 
-function patternMatrices(THREE, authoredPattern) {
+function surfaceBasis(normal, gravity, orientation, twist) {
+  const { cross, normalize, scale, subtract } = surfaceVectorMath;
+  const n = normalize(normal);
+  const gravityUnit = normalize(gravity, [0, -1, 0]);
+  const gravityDot = n[0] * gravityUnit[0] + n[1] * gravityUnit[1] + n[2] * gravityUnit[2];
+  const projectedGravity = subtract(gravityUnit, scale(n, gravityDot));
+  let y = orientation === 'gravity' && Math.hypot(...projectedGravity) > 1e-8
+    ? normalize(projectedGravity)
+    : normalize(cross(n, Math.abs(n[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0]));
+  let x = normalize(cross(y, n));
+  const cosine = Math.cos(twist);
+  const sine = Math.sin(twist);
+  const rotatedX = addScaled(x, y, cosine, sine);
+  const rotatedY = addScaled(y, x, cosine, -sine);
+  x = rotatedX;
+  y = rotatedY;
+  return { x, y, z: n };
+}
+
+function addScaled(first, second, firstScale, secondScale) {
+  return first.map((value, index) => value * firstScale + second[index] * secondScale);
+}
+
+function assignNormalAxis(basis, axis) {
+  if (axis === 'x') return { x: basis.z, y: basis.y, z: basis.x.map(value => -value) };
+  if (axis === 'y') return { x: basis.x, y: basis.z, z: basis.y.map(value => -value) };
+  return basis;
+}
+
+function basisMatrix(THREE, position, basis, scale) {
+  const matrix = new THREE.Matrix4();
+  matrix.elements = [
+    basis.x[0] * scale[0], basis.x[1] * scale[0], basis.x[2] * scale[0], 0,
+    basis.y[0] * scale[1], basis.y[1] * scale[1], basis.y[2] * scale[1], 0,
+    basis.z[0] * scale[2], basis.z[1] * scale[2], basis.z[2] * scale[2], 0,
+    position[0], position[1], position[2], 1,
+  ];
+  return matrix;
+}
+
+function surfaceMatrices(THREE, pattern, context) {
+  if (typeof context?.resolveSurface !== 'function') {
+    throw new Error('Surface patterns require a runtime surface resolver.');
+  }
+  const recipe = context.resolveSurface(pattern.targetEntityId);
+  const samples = sampleIndexedMeshSurface(recipe, {
+    count: pattern.count,
+    seed: pattern.seed,
+    minDistance: pattern.minDistance,
+  });
+  if (samples.length < pattern.count) context.onSurfaceShortfall?.(pattern, samples.length);
+  return samples.map((sample, index) => {
+    const twist = pattern.rotationMin
+      + (pattern.rotationMax - pattern.rotationMin) * scatterUnit(pattern.seed, index, 11);
+    const scale = sampleScatterVector(pattern.seed, index, 12, pattern.scaleMin, pattern.scaleMax);
+    const position = sample.point.map((value, axis) => value + sample.normal[axis] * pattern.offset);
+    if (pattern.orientation === 'keep') {
+      return scatterTransformMatrix(THREE, position, [0, 0, twist], scale);
+    }
+    return basisMatrix(
+      THREE,
+      position,
+      assignNormalAxis(surfaceBasis(sample.normal, pattern.gravity, pattern.orientation, twist), pattern.normalAxis),
+      scale,
+    );
+  });
+}
+
+function patternMatrices(THREE, authoredPattern, context) {
   const pattern = normalizeLayoutPattern(authoredPattern, { modifier: true });
   if (pattern.mode === 'linear') {
     return Array.from({ length: pattern.count }, (_, index) => patternTransformMatrix(
@@ -126,6 +195,7 @@ function patternMatrices(THREE, authoredPattern) {
     return matrices;
   }
   if (pattern.mode === 'scatter') return scatterMatrices(THREE, pattern);
+  if (pattern.mode === 'surface') return surfaceMatrices(THREE, pattern, context);
   return Array.from({ length: pattern.count }, (_, index) => {
     const angle = patternAngle(pattern, index);
     const orientationAngle = pattern.orientation === 'keep'
@@ -140,7 +210,7 @@ function patternMatrices(THREE, authoredPattern) {
  * matrices. Base geometry remains untouched, so the authored operation is
  * non-destructive and can be reordered or removed.
  */
-export function evaluateInstanceStack(THREE, entity, diagnostics = [], modifierOverride) {
+export function evaluateInstanceStack(THREE, entity, diagnostics = [], modifierOverride, runtimeContext = {}) {
   const mesh = entity.components?.mesh ?? {};
   let matrices = Array.isArray(mesh.instances) && mesh.instances.length
     ? mesh.instances.slice(0, 8192).map(value => transformMatrix(THREE, value))
@@ -180,7 +250,7 @@ export function evaluateInstanceStack(THREE, entity, diagnostics = [], modifierO
     } else if (modifier.type === 'pattern') {
       let generated;
       try {
-        generated = patternMatrices(THREE, modifier);
+        generated = patternMatrices(THREE, modifier, runtimeContext);
       } catch (error) {
         diagnostics.push(warning(
           error.code ?? 'runtime_layout_pattern_invalid',

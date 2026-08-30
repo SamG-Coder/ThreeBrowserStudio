@@ -176,6 +176,34 @@ export function moveVertices(recipe, options = {}) {
   return editedPositions(mesh, selection, position => position.map((value, axis) => value + offset[axis]));
 }
 
+function proportionalWeight(distance, radius, falloff) {
+  if (distance > radius) return 0;
+  const t = radius === 0 ? 0 : distance / radius;
+  if (falloff === 'constant') return 1;
+  if (falloff === 'sharp') return (1 - t) ** 2;
+  if (falloff === 'sphere') return Math.sqrt(Math.max(0, 1 - t * t));
+  if (falloff === 'smooth') return 1 - (3 * t * t - 2 * t * t * t);
+  return 1 - t;
+}
+
+/** Moves vertices in a bounded ellipsoidal influence field, matching proportional editing. */
+export function proportionalMoveVertices(recipe, options = {}) {
+  const mesh = validateIndexedMeshRecipe(recipe);
+  const selection = vertexSelection(options, mesh.positions.length / 3, { optional: true });
+  const center = finiteVector3(options.center, 'center');
+  const radius = finiteBoundedNumber(options.radius, 'radius', Number.MIN_VALUE, MAX_COORDINATE);
+  const offset = finiteVector3(options.offset, 'offset');
+  const axisScale = finiteVector3(options.axisScale ?? [1, 1, 1], 'axisScale');
+  if (axisScale.some(value => value <= 0)) throw new RangeError('axisScale entries must be greater than zero.');
+  const falloff = options.falloff ?? 'smooth';
+  if (!['constant', 'linear', 'smooth', 'sharp', 'sphere'].includes(falloff)) throw new TypeError('Unsupported proportional falloff.');
+  return editedPositions(mesh, selection, (position) => {
+    const distance = Math.hypot(...position.map((value, axis) => (value - center[axis]) / axisScale[axis]));
+    const weight = proportionalWeight(distance, radius, falloff);
+    return position.map((value, axis) => value + offset[axis] * weight);
+  });
+}
+
 function scaleVector(value) {
   if (Number.isFinite(value)) {
     const factor = finiteBoundedNumber(value, 'scale');
@@ -522,6 +550,8 @@ export function applyIndexedMeshEdit(recipe, command) {
     case 'move':
     case 'moveVertices':
       return moveVertices(recipe, command);
+    case 'proportionalMove':
+      return proportionalMoveVertices(recipe, command);
     case 'scale':
     case 'scaleVertices':
       return scaleVertices(recipe, command);

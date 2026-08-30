@@ -158,5 +158,10 @@ export function entityComponentReferences(entity) {
   add(components.audio?.audioId, 'audio', 'components.audio.audioId');
   add(components.light?.targetId, 'lightTarget', 'components.light.targetId');
   for (const constraint of components.constraints ?? []) add(constraint?.targetId, 'constraintTarget', 'components.constraints.targetId');
+  for (const modifier of components.modifiers ?? []) {
+    if (modifier?.type === 'pattern' && modifier.mode === 'surface') {
+      add(modifier.targetEntityId, 'surfaceTarget', 'components.modifiers.targetEntityId');
+    }
+  }
   return references;
 }
