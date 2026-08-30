@@ -330,15 +330,31 @@ function projectUvs(mesh, command) {
   const layer = requireLayer(mesh.uvLayers, command.layer, 'layer');
   const selection = selectedIndices(command.cornerIndices, mesh.cornerVertexIndices.length, 'cornerIndices');
   const projection = command.projection ?? 'planar';
-  if (!['planar', 'cylindrical', 'spherical'].includes(projection)) throw new TypeError('Unsupported UV projection.');
+  if (!['planar', 'box', 'cylindrical', 'spherical'].includes(projection)) throw new TypeError('Unsupported UV projection.');
   if (projection === 'planar' && !['xy', 'xz', 'yz'].includes(command.axis)) throw new TypeError("Planar axis must be 'xy', 'xz', or 'yz'.");
-  if (projection !== 'planar' && !['x', 'y', 'z'].includes(command.axis)) throw new TypeError('Curved projection axis must be x, y, or z.');
+  if (['cylindrical', 'spherical'].includes(projection) && !['x', 'y', 'z'].includes(command.axis)) throw new TypeError('Curved projection axis must be x, y, or z.');
   const center = command.center === undefined ? [0, 0, 0] : vector(command.center, 3, 'center');
   const scale = command.scale === undefined ? [1, 1] : scalarOrVector2(command.scale, 'scale');
   const offset = command.offset === undefined
     ? [0, 0]
     : vector(command.offset, 2, 'offset', -MAX_UV_ABSOLUTE, MAX_UV_ABSOLUTE);
   const values = [...mesh.uvLayers[layer]];
+  const cornerAxes = new Map();
+  if (projection === 'box') {
+    for (let faceIndex = 0; faceIndex < mesh.faceOffsets.length - 1; faceIndex += 1) {
+      const start = mesh.faceOffsets[faceIndex]; const end = mesh.faceOffsets[faceIndex + 1];
+      if (end - start < 3) continue;
+      const point = corner => {
+        const vertex = mesh.cornerVertexIndices[corner];
+        return mesh.positions.slice(vertex * 3, vertex * 3 + 3);
+      };
+      const a = point(start); const b = point(start + 1); const c = point(start + 2);
+      const ab = b.map((value, axis) => value - a[axis]); const ac = c.map((value, axis) => value - a[axis]);
+      const normal = [ab[1] * ac[2] - ab[2] * ac[1], ab[2] * ac[0] - ab[0] * ac[2], ab[0] * ac[1] - ab[1] * ac[0]];
+      const dominant = normal.map(Math.abs).indexOf(Math.max(...normal.map(Math.abs)));
+      for (let corner = start; corner < end; corner += 1) cornerAxes.set(corner, dominant);
+    }
+  }
   for (const cornerIndex of selection) {
     const vertexIndex = mesh.cornerVertexIndices[cornerIndex];
     const positionOffset = vertexIndex * 3;
@@ -347,6 +363,10 @@ function projectUvs(mesh, command) {
     const z = mesh.positions[positionOffset + 2] - center[2];
     let projected;
     if (projection === 'planar') projected = command.axis === 'xy' ? [x, y] : command.axis === 'xz' ? [x, z] : [y, z];
+    else if (projection === 'box') {
+      const dominant = cornerAxes.get(cornerIndex) ?? 2;
+      projected = dominant === 0 ? [z, y] : dominant === 1 ? [x, z] : [x, y];
+    }
     else {
       const axial = command.axis === 'x' ? x : command.axis === 'y' ? y : z;
       const first = command.axis === 'x' ? y : x;

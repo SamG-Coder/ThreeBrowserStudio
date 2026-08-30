@@ -28,6 +28,7 @@ import {
   MATERIAL_TEXTURE_BINDINGS,
   MATERIAL_TEXTURE_CONTROL_CONTRACT,
   MAX_MODIFIERS_PER_ENTITY,
+  mergePatch,
   normalizeDataTextureResource,
   normalizeGraphResourcePatch,
   normalizeResourceType,
@@ -458,6 +459,15 @@ export function translateToolOperation(operation, document) {
     ...(item.index === undefined ? {} : { index: item.index }),
     ...(item.alias ? { alias: item.alias } : {}),
   }));
+  if (operation.op === 'material.variant.create') {
+    const base = new ProjectIndex(document).getResource(operation.baseMaterialId, 'materials').resource;
+    const resource = mergePatch(base, operation.patch);
+    resource.id = operation.materialId;
+    return {
+      type: 'resource.create', resourceType: 'materials', resource,
+      ...(operation.alias ? { alias: operation.alias } : {}),
+    };
+  }
   if (DIRECT_CORE_OPERATIONS.has(operation.op)) {
     const direct = structuredClone(operation);
     if (direct.op === 'camera.frame') {

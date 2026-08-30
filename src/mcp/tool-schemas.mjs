@@ -220,6 +220,7 @@ export const OPERATION_TYPES = Object.freeze([
   'camera.frame', 'layout.pattern', 'stroke.apply',
   'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
   'geometry.edit',
+  'material.variant.create',
   'resource.create', 'resource.patch', 'resource.delete',
 ]);
 
@@ -928,8 +929,8 @@ const geometryProjectUvsEdit = z.object({
   type: z.literal('projectUvs'),
   layer: geometryLayerName,
   cornerIndices: geometryCornerIndices,
-  projection: z.enum(['planar', 'cylindrical', 'spherical']).optional(),
-  axis: z.enum(['xy', 'xz', 'yz', 'x', 'y', 'z']),
+  projection: z.enum(['planar', 'box', 'cylindrical', 'spherical']).optional(),
+  axis: z.enum(['xy', 'xz', 'yz', 'x', 'y', 'z']).optional(),
   center: geometryVec3.optional(),
   scale: geometryUvScale.optional(),
   offset: geometryUvVec2.optional(),
@@ -939,7 +940,7 @@ const geometryProjectUvsEdit = z.object({
     context.addIssue({ code: 'custom', path: ['axis'], message: 'Planar projection requires xy, xz, or yz.' });
   }
   if (projection !== 'planar' && !['x', 'y', 'z'].includes(value.axis)) {
-    context.addIssue({ code: 'custom', path: ['axis'], message: 'Curved projection requires x, y, or z.' });
+    if (projection !== 'box') context.addIssue({ code: 'custom', path: ['axis'], message: 'Curved projection requires x, y, or z.' });
   }
 });
 const geometryCreateColorLayerEdit = z.object({
@@ -1251,6 +1252,12 @@ const directOperations = [
     entityId: reference, changes: modifierStackEditsSchema, expectedStackHash: hash,
   }),
   operation('geometry.edit', { resourceId: reference, edits: geometryEditsSchema, expectedTopologyHash: hash.optional() }),
+  operation('material.variant.create', {
+    baseMaterialId: reference,
+    materialId: identifier,
+    patch: resourceJsonObjectSchema,
+    alias: alias.optional(),
+  }),
   operation('resource.create', { resourceType, resource: resourceJsonObjectSchema, alias: alias.optional() }),
   operation('resource.patch', { resourceType, resourceId: reference, patch: resourceJsonObjectSchema }),
   operation('resource.delete', { resourceType, resourceId: reference }),

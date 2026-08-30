@@ -326,6 +326,7 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
     'camera.frame', 'layout.pattern', 'stroke.apply',
     'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
     'geometry.edit',
+    'material.variant.create',
     'resource.create', 'resource.patch', 'resource.delete',
   ]);
   assert.equal(inspectSchema.safeParse({ query: 'selector', selector: { tag: 'hero' }, include: ['tree', 'transform', 'bounds', 'references'] }).success, true);

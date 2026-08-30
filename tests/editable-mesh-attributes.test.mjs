@@ -225,6 +225,16 @@ test('curved UV projection supports cylindrical and spherical organic meshes', (
   }
 });
 
+test('box UV projection chooses the dominant face axis without requiring per-face mapping calls', () => {
+  const source = seamMesh();
+  const projected = applyEditableMeshAttributeEdit(source, {
+    type: 'projectUvs', layer: 'UVMap', cornerIndices: 'all', projection: 'box',
+    scale: 0.5, offset: [0.25, 0.5],
+  });
+  assert.ok(projected.uvLayers.UVMap.every(Number.isFinite));
+  assert.notDeepEqual(projected.uvLayers.UVMap, source.uvLayers.UVMap);
+});
+
 test('color layer lifecycle and exact RGBA writes remain independent from UV attributes', () => {
   const source = seamMesh();
   const created = applyEditableMeshAttributeEdit(source, {

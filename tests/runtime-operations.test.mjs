@@ -115,3 +115,22 @@ test('runtime validates typed graph resources before they reach the kernel', () 
     error => error.code === 'graph_validation_failed',
   );
 });
+
+test('material variants inherit a canonical base and apply one typed merge patch', () => {
+  const project = createProjectDocument({
+    projectId: 'project/material-variant',
+    resources: { materials: [{
+      id: 'material/base', recipe: { kind: 'physical', color: '#445566', roughness: 0.5, metalness: 0.1 },
+    }] },
+  });
+  assert.deepEqual(translateToolOperation({
+    op: 'material.variant.create', baseMaterialId: 'material/base', materialId: 'material/polished',
+    patch: { recipe: { roughness: 0.12, metalness: 0.8 } }, alias: '$polished',
+  }, project), {
+    type: 'resource.create', resourceType: 'materials', alias: '$polished',
+    resource: {
+      id: 'material/polished', kind: 'material', name: 'base', metadata: {},
+      recipe: { kind: 'physical', color: '#445566', roughness: 0.12, metalness: 0.8 },
+    },
+  });
+});

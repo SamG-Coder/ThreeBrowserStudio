@@ -24,4 +24,4 @@ export * from './rtx-settings.mjs';
 export * from './response-projection.mjs';
 export * from './stroke-authoring.mjs';
 export * from './transform-math.mjs';
-export { cloneJson, contentHash, stableStringify } from './util.mjs';
+export { cloneJson, contentHash, mergePatch, stableStringify } from './util.mjs';
