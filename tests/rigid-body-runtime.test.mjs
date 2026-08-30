@@ -56,6 +56,51 @@ test('trigger colliders emit enter and exit without blocking motion', () => {
   assert.ok(events.some(event => event.type === 'exit' && event.selfId === 'mover'));
 });
 
+test('ramp colliders support dynamic bodies on an authored slope', () => {
+  const body = object([0, 0.45, 0]);
+  const ramp = object([0, 0, 0]);
+  const scene = {
+    settings: { physics: { enabled: true, gravity: [0, -9.81, 0] } },
+    entities: {
+      body: { id: 'body', components: { rigidBody: { bodyType: 'dynamic', mass: 1, linearDamping: 0 }, collider: { shape: 'sphere', radius: 0.5, friction: 0 } } },
+      ramp: { id: 'ramp', components: { collider: { shape: 'ramp', size: [4, 2, 4], slopeAxis: 'x', friction: 0 } } },
+    },
+  };
+  const runtime = createRigidBodyRuntime({ scene, objects: new Map([['body', body], ['ramp', ramp]]) });
+  runtime.step(1 / 60);
+  assert.ok(body.position.y >= 0.45, 'the ramp surface should support the body');
+  assert.ok(runtime.status.activeContactCount > 0);
+});
+
+test('static mesh colliders follow compiled terrain triangles', () => {
+  const body = object([0, 1.45, 0]);
+  const terrain = object();
+  const positions = new Float32Array([
+    -2, 0, -2, 2, 2, -2, 2, 2, 2,
+    -2, 0, -2, 2, 2, 2, -2, 0, 2,
+  ]);
+  terrain.geometry = {
+    attributes: { position: { array: positions, itemSize: 3, count: 6 } },
+    getAttribute(name) { return this.attributes[name]; },
+    getIndex() { return null; },
+  };
+  const scene = {
+    settings: { physics: { enabled: true, gravity: [0, -9.81, 0] } },
+    entities: {
+      body: { id: 'body', components: { rigidBody: { bodyType: 'dynamic', mass: 1, linearDamping: 0, alignToSurface: true, surfaceAlignSpeed: 100, maxSurfaceTilt: 1 }, collider: { shape: 'sphere', radius: 0.5, friction: 0 } } },
+      terrain: { id: 'terrain', kind: 'mesh', components: { mesh: { geometryId: 'geometry/terrain' }, collider: { shape: 'mesh', friction: 0.8 } } },
+    },
+  };
+  const runtime = createRigidBodyRuntime({ scene, objects: new Map([['body', body], ['terrain', terrain]]) });
+  runtime.step(1 / 60);
+
+  assert.equal(runtime.status.colliderCount, 2);
+  assert.deepEqual(runtime.status.diagnostics, []);
+  assert.ok(body.position.y > 1.45, 'compiled terrain triangles should support the body at the authored slope height');
+  assert.ok(body.rotation.z > 0.3, 'surface alignment should roll the body toward the compiled terrain normal');
+  assert.ok(runtime.status.activeContactCount > 0);
+});
+
 test('scaled terrain and child tyre colliders form one compound rigid body', () => {
   const car = object([4, 0.35, 0]);
   car.userData.studioEntityId = 'car';

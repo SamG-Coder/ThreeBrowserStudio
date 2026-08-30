@@ -415,13 +415,13 @@ const entries = [
       'three_studio_play: seek or step timeline-driven Ocean displacement',
       'Attach components.rigidBody and components.collider, then operate on Self or exact entity references from a blueprint controller graph',
     ],
-    runtimeNotes: 'Play evaluates Actions, Ocean displacement, and a bounded deterministic box/sphere rigid-body world. This is not Blender Bullet or PhysX: there are no mesh colliders, joints, continuous collision detection, particles, cache, or bake pipeline.',
+    runtimeNotes: 'Play evaluates Actions, Ocean displacement, and a bounded deterministic box/sphere/ramp/static-mesh rigid-body world. This is not Blender Bullet or PhysX: mesh collision is a bounded one-sided static terrain subset, with no dynamic triangle meshes, joints, continuous collision detection, particles, cache, or bake pipeline.',
     supportedSubset: [
       'bounded deterministic seeded Ocean displacement over existing local-XY geometry',
       'timeline seek and step through authored Ocean time and timelineScale',
       'bounded normal recalculation for the displaced surface',
       'dynamic, kinematic, and static rigid-body components with mass, gravity, damping, force, and impulse',
-      'axis-aligned box and sphere colliders with friction, restitution, layers, masks, triggers, and enter/exit events',
+      'box, sphere, one-sided ramp, and bounded one-sided static mesh colliders with friction, restitution, layers, masks, triggers, and enter/exit events',
     ],
     unsupportedSubset: [
       'mesh and convex-hull colliders', 'joints and constraints', 'continuous collision detection',

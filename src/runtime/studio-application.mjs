@@ -1685,7 +1685,7 @@ export class StudioApplication {
           model: 'entity-components',
           executable: ['logic', 'camera', 'rigidBody', 'collider', 'animation'],
           rigidBodyTypes: ['dynamic', 'kinematic', 'static'],
-          colliderShapes: ['box', 'sphere'],
+          colliderShapes: ['box', 'sphere', 'ramp', 'mesh'],
           collisionEvents: ['enter', 'exit'],
         },
         graphCompilation: Boolean(this.#TSL),

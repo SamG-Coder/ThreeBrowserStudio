@@ -152,6 +152,9 @@ function validateRigidBodyComponent(body, path, diagnostics) {
   for (const key of ['freezePosition', 'freezeRotation']) {
     if (body[key] !== undefined && !booleanVector3(body[key])) diagnostic(diagnostics, 'invalid_rigid_body_constraints', `${at}.${key}`, `${key} must contain three booleans`);
   }
+  if (body.alignToSurface !== undefined && typeof body.alignToSurface !== 'boolean') diagnostic(diagnostics, 'invalid_rigid_body_surface_alignment', `${at}.alignToSurface`, 'alignToSurface must be boolean');
+  if (body.surfaceAlignSpeed !== undefined && !boundedNumber(body.surfaceAlignSpeed, 0, 100)) diagnostic(diagnostics, 'invalid_rigid_body_surface_alignment', `${at}.surfaceAlignSpeed`, 'surfaceAlignSpeed must be from 0 to 100');
+  if (body.maxSurfaceTilt !== undefined && !boundedNumber(body.maxSurfaceTilt, 0, Math.PI * 0.49)) diagnostic(diagnostics, 'invalid_rigid_body_surface_alignment', `${at}.maxSurfaceTilt`, 'maxSurfaceTilt must be from 0 to 1.539 radians');
 }
 
 function validateColliderComponent(collider, path, diagnostics) {
@@ -161,10 +164,11 @@ function validateColliderComponent(collider, path, diagnostics) {
     return;
   }
   if (collider.enabled !== undefined && typeof collider.enabled !== 'boolean') diagnostic(diagnostics, 'invalid_collider_enabled', `${at}.enabled`, 'enabled must be boolean');
-  if (!['box', 'sphere'].includes(collider.shape)) diagnostic(diagnostics, 'invalid_collider_shape', `${at}.shape`, 'shape must be box or sphere');
+  if (!['box', 'sphere', 'ramp', 'mesh'].includes(collider.shape)) diagnostic(diagnostics, 'invalid_collider_shape', `${at}.shape`, 'shape must be box, sphere, ramp, or mesh');
   if (collider.offset !== undefined && !vector3(collider.offset)) diagnostic(diagnostics, 'invalid_collider_offset', `${at}.offset`, 'offset must contain three finite numbers');
-  if (collider.shape === 'box' && (!vector3(collider.size) || collider.size.some(value => value <= 0 || value > 1_000_000))) diagnostic(diagnostics, 'invalid_collider_size', `${at}.size`, 'box size must contain three positive bounded numbers');
+  if (['box', 'ramp'].includes(collider.shape) && (!vector3(collider.size) || collider.size.some(value => value <= 0 || value > 1_000_000))) diagnostic(diagnostics, 'invalid_collider_size', `${at}.size`, `${collider.shape} size must contain three positive bounded numbers`);
   if (collider.shape === 'sphere' && !boundedNumber(collider.radius, 0.0001, 1_000_000)) diagnostic(diagnostics, 'invalid_collider_radius', `${at}.radius`, 'sphere radius must be from 0.0001 to 1000000');
+  if (collider.shape === 'ramp' && collider.slopeAxis !== undefined && !['x', '-x', 'z', '-z'].includes(collider.slopeAxis)) diagnostic(diagnostics, 'invalid_collider_slope_axis', `${at}.slopeAxis`, 'ramp slopeAxis must be x, -x, z, or -z');
   for (const key of ['friction', 'restitution']) {
     if (collider[key] !== undefined && !boundedNumber(collider[key], 0, 1)) diagnostic(diagnostics, 'invalid_collider_material', `${at}.${key}`, `${key} must be from 0 to 1`);
   }

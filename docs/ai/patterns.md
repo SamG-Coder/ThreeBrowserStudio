@@ -275,10 +275,11 @@ listed by `capabilities.logicRuntime` and validate after every graph change.
 Entities use a Unity-like typed component model. `entity.self` supplies the
 controlled entity ID; `component.has` can branch on typed capabilities. Camera
 nodes activate, follow, aim, and adjust perspective FOV. `rigidBody` and
-`collider` components provide bounded fixed-step axis-aligned-box/sphere physics, triggers,
+`collider` components provide bounded fixed-step box, sphere, one-sided ramp, and static mesh physics, triggers,
 and collision enter/exit events. Prefer a root entity for a moving rigid body;
-mesh colliders, joints, CCD, soft bodies, cloth, fluids, and simulation caches
-remain unsupported.
+Use `shape: "ramp"`, a positive `size`, and `slopeAxis: "x" | "-x" | "z" | "-z"`
+for authored jump faces. Use `shape: "mesh"` on a mesh entity to collide against its compiled triangles as a bounded, one-sided static terrain surface. Dynamic mesh colliders, joints, CCD, soft bodies, cloth, fluids, and simulation caches remain unsupported.
+For vehicles and other surface-following bodies, set `rigidBody.alignToSurface: true`; tune `surfaceAlignSpeed` and `maxSurfaceTilt` to smoothly pitch and roll the body toward the live contact normal while preserving authored yaw control.
 
 `behaviorRuntime` remains false: arbitrary scripts do not run. Physics and
 uncatalogued blueprint nodes remain unavailable. Do not send script operations

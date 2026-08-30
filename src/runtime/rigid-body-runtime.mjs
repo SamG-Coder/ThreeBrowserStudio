@@ -1,5 +1,6 @@
-const MAX_BODIES = 256;
+const MAX_BODIES = 1024;
 const MAX_COLLISION_PAIRS = 16_384;
+const MAX_MESH_TRIANGLES = 32_768;
 const DEFAULT_GRAVITY = [0, -9.81, 0];
 
 const finite = (value, fallback = 0) => Number.isFinite(value) ? value : fallback;
@@ -10,6 +11,11 @@ const multiply = (value, scalar) => value.map(item => item * scalar);
 const dot = (a, b) => a.reduce((sum, value, index) => sum + value * b[index], 0);
 const length = value => Math.hypot(...value);
 const normalize = value => { const size = length(value); return size > 1e-9 ? multiply(value, 1 / size) : [1, 0, 0]; };
+const cross = (a, b) => [
+  a[1] * b[2] - a[2] * b[1],
+  a[2] * b[0] - a[0] * b[2],
+  a[0] * b[1] - a[1] * b[0],
+];
 
 function readVector(target) {
   return target ? [finite(target.x), finite(target.y), finite(target.z)] : [0, 0, 0];
@@ -38,13 +44,16 @@ function bodyState(entity, object) {
     forceApplicationCount: 0,
     freezePosition: source.freezePosition ?? [false, false, false],
     freezeRotation: source.freezeRotation ?? [false, false, false],
+    alignToSurface: source.alignToSurface === true,
+    surfaceAlignSpeed: finite(source.surfaceAlignSpeed, 10),
+    maxSurfaceTilt: finite(source.maxSurfaceTilt, Math.PI * 0.4),
   };
 }
 
 function colliderState(entity, object, bodyId = null) {
   const source = entity.components?.collider;
   if (!source || source.enabled === false) return null;
-  return {
+  const state = {
     id: entity.id,
     bodyId,
     object,
@@ -52,12 +61,56 @@ function colliderState(entity, object, bodyId = null) {
     offset: vector(source.offset),
     size: vector(source.size, [1, 1, 1]),
     radius: finite(source.radius, 0.5),
+    slopeAxis: source.slopeAxis ?? 'x',
     restitution: finite(source.restitution, 0),
     friction: finite(source.friction, 0.5),
     isTrigger: source.isTrigger === true,
     layer: source.layer ?? 0,
     mask: (source.mask ?? 0xffffffff) >>> 0,
   };
+  if (source.shape === 'mesh') Object.assign(state, meshTriangles(object));
+  return state;
+}
+
+function transformedPoint(object, point) {
+  const matrix = worldMatrix(object);
+  if (matrix) return [
+    matrix[0] * point[0] + matrix[4] * point[1] + matrix[8] * point[2] + matrix[12],
+    matrix[1] * point[0] + matrix[5] * point[1] + matrix[9] * point[2] + matrix[13],
+    matrix[2] * point[0] + matrix[6] * point[1] + matrix[10] * point[2] + matrix[14],
+  ];
+  const scale = readVector(object?.scale ?? { x: 1, y: 1, z: 1 });
+  return add(point.map((value, axis) => value * (scale[axis] || 1)), readVector(object?.position));
+}
+
+function meshTriangles(object) {
+  const geometry = object?.geometry;
+  const positions = geometry?.getAttribute?.('position') ?? geometry?.attributes?.position;
+  if (!positions) return { triangles: [], sourceTriangleCount: 0, meshTruncated: false };
+  const indices = geometry?.getIndex?.() ?? geometry?.index;
+  const vertexCount = Number.isInteger(positions.count) ? positions.count : Math.floor((positions.array?.length ?? 0) / (positions.itemSize ?? 3));
+  const indexCount = indices ? (indices.count ?? indices.array?.length ?? 0) : vertexCount;
+  const sourceTriangleCount = Math.floor(indexCount / 3);
+  const triangleCount = Math.min(sourceTriangleCount, MAX_MESH_TRIANGLES);
+  const coordinate = (vertex, axis) => {
+    const accessor = axis === 0 ? positions.getX : axis === 1 ? positions.getY : positions.getZ;
+    return typeof accessor === 'function' ? finite(accessor.call(positions, vertex)) : finite(positions.array?.[vertex * (positions.itemSize ?? 3) + axis]);
+  };
+  const vertexIndex = offset => indices
+    ? (typeof indices.getX === 'function' ? indices.getX(offset) : indices.array?.[offset])
+    : offset;
+  const triangles = [];
+  for (let triangle = 0; triangle < triangleCount; triangle += 1) {
+    const points = [0, 1, 2].map(corner => {
+      const vertex = vertexIndex(triangle * 3 + corner);
+      return transformedPoint(object, [coordinate(vertex, 0), coordinate(vertex, 1), coordinate(vertex, 2)]);
+    });
+    let normal = normalize(cross(subtract(points[1], points[0]), subtract(points[2], points[0])));
+    if (normal[1] < 0) normal = multiply(normal, -1);
+    if (normal[1] <= 1e-5) continue;
+    triangles.push({ points, normal });
+  }
+  return { triangles, sourceTriangleCount, meshTruncated: sourceTriangleCount > triangleCount };
 }
 
 function worldMatrix(object) {
@@ -107,6 +160,58 @@ function colliderRadius(collider) {
   return collider.radius * Math.max(...worldScale(collider.object).map(Math.abs));
 }
 
+function colliderAxes(collider) {
+  const matrix = worldMatrix(collider.object);
+  if (!matrix) return [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  return [normalize([matrix[0], matrix[1], matrix[2]]), normalize([matrix[4], matrix[5], matrix[6]]), normalize([matrix[8], matrix[9], matrix[10]])];
+}
+
+function rampOther(ramp, other, flip = false) {
+  const size = colliderSize(ramp);
+  const half = size.map(value => value * 0.5);
+  const axes = colliderAxes(ramp);
+  const delta = subtract(colliderCenter(other), colliderCenter(ramp));
+  const local = axes.map(axis => dot(delta, axis));
+  const slopeAxis = ramp.slopeAxis ?? 'x';
+  const axisIndex = slopeAxis.endsWith('x') ? 0 : 2;
+  const crossIndex = axisIndex === 0 ? 2 : 0;
+  if (Math.abs(local[axisIndex]) > half[axisIndex] || Math.abs(local[crossIndex]) > half[crossIndex]) return null;
+  const direction = slopeAxis.startsWith('-') ? -1 : 1;
+  const surfaceY = direction * local[axisIndex] * half[1] / Math.max(half[axisIndex], 1e-9);
+  const support = other.shape === 'sphere' ? colliderRadius(other) : colliderSize(other)[1] * 0.5;
+  const penetrationY = surfaceY - (local[1] - support);
+  if (penetrationY <= 0 || local[1] + support < -half[1]) return null;
+  const localNormal = [0, 1, 0];
+  localNormal[axisIndex] = -direction * half[1] / Math.max(half[axisIndex], 1e-9);
+  const normal = normalize(add(add(multiply(axes[0], localNormal[0]), multiply(axes[1], localNormal[1])), multiply(axes[2], localNormal[2])));
+  const penetration = penetrationY / Math.max(Math.abs(normal[1]), 0.05);
+  return { normal: flip ? multiply(normal, -1) : normal, penetration };
+}
+
+function meshOther(mesh, other, flip = false) {
+  const center = colliderCenter(other);
+  const size = other.shape === 'sphere' ? null : colliderSize(other);
+  let best = null;
+  for (const triangle of mesh.triangles ?? []) {
+    const [a, b, c] = triangle.points;
+    const denominator = (b[2] - c[2]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[2] - c[2]);
+    if (Math.abs(denominator) <= 1e-9) continue;
+    const u = ((b[2] - c[2]) * (center[0] - c[0]) + (c[0] - b[0]) * (center[2] - c[2])) / denominator;
+    const v = ((c[2] - a[2]) * (center[0] - c[0]) + (a[0] - c[0]) * (center[2] - c[2])) / denominator;
+    const w = 1 - u - v;
+    if (u < -1e-5 || v < -1e-5 || w < -1e-5) continue;
+    const surfaceY = u * a[1] + v * b[1] + w * c[1];
+    const support = other.shape === 'sphere'
+      ? colliderRadius(other)
+      : 0.5 * (Math.abs(triangle.normal[0]) * size[0] + Math.abs(triangle.normal[1]) * size[1] + Math.abs(triangle.normal[2]) * size[2]);
+    const signedDistance = dot(subtract(center, a), triangle.normal);
+    if (signedDistance >= support || signedDistance < -Math.max(2, support * 2)) continue;
+    const penetration = support - signedDistance;
+    if (!best || surfaceY > best.surfaceY) best = { surfaceY, normal: triangle.normal, penetration };
+  }
+  return best ? { normal: flip ? multiply(best.normal, -1) : best.normal, penetration: best.penetration } : null;
+}
+
 function boxBox(a, b) {
   const delta = subtract(colliderCenter(b), colliderCenter(a));
   const aSize = colliderSize(a);
@@ -140,6 +245,12 @@ function sphereBox(sphere, box, flip = false) {
 }
 
 function intersection(a, b) {
+  if (a.shape === 'mesh' && b.shape !== 'mesh') return meshOther(a, b, false);
+  if (b.shape === 'mesh' && a.shape !== 'mesh') return meshOther(b, a, true);
+  if (a.shape === 'mesh' && b.shape === 'mesh') return null;
+  if (a.shape === 'ramp' && b.shape !== 'ramp') return rampOther(a, b, false);
+  if (b.shape === 'ramp' && a.shape !== 'ramp') return rampOther(b, a, true);
+  if (a.shape === 'ramp' && b.shape === 'ramp') return boxBox(a, b);
   if (a.shape === 'sphere' && b.shape === 'sphere') return sphereSphere(a, b);
   if (a.shape === 'box' && b.shape === 'box') return boxBox(a, b);
   if (a.shape === 'sphere') return sphereBox(a, b, false);
@@ -176,11 +287,37 @@ export function createRigidBodyRuntime({ scene, objects } = {}) {
     const object = objects?.get?.(entity.id);
     if (!object) continue;
     const collider = colliderState(entity, object, bodyForObject(entity.id, object));
-    if (collider) colliders.push(collider);
+    if (!collider) continue;
+    if (collider.shape === 'mesh' && collider.bodyId && bodies.get(collider.bodyId)?.type !== 'static') {
+      diagnostics.push({ code: 'dynamic_mesh_collider_unsupported', message: `Mesh collider ${collider.id} must be static.` });
+      continue;
+    }
+    if (collider.shape === 'mesh' && collider.triangles.length === 0) diagnostics.push({ code: 'mesh_collider_empty', message: `Mesh collider ${collider.id} has no drivable triangles.` });
+    if (collider.meshTruncated) diagnostics.push({ code: 'mesh_collider_triangle_budget', message: `Mesh collider ${collider.id} was bounded to ${MAX_MESH_TRIANGLES} triangles.` });
+    colliders.push(collider);
   }
   if (entities.length > MAX_BODIES) diagnostics.push({ code: 'physics_body_budget', message: `Physics is bounded to ${MAX_BODIES} entities.` });
 
   const inverseMass = body => body?.type === 'dynamic' ? 1 / body.mass : 0;
+  const clamp = (value, minimum, maximum) => Math.max(minimum, Math.min(maximum, value));
+  function alignBodyToSurface(body, normal, delta) {
+    if (!body?.alignToSurface || normal[1] <= 0.2) return;
+    const rotation = readVector(body.object?.rotation);
+    const yaw = rotation[1];
+    const cosine = Math.cos(yaw);
+    const sine = Math.sin(yaw);
+    const localX = cosine * normal[0] - sine * normal[2];
+    const localZ = sine * normal[0] + cosine * normal[2];
+    const maximum = clamp(body.maxSurfaceTilt, 0, Math.PI * 0.49);
+    const targetX = clamp(Math.atan2(localZ, normal[1]), -maximum, maximum);
+    const targetZ = clamp(-Math.atan2(localX, normal[1]), -maximum, maximum);
+    const blend = 1 - Math.exp(-clamp(body.surfaceAlignSpeed, 0, 100) * delta);
+    writeVector(body.object.rotation, [
+      rotation[0] + (targetX - rotation[0]) * blend,
+      yaw,
+      rotation[2] + (targetZ - rotation[2]) * blend,
+    ]);
+  }
   function translate(body, delta) {
     if (!body?.object) return;
     const position = readVector(body.object.position);
@@ -188,7 +325,7 @@ export function createRigidBodyRuntime({ scene, objects } = {}) {
     body.object.updateMatrix?.();
     body.object.updateMatrixWorld?.(true);
   }
-  function resolve(aCollider, bCollider, hit, frictionPairs) {
+  function resolve(aCollider, bCollider, hit, frictionPairs, delta) {
     if (aCollider.isTrigger || bCollider.isTrigger) return;
     const a = bodies.get(aCollider.bodyId);
     const b = bodies.get(bCollider.bodyId);
@@ -199,6 +336,8 @@ export function createRigidBodyRuntime({ scene, objects } = {}) {
     const correction = Math.max(0, hit.penetration - 0.001) * 0.8;
     translate(a, multiply(hit.normal, -correction * inverseA / total));
     translate(b, multiply(hit.normal, correction * inverseB / total));
+    alignBodyToSurface(a, multiply(hit.normal, -1), delta);
+    alignBodyToSurface(b, hit.normal, delta);
     const velocityA = a?.velocity ?? [0, 0, 0];
     const velocityB = b?.velocity ?? [0, 0, 0];
     const alongNormal = dot(subtract(velocityB, velocityA), hit.normal);
@@ -300,7 +439,7 @@ export function createRigidBodyRuntime({ scene, objects } = {}) {
           events.push({ type: 'enter', selfId: b.id, otherId: a.id, normal: multiply(hit.normal, -1) });
         }
       }
-      for (const { a, b, hit } of resolutionHits.values()) resolve(a, b, hit, frictionPairs);
+      for (const { a, b, hit } of resolutionHits.values()) resolve(a, b, hit, frictionPairs, delta);
       for (const key of contacts) if (!nextContacts.has(key)) {
         const [a, b] = key.split('|');
         events.push({ type: 'exit', selfId: a, otherId: b });
@@ -314,4 +453,4 @@ export function createRigidBodyRuntime({ scene, objects } = {}) {
   });
 }
 
-export const RIGID_BODY_LIMITS = Object.freeze({ maxBodies: MAX_BODIES, maxCollisionPairs: MAX_COLLISION_PAIRS, colliderShapes: Object.freeze(['box', 'sphere']) });
+export const RIGID_BODY_LIMITS = Object.freeze({ maxBodies: MAX_BODIES, maxCollisionPairs: MAX_COLLISION_PAIRS, maxMeshTriangles: MAX_MESH_TRIANGLES, colliderShapes: Object.freeze(['box', 'sphere', 'ramp', 'mesh']) });
