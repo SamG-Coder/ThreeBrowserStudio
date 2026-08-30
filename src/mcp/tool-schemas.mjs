@@ -120,7 +120,7 @@ export const INSPECT_QUERIES = Object.freeze([
   'selector', 'sceneDigest', 'resourceDigest', 'meshElements', 'meshSelection', 'meshQuality', 'graphDigest', 'modifierDigest', 'rtxDigest', 'changedSinceRevision',
   'unresolvedResources', 'unusedResources', 'graphCatalog', 'playState',
   'latestEvidence', 'blenderCatalog', 'beautyDigest', 'projectVisibility',
-  'operationCatalog', 'geometryCatalog',
+  'operationCatalog', 'geometryCatalog', 'lookCatalog', 'lightingDigest',
 ]);
 
 const inspectProbeSchema = z.object({
@@ -238,7 +238,7 @@ export const OPERATION_TYPES = Object.freeze([
   'lighting.rig.create',
   'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
   'geometry.edit', 'geometry.realize', 'geometry.loft.edit', 'geometry.selection.edit',
-  'material.variant.create', 'material.look.create',
+  'material.variant.create', 'material.look.create', 'material.look.patch',
   'resource.create', 'resource.createMany', 'resource.patch', 'resource.delete',
 ]);
 
@@ -1236,6 +1236,23 @@ const loftChangesSchema = z.array(z.discriminatedUnion('type', [
   z.object({ type: z.literal('delete'), sectionId: identifier }).strict(),
 ])).min(1).max(64);
 
+const materialLookEnum = z.enum([
+  'automotivePaint', 'rubber', 'brushedMetal', 'glass', 'emissiveLens', 'fabric', 'organicSkin',
+]);
+const materialLookColor = z.string().regex(/^#[0-9a-fA-F]{6}$/u);
+const materialLookOverrides = {
+  color: materialLookColor.optional(),
+  roughness: z.number().min(0).max(1).optional(),
+  metalness: z.number().min(0).max(1).optional(),
+  clearcoat: z.number().min(0).max(1).optional(),
+  clearcoatRoughness: z.number().min(0).max(1).optional(),
+  transmission: z.number().min(0).max(1).optional(),
+  opacity: z.number().min(0).max(1).optional(),
+  emissiveIntensity: z.number().min(0).max(1_000_000).optional(),
+  anisotropy: z.number().min(0).max(1).optional(),
+  emissive: materialLookColor.optional(),
+};
+
 const directOperations = [
   operation('scene.create', { scene: jsonObjectSchema, alias: alias.optional(), index: insertionIndex.optional() }),
   operation('scene.patch', { sceneId: reference, patch: jsonObjectSchema }),
@@ -1347,8 +1364,13 @@ const directOperations = [
   }),
   operation('material.look.create', {
     materialId: identifier,
-    look: z.enum(['automotivePaint', 'rubber', 'brushedMetal', 'glass', 'emissiveLens', 'fabric', 'organicSkin']),
-    color: z.string().regex(/^#[0-9a-fA-F]{6}$/u).optional(),
+    look: materialLookEnum,
+    ...materialLookOverrides,
+  }),
+  operation('material.look.patch', {
+    materialId: identifier,
+    look: materialLookEnum.optional(),
+    ...materialLookOverrides,
   }),
   operation('resource.create', { resourceType, resource: resourceJsonObjectSchema, alias: alias.optional() }),
   operation('resource.createMany', { items: z.array(z.object({
@@ -1580,6 +1602,12 @@ const TOOL_CONTRACT_FEATURES = Object.freeze({
   materialTextureSlots: Object.freeze(MATERIAL_TEXTURE_BINDINGS.map(binding => binding.idKey)),
   rasterTexturesInRtxHitShading: false,
   resourceDigest: true,
+  loftSectionDigest: true,
+  materialLookPatch: true,
+  lookCatalog: true,
+  lightingDigest: true,
+  sameTransactionCameraFrame: true,
+  cameraDistanceScale: true,
   meshElements: true,
   meshElementFilters: true,
   graphDigest: true,

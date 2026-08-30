@@ -124,6 +124,18 @@ test('binary math input patches forecast a live pixel change', () => {
   });
 });
 
+test('resource.createMany forecasts a visual pixel change', () => {
+  const forecast = forecastPixelImpact({
+    before: { resources: { geometries: {} } },
+    operations: [{
+      type: 'resource.createMany',
+      items: [{ resourceType: 'geometries', resource: { id: 'geometry/box', recipe: { kind: 'box' } } }],
+    }],
+  });
+  assert.equal(forecast.verdict, 'will-move');
+  assert.equal(forecast.reasons[0].operation, 'resource.createMany');
+});
+
 test('editable-mesh recalculateNormals-only edits forecast will-not-move', () => {
   const forecast = forecastPixelImpact({
     before: { resources: { geometries: {} } },

@@ -43,16 +43,32 @@ Do not infer support from an earlier Studio session, a tutorial module, or
   Use `format: "rows"` for collections and `ifHash` to avoid receiving an
   unchanged payload again.
 - Use `sceneDigest` for the tree. Use `resourceDigest` for counts, hashes, and
-  references. Use `meshElements` with a `meshFilter` (bbox, y-range, boundary,
+  references. Loft geometries always return `loft.sections` identities (`id`,
+  `index`, `pointCount`, `transform`, `localBounds`); request
+  `include: ["components"]` for control points. Never guess loft section IDs.
+  A missing `geometry.loft.edit` section includes `error.data.sectionIds`.
+  Use `meshElements` with a `meshFilter` (bbox, y-range, boundary,
   `notAdjacentTo`) instead of paging a cloth. Use `meshSelection` when an edit
   needs all matching indices at once; it supports bounds, radius, boundary,
   manifold, sharp/crease, material, and face-normal criteria and returns an
   exact `selectionHash`. Feed that hash to `geometry.selection.edit` so a
   spatial or material selection cannot silently drift before mutation. Use `operationCatalog` to find
   the exact typed mutation name, `geometryCatalog` to inspect supported recipes,
-  defaults, and budgets, and `graphCatalog` before graph authoring. Use
+  defaults, and budgets, `lookCatalog` for material-look defaults and raster
+  notes before `material.look.create`, `lightingDigest` for rig and light
+  intensities, and `graphCatalog` before graph authoring. Use
   `graphDigest` and read `sockets` (`source`, `compiled`,
   `live`), not `inputs.$summary`.
+- Recolor or retune a semantic look with `material.look.patch` on the same
+  material id. `material.look.create` stays create-only. Optional look
+  scalars (`roughness`, `opacity`, `transmission`, and the rest of the look
+  schema) override the recipe. Read `lookCatalog` first: default glass
+  transmission is 1, and `emissiveLens` defaults to amber `#ff3b08`. Raster
+  glass is `look: "glass"` with `transmission: 0` and an opacity below 1.
+  `camera.frame` may target entities created earlier in the same apply; it
+  uses authored recipe bounds when the compiled revision does not yet contain
+  them. `view.distanceScale` scales camera distance and does not multiply
+  `padding` below 1.
 - Carry `selectionHash`, membership hashes, and modifier `stackHash` into the
   apply that needs them. Never bulk-mutate a stale or half-paged selection.
 

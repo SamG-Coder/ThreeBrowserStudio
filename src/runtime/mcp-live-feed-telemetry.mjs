@@ -17,7 +17,8 @@ const PUBLIC_OPERATION_TYPES = new Set([
   'collection.reparent', 'collection.delete',
   'camera.frame', 'layout.pattern', 'stroke.apply', 'lighting.rig.create',
   'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
-  'geometry.edit', 'geometry.realize', 'geometry.loft.edit', 'geometry.selection.edit', 'material.variant.create', 'material.look.create',
+  'geometry.edit', 'geometry.realize', 'geometry.loft.edit', 'geometry.selection.edit',
+  'material.variant.create', 'material.look.create', 'material.look.patch',
   'resource.create', 'resource.createMany', 'resource.patch', 'resource.delete',
 ]);
 const RESOURCE_TYPE_SET = new Set(RESOURCE_TYPES);
@@ -62,6 +63,8 @@ const INSPECT_QUERIES = Object.freeze({
   graphCatalog: 'Inspect graph catalog',
   operationCatalog: 'Inspect operation catalog',
   geometryCatalog: 'Inspect geometry catalog',
+  lookCatalog: 'Inspect material look catalog',
+  lightingDigest: 'Inspect lights and lighting rigs',
   playState: 'Inspect Play state',
   latestEvidence: 'Inspect latest evidence metadata',
   blenderCatalog: 'Inspect Blender catalog',
@@ -137,6 +140,35 @@ export function sanitizeLiveFeedText(value, { maximum = 160, fallback = '' } = {
     .trim();
   if (!text) return fallback;
   return truncateCodePoints(text, limit);
+}
+
+export function emptyStudioCommandMetrics() {
+  return Object.freeze({
+    retainedCommands: 0,
+    successfulCommands: 0,
+    failedCommands: 0,
+    applyOperations: 0,
+    totalElapsedMs: 0,
+    averageElapsedMs: 0,
+    requestBytes: 0,
+    responseBytes: 0,
+    cumulative: Object.freeze({
+      commands: 0,
+      successfulCommands: 0,
+      failedCommands: 0,
+      applyOperations: 0,
+      loweredOperations: 0,
+      compileCount: 0,
+      promotedCandidates: 0,
+      captureCount: 0,
+      imageBytes: 0,
+      totalElapsedMs: 0,
+      requestBytes: 0,
+      responseBytes: 0,
+      averageElapsedMs: 0,
+      tools: Object.freeze([]),
+    }),
+  });
 }
 
 export function isStudioLiveFeedMethod(method) {

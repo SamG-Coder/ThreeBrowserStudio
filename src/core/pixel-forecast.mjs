@@ -16,7 +16,7 @@ const VISUAL_OPERATIONS = new Set([
   'scene.create', 'scene.delete', 'scene.setActive', 'scene.settings.patch', 'scene.rtx.patch',
   'scene.setActiveCamera',
   'camera.frame', 'layout.pattern',
-  'resource.create', 'resource.delete',
+  'resource.create', 'resource.createMany', 'resource.delete',
   'geometry.put', 'geometry.delete',
   'material.put', 'material.delete',
   'texture.put', 'texture.delete',

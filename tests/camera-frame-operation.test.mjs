@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { AuthoringKernel, StudioError, createProjectDocument } from '../src/core/index.mjs';
 import { applySchema } from '../src/mcp/tool-schemas.mjs';
 import {
+  authoredEntityBounds,
   materializeCameraFrameOperation,
   translateToolOperation,
 } from '../src/runtime/studio-application.mjs';
@@ -174,7 +175,8 @@ test('camera composition lowers orbit controls, target offset, distance, and flo
     }],
   });
   const translated = translateToolOperation(parsed.operations[0], createProjectDocument({ projectId: 'project/camera-frame-operation' }));
-  assert.ok(Math.abs(translated.padding - 1.8) < 1e-12);
+  assert.equal(translated.padding, 1.2);
+  assert.equal(translated.distanceScale, 1.5);
   assert.equal(translated.minHeight, 0.25);
   assert.equal(Object.hasOwn(translated, 'view'), false);
   const materialized = materializeCameraFrameOperation(translated);
@@ -182,4 +184,48 @@ test('camera composition lowers orbit controls, target offset, distance, and flo
   assert.equal(Object.hasOwn(materialized, 'targetOffset'), false);
   const framed = solveCameraFrame({ kind: 'perspectiveCamera', camera: { fov: 46 }, ...materialized });
   assert.ok(framed.transform.position[1] >= 0.25);
+  const close = applySchema.parse({
+    protocolVersion: 'three-studio/1', sessionId: 'session/test',
+    projectId: 'project/camera-frame-operation', baseRevision: 0,
+    idempotencyKey: 'camera-composition-0002', label: 'Closer shot',
+    operations: [{
+      op: 'camera.frame', cameraId: 'camera/tutorial', target: { bounds: { min: [-1, 0, -1], max: [1, 2, 1] } },
+      aspect: 16 / 9, padding: 1.08,
+      view: { azimuth: 0, elevation: 0.2, distanceScale: 0.88 },
+    }],
+  });
+  const closeTranslated = translateToolOperation(close.operations[0], createProjectDocument({ projectId: 'project/camera-frame-operation' }));
+  assert.equal(closeTranslated.padding, 1.08);
+  assert.equal(closeTranslated.distanceScale, 0.88);
+  assert.doesNotThrow(() => solveCameraFrame({
+    kind: 'perspectiveCamera', camera: { fov: 46 }, ...materializeCameraFrameOperation(closeTranslated),
+  }));
+});
+
+test('camera.frame materializes authored recipe bounds for uncompiled targets', () => {
+  const document = createProjectDocument({
+    projectId: 'project/camera-frame-operation',
+    resources: {
+      geometries: [{ id: 'geometry/box', recipe: { kind: 'box', width: 2, height: 1, depth: 4 } }],
+    },
+    scenes: [{
+      id: 'scene/main',
+      entities: [{
+        id: 'entity/new-box',
+        kind: 'mesh',
+        transform: { position: [0, 0.5, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+        components: { mesh: { geometryId: 'geometry/box' } },
+      }],
+    }],
+  });
+  const bounds = authoredEntityBounds(document, 'entity/new-box');
+  assert.deepEqual(bounds, { min: [-1, 0, -2], max: [1, 1, 2] });
+  const materialized = materializeCameraFrameOperation({
+    op: 'camera.frame',
+    cameraId: 'camera/tutorial',
+    targetIds: ['entity/new-box'],
+    aspect: 16 / 9,
+    padding: 1.15,
+  }, { document });
+  assert.deepEqual(materialized.bounds, bounds);
 });

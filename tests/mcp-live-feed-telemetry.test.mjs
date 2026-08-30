@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   createStudioCommandTelemetry,
   describeStudioCommand,
+  emptyStudioCommandMetrics,
   isStudioLiveFeedMethod,
   sanitizeLiveFeedText,
   summarizeStudioCommand,
@@ -41,6 +42,8 @@ test('summaries use only compact whitelisted facts and sanitize control, bidi, a
   assert.equal(summarizeStudioCommand('three_studio_inspect', { query: 'rtxDigest' }), 'Inspect RTX digest');
   assert.equal(summarizeStudioCommand('three_studio_inspect', { query: 'beautyDigest' }), 'Inspect beauty evidence pixels');
   assert.equal(summarizeStudioCommand('three_studio_inspect', { query: 'projectVisibility' }), 'Inspect camera projection visibility');
+  assert.equal(summarizeStudioCommand('three_studio_inspect', { query: 'lookCatalog' }), 'Inspect material look catalog');
+  assert.equal(summarizeStudioCommand('three_studio_inspect', { query: 'lightingDigest' }), 'Inspect lights and lighting rigs');
 });
 
 test('one telemetry entry advances started to completed without retaining raw request or result data', () => {
@@ -142,6 +145,11 @@ test('failed lifecycle entries do not retain error messages, stacks, paths, or t
   assert.equal(entry.summary, 'Render beauty 1280×720');
   const serialized = JSON.stringify(entry);
   assert.doesNotMatch(serialized, /private|token|render\.mjs/i);
+});
+
+test('empty command metrics match a live feed with no commands', () => {
+  const telemetry = createStudioCommandTelemetry();
+  assert.deepEqual(telemetry.metrics(), emptyStudioCommandMetrics());
 });
 
 test('completed history is bounded while every active command is retained', () => {

@@ -18,6 +18,7 @@ import {
   AUTHORABLE_MODIFIER_TYPES,
   buildModifierDigest,
   contentHash,
+  createEntityDocument,
   createProjectDocument,
   createResourceDocument,
   DATA_TEXTURE_LIMITS,
@@ -81,6 +82,7 @@ import {
   TOOL_SCHEMAS,
 } from '../mcp/tool-schemas.mjs';
 import { queryOperationCatalog } from '../mcp/operation-catalog.mjs';
+import { emptyStudioCommandMetrics } from './mcp-live-feed-telemetry.mjs';
 import { compileSceneDocument } from './scene-compiler.mjs';
 import { validateAnimationResource } from './animation-runtime.mjs';
 import { frameCameraToBounds } from '../viewport/camera-projection.mjs';
@@ -89,8 +91,11 @@ import { operationsSnapFollowShot } from '../viewport/view-mode.mjs';
 import { buildExplorerOutline } from '../viewport/scene-explorer.mjs';
 import { LAYOUT_PATTERN_MODES } from '../core/layout-patterns.mjs';
 import { RTX_SCENE_LIMITS } from './rtx-scene-collector.mjs';
+import { materialLookResource, queryLookCatalog } from './material-looks.mjs';
 import { normalizeGeometryRecipe, queryGeometryCatalog, realizeGeometryRecipe } from './resource-factories.mjs';
 import { createTransactionId } from '../core/util.mjs';
+
+export { materialLookResource, queryLookCatalog } from './material-looks.mjs';
 import { bakeProceduralTextureGraph } from './procedural-texture-compiler.mjs';
 import { createLogicControllerRuntime, LOGIC_CONTROLLER_LIMITS } from './logic-controller-runtime.mjs';
 
@@ -388,32 +393,6 @@ function lightingRigOperations(operation) {
   return result;
 }
 
-const MATERIAL_LOOK_RECIPES = Object.freeze({
-  automotivePaint: Object.freeze({ kind: 'physical', color: '#8a1018', roughness: 0.22, metalness: 0.16, clearcoat: 1, clearcoatRoughness: 0.055 }),
-  rubber: Object.freeze({ kind: 'physical', color: '#111316', roughness: 0.78, metalness: 0, clearcoat: 0.04, clearcoatRoughness: 0.7 }),
-  brushedMetal: Object.freeze({ kind: 'physical', color: '#8c939b', roughness: 0.3, metalness: 1, anisotropy: 0.72 }),
-  glass: Object.freeze({ kind: 'physical', color: '#dcecff', roughness: 0.055, metalness: 0, transmission: 1, opacity: 1, ior: 1.5, thickness: 0.08 }),
-  emissiveLens: Object.freeze({ kind: 'physical', color: '#4a0802', roughness: 0.2, metalness: 0, clearcoat: 0.65, clearcoatRoughness: 0.08, emissive: '#ff3b08', emissiveIntensity: 4 }),
-  fabric: Object.freeze({ kind: 'physical', color: '#30343a', roughness: 0.9, metalness: 0, sheen: 0.7, sheenRoughness: 0.72, sheenColor: '#657080' }),
-  organicSkin: Object.freeze({ kind: 'physical', color: '#8e1522', roughness: 0.36, metalness: 0, clearcoat: 0.38, clearcoatRoughness: 0.2, sheen: 0.08, sheenRoughness: 0.6 }),
-});
-
-export function materialLookResource(operation) {
-  const recipe = { ...MATERIAL_LOOK_RECIPES[operation.look] };
-  if (!recipe.kind) throw new StudioError('material_look_unsupported', `Material look ${operation.look} is not supported.`);
-  for (const key of ['roughness', 'metalness', 'clearcoat', 'clearcoatRoughness', 'transmission', 'opacity', 'emissiveIntensity', 'anisotropy']) {
-    if (operation[key] !== undefined) recipe[key] = operation[key];
-  }
-  if (operation.color !== undefined) recipe.color = operation.color;
-  if (operation.emissive !== undefined) recipe.emissive = operation.emissive;
-  return {
-    id: operation.materialId,
-    name: operation.name ?? operation.look.replace(/([A-Z])/gu, ' $1').replace(/^./u, value => value.toUpperCase()),
-    recipe,
-    metadata: { studioLook: operation.look },
-  };
-}
-
 function localStrokeForEntity(strokeValue, document, entityId) {
   const stroke = normalizeStroke(strokeValue);
   if (stroke.space === 'local') return stroke;
@@ -579,6 +558,22 @@ export function translateToolOperation(operation, document) {
     type: 'resource.create', resourceType: 'materials', resource: materialLookResource(operation),
     ...(operation.alias ? { alias: operation.alias } : {}),
   };
+  if (operation.op === 'material.look.patch') {
+    const { resource } = new ProjectIndex(document).getResource(operation.materialId, 'materials');
+    const next = materialLookResource(operation, resource);
+    return {
+      type: 'resource.patch',
+      resourceType: 'materials',
+      resourceId: operation.materialId,
+      patch: {
+        recipe: next.recipe,
+        metadata: next.metadata,
+        ...(next.opacity === undefined ? {} : { opacity: next.opacity }),
+        ...(next.transparent === undefined ? {} : { transparent: next.transparent }),
+        ...(next.transmission === undefined ? {} : { transmission: next.transmission }),
+      },
+    };
+  }
   if (operation.op === 'lighting.rig.create') return lightingRigOperations(operation);
   if (DIRECT_CORE_OPERATIONS.has(operation.op)) {
     const direct = structuredClone(operation);
@@ -591,7 +586,7 @@ export function translateToolOperation(operation, document) {
         const { azimuth, elevation, distanceScale, targetOffset, minHeight } = direct.view;
         const horizontal = Math.cos(elevation);
         direct.direction = [-Math.sin(azimuth) * horizontal, -Math.sin(elevation), -Math.cos(azimuth) * horizontal];
-        direct.padding *= distanceScale;
+        if (distanceScale !== undefined) direct.distanceScale = distanceScale;
         direct.targetOffset = targetOffset;
         if (minHeight !== undefined) direct.minHeight = minHeight;
         delete direct.view;
@@ -717,7 +712,12 @@ function materializeLoftEditOperation(operation, document) {
     : structuredClone(section)));
   const find = sectionId => {
     const index = sections.findIndex(section => section.id === sectionId);
-    if (index < 0) throw new StudioError('loft_section_not_found', `Loft section ${sectionId} does not exist.`);
+    if (index < 0) {
+      throw new StudioError('loft_section_not_found', `Loft section ${sectionId} does not exist.`, {
+        sectionId,
+        sectionIds: sections.map(section => section.id),
+      });
+    }
     return index;
   };
   for (const change of operation.changes) {
@@ -787,7 +787,221 @@ function materializeGeometrySelectionEdit(operation, document) {
   };
 }
 
-export function materializeCameraFrameOperation(operation, { compiled, THREE } = {}) {
+const LIGHT_KINDS = new Set([
+  'directionalLight', 'pointLight', 'spotLight', 'ambientLight', 'areaLight', 'hemisphereLight',
+]);
+
+function unionBounds(boundsList) {
+  const minimum = [Infinity, Infinity, Infinity];
+  const maximum = [-Infinity, -Infinity, -Infinity];
+  let valid = false;
+  for (const bounds of boundsList) {
+    if (!bounds?.min || !bounds?.max) continue;
+    valid = true;
+    for (let axis = 0; axis < 3; axis += 1) {
+      minimum[axis] = Math.min(minimum[axis], bounds.min[axis]);
+      maximum[axis] = Math.max(maximum[axis], bounds.max[axis]);
+    }
+  }
+  return valid ? { min: minimum, max: maximum } : null;
+}
+
+function transformAxisAlignedBounds(bounds, matrix) {
+  const corners = [];
+  for (const x of [bounds.min[0], bounds.max[0]]) {
+    for (const y of [bounds.min[1], bounds.max[1]]) {
+      for (const z of [bounds.min[2], bounds.max[2]]) {
+        corners.push(transformPointByMatrix(matrix, [x, y, z]));
+      }
+    }
+  }
+  return unionBounds(corners.map(point => ({ min: point, max: point })));
+}
+
+function estimateRecipeBounds(recipe) {
+  const kind = recipe?.kind;
+  if (kind === 'box') {
+    const width = (recipe.width ?? 1) * 0.5;
+    const height = (recipe.height ?? 1) * 0.5;
+    const depth = (recipe.depth ?? 1) * 0.5;
+    return { min: [-width, -height, -depth], max: [width, height, depth] };
+  }
+  if (kind === 'sphere' || kind === 'circle') {
+    const radius = recipe.radius ?? 0.5;
+    return { min: [-radius, -radius, -radius], max: [radius, radius, radius] };
+  }
+  if (kind === 'cylinder' || kind === 'cone' || kind === 'capsule') {
+    const radius = Math.max(recipe.radius ?? 0, recipe.radiusTop ?? 0.5, recipe.radiusBottom ?? 0.5);
+    const height = (recipe.height ?? recipe.length ?? 1) * 0.5;
+    return { min: [-radius, -height, -radius], max: [radius, height, radius] };
+  }
+  if (kind === 'torus' || kind === 'torusKnot') {
+    const tube = recipe.tube ?? 0.18;
+    const outer = (recipe.radius ?? 0.5) + tube;
+    return { min: [-outer, -outer, -tube], max: [outer, outer, tube] };
+  }
+  if (kind === 'plane') {
+    const width = (recipe.width ?? 1) * 0.5;
+    const height = (recipe.height ?? 1) * 0.5;
+    return { min: [-width, -height, 0], max: [width, height, 0] };
+  }
+  if (kind === 'loft' && Array.isArray(recipe.sections)) {
+    const points = [];
+    for (const section of recipe.sections) {
+      const localPoints = Array.isArray(section) ? section : section?.points;
+      const translation = Array.isArray(section?.transform?.translation) ? section.transform.translation : [0, 0, 0];
+      const scale = Array.isArray(section?.transform?.scale) ? section.transform.scale : [1, 1, 1];
+      for (const point of localPoints ?? []) {
+        const coords = Array.isArray(point) ? point : [point?.x, point?.y, point?.z];
+        if (!Number.isFinite(coords[0]) || !Number.isFinite(coords[1])) continue;
+        points.push([
+          (coords[0] * scale[0]) + translation[0],
+          (coords[1] * scale[1]) + translation[1],
+          ((coords[2] ?? 0) * scale[2]) + translation[2],
+        ]);
+      }
+    }
+    return controlPointBounds(points);
+  }
+  if (Array.isArray(recipe?.points)) return controlPointBounds(recipe.points);
+  if (Array.isArray(recipe?.positions) && recipe.positions.length >= 3) {
+    const points = [];
+    for (let offset = 0; offset + 2 < recipe.positions.length; offset += 3) {
+      points.push(recipe.positions.slice(offset, offset + 3));
+    }
+    return controlPointBounds(points);
+  }
+  return { min: [-0.5, -0.5, -0.5], max: [0.5, 0.5, 0.5] };
+}
+
+export function authoredEntityBounds(document, entityId, seen = new Set()) {
+  if (!document || seen.has(entityId)) return null;
+  seen.add(entityId);
+  let record;
+  try {
+    record = new ProjectIndex(document).getEntity(entityId);
+  } catch {
+    return null;
+  }
+  const { scene, entity } = record;
+  if (entity.kind === 'group' && Array.isArray(entity.children) && entity.children.length > 0) {
+    return unionBounds(entity.children.map(childId => authoredEntityBounds(document, childId, seen)).filter(Boolean));
+  }
+  const geometryId = entity.components?.mesh?.geometryId;
+  const geometry = geometryId ? document.resources?.geometries?.[geometryId] : null;
+  const local = geometry
+    ? estimateRecipeBounds(normalizeGeometryRecipe(geometry))
+    : { min: [-0.05, -0.05, -0.05], max: [0.05, 0.05, 0.05] };
+  if (!local) return null;
+  try {
+    return transformAxisAlignedBounds(local, entityWorldMatrix(scene, entityId));
+  } catch {
+    return local;
+  }
+}
+
+function collectCameraFrameBounds(targetIds, { compiled, THREE, document } = {}) {
+  const collected = [];
+  const missing = [];
+  compiled?.root?.updateWorldMatrix?.(true, true);
+  for (const targetId of targetIds) {
+    const object = compiled?.objects?.get?.(targetId);
+    let bounds = null;
+    if (object && THREE?.Box3) {
+      const box = new THREE.Box3();
+      box.expandByObject(object, true);
+      if (!box.isEmpty()) bounds = { min: box.min.toArray(), max: box.max.toArray() };
+    }
+    if (!bounds) bounds = authoredEntityBounds(document, targetId);
+    if (bounds) collected.push(bounds);
+    else missing.push(targetId);
+  }
+  return { bounds: unionBounds(collected), missing };
+}
+
+function recordTranslationMutation(document, candidate) {
+  const type = candidate.type ?? candidate.op;
+  if (type === 'entity.create') {
+    const scene = document.scenes?.[candidate.sceneId] ?? document.scenes?.[document.activeSceneId];
+    if (!scene || !candidate.entity?.id) return;
+    const entity = createEntityDocument(candidate.entity);
+    scene.entities[entity.id] = entity;
+    if (entity.parentId && scene.entities[entity.parentId]) {
+      const parent = scene.entities[entity.parentId];
+      if (!parent.children.includes(entity.id)) parent.children = [...parent.children, entity.id];
+    } else if (!entity.parentId && !scene.rootEntityIds.includes(entity.id)) {
+      scene.rootEntityIds = [...scene.rootEntityIds, entity.id];
+    }
+    return;
+  }
+  if (type === 'entity.patch') {
+    let entity;
+    for (const scene of Object.values(document.scenes ?? {})) {
+      if (scene.entities?.[candidate.entityId]) {
+        entity = scene.entities[candidate.entityId];
+        break;
+      }
+    }
+    if (entity && isRecord(candidate.patch)) {
+      Object.assign(entity, mergePatch(entity, candidate.patch));
+    }
+  }
+}
+
+function buildLightingDigest(document, params = {}) {
+  const sceneId = params.sceneId ?? document.activeSceneId;
+  const scene = document.scenes?.[sceneId];
+  if (!scene) throw new StudioError('not_found', `Scene ${sceneId} does not exist.`, { sceneId });
+  let lights = Object.values(scene.entities ?? {}).filter(entity => LIGHT_KINDS.has(entity.kind));
+  const selector = params.selector ?? {};
+  if (Array.isArray(selector.ids) && selector.ids.length > 0) {
+    const allowed = new Set(selector.ids);
+    lights = lights.filter(entity => allowed.has(entity.id) || allowed.has(entity.parentId));
+  }
+  if (selector.kind) lights = lights.filter(entity => entity.kind === selector.kind);
+  if (selector.tag) lights = lights.filter(entity => entity.tags?.includes(selector.tag));
+  if (selector.name) {
+    const needle = String(selector.name).toLowerCase();
+    lights = lights.filter(entity => (
+      entity.name.toLowerCase().includes(needle) || entity.id.toLowerCase().includes(needle)
+    ));
+  }
+  lights.sort((a, b) => a.id.localeCompare(b.id));
+  const offset = Math.max(0, Number.parseInt(params.cursor ?? '0', 10) || 0);
+  const limit = Math.min(200, params.limit ?? 50);
+  const page = lights.slice(offset, offset + limit);
+  return {
+    sceneId,
+    lightCount: lights.length,
+    lights: page.map(entity => ({
+      id: entity.id,
+      name: entity.name,
+      kind: entity.kind,
+      visible: entity.visible,
+      parentId: entity.parentId,
+      ...(entity.tags?.length ? { tags: entity.tags } : {}),
+      transform: { position: [...(entity.transform?.position ?? [0, 0, 0])] },
+      light: entity.components?.light ?? null,
+    })),
+    rigs: Object.values(scene.entities ?? {})
+      .filter(entity => entity.kind === 'group' && entity.tags?.includes('lighting-rig'))
+      .map(rig => ({
+        id: rig.id,
+        name: rig.name,
+        visible: rig.visible,
+        lightIds: (rig.children ?? []).filter(id => LIGHT_KINDS.has(scene.entities?.[id]?.kind)),
+        ...(rig.tags?.length ? { tags: rig.tags } : {}),
+      })),
+    pageInfo: {
+      returned: page.length,
+      total: lights.length,
+      nextCursor: offset + page.length < lights.length ? String(offset + page.length) : null,
+      truncated: false,
+    },
+  };
+}
+
+export function materializeCameraFrameOperation(operation, { compiled, THREE, document } = {}) {
   if (operation?.op !== 'camera.frame' && operation?.type !== 'camera.frame') return operation;
   const shifted = value => {
     if (!operation.targetOffset) return value;
@@ -804,31 +1018,20 @@ export function materializeCameraFrameOperation(operation, { compiled, THREE } =
   if (!Array.isArray(operation.targetIds) || operation.targetIds.length === 0) {
     throw new StudioError('invalid_camera_frame_targets', 'camera.frame requires targetIds or explicit bounds.');
   }
-  if (!compiled || !THREE?.Box3) {
-    throw new StudioError('camera_frame_runtime_unavailable', 'camera.frame target bounds require the active compiled scene.');
+  const { bounds, missing } = collectCameraFrameBounds(operation.targetIds, { compiled, THREE, document });
+  if (missing.length > 0) {
+    throw new StudioError(
+      'camera_frame_target_not_compiled',
+      `camera.frame target ${missing[0]} is not present in the active compiled revision or this apply's authored draft.`,
+      { targetId: missing[0], missingTargetIds: missing },
+    );
   }
-  compiled.root?.updateWorldMatrix?.(true, true);
-  const bounds = new THREE.Box3();
-  for (const targetId of operation.targetIds) {
-    const object = compiled.objects?.get?.(targetId);
-    if (!object) {
-      throw new StudioError(
-        'camera_frame_target_not_compiled',
-        `camera.frame target ${targetId} is not present in the active compiled revision; use explicit bounds for entities created in this transaction.`,
-        { targetId },
-      );
-    }
-    bounds.expandByObject(object, true);
-  }
-  if (bounds.isEmpty()) {
+  if (!bounds) {
     throw new StudioError('camera_frame_bounds_empty', 'camera.frame targetIds produced no renderable bounds.', {
       targetIds: structuredClone(operation.targetIds),
     });
   }
-  const result = {
-    ...operation,
-    bounds: shifted({ min: bounds.min.toArray(), max: bounds.max.toArray() }),
-  };
+  const result = { ...operation, bounds: shifted(bounds) };
   delete result.targetOffset;
   return result;
 }
@@ -856,6 +1059,7 @@ function compactEntity(entity, include, { index, compiled, THREE } = {}) {
 const RESOURCE_COMPONENT_ARRAY_LIMIT = 16;
 const RESOURCE_COMPONENT_VALUE_BUDGET = 160;
 const RESOURCE_COMPONENT_DEPTH_LIMIT = 5;
+const LOFT_DIGEST_POINT_COORDINATE_BUDGET = 4096;
 const RESOURCE_REFERENCE_LIMIT = 200;
 const RESOURCE_TAG_LIMIT = 32;
 const RESOURCE_DIGEST_RESPONSE_BYTE_BUDGET = MAX_INSPECT_RESPONSE_BYTES;
@@ -906,6 +1110,7 @@ function numericItemSize(key, values, parent) {
 }
 
 function shouldSummarizeArray(key, values) {
+  if (String(key).toLowerCase() === 'sections') return false;
   return values.length > RESOURCE_COMPONENT_ARRAY_LIMIT
     || ['positions', 'position', 'normals', 'normal', 'tangents', 'tangent', 'uvs', 'uv', 'colors', 'color', 'indices', 'index']
       .includes(String(key).toLowerCase());
@@ -945,23 +1150,112 @@ function compactComponentValue(value, key, parent, state, depth = 0) {
 
 function compactResourceComponents(resource) {
   const identity = new Set(['id', 'name', 'kind', 'tags']);
-  const values = Object.fromEntries(
+  let values = Object.fromEntries(
     Object.keys(resource)
       .filter(key => !identity.has(key))
       .sort((a, b) => a.localeCompare(b))
       .map(key => [key, resource[key]]),
   );
+  const recipe = geometryRecipe(resource);
+  if (recipe?.kind === 'loft' && isRecord(values.recipe) && Array.isArray(values.recipe.sections)) {
+    values = {
+      ...values,
+      recipe: {
+        ...values.recipe,
+        sections: buildLoftDigest(recipe, { includePoints: false }).sections,
+      },
+    };
+  }
   return compactComponentValue(values, 'components', values, {
     remaining: RESOURCE_COMPONENT_VALUE_BUDGET,
   });
 }
 
-function explicitGeometrySummary(resource, { includeBounds = false } = {}) {
+function normalizeLoftSections(sections) {
+  if (!Array.isArray(sections)) return [];
+  return sections.map((section, index) => {
+    if (Array.isArray(section)) {
+      return { id: `section/${index}`, points: section };
+    }
+    return {
+      id: typeof section?.id === 'string' && section.id ? section.id : `section/${index}`,
+      points: Array.isArray(section?.points) ? section.points : [],
+      ...(isRecord(section?.transform) ? { transform: section.transform } : {}),
+    };
+  });
+}
+
+function controlPointCoordinates(point) {
+  if (Array.isArray(point)) return point.filter(Number.isFinite);
+  if (!isRecord(point)) return [];
+  return ['x', 'y', 'z'].map(key => point[key]).filter(Number.isFinite);
+}
+
+function controlPointBounds(points) {
+  if (!Array.isArray(points) || points.length === 0) return null;
+  const minimum = [Infinity, Infinity, Infinity];
+  const maximum = [-Infinity, -Infinity, -Infinity];
+  let valid = false;
+  for (const point of points) {
+    const coords = controlPointCoordinates(point);
+    if (coords.length < 2) continue;
+    valid = true;
+    const x = coords[0];
+    const y = coords[1];
+    const z = coords[2] ?? 0;
+    minimum[0] = Math.min(minimum[0], x);
+    minimum[1] = Math.min(minimum[1], y);
+    minimum[2] = Math.min(minimum[2], z);
+    maximum[0] = Math.max(maximum[0], x);
+    maximum[1] = Math.max(maximum[1], y);
+    maximum[2] = Math.max(maximum[2], z);
+  }
+  return valid ? { min: minimum, max: maximum } : null;
+}
+
+export function buildLoftDigest(recipe, { includePoints = false } = {}) {
+  const sections = normalizeLoftSections(recipe?.sections);
+  let remaining = includePoints ? LOFT_DIGEST_POINT_COORDINATE_BUDGET : 0;
+  return {
+    sectionCount: sections.length,
+    ...(recipe?.closedProfile === undefined ? {} : { closedProfile: recipe.closedProfile === true }),
+    ...(recipe?.capStart === undefined ? {} : { capStart: recipe.capStart !== false }),
+    ...(recipe?.capEnd === undefined ? {} : { capEnd: recipe.capEnd !== false }),
+    ...(recipe?.profileResolution === undefined ? {} : { profileResolution: recipe.profileResolution }),
+    ...(recipe?.subdivisions === undefined ? {} : { subdivisions: recipe.subdivisions }),
+    ...(recipe?.alignProfile === undefined ? {} : { alignProfile: recipe.alignProfile }),
+    sections: sections.map((section, index) => {
+      const points = Array.isArray(section.points) ? section.points : [];
+      const coordinateCount = points.reduce((sum, point) => sum + controlPointCoordinates(point).length, 0);
+      const summary = {
+        id: section.id,
+        index,
+        pointCount: points.length,
+        ...(section.transform ? { transform: section.transform } : {}),
+      };
+      const bounds = controlPointBounds(points);
+      if (bounds) summary.localBounds = bounds;
+      if (includePoints && remaining >= coordinateCount) {
+        summary.points = points;
+        remaining -= coordinateCount;
+      } else if (includePoints) {
+        summary.pointsOmitted = true;
+      }
+      return summary;
+    }),
+  };
+}
+
+function explicitGeometrySummary(resource, { includeBounds = false, includeControlPoints = false } = {}) {
   const recipe = geometryRecipe(resource);
   const recipeKind = recipe === resource
     ? (resource?.geometryKind ?? resource?.type ?? resource?.kind)
     : (recipe?.kind ?? recipe?.type ?? resource?.geometryKind ?? resource?.kind);
   const output = { recipeKind: compactString(recipeKind ?? 'box', 80) };
+  if (recipeKind === 'loft') {
+    output.loft = buildLoftDigest(recipe, { includePoints: includeControlPoints });
+    return output;
+  }
   if (!['explicit', 'indexedMesh'].includes(recipeKind)) return output;
   const positions = geometryArray(recipe, 'positions', 'position') ?? [];
   const indices = geometryArray(recipe, 'indices', 'index') ?? [];
@@ -1072,6 +1366,7 @@ export function buildResourceDigest(document, params = {}) {
       } : {}),
       ...(resourceType === 'geometries' ? explicitGeometrySummary(resource, {
         includeBounds: include.has('bounds'),
+        includeControlPoints: include.has('components'),
       }) : {}),
       ...(resourceType === 'textures' ? dataTextureSummary(resource) : {}),
     };
@@ -1697,6 +1992,12 @@ export class StudioApplication {
         blenderCatalogSummary: BLENDER_CATALOG_SUMMARY,
         operationCatalog: true,
         geometryCatalog: true,
+        lookCatalog: true,
+        lightingDigest: true,
+        loftSectionDigest: true,
+        materialLookPatch: true,
+        sameTransactionCameraFrame: true,
+        cameraDistanceScale: true,
         animationRuntime: Boolean(this.#compiled?.animationRuntime),
         animationActions: this.#compiled?.animationActions ?? [],
         timelineGeometryRuntime: true,
@@ -1815,6 +2116,7 @@ export class StudioApplication {
         toolContract: TOOL_CONTRACT_SUMMARY,
       },
       latestEvidence: this.#latestEvidence,
+      authoringTelemetry: this.#commandMetrics?.() ?? emptyStudioCommandMetrics(),
     };
   }
 
@@ -2205,6 +2507,21 @@ export class StudioApplication {
         limit: params.limit,
       }),
     };
+    if (params.query === 'lookCatalog') return {
+      success: true,
+      revision: document.revision,
+      catalog: queryLookCatalog({
+        search: params.selector?.name,
+        look: params.selector?.kind,
+        limit: params.limit,
+      }),
+    };
+    if (params.query === 'lightingDigest') return {
+      success: true,
+      revision: document.revision,
+      projectId: document.projectId,
+      ...buildLightingDigest(document, params),
+    };
     if (params.query === 'graphCatalog') return {
       success: true,
       revision: document.revision,
@@ -2325,8 +2642,13 @@ export class StudioApplication {
             ? materializeGeometrySelectionEdit(operation, translationDocument)
           : translateToolOperation(operation, translationDocument);
       for (const candidateValue of (Array.isArray(translated) ? translated : [translated])) {
-        const candidate = materializeCameraFrameOperation(candidateValue, { compiled: this.#compiled, THREE: this.#THREE });
+        const candidate = materializeCameraFrameOperation(candidateValue, {
+          compiled: this.#compiled,
+          THREE: this.#THREE,
+          document: translationDocument,
+        });
         operations.push(candidate);
+        recordTranslationMutation(translationDocument, candidate);
         if ((candidate.type ?? candidate.op) === 'resource.create' && !candidate.alias) {
           const resourceType = normalizeResourceType(candidate.resourceType);
           const resource = createResourceDocument(resourceType, candidate.resource);

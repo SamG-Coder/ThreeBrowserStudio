@@ -18,6 +18,7 @@ import { LAYOUT_PATTERN_MODES } from '../src/core/layout-patterns.mjs';
 import { TOOL_CONTRACT, TOOL_CONTRACT_SUMMARY } from '../src/mcp/tool-schemas.mjs';
 import { createProjectPack, parseProjectPack } from '../src/core/project-pack.mjs';
 import { StudioApplication, buildResourceDigest } from '../src/runtime/studio-application.mjs';
+import { emptyStudioCommandMetrics } from '../src/runtime/mcp-live-feed-telemetry.mjs';
 
 class Vector3 {
   constructor(x = 0, y = 0, z = 0) {
@@ -139,6 +140,16 @@ function fakeThree() {
 
     updateProjectionMatrix() {}
   }
+  class PointLight extends Group {
+    constructor(color, intensity = 10, distance = 0, decay = 2) {
+      super();
+      this.isLight = true;
+      this.color = color;
+      this.intensity = intensity;
+      this.distance = distance;
+      this.decay = decay;
+    }
+  }
   class BufferAttribute {
     constructor(array, itemSize) { this.array = array; this.itemSize = itemSize; this.count = array.length / itemSize; }
     getX(index) { return this.array[index * this.itemSize]; }
@@ -172,6 +183,7 @@ function fakeThree() {
     },
     Mesh,
     PerspectiveCamera,
+    PointLight,
     BufferGeometry,
     Float32BufferAttribute: BufferAttribute,
     BoxGeometry: class extends Disposable {},
@@ -602,6 +614,227 @@ test('resource digest exposes bounded topology summaries, filters, references, a
     kind: 'materialGraph',
     sourceId: 'material/resource-digest-hero',
   }]);
+});
+
+test('resource digest keeps every loft section identity without compacting the profile away', () => {
+  const sections = Array.from({ length: 8 }, (_, index) => ({
+    id: `section/station-${index}`,
+    points: [[-0.4, 0.1, 0], [0.4, 0.1, 0], [0.4, 0.8, 0], [-0.4, 0.8, 0]],
+    transform: { translation: [0, 0, index - 3.5] },
+  }));
+  const document = createProjectDocument({
+    projectId: 'project/loft-digest',
+    resources: {
+      geometries: [{
+        id: 'geometry/loft-body',
+        recipe: {
+          kind: 'loft',
+          closedProfile: true,
+          capStart: true,
+          capEnd: true,
+          sections,
+        },
+      }],
+    },
+  });
+  const summary = buildResourceDigest(document, {
+    selector: { ids: ['geometry/loft-body'] },
+    include: ['summary'],
+  });
+  assert.equal(summary.resources[0].recipeKind, 'loft');
+  assert.equal(summary.resources[0].loft.sectionCount, 8);
+  assert.deepEqual(summary.resources[0].loft.sections.map(section => section.id), sections.map(section => section.id));
+  assert.equal(summary.resources[0].loft.sections.every(section => section.points === undefined), true);
+  assert.deepEqual(summary.resources[0].loft.sections[0].transform, { translation: [0, 0, -3.5] });
+
+  const withPoints = buildResourceDigest(document, {
+    selector: { ids: ['geometry/loft-body'] },
+    include: ['summary', 'components'],
+  });
+  assert.deepEqual(withPoints.resources[0].loft.sections[7].points, sections[7].points);
+  assert.equal(withPoints.resources[0].components.recipe.sections[7].id, 'section/station-7');
+  assert.equal(withPoints.resources[0].components.recipe.sections[7].points, undefined);
+
+  const dense = createProjectDocument({
+    projectId: 'project/loft-digest-dense',
+    resources: {
+      geometries: [{
+        id: 'geometry/loft-dense',
+        recipe: {
+          kind: 'loft',
+          sections: Array.from({ length: 20 }, (_, index) => ({
+            id: `section/dense-${index}`,
+            points: Array.from({ length: 80 }, (unused, pointIndex) => [pointIndex, index, 0]),
+          })),
+        },
+      }],
+    },
+  });
+  const omitted = buildResourceDigest(dense, {
+    selector: { ids: ['geometry/loft-dense'] },
+    include: ['summary', 'components'],
+  });
+  assert.equal(omitted.resources[0].loft.sections.length, 20);
+  assert.equal(omitted.resources[0].loft.sections[0].points.length, 80);
+  assert.equal(omitted.resources[0].loft.sections.at(-1).pointsOmitted, true);
+  assert.equal(omitted.resources[0].loft.sections.at(-1).id, 'section/dense-19');
+});
+
+test('lookCatalog and lightingDigest are inspectable without paging the scene', async (t) => {
+  const { application } = await applicationFixture(t);
+  const looks = await application.dispatch('three_studio_inspect', {
+    sessionId: application.sessionId,
+    query: 'lookCatalog',
+    selector: { kind: 'emissiveLens' },
+  });
+  assert.equal(looks.success, true);
+  assert.equal(looks.catalog.entries[0].look, 'emissiveLens');
+  assert.equal(looks.catalog.entries[0].recipe.emissive, '#ff3b08');
+
+  await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1',
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    baseRevision: 0,
+    idempotencyKey: 'look-light-digest-0001',
+    label: 'Create a key light and rig group',
+    operations: [
+      {
+        op: 'entity.create',
+        sceneId: 'scene/main',
+        entity: { id: 'rig/product', kind: 'group', name: 'Product rig', tags: ['lighting', 'lighting-rig'] },
+      },
+      {
+        op: 'entity.create',
+        sceneId: 'scene/main',
+        entity: {
+          id: 'rig/product/key',
+          kind: 'pointLight',
+          name: 'Key light',
+          parentId: 'rig/product',
+          tags: ['lighting', 'rig-product'],
+          components: { light: { color: [1, 0.93, 0.84], intensity: 65, distance: 30, decay: 2 } },
+        },
+      },
+    ],
+  });
+
+  const lighting = await application.dispatch('three_studio_inspect', {
+    sessionId: application.sessionId,
+    query: 'lightingDigest',
+  });
+  assert.equal(lighting.success, true);
+  assert.equal(lighting.lightCount, 1);
+  assert.equal(lighting.rigs[0].id, 'rig/product');
+  assert.equal(lighting.lights[0].id, 'rig/product/key');
+  assert.equal(lighting.lights[0].light.intensity, 65);
+});
+
+test('camera.frame can target a mesh created earlier in the same apply', async (t) => {
+  const { application } = await applicationFixture(t);
+  const result = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1',
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    baseRevision: 0,
+    idempotencyKey: 'same-txn-frame-0001',
+    label: 'Create subject and frame it',
+    operations: [
+      {
+        op: 'entity.create',
+        sceneId: 'scene/main',
+        entity: {
+          id: 'entity/shot-camera',
+          kind: 'perspectiveCamera',
+          components: { camera: { fov: 46, near: 0.1, far: 80 } },
+        },
+      },
+      {
+        op: 'resource.create',
+        resourceType: 'geometries',
+        resource: { id: 'geometry/subject', recipe: { kind: 'box', width: 2, height: 1, depth: 2 } },
+      },
+      {
+        op: 'entity.create',
+        sceneId: 'scene/main',
+        entity: {
+          id: 'entity/subject',
+          kind: 'mesh',
+          transform: { position: [0, 0.5, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+          components: { mesh: { geometryId: 'geometry/subject' } },
+        },
+      },
+      {
+        op: 'camera.frame',
+        cameraId: 'entity/shot-camera',
+        target: { targetIds: ['entity/subject'] },
+        aspect: 16 / 9,
+        padding: 1.15,
+        view: { azimuth: 0.6, elevation: 0.2, distanceScale: 0.9 },
+      },
+    ],
+  });
+  assert.equal(result.success, true);
+  const camera = application.kernel.document.scenes['scene/main'].entities['entity/shot-camera'];
+  assert.notDeepEqual(camera.transform.position, [0, 0, 0]);
+  assert.deepEqual(camera.components.camera.framing.targetIds, ['entity/subject']);
+});
+
+test('status authoring preset always includes command telemetry', async (t) => {
+  const { application } = await applicationFixture(t);
+  const status = await application.dispatch('three_studio_status', {
+    sessionId: application.sessionId,
+    preset: 'authoring',
+  });
+  assert.equal(status.success, true);
+  assert.deepEqual(status.authoringTelemetry, emptyStudioCommandMetrics());
+});
+
+test('missing loft section edits report the live section ids', async (t) => {
+  const { application } = await applicationFixture(t);
+  await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1',
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    baseRevision: 0,
+    idempotencyKey: 'loft-section-ids-0001',
+    label: 'Create a loft',
+    operations: [{
+      op: 'resource.create',
+      resourceType: 'geometries',
+      resource: {
+        id: 'geometry/loft-shell',
+        recipe: {
+          kind: 'loft',
+          sections: [
+            { id: 'section/start', points: [[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0]] },
+            { id: 'section/end', points: [[-0.5, -0.5, 1], [0.5, -0.5, 1], [0.5, 0.5, 1], [-0.5, 0.5, 1]] },
+          ],
+        },
+      },
+    }],
+  });
+  await assert.rejects(
+    application.dispatch('three_studio_apply', {
+      protocolVersion: 'three-studio/1',
+      sessionId: application.sessionId,
+      projectId: 'project/active',
+      baseRevision: 1,
+      idempotencyKey: 'loft-section-ids-0002',
+      label: 'Patch a missing loft section',
+      operations: [{
+        op: 'geometry.loft.edit',
+        resourceId: 'geometry/loft-shell',
+        changes: [{ type: 'patch', sectionId: 'section/missing', patch: { transform: { translation: [0, 0, 2] } } }],
+      }],
+    }),
+    error => {
+      assert.equal(error.code, 'loft_section_not_found');
+      assert.deepEqual(error.details.sectionId, 'section/missing');
+      assert.deepEqual(error.details.sectionIds, ['section/start', 'section/end']);
+      return true;
+    },
+  );
 });
 
 test('resource digest enforces one total response budget across a maximum-size page', () => {
@@ -1154,6 +1387,7 @@ test('a project switch compile failure preserves the active project and live sce
   assert.equal(status.capabilities.editableMesh.topologyHashGuards, true);
   assert.equal(status.capabilities.maxGeometryEditCommands, 64);
   assert.equal(status.capabilities.implementedOperations.includes('geometry.edit'), true);
+  assert.equal(status.capabilities.implementedOperations.includes('material.look.patch'), true);
   const materialControls = status.capabilities.imageTextures.materialControls;
   assert.deepEqual(materialControls.scalarRanges, {
     metalness: [0, 1],

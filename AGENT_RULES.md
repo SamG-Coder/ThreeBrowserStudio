@@ -251,7 +251,12 @@ operations.
 - Build and render one representative high-detail asset before scattering or
   duplicating it. Repetition amplifies silhouette and shading defects.
 - Use `resourceDigest` to verify indexed vertex/triangle counts, attributes,
-  bounds, and references without requesting raw geometry arrays.
+  bounds, and references without requesting raw geometry arrays. Loft
+  resources always expose `loft.sections` identities; request components for
+  control points. Use `lookCatalog` before creating a look, then
+  `material.look.patch` to retune it. Use `lightingDigest` instead of paging
+  every light. `camera.frame` can target entities created earlier in the same
+  apply.
 - Use `meshElements` for exact vertices, unique edges, authored triangular or
   polygon faces, per-corner layers, material slots, annotations, and adjacency;
   continue only with its resource/topology/filter-bound cursor. Use

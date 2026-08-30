@@ -181,6 +181,45 @@ test('semantic material looks lower to editable physical material resources', ()
   });
 });
 
+test('material look patch updates an existing look without a new id', () => {
+  const project = createProjectDocument({
+    projectId: 'project/material-look-patch',
+    resources: {
+      materials: [{
+        id: 'material/paint',
+        name: 'Automotive Paint',
+        metadata: { studioLook: 'automotivePaint' },
+        recipe: { kind: 'physical', color: '#8a1018', roughness: 0.22, metalness: 0.16, clearcoat: 1, clearcoatRoughness: 0.055 },
+      }],
+    },
+  });
+  assert.deepEqual(translateToolOperation({
+    op: 'material.look.patch', materialId: 'material/paint', color: '#cc1122', roughness: 0.12,
+  }, project), {
+    type: 'resource.patch', resourceType: 'materials', resourceId: 'material/paint',
+    patch: {
+      recipe: { kind: 'physical', color: '#cc1122', roughness: 0.12, metalness: 0.16, clearcoat: 1, clearcoatRoughness: 0.055 },
+      metadata: { studioLook: 'automotivePaint' },
+    },
+  });
+  assert.deepEqual(translateToolOperation({
+    op: 'material.look.patch', materialId: 'material/paint', look: 'glass',
+    transmission: 0, opacity: 0.45,
+  }, project), {
+    type: 'resource.patch', resourceType: 'materials', resourceId: 'material/paint',
+    patch: {
+      recipe: {
+        kind: 'physical', color: '#dcecff', roughness: 0.055, metalness: 0,
+        transmission: 0, opacity: 0.45, ior: 1.5, thickness: 0.08,
+      },
+      metadata: { studioLook: 'glass' },
+      opacity: 0.45,
+      transparent: true,
+      transmission: 0,
+    },
+  });
+});
+
 test('typed lighting rigs lower to raster-safe lights with explicit optional RTX policy', () => {
   const project = createProjectDocument({ projectId: 'project/lighting-rig' });
   const automatic = translateToolOperation({

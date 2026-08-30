@@ -86,6 +86,7 @@ export function solveCameraFrame({
   camera = {},
   aspect,
   padding = 1.25,
+  distanceScale = 1,
   direction = [0, -0.2, -1],
   minHeight,
   lockPreviewAspect = true,
@@ -98,6 +99,8 @@ export function solveCameraFrame({
   if (safeAspect < 0.1 || safeAspect > 10) throw new RangeError('aspect must be from 0.1 to 10.');
   const safePadding = finiteNumber(padding, 'padding');
   if (safePadding < 1 || safePadding > 10) throw new RangeError('padding must be from 1 to 10.');
+  const safeDistanceScale = finiteNumber(distanceScale ?? 1, 'distanceScale');
+  if (safeDistanceScale < 0.1 || safeDistanceScale > 10) throw new RangeError('distanceScale must be from 0.1 to 10.');
   const viewDirection = normalizeDirection(direction);
   const centre = normalized.min.map((value, index) => (value + normalized.max[index]) * 0.5);
   const size = normalized.min.map((value, index) => normalized.max[index] - value);
@@ -121,6 +124,7 @@ export function solveCameraFrame({
     framedCamera.top = halfHeight;
     framedCamera.bottom = -halfHeight;
   }
+  distance *= safeDistanceScale;
 
   const position = centre.map((value, index) => value - viewDirection[index] * distance);
   if (minHeight !== undefined) position[1] = Math.max(position[1], finiteNumber(minHeight, 'minHeight'));

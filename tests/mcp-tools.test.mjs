@@ -144,7 +144,7 @@ test('checked-in JSON contract is generated exactly from compact live schemas', 
     inputSchemas: TOOL_INPUT_SCHEMAS,
   }));
   const encoder = new TextEncoder();
-  assert.ok(encoder.encode(JSON.stringify(TOOL_INPUT_SCHEMAS.three_studio_apply)).byteLength <= 71_000);
+  assert.ok(encoder.encode(JSON.stringify(TOOL_INPUT_SCHEMAS.three_studio_apply)).byteLength <= 73_000);
   assert.ok(encoder.encode(JSON.stringify(TOOL_INPUT_SCHEMAS)).byteLength <= 85_000);
 });
 
@@ -260,7 +260,7 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
     'selector', 'sceneDigest', 'resourceDigest', 'meshElements', 'meshSelection', 'meshQuality', 'graphDigest', 'modifierDigest', 'rtxDigest', 'changedSinceRevision',
     'unresolvedResources', 'unusedResources', 'graphCatalog', 'playState',
     'latestEvidence', 'blenderCatalog', 'beautyDigest', 'projectVisibility',
-    'operationCatalog', 'geometryCatalog',
+    'operationCatalog', 'geometryCatalog', 'lookCatalog', 'lightingDigest',
   ]);
   assert.deepEqual(OPERATION_TYPES, [
     'scene.create', 'scene.patch', 'scene.delete', 'scene.setActive',
@@ -272,7 +272,7 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
     'lighting.rig.create',
     'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
     'geometry.edit', 'geometry.realize', 'geometry.loft.edit', 'geometry.selection.edit',
-    'material.variant.create', 'material.look.create',
+    'material.variant.create', 'material.look.create', 'material.look.patch',
     'resource.create', 'resource.createMany', 'resource.patch', 'resource.delete',
   ]);
   assert.equal(inspectSchema.safeParse({ query: 'selector', selector: { tag: 'hero' }, include: ['tree', 'transform', 'bounds', 'references'] }).success, true);
@@ -281,6 +281,8 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
   assert.equal(inspectSchema.safeParse({ query: 'graphCatalog', selector: { kind: 'shader', status: 'api-only' } }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'operationCatalog', selector: { kind: 'entity', name: 'bulk' }, limit: 12 }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'geometryCatalog', selector: { kind: 'procedural', name: 'loft' }, limit: 12 }).success, true);
+  assert.equal(inspectSchema.safeParse({ query: 'lookCatalog', selector: { kind: 'glass' } }).success, true);
+  assert.equal(inspectSchema.safeParse({ query: 'lightingDigest', selector: { tag: 'lighting' } }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'unresolvedResources' }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'unusedResources' }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'resourceDigest', selector: { ids: ['geometry/dense'] }, include: ['components', 'bounds', 'references'] }).success, true);
@@ -295,6 +297,25 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
     idempotencyKey: 'look-0001', label: 'Create paint',
     operations: [{ op: 'material.look.create', materialId: 'material/paint', look: 'automotivePaint', color: '#cc1122' }],
   }).success, true);
+  assert.equal(applySchema.safeParse({
+    protocolVersion: 'three-studio/1', sessionId: 'live-session', projectId: 'project/demo', baseRevision: 0,
+    idempotencyKey: 'look-0002', label: 'Retune glass',
+    operations: [{
+      op: 'material.look.patch', materialId: 'material/glass', look: 'glass',
+      transmission: 0, opacity: 0.45, roughness: 0.04,
+    }],
+  }).success, true);
+  assert.equal(applySchema.safeParse({
+    protocolVersion: 'three-studio/1', sessionId: 'live-session', projectId: 'project/demo', baseRevision: 0,
+    idempotencyKey: 'look-0003', label: 'Unknown look',
+    operations: [{ op: 'material.look.create', materialId: 'material/glass', look: 'windowTint' }],
+  }).success, false);
+  assert.equal(TOOL_CONTRACT.features.loftSectionDigest, true);
+  assert.equal(TOOL_CONTRACT.features.materialLookPatch, true);
+  assert.equal(TOOL_CONTRACT.features.lookCatalog, true);
+  assert.equal(TOOL_CONTRACT.features.lightingDigest, true);
+  assert.equal(TOOL_CONTRACT.features.sameTransactionCameraFrame, true);
+  assert.equal(TOOL_CONTRACT.features.cameraDistanceScale, true);
   assert.equal(inspectSchema.safeParse({ query: 'meshElements', selector: { ids: ['geometry/a', 'geometry/b'] } }).success, false);
   assert.equal(inspectSchema.safeParse({ query: 'graphDigest', selector: { ids: ['graph/surface'] } }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'modifierDigest', selector: { ids: ['entity/wall'] } }).success, true);

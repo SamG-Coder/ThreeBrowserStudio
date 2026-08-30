@@ -153,7 +153,9 @@
               "beautyDigest",
               "projectVisibility",
               "operationCatalog",
-              "geometryCatalog"
+              "geometryCatalog",
+              "lookCatalog",
+              "lightingDigest"
             ]
           },
           "selector": {
@@ -2679,20 +2681,37 @@
                       "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
                     },
                     "look": {
-                      "type": "string",
-                      "enum": [
-                        "automotivePaint",
-                        "rubber",
-                        "brushedMetal",
-                        "glass",
-                        "emissiveLens",
-                        "fabric",
-                        "organicSkin"
-                      ]
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema65"
                     },
                     "color": {
-                      "type": "string",
-                      "pattern": "^#[0-9a-fA-F]{6}$"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema66"
+                    },
+                    "roughness": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema68"
+                    },
+                    "metalness": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema69"
+                    },
+                    "clearcoat": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema70"
+                    },
+                    "clearcoatRoughness": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema71"
+                    },
+                    "transmission": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema72"
+                    },
+                    "opacity": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema73"
+                    },
+                    "emissiveIntensity": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema74"
+                    },
+                    "anisotropy": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema75"
+                    },
+                    "emissive": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema76"
                     }
                   },
                   "required": [
@@ -2707,10 +2726,60 @@
                   "properties": {
                     "op": {
                       "type": "string",
+                      "const": "material.look.patch"
+                    },
+                    "materialId": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                    },
+                    "look": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema65"
+                    },
+                    "color": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema66"
+                    },
+                    "roughness": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema68"
+                    },
+                    "metalness": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema69"
+                    },
+                    "clearcoat": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema70"
+                    },
+                    "clearcoatRoughness": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema71"
+                    },
+                    "transmission": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema72"
+                    },
+                    "opacity": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema73"
+                    },
+                    "emissiveIntensity": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema74"
+                    },
+                    "anisotropy": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema75"
+                    },
+                    "emissive": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema76"
+                    }
+                  },
+                  "required": [
+                    "op",
+                    "materialId"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "op": {
+                      "type": "string",
                       "const": "resource.create"
                     },
                     "resourceType": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema65"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema77"
                     },
                     "resource": {
                       "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema63"
@@ -2741,7 +2810,7 @@
                         "type": "object",
                         "properties": {
                           "resourceType": {
-                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema65"
+                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema77"
                           },
                           "resource": {
                             "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema63"
@@ -2772,7 +2841,7 @@
                       "const": "resource.patch"
                     },
                     "resourceType": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema65"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema77"
                     },
                     "resourceId": {
                       "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
@@ -2797,7 +2866,7 @@
                       "const": "resource.delete"
                     },
                     "resourceType": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema65"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema77"
                     },
                     "resourceId": {
                       "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
@@ -6820,6 +6889,68 @@
             ]
           },
           "__schema65": {
+            "type": "string",
+            "enum": [
+              "automotivePaint",
+              "rubber",
+              "brushedMetal",
+              "glass",
+              "emissiveLens",
+              "fabric",
+              "organicSkin"
+            ]
+          },
+          "__schema66": {
+            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema67"
+          },
+          "__schema67": {
+            "type": "string",
+            "pattern": "^#[0-9a-fA-F]{6}$"
+          },
+          "__schema68": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "__schema69": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "__schema70": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "__schema71": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "__schema72": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "__schema73": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "__schema74": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "__schema75": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "__schema76": {
+            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema67"
+          },
+          "__schema77": {
             "type": "string",
             "enum": [
               "geometries",
