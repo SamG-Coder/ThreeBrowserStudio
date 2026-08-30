@@ -58,6 +58,8 @@ const INSPECT_QUERIES = Object.freeze({
   unresolvedResources: 'Inspect unresolved resources',
   unusedResources: 'Inspect unused resources',
   graphCatalog: 'Inspect graph catalog',
+  operationCatalog: 'Inspect operation catalog',
+  geometryCatalog: 'Inspect geometry catalog',
   playState: 'Inspect Play state',
   latestEvidence: 'Inspect latest evidence metadata',
   blenderCatalog: 'Inspect Blender catalog',

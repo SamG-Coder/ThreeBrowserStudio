@@ -11,7 +11,7 @@ import {
   materialTextureReferences,
 } from '../core/material-textures.mjs';
 
-const GEOMETRY_PARAMETER_DEFAULTS = Object.freeze({
+export const GEOMETRY_PARAMETER_DEFAULTS = Object.freeze({
   box: { width: 1, height: 1, depth: 1, widthSegments: 1, heightSegments: 1, depthSegments: 1 },
   plane: { width: 1, height: 1, widthSegments: 1, heightSegments: 1 },
   sphere: { radius: 0.5, widthSegments: 32, heightSegments: 16, phiStart: 0, phiLength: Math.PI * 2, thetaStart: 0, thetaLength: Math.PI },
@@ -64,7 +64,7 @@ const GEOMETRY_PARAMETER_DEFAULTS = Object.freeze({
   },
 });
 
-const CONTROL_POINT_LIMITS = Object.freeze({
+export const GEOMETRY_CONTROL_POINT_LIMITS = Object.freeze({
   lathe: 512,
   tube: 1024,
   shape: 2048,
@@ -81,6 +81,57 @@ export const RUNTIME_GEOMETRY_LIMITS = Object.freeze({
   maxVertices: MAX_RUNTIME_GEOMETRY_VERTICES,
   maxTriangles: MAX_RUNTIME_GEOMETRY_TRIANGLES,
 });
+
+const DATA_GEOMETRY_KINDS = Object.freeze(['explicit', 'indexedMesh', 'editableMesh']);
+const PROCEDURAL_GEOMETRY_KINDS = Object.freeze(Object.keys(GEOMETRY_PARAMETER_DEFAULTS));
+export const GEOMETRY_RECIPE_KINDS = Object.freeze([
+  ...PROCEDURAL_GEOMETRY_KINDS,
+  ...DATA_GEOMETRY_KINDS,
+]);
+
+const GEOMETRY_KIND_NOTES = Object.freeze({
+  lathe: 'Revolve a bounded 2D profile around the local Y axis.',
+  tube: 'Sweep a circular profile along a bounded 3D Catmull-Rom path.',
+  loft: 'Connect equal-size 3D profile rings into one continuous shell.',
+  shape: 'Triangulate one bounded 2D contour with optional holes.',
+  extrude: 'Extrude one bounded 2D contour with optional holes and bevel.',
+  explicit: 'Authored triangle soup with optional normals and UVs.',
+  indexedMesh: 'Authored indexed triangles with optional normals, UVs, colors, and material groups.',
+  editableMesh: 'Canonical polygon/corner topology supporting guarded geometry edits and attributes.',
+});
+
+export function queryGeometryCatalog({ search, kind, limit = 50 } = {}) {
+  const needle = String(search ?? '').trim().toLowerCase();
+  const all = GEOMETRY_RECIPE_KINDS.map((entryKind) => {
+    const defaults = GEOMETRY_PARAMETER_DEFAULTS[entryKind] ?? {};
+    const controlLimits = entryKind === 'loft'
+      ? {
+          sections: GEOMETRY_CONTROL_POINT_LIMITS.loftSections,
+          pointsPerSection: GEOMETRY_CONTROL_POINT_LIMITS.loftPointsPerSection,
+          totalPoints: GEOMETRY_CONTROL_POINT_LIMITS.loftTotalPoints,
+        }
+      : (GEOMETRY_CONTROL_POINT_LIMITS[entryKind]
+          ? { controlPoints: GEOMETRY_CONTROL_POINT_LIMITS[entryKind] }
+          : undefined);
+    return Object.freeze({
+      kind: entryKind,
+      category: DATA_GEOMETRY_KINDS.includes(entryKind) ? 'authored-data' : 'procedural',
+      editable: entryKind === 'editableMesh',
+      meshElements: DATA_GEOMETRY_KINDS.includes(entryKind),
+      fields: Object.keys(defaults),
+      defaults,
+      ...(controlLimits ? { controlLimits } : {}),
+      runtimeLimits: RUNTIME_GEOMETRY_LIMITS,
+      summary: GEOMETRY_KIND_NOTES[entryKind] ?? `Create bounded ${entryKind} geometry.`,
+    });
+  });
+  const matched = all.filter(entry => (
+    (!kind || entry.kind === kind || entry.category === kind)
+    && (!needle || `${entry.kind} ${entry.summary} ${entry.fields.join(' ')}`.toLowerCase().includes(needle))
+  ));
+  const entries = matched.slice(0, Math.max(1, Math.min(200, limit)));
+  return Object.freeze({ version: 1, total: all.length, matched: matched.length, returned: entries.length, entries });
+}
 
 function finite(value, fallback) {
   return Number.isFinite(value) ? value : fallback;
@@ -312,16 +363,16 @@ export function ensureGeneratedCoordinateAttribute(THREE, geometry) {
 function shapeFromRecipe(THREE, recipe) {
   const Shape = requireConstructor(THREE, 'Shape');
   const Path = requireConstructor(THREE, 'Path');
-  const contour = validatedPoints(recipe.points, 2, 3, CONTROL_POINT_LIMITS.shape, 'Shape contour');
+  const contour = validatedPoints(recipe.points, 2, 3, GEOMETRY_CONTROL_POINT_LIMITS.shape, 'Shape contour');
   if (!Array.isArray(recipe.holes)) throw new Error('Shape holes must be an array of contours.');
   if (recipe.holes.length > MAX_SHAPE_HOLES) throw new Error(`Shape exceeds the hole budget of ${MAX_SHAPE_HOLES}.`);
 
   let pointCount = contour.length;
   const holes = recipe.holes.map((hole, index) => {
-    const points = validatedPoints(hole, 2, 3, CONTROL_POINT_LIMITS.shape, `Shape hole ${index}`);
+    const points = validatedPoints(hole, 2, 3, GEOMETRY_CONTROL_POINT_LIMITS.shape, `Shape hole ${index}`);
     pointCount += points.length;
-    if (pointCount > CONTROL_POINT_LIMITS.shape) {
-      throw new Error(`Shape exceeds the total control-point budget of ${CONTROL_POINT_LIMITS.shape}.`);
+    if (pointCount > GEOMETRY_CONTROL_POINT_LIMITS.shape) {
+      throw new Error(`Shape exceeds the total control-point budget of ${GEOMETRY_CONTROL_POINT_LIMITS.shape}.`);
     }
     return points;
   });
@@ -341,7 +392,7 @@ function shapeFromRecipe(THREE, recipe) {
 function latheGeometry(THREE, recipe) {
   const Vector2 = requireConstructor(THREE, 'Vector2');
   const LatheGeometry = requireConstructor(THREE, 'LatheGeometry');
-  const points = validatedPoints(recipe.points, 2, 2, CONTROL_POINT_LIMITS.lathe, 'Lathe profile');
+  const points = validatedPoints(recipe.points, 2, 2, GEOMETRY_CONTROL_POINT_LIMITS.lathe, 'Lathe profile');
   if (points.some(([radius]) => radius < 0)) throw new Error('Lathe profile radii must be non-negative.');
   const phiStart = boundedFinite(recipe.phiStart, 0, -Math.PI * 2, Math.PI * 2, 'Lathe phiStart');
   const phiLength = boundedFinite(recipe.phiLength, Math.PI * 2, Number.EPSILON, Math.PI * 2, 'Lathe phiLength');
@@ -358,7 +409,7 @@ function tubeGeometry(THREE, recipe) {
   const CatmullRomCurve3 = requireConstructor(THREE, 'CatmullRomCurve3');
   const TubeGeometry = requireConstructor(THREE, 'TubeGeometry');
   const closed = bool(recipe.closed, false);
-  const points = validatedPoints(recipe.points, 3, closed ? 3 : 2, CONTROL_POINT_LIMITS.tube, 'Tube path');
+  const points = validatedPoints(recipe.points, 3, closed ? 3 : 2, GEOMETRY_CONTROL_POINT_LIMITS.tube, 'Tube path');
   const allowedCurveTypes = new Set(['centripetal', 'chordal', 'catmullrom']);
   if (!allowedCurveTypes.has(recipe.curveType)) {
     throw new Error('Tube curveType must be centripetal, chordal, or catmullrom.');
@@ -382,18 +433,18 @@ function tubeGeometry(THREE, recipe) {
 
 function loftGeometry(THREE, recipe) {
   if (!Array.isArray(recipe.sections) || recipe.sections.length < 2
-      || recipe.sections.length > CONTROL_POINT_LIMITS.loftSections) {
-    throw new Error(`Loft requires 2 to ${CONTROL_POINT_LIMITS.loftSections} sections.`);
+      || recipe.sections.length > GEOMETRY_CONTROL_POINT_LIMITS.loftSections) {
+    throw new Error(`Loft requires 2 to ${GEOMETRY_CONTROL_POINT_LIMITS.loftSections} sections.`);
   }
   const sections = recipe.sections.map((section, index) => validatedPoints(
-    section, 3, 3, CONTROL_POINT_LIMITS.loftPointsPerSection, `Loft section ${index}`,
+    section, 3, 3, GEOMETRY_CONTROL_POINT_LIMITS.loftPointsPerSection, `Loft section ${index}`,
   ));
   const profileSize = sections[0].length;
   if (sections.some(section => section.length !== profileSize)) {
     throw new Error('Every loft section must contain the same number of profile points.');
   }
-  if (sections.length * profileSize > CONTROL_POINT_LIMITS.loftTotalPoints) {
-    throw new Error(`Loft exceeds ${CONTROL_POINT_LIMITS.loftTotalPoints} total control points.`);
+  if (sections.length * profileSize > GEOMETRY_CONTROL_POINT_LIMITS.loftTotalPoints) {
+    throw new Error(`Loft exceeds ${GEOMETRY_CONTROL_POINT_LIMITS.loftTotalPoints} total control points.`);
   }
   const closed = bool(recipe.closedProfile, true);
   const positions = sections.flat(2);

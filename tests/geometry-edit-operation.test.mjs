@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import {
   AuthoringKernel,
@@ -338,15 +337,4 @@ test('MCP geometry.edit exposes every strict bounded command shape', () => {
     Array.from({ length: MAX_GEOMETRY_EDIT_COMMANDS + 1 }, () => ({ type: 'triangulate' })),
   )).success, false);
   assert.equal(MAX_GEOMETRY_EDIT_VERTEX_SELECTION, 20_000);
-});
-
-test('checked-in geometry.edit schema mirrors MCP command names and bounds', async () => {
-  const contract = JSON.parse(await readFile(new URL('../schemas/tools-v1.schema.json', import.meta.url), 'utf8'));
-  const editSchemas = contract.$defs.geometryEditCommand.oneOf;
-  assert.deepEqual([...new Set(editSchemas.map(schema => schema.properties.type.const))], GEOMETRY_EDIT_COMMAND_TYPES);
-  assert.equal(contract.$defs.geometryVertexIndices.maxItems, MAX_GEOMETRY_EDIT_VERTEX_SELECTION);
-  assert.equal(contract.$defs.geometryVertexIndices.uniqueItems, true);
-  assert.equal(contract.$defs.operation.properties.edits.maxItems, MAX_GEOMETRY_EDIT_COMMANDS);
-  assert.deepEqual(contract.$defs.operation.allOf.at(-1).then.propertyNames.enum, ['op', 'resourceId', 'edits', 'expectedTopologyHash']);
-  assert.equal(editSchemas.every(schema => schema.additionalProperties === false), true);
 });

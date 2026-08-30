@@ -4,7 +4,6 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { LAYOUT_PATTERN_MODES } from '../src/core/layout-patterns.mjs';
 import { AUTHORABLE_MODIFIER_TYPES } from '../src/core/modifier-stack.mjs';
 import { BLENDER_MODIFIER_INVENTORY } from '../src/blender/modifier-inventory.mjs';
 import {
@@ -16,6 +15,7 @@ import {
   TOOL_DEFINITIONS,
   TOOL_CONTRACT,
   TOOL_CONTRACT_SUMMARY,
+  TOOL_INPUT_SCHEMAS,
   TOOL_SCHEMAS,
   applySchema,
   createThreeStudioMcpServer,
@@ -33,6 +33,8 @@ import {
   toMcpToolResult,
   validateSchema,
 } from '../src/mcp/index.mjs';
+import { buildToolSchemaDocument } from '../src/mcp/tool-schema-document.mjs';
+import { PROTOCOL_VERSION } from '../src/bridge/protocol.mjs';
 
 const EXPECTED_TOOLS = [
   'three_studio_status',
@@ -54,27 +56,6 @@ function modifierDocumentBranches(schema, output = []) {
   return output;
 }
 
-function modifierBranchSummary(schema) {
-  return Object.fromEntries(modifierDocumentBranches(schema).map((branch) => {
-    const type = branch.properties.type.const;
-    const mode = branch.properties.mode?.const;
-    return [`${type}${mode ? `:${mode}` : ''}`, {
-      properties: Object.keys(branch.properties).sort(),
-      required: [...(branch.required ?? [])].sort(),
-      additionalProperties: branch.additionalProperties,
-    }];
-  }));
-}
-
-function modifierPatchBranchSummary(schema) {
-  return schema.anyOf.map(branch => ({
-    description: branch.description,
-    properties: Object.keys(branch.properties).sort(),
-    additionalProperties: branch.additionalProperties,
-    minProperties: branch.minProperties,
-  }));
-}
-
 test('MCP surface is deliberately bounded and uses the official v2 server', () => {
   const server = createThreeStudioMcpServer({ dispatch: async () => ({ success: true }) });
   assert.ok(server instanceof McpServer);
@@ -89,9 +70,7 @@ test('MCP surface is deliberately bounded and uses the official v2 server', () =
 
 test('tool contract hash covers the exact registered MCP input schemas', () => {
   const server = createThreeStudioMcpServer({ dispatch: async () => ({ success: true }) });
-  const inputSchemas = Object.fromEntries(
-    STUDIO_TOOL_NAMES.map(name => [name, z.toJSONSchema(TOOL_SCHEMAS[name], { io: 'input' })]),
-  );
+  const inputSchemas = TOOL_INPUT_SCHEMAS;
   for (const name of STUDIO_TOOL_NAMES) {
     assert.deepEqual(inputSchemas[name], server.toolInputSchemaJson(name));
   }
@@ -157,24 +136,16 @@ test('tool annotations reflect read-only versus stateful live effects', () => {
   assert.match(TOOL_DEFINITIONS.three_studio_play.description, /do not execute/);
 });
 
-test('checked-in JSON contract mirrors the lean capability enums', async () => {
+test('checked-in JSON contract is generated exactly from compact live schemas', async () => {
   const contract = JSON.parse(await readFile(new URL('../schemas/tools-v1.schema.json', import.meta.url), 'utf8'));
-  assert.deepEqual(contract.$defs.operation.properties.op.enum, OPERATION_TYPES);
-  assert.deepEqual(contract.$defs.inspect.properties.include.items.enum, INSPECT_SLICES);
-  assert.deepEqual(contract.$defs.inspect.properties.query.enum, INSPECT_QUERIES);
-  assert.deepEqual(contract.$defs.project.properties.action.enum, ['list', 'create', 'open', 'save']);
-  assert.deepEqual(contract.$defs.history.properties.action.enum, ['list', 'inspect', 'undo', 'redo']);
-  assert.deepEqual(contract.$defs.render.properties.passes.items, { enum: ['beauty', 'raster', 'objectId', 'albedo', 'roughness', 'normal', 'uv'] });
-  assert.equal(contract.$defs.render.properties.passes.maxItems, 7);
-  assert.deepEqual(contract.$defs.render.properties.renderer, { const: 'webgpu' });
-  assert.deepEqual(Object.keys(contract.$defs.job.properties), [
-    'protocolVersion', 'sessionId', 'action', 'projectId', 'graphId', 'textureId',
-    'output', 'resolution', 'name', 'baseRevision', 'idempotencyKey', 'label',
-  ]);
-  assert.deepEqual(
-    contract.$defs.layoutPattern.oneOf.map(pattern => pattern.properties.mode.const),
-    [...LAYOUT_PATTERN_MODES],
-  );
+  assert.deepEqual(contract, buildToolSchemaDocument({
+    protocolVersion: PROTOCOL_VERSION,
+    toolNames: STUDIO_TOOL_NAMES,
+    inputSchemas: TOOL_INPUT_SCHEMAS,
+  }));
+  const encoder = new TextEncoder();
+  assert.ok(encoder.encode(JSON.stringify(TOOL_INPUT_SCHEMAS.three_studio_apply)).byteLength <= 70_000);
+  assert.ok(encoder.encode(JSON.stringify(TOOL_INPUT_SCHEMAS)).byteLength <= 85_000);
 });
 
 test('modifier schemas expose every strict per-type control and mirror the checked-in contract', async () => {
@@ -212,28 +183,6 @@ test('modifier schemas expose every strict per-type control and mirror the check
     BLENDER_MODIFIER_INVENTORY.entries.length,
   );
 
-  const contract = JSON.parse(await readFile(new URL('../schemas/tools-v1.schema.json', import.meta.url), 'utf8'));
-  const checkedInDocument = contract.$defs.modifierDocument;
-  assert.equal(checkedInDocument.description, runtimeDocument.description);
-  assert.deepEqual(modifierBranchSummary(checkedInDocument), modifierBranchSummary(runtimeDocument));
-  assert.deepEqual(
-    modifierDocumentBranches(checkedInDocument).find(branch => branch.properties.type.const === 'decimate').not,
-    byType('decimate').not,
-  );
-  assert.equal(contract.$defs.blenderModifierOperatorType.enum.length, BLENDER_MODIFIER_INVENTORY.entries.length);
-  assert.deepEqual(
-    contract.$defs.modifierDisplacementSource.oneOf.map(source => source.properties.type.const),
-    ['constant', 'wave', 'noise'],
-  );
-  assert.deepEqual(contract.$defs.operation.properties.modifier, { $ref: '#/$defs/modifierDocument' });
-  assert.deepEqual(
-    contract.$defs.modifierStackChange.oneOf[0].properties.modifier,
-    { $ref: '#/$defs/modifierDocument' },
-  );
-  assert.deepEqual(
-    contract.$defs.modifierStackChange.oneOf[1].properties.patch,
-    { $ref: '#/$defs/modifierPatch' },
-  );
 });
 
 test('modifier patch schemas expose bounded partial controls without permitting identity or unknown-key edits', async () => {
@@ -274,19 +223,6 @@ test('modifier patch schemas expose bounded partial controls without permitting 
   assert.ok(emitted.anyOf.every(branch => !Object.hasOwn(branch.properties, 'id')));
   assert.ok(emitted.anyOf.every(branch => !Object.hasOwn(branch.properties, 'type')));
 
-  const contract = JSON.parse(await readFile(new URL('../schemas/tools-v1.schema.json', import.meta.url), 'utf8'));
-  assert.deepEqual(
-    modifierPatchBranchSummary(contract.$defs.modifierPatch),
-    modifierPatchBranchSummary(emitted),
-  );
-  const staticArray = contract.$defs.modifierPatch.anyOf.find(branch => branch.description.includes('for array;'));
-  const staticSubdivision = contract.$defs.modifierPatch.anyOf.find(branch => branch.description.includes('for subdivision;'));
-  const staticDecimate = contract.$defs.modifierPatch.anyOf.find(branch => branch.description.includes('for decimate;'));
-  assert.equal(staticArray.properties.count.maximum, 256);
-  assert.equal(staticSubdivision.properties.levels.oneOf[0].maximum, 6);
-  assert.deepEqual(staticSubdivision.properties.scheme.oneOf[0].enum, ['simple', 'loop']);
-  assert.equal(staticDecimate.properties.targetTriangles.oneOf[0].maximum, 2_000_000);
-  assert.deepEqual(staticDecimate.not.required, ['ratio', 'targetTriangles']);
 });
 
 test('apply enforces shared mutation metadata and the 128-operation bound', () => {
@@ -321,6 +257,7 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
     'selector', 'sceneDigest', 'resourceDigest', 'meshElements', 'graphDigest', 'modifierDigest', 'rtxDigest', 'changedSinceRevision',
     'unresolvedResources', 'unusedResources', 'graphCatalog', 'playState',
     'latestEvidence', 'blenderCatalog', 'beautyDigest', 'projectVisibility',
+    'operationCatalog', 'geometryCatalog',
   ]);
   assert.deepEqual(OPERATION_TYPES, [
     'scene.create', 'scene.patch', 'scene.delete', 'scene.setActive',
@@ -339,6 +276,8 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
   assert.equal(inspectSchema.safeParse({ query: 'selector', selector: { collectionId: 'collection/environment' } }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'graphCatalog', selector: { kind: 'shader', status: 'live-tsl' } }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'graphCatalog', selector: { kind: 'shader', status: 'api-only' } }).success, true);
+  assert.equal(inspectSchema.safeParse({ query: 'operationCatalog', selector: { kind: 'entity', name: 'bulk' }, limit: 12 }).success, true);
+  assert.equal(inspectSchema.safeParse({ query: 'geometryCatalog', selector: { kind: 'procedural', name: 'loft' }, limit: 12 }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'unresolvedResources' }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'unusedResources' }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'resourceDigest', selector: { ids: ['geometry/dense'] }, include: ['components', 'bounds', 'references'] }).success, true);

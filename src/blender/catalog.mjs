@@ -3,6 +3,7 @@ import {
   BLENDER_MODIFIER_INVENTORY_SUMMARY,
   queryBlenderModifierInventory,
 } from './modifier-inventory.mjs';
+import { LIVE_EDITABLE_MESH_GEOMETRY_MODIFIERS } from '../core/modifier-stack.mjs';
 
 export const BLENDER_CATALOG_VERSION = 1;
 
@@ -178,8 +179,8 @@ const entries = [
     status: 'partial',
     canonicalRepresentation: 'Entity.components.modifiers is an ordered, stable-ID stack. Canonical live types are validated strictly; unsupported Blender settings use an explicit bakeBoundary with a validated Blender operatorType and opaque bounded parameters.',
     mcpWorkflow: ['three_studio_inspect: modifierDigest for the exact stackHash', 'three_studio_apply: guarded modifier.create|patch|move|delete or modifier.stack.edit', 'three_studio_validate', 'Bake explicit bakeBoundary entries externally before expecting downstream live evaluation.'],
-    runtimeNotes: 'Array, mirror, and pattern lower to bounded instance transforms. Nine deterministic indexed-mesh modifiers evaluate as derived geometry without mutating the shared base resource. A bakeBoundary stops live downstream evaluation instead of silently approximating it. Blender 5.2\'s complete 83-type RNA inventory remains queryable; authored render-enable flags are preserved but do not claim render/evidence parity.',
-    supportedSubset: ['ordered stack up to 64 entries', 'stable modifier IDs and exact stack hashes', 'one guarded atomic stack-edit batch', 'array count/offset up to bounded limits', 'single-axis mirror', 'bounded linear/grid/radial/scatter patterns', 'area-weighted surface scatter with normal/gravity alignment and minimum spacing', 'triangulate', 'weld', 'smooth', 'weighted normal subset', 'edge split by angle', 'solidify subset', 'simple/Loop triangle subdivision', 'deterministic decimate subset', 'inline deterministic displacement', 'complete Blender 5.2 Object Modifier Type Items inventory'],
+    runtimeNotes: `Array, mirror, and pattern lower to bounded instance transforms. ${LIVE_EDITABLE_MESH_GEOMETRY_MODIFIERS.length} deterministic editable-mesh modifiers evaluate as derived geometry without mutating the shared base resource. A bakeBoundary stops live downstream evaluation instead of silently approximating it. Blender 5.2's complete RNA inventory remains queryable; authored render-enable flags are preserved but do not claim render/evidence parity.`,
+    supportedSubset: ['ordered stack up to 64 entries', 'stable modifier IDs and exact stack hashes', 'one guarded atomic stack-edit batch', 'array count/offset up to bounded limits', 'single-axis mirror', 'bounded linear/grid/radial/scatter patterns', 'area-weighted surface scatter with normal/gravity alignment and minimum spacing', ...LIVE_EDITABLE_MESH_GEOMETRY_MODIFIERS, 'complete Blender 5.2 Object Modifier Type Items inventory'],
     unsupportedSubset: ['full Blender semantic parity for live geometry subsets', 'render/evidence parity for enabledRender', 'downstream live evaluation after bakeBoundary', 'collision-aware scatter beyond minimum spacing', 'apply-to-base operation', 'edit cage', 'general modifier object/vertex-group references', 'Grease Pencil stroke/layer object model', 'physics solvers'],
     officialUrls: [
       'https://docs.blender.org/manual/en/5.2/modeling/modifiers/introduction.html',

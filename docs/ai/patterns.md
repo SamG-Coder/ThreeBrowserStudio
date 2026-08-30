@@ -44,8 +44,10 @@ Do not infer support from an earlier Studio session, a tutorial module, or
   unchanged payload again.
 - Use `sceneDigest` for the tree. Use `resourceDigest` for counts, hashes, and
   references. Use `meshElements` with a `meshFilter` (bbox, y-range, boundary,
-  `notAdjacentTo`) instead of paging a cloth. Use `graphCatalog` before any
-  graph authoring. Use `graphDigest` and read `sockets` (`source`, `compiled`,
+  `notAdjacentTo`) instead of paging a cloth. Use `operationCatalog` to find
+  the exact typed mutation name, `geometryCatalog` to inspect supported recipes,
+  defaults, and budgets, and `graphCatalog` before graph authoring. Use
+  `graphDigest` and read `sockets` (`source`, `compiled`,
   `live`), not `inputs.$summary`.
 - Carry `selectionHash`, membership hashes, and modifier `stackHash` into the
   apply that needs them. Never bulk-mutate a stale or half-paged selection.
@@ -269,6 +271,7 @@ These fail in this product even when they work in a Three.js snippet.
 | Run a tutorial `.mjs` or `studio-call` to “build the scene” | MCP tools only |
 | One apply with the whole finished scene | Visible stages |
 | Guess Blender node / socket / RNA names | `graphCatalog` |
+| Guess operation or geometry recipe fields | `operationCatalog` / `geometryCatalog` |
 | Raw WGSL / GLSL / TSL / `eval` | Catalogued graph nodes |
 | Reuse an idempotency key after a timeout | Re-inspect, new key |
 | Bulk patch without `selectionHash` | Inspect the exact set first |

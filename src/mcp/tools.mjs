@@ -6,7 +6,7 @@ import {
   MCP_SERVER_VERSION,
   STUDIO_TOOL_NAMES,
   TOOL_CONTRACT,
-  TOOL_SCHEMAS,
+  TOOL_INPUT_SCHEMAS,
   computeToolContractHash,
 } from './tool-schemas.mjs';
 
@@ -205,7 +205,7 @@ export function registerThreeStudioTools(server, dispatch) {
     const definition = TOOL_DEFINITIONS[name];
     registrations[name] = server.registerTool(name, {
       ...definition,
-      inputSchema: TOOL_SCHEMAS[name],
+      inputSchema: fromJsonSchema(TOOL_INPUT_SCHEMAS[name]),
     }, async (args, context) => {
       try {
         const result = await invoke(name, args, {

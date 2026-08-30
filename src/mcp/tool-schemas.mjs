@@ -26,6 +26,7 @@ import { MATERIAL_TEXTURE_BINDINGS } from '../core/material-textures.mjs';
 import { GEOMETRY_MODIFIER_LIMITS } from '../core/geometry-modifier-evaluator.mjs';
 import {
   BAKE_BOUNDARY_MODIFIER_TYPE,
+  LIVE_EDITABLE_MESH_GEOMETRY_MODIFIERS,
   MAX_MODIFIERS_PER_ENTITY,
   normalizeModifierDocument,
 } from '../core/modifier-stack.mjs';
@@ -37,7 +38,8 @@ const identifier = z.string().min(1).max(160).regex(/^[a-z0-9](?:[a-z0-9._-]*[a-
 const idempotencyKey = z.string().min(8).max(160).regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/);
 const label = z.string().min(1).max(240);
 const cursor = z.string().min(1).max(1024);
-const vec3 = z.tuple([finite, finite, finite]);
+const fixedArray = (schema, length) => z.array(schema).length(length);
+const vec3 = fixedArray(finite, 3);
 const bounds3 = z.object({ min: vec3, max: vec3 }).strict();
 const responseFieldPath = z.string().min(1).max(RESPONSE_PROJECTION_LIMITS.maxPathLength)
   .regex(/^[A-Za-z][A-Za-z0-9_-]*(?:\.[A-Za-z][A-Za-z0-9_-]*)*$/);
@@ -118,6 +120,7 @@ export const INSPECT_QUERIES = Object.freeze([
   'selector', 'sceneDigest', 'resourceDigest', 'meshElements', 'graphDigest', 'modifierDigest', 'rtxDigest', 'changedSinceRevision',
   'unresolvedResources', 'unusedResources', 'graphCatalog', 'playState',
   'latestEvidence', 'blenderCatalog', 'beautyDigest', 'projectVisibility',
+  'operationCatalog', 'geometryCatalog',
 ]);
 
 const inspectProbeSchema = z.object({
@@ -256,12 +259,8 @@ export const rtxPatchSchema = z.object({
 });
 const layoutCount = z.number().int().min(1).max(8192);
 const layoutScatterSeed = z.number().int().min(-2_147_483_648).max(2_147_483_647);
-const layoutPositiveVec3 = z.tuple([
-  z.number().finite().gt(0).max(1_000_000_000),
-  z.number().finite().gt(0).max(1_000_000_000),
-  z.number().finite().gt(0).max(1_000_000_000),
-]);
-const layoutGridCounts = z.tuple([layoutCount, layoutCount, layoutCount]);
+const layoutPositiveVec3 = fixedArray(z.number().finite().gt(0).max(1_000_000_000), 3);
+const layoutGridCounts = fixedArray(layoutCount, 3);
 const layoutPatternUnion = z.discriminatedUnion('mode', [
   z.object({
     id: identifier,
@@ -704,7 +703,7 @@ export const MAX_GEOMETRY_EDIT_COMMANDS = 64;
 export const MAX_GEOMETRY_EDIT_VERTEX_SELECTION = 20_000;
 
 const geometryFinite = z.number().finite().min(-1_000_000).max(1_000_000);
-const geometryVec3 = z.tuple([geometryFinite, geometryFinite, geometryFinite]);
+const geometryVec3 = fixedArray(geometryFinite, 3);
 const geometryAxis = geometryVec3.refine(
   axis => axis.some(component => component !== 0),
   { message: 'axis must not be zero.' },
@@ -721,17 +720,11 @@ const geometryFaceIndices = z.array(
   indices => new Set(indices).size === indices.length,
   { message: 'faceIndices cannot contain duplicates.' },
 );
-const geometryEdges = z.array(z.tuple([
-  z.number().int().min(0).max(999_999),
-  z.number().int().min(0).max(999_999),
-]).refine(([first, second]) => first !== second, {
+const geometryEdges = z.array(fixedArray(z.number().int().min(0).max(999_999), 2).refine(([first, second]) => first !== second, {
   message: 'An edge cannot reference the same vertex twice.',
 })).min(1).max(MAX_GEOMETRY_EDIT_VERTEX_SELECTION);
 const geometryScale = z.union([geometryFinite, geometryVec3]);
-const strokeColor = z.tuple([
-  z.number().finite().min(0).max(1), z.number().finite().min(0).max(1),
-  z.number().finite().min(0).max(1), z.number().finite().min(0).max(1),
-]);
+const strokeColor = fixedArray(z.number().finite().min(0).max(1), 4);
 const strokePointSchema = z.object({
   position: geometryVec3,
   normal: geometryAxis.optional(),
@@ -885,12 +878,10 @@ const geometryAttributeFaceIndices = z.union([z.literal('all'), geometryFaceIndi
 const geometryUvValue = z.number().finite()
   .min(-EDITABLE_MESH_ATTRIBUTE_LIMITS.maxUvAbsolute)
   .max(EDITABLE_MESH_ATTRIBUTE_LIMITS.maxUvAbsolute);
-const geometryUvVec2 = z.tuple([geometryUvValue, geometryUvValue]);
+const geometryUvVec2 = fixedArray(geometryUvValue, 2);
 const geometryUvScale = z.union([geometryUvValue, geometryUvVec2]);
 const geometryColorValue = z.number().finite().min(0).max(1);
-const geometryColorVec4 = z.tuple([
-  geometryColorValue, geometryColorValue, geometryColorValue, geometryColorValue,
-]);
+const geometryColorVec4 = fixedArray(geometryColorValue, 4);
 const geometryUvValues = z.array(geometryUvValue).min(2).max(2_000_000)
   .refine(values => values.length % 2 === 0, { message: 'UV values must contain complete vec2 items.' });
 const geometryColorValues = z.array(geometryColorValue).min(4).max(4_000_000)
@@ -1383,10 +1374,7 @@ export const jobSchema = z.object({
   graphId: identifier,
   textureId: identifier,
   output: z.enum(['albedo', 'roughness', 'normal']),
-  resolution: z.tuple([
-    z.number().int().min(1).max(512),
-    z.number().int().min(1).max(512),
-  ]),
+  resolution: fixedArray(z.number().int().min(1).max(512), 2),
   name: z.string().min(1).max(160).optional(),
   baseRevision: nonNegativeInteger,
   idempotencyKey,
@@ -1457,7 +1445,7 @@ export const STUDIO_TOOL_NAMES = Object.freeze(Object.keys(TOOL_SCHEMAS));
 export const MCP_SERVER_VERSION = '0.4.0';
 export const TOOL_CONTRACT_VERSION = 'three-studio-tools/9';
 export const TOOL_INPUT_SCHEMAS = Object.freeze(Object.fromEntries(
-  STUDIO_TOOL_NAMES.map(name => [name, z.toJSONSchema(TOOL_SCHEMAS[name], { io: 'input' })]),
+  STUDIO_TOOL_NAMES.map(name => [name, z.toJSONSchema(TOOL_SCHEMAS[name], { io: 'input', reused: 'ref' })]),
 ));
 const TOOL_CONTRACT_LIMITS = Object.freeze({
   maxOperations: MAX_OPERATIONS_PER_TRANSACTION,
@@ -1531,7 +1519,7 @@ const TOOL_CONTRACT_FEATURES = Object.freeze({
   compileHeavyRpcTimeoutMs: 120_000,
   editableMeshRecalculateNormals: true,
   editableMeshLiveGeometryModifiers: Object.freeze([
-    'triangulate', 'smooth', 'weightedNormal', 'displace', 'ocean', 'edgeSplit',
+    ...LIVE_EDITABLE_MESH_GEOMETRY_MODIFIERS,
   ]),
   timelineGeometryModifiers: Object.freeze(['ocean']),
   maxTimelineGeometrySamples: GEOMETRY_MODIFIER_LIMITS.maxOceanTimelineSamples,

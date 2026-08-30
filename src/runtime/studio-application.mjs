@@ -77,6 +77,7 @@ import {
   TOOL_CONTRACT_SUMMARY,
   TOOL_SCHEMAS,
 } from '../mcp/tool-schemas.mjs';
+import { queryOperationCatalog } from '../mcp/operation-catalog.mjs';
 import { compileSceneDocument } from './scene-compiler.mjs';
 import { validateAnimationResource } from './animation-runtime.mjs';
 import { frameCameraToBounds } from '../viewport/camera-projection.mjs';
@@ -85,7 +86,7 @@ import { operationsSnapFollowShot } from '../viewport/view-mode.mjs';
 import { buildExplorerOutline } from '../viewport/scene-explorer.mjs';
 import { LAYOUT_PATTERN_MODES } from '../core/layout-patterns.mjs';
 import { RTX_SCENE_LIMITS } from './rtx-scene-collector.mjs';
-import { normalizeGeometryRecipe } from './resource-factories.mjs';
+import { normalizeGeometryRecipe, queryGeometryCatalog } from './resource-factories.mjs';
 import { createTransactionId } from '../core/util.mjs';
 import { bakeProceduralTextureGraph } from './procedural-texture-compiler.mjs';
 
@@ -1392,6 +1393,8 @@ export class StudioApplication {
         blenderShaderNodes: BLENDER_SHADER_NODE_INVENTORY_SUMMARY,
         blenderCatalog: true,
         blenderCatalogSummary: BLENDER_CATALOG_SUMMARY,
+        operationCatalog: true,
+        geometryCatalog: true,
         animationRuntime: Boolean(this.#compiled?.animationRuntime),
         animationActions: this.#compiled?.animationActions ?? [],
         timelineGeometryRuntime: true,
@@ -1859,6 +1862,24 @@ export class StudioApplication {
       };
     }
     if (params.query === 'changedSinceRevision') return { success: true, revision: document.revision, ...this.#kernel.changedSince(params.sinceRevision ?? document.revision) };
+    if (params.query === 'operationCatalog') return {
+      success: true,
+      revision: document.revision,
+      catalog: queryOperationCatalog({
+        search: params.selector?.name,
+        family: params.selector?.kind,
+        limit: params.limit,
+      }),
+    };
+    if (params.query === 'geometryCatalog') return {
+      success: true,
+      revision: document.revision,
+      catalog: queryGeometryCatalog({
+        search: params.selector?.name,
+        kind: params.selector?.kind,
+        limit: params.limit,
+      }),
+    };
     if (params.query === 'graphCatalog') return {
       success: true,
       revision: document.revision,
