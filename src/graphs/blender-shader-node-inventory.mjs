@@ -88,6 +88,7 @@ const LIVE_TSL_IDS = new Set([
   'ShaderNodeBump', 'ShaderNodeDisplacement', 'ShaderNodeNormal', 'ShaderNodeNormalMap',
   'ShaderNodeVectorDisplacement', 'ShaderNodeVectorRotate', 'ShaderNodeVectorTransform',
   'ShaderNodeBlackbody', 'ShaderNodeBrightContrast',
+  'ShaderNodeFloatCurve', 'ShaderNodeRGBCurve', 'ShaderNodeVectorCurve',
   'ShaderNodeValToRGB', 'ShaderNodeGamma', 'ShaderNodeHueSaturation',
   'ShaderNodeInvert', 'ShaderNodeMix', 'ShaderNodeRGBToBW', 'ShaderNodeWavelength',
   'ShaderNodeCombineColor',

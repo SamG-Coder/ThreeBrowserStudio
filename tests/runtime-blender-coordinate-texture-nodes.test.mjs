@@ -140,8 +140,8 @@ test('seven bounded Blender nodes are catalogued and reported as genuinely live 
     assert.equal(isCompiledShaderNodeType('shader', type), true, type);
     assert.ok(BLENDER_SHADER_NODE_ALIASES[type]?.startsWith('blender.'), type);
   }
-  assert.equal(BLENDER_SHADER_NODE_INVENTORY_SUMMARY.liveTsl, 51);
-  assert.equal(BLENDER_SHADER_NODE_INVENTORY_SUMMARY.catalogued, 64);
+  assert.equal(BLENDER_SHADER_NODE_INVENTORY_SUMMARY.liveTsl, 54);
+  assert.equal(BLENDER_SHADER_NODE_INVENTORY_SUMMARY.catalogued, 61);
   assert.deepEqual(
     queryBlenderShaderNodeInventory({ status: 'live-tsl' }).nodes
       .filter(node => LIVE_TYPES.includes(node.id))

@@ -86,8 +86,8 @@ test('Vector Input and RGB to BW expose exact Blender aliases and live inventory
   assert.equal(BLENDER_SHADER_NODE_ALIASES.ShaderNodeRGBToBW, 'blender.rgbToBw');
   assert.equal(isCompiledShaderNodeType('shader', 'FunctionNodeInputVector'), true);
   assert.equal(isCompiledShaderNodeType('shader', 'ShaderNodeRGBToBW'), true);
-  assert.equal(BLENDER_SHADER_NODE_INVENTORY_SUMMARY.liveTsl, 51);
-  assert.equal(BLENDER_SHADER_NODE_INVENTORY_SUMMARY.catalogued, 64);
+  assert.equal(BLENDER_SHADER_NODE_INVENTORY_SUMMARY.liveTsl, 54);
+  assert.equal(BLENDER_SHADER_NODE_INVENTORY_SUMMARY.catalogued, 61);
   assert.deepEqual(
     queryBlenderShaderNodeInventory({ status: 'live-tsl' }).nodes
       .filter(node => ['FunctionNodeInputVector', 'ShaderNodeRGBToBW'].includes(node.id))

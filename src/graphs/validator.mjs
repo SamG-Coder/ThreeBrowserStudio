@@ -9,6 +9,7 @@ export const GRAPH_LIMITS = Object.freeze({
   maxTextureCost: 1024,
   maxBlueprintCost: 4096,
   maxShaderSamplers: 16,
+  maxCurveMappings: 12,
   maxGeneratedEntities: 20000,
   maxInteractiveResolution: 2048,
   maxBakeResolution: 4096,
@@ -27,6 +28,9 @@ const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 const STABLE_ID = /^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,127}$/;
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_.-]{0,63}$/;
 const NUMERIC_PORT_TYPES = new Set(['integer', 'float', 'vec2', 'vec3', 'vec4', 'color']);
+const CURVE_MAPPING_NODE_TYPES = new Set([
+  'blender.floatCurve', 'blender.rgbCurve', 'blender.vectorCurve',
+]);
 const NODE_LAYOUT_LIMITS = Object.freeze({
   coordinate: 1_000_000,
   dimension: 8192,
@@ -200,6 +204,50 @@ function validateTypedValue(value, valueType) {
   }
 }
 
+function hasExactKeys(value, expectedKeys) {
+  if (!isPlainObject(value)) return false;
+  const actualKeys = Object.keys(value);
+  return actualKeys.length === expectedKeys.length
+    && actualKeys.every((key) => expectedKeys.includes(key));
+}
+
+function validateCurveMapping(value, definition) {
+  if (!hasExactKeys(value, ['extend', 'clip', 'curves'])) return false;
+  if (!definition.extendValues.includes(value.extend)) return false;
+  if (!hasExactKeys(value.clip, ['enabled', 'min', 'max'])) return false;
+  if (typeof value.clip.enabled !== 'boolean') return false;
+
+  const coordinateMin = definition.min ?? -100;
+  const coordinateMax = definition.max ?? 100;
+  if (!isNumberArray(value.clip.min, 2, coordinateMin, coordinateMax)
+    || !isNumberArray(value.clip.max, 2, coordinateMin, coordinateMax)) return false;
+  for (let axis = 0; axis < 2; axis += 1) {
+    if (Math.fround(value.clip.min[axis]) >= Math.fround(value.clip.max[axis])) return false;
+  }
+
+  const channels = definition.channels;
+  if (!hasExactKeys(value.curves, channels)) return false;
+  for (const channel of channels) {
+    const points = value.curves[channel];
+    if (!Array.isArray(points)
+      || points.length < (definition.minItems ?? 2)
+      || points.length > (definition.maxItems ?? 32)) return false;
+    let priorX = -Infinity;
+    for (const point of points) {
+      if (!hasExactKeys(point, ['location', 'handleType'])) return false;
+      if (!isNumberArray(point.location, 2, coordinateMin, coordinateMax)) return false;
+      const pointX = Math.fround(point.location[0]);
+      if (pointX <= priorX) return false;
+      priorX = pointX;
+      if (!definition.handleTypes.includes(point.handleType)) return false;
+      if (value.clip.enabled && point.location.some((coordinate, axis) => (
+        coordinate < value.clip.min[axis] || coordinate > value.clip.max[axis]
+      ))) return false;
+    }
+  }
+  return true;
+}
+
 function validateParamValue(value, definition, allParams, path, errors) {
   let valid = true;
   switch (definition.type) {
@@ -214,6 +262,7 @@ function validateParamValue(value, definition, allParams, path, errors) {
     case 'numberArray': valid = isNumberArray(value, definition.length, definition.min ?? -Infinity, definition.max ?? Infinity); break;
     case 'typedValue': valid = validateTypedValue(value, allParams.valueType); break;
     case 'numericValue': valid = validateTypedValue(value, allParams.valueType) && NUMERIC_TYPES.includes(allParams.valueType); break;
+    case 'curveMapping': valid = validateCurveMapping(value, definition); break;
     case 'colorStops': {
       valid = Array.isArray(value) && value.length >= (definition.minItems ?? 2) && value.length <= (definition.maxItems ?? 32);
       let prior = -Infinity;
@@ -497,6 +546,7 @@ export function validateGraph(rawGraph, options = {}) {
   const nodeById = new Map();
   const definitions = new Map();
   const nodePaths = new Map();
+  let curveMappings = 0;
   for (let index = 0; index < rawGraph.nodes.length; index += 1) {
     const rawNode = rawGraph.nodes[index];
     const path = `/nodes/${index}`;
@@ -510,6 +560,8 @@ export function validateGraph(rawGraph, options = {}) {
       continue;
     }
     const normalized = { id: rawNode.id, type: rawNode.type, params: normalizeParams(rawNode.params, definition, `${path}/params`, errors) };
+    const canonicalType = definition.canonicalType ?? definition.type;
+    if (CURVE_MAPPING_NODE_TYPES.has(canonicalType)) curveMappings += 1;
     const normalizedInputs = normalizeInputs(rawNode.inputs, definition, normalized, `${path}/inputs`, errors);
     if (Object.keys(normalizedInputs).length) normalized.inputs = normalizedInputs;
     if (normalizedLayout) normalized.layout = normalizedLayout;
@@ -519,6 +571,14 @@ export function validateGraph(rawGraph, options = {}) {
       nodePaths.set(rawNode.id, path);
     }
     definitions.set(rawNode.id, definition);
+  }
+
+  if (curveMappings > limits.maxCurveMappings) {
+    errors.push(diagnostic(
+      'curve_mapping_limit_exceeded',
+      `Graph uses ${curveMappings} CurveMapping nodes; maximum is ${limits.maxCurveMappings}.`,
+      '/nodes',
+    ));
   }
 
   validateNodeLayoutParents(nodes, nodeById, definitions, nodePaths, errors);

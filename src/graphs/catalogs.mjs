@@ -51,6 +51,28 @@ const floatValue = ['value', param('number', { default: 0, min: -1e6, max: 1e6 }
 const colorValue = ['value', param('color', { default: [1, 1, 1] })];
 const vectorValue = (length) => ['value', param('numberArray', { length, default: Array(length).fill(0), min: -1e6, max: 1e6 })];
 
+const curveMappingParam = (channels, domainMin = 0, domainMax = 1) => ['mapping', param('curveMapping', {
+  channels,
+  extendValues: ['EXTRAPOLATED', 'HORIZONTAL'],
+  handleTypes: ['AUTO', 'AUTO_CLAMPED', 'VECTOR'],
+  minItems: 2,
+  maxItems: 32,
+  min: -100,
+  max: 100,
+  default: {
+    extend: 'EXTRAPOLATED',
+    clip: {
+      enabled: true,
+      min: [domainMin, domainMin],
+      max: [domainMax, domainMax],
+    },
+    curves: Object.fromEntries(channels.map((channel) => [channel, [
+      { location: [domainMin, domainMin], handleType: 'AUTO' },
+      { location: [domainMax, domainMax], handleType: 'AUTO' },
+    ]])),
+  },
+})];
+
 const BLENDER_VECTOR_MATH_OPERATIONS = Object.freeze([
   'ADD', 'SUBTRACT', 'MULTIPLY', 'DIVIDE', 'MULTIPLY_ADD', 'CROSS_PRODUCT',
   'PROJECT', 'REFLECT', 'REFRACT', 'FACEFORWARD', 'DOT_PRODUCT', 'DISTANCE',
@@ -212,6 +234,36 @@ function blenderUtilityNodes(stages = []) {
         ['color', blenderSocket('color', 'Color', { default: [0.8, 0.8, 0.8, 1] })],
       ],
       outputs: [['color', blenderSocket('color', 'Color')]],
+    })),
+    blenderNode('blender.floatCurve', 'ShaderNodeFloatCurve', 'Float Curve', 'converter', staged({
+      cost: 8,
+      description: 'Remaps a scalar through one bounded Blender CurveMapping channel and blends it with the source value.',
+      inputs: [
+        ['factor', blenderSocket('float', 'Factor', { default: 1, min: 0, max: 1 })],
+        ['value', blenderSocket('float', 'Value', { default: 1 })],
+      ],
+      outputs: [['value', blenderSocket('float', 'Value')]],
+      params: [curveMappingParam(['value'])],
+    })),
+    blenderNode('blender.rgbCurve', 'ShaderNodeRGBCurve', 'RGB Curves', 'color', staged({
+      cost: 8,
+      description: 'Remaps linear RGB through combined, red, green, and blue Blender CurveMapping channels.',
+      inputs: [
+        ['factor', blenderSocket('float', 'Factor', { blenderIdentifier: 'Fac', aliases: ['Factor'], default: 1, min: 0, max: 1 })],
+        ['color', blenderSocket('color', 'Color', { default: [1, 1, 1, 1] })],
+      ],
+      outputs: [['color', blenderSocket('color', 'Color')]],
+      params: [curveMappingParam(['red', 'green', 'blue', 'combined'])],
+    })),
+    blenderNode('blender.vectorCurve', 'ShaderNodeVectorCurve', 'Vector Curves', 'vector', staged({
+      cost: 8,
+      description: 'Remaps a vector through independent X, Y, and Z Blender CurveMapping channels.',
+      inputs: [
+        ['factor', blenderSocket('float', 'Factor', { blenderIdentifier: 'Fac', aliases: ['Factor'], default: 1, min: 0, max: 1 })],
+        ['vector', blenderSocket('vec3', 'Vector', { default: [0, 0, 0] })],
+      ],
+      outputs: [['vector', blenderSocket('vec3', 'Vector')]],
+      params: [curveMappingParam(['x', 'y', 'z'], -1, 1)],
     })),
     blenderNode('blender.clamp', 'ShaderNodeClamp', 'Clamp', 'converter', staged({
       inputs: [
@@ -943,10 +995,15 @@ function compactNode(definition, includeDescriptions) {
   const parameterMetadata = () => Object.fromEntries(Object.entries(definition.params).map(([name, value]) => [name, {
     type: value.type,
     ...(value.values ? { values: value.values } : {}),
+    ...(value.channels ? { channels: value.channels } : {}),
+    ...(value.extendValues ? { extendValues: value.extendValues } : {}),
+    ...(value.handleTypes ? { handleTypes: value.handleTypes } : {}),
     ...(value.required ? { required: true } : {}),
     ...(Object.hasOwn(value, 'default') ? { default: value.default } : {}),
     ...(Object.hasOwn(value, 'min') ? { min: value.min } : {}),
     ...(Object.hasOwn(value, 'max') ? { max: value.max } : {}),
+    ...(Object.hasOwn(value, 'minItems') ? { minItems: value.minItems } : {}),
+    ...(Object.hasOwn(value, 'maxItems') ? { maxItems: value.maxItems } : {}),
   }]));
   return {
     type: definition.type,

@@ -35,6 +35,7 @@ export const COMPILED_SHADER_NODE_TYPES = Object.freeze(new Set([
   'blender.magicTexture', 'blender.brickTexture', 'blender.math', 'blender.vectorMath',
   'blender.noiseTexture', 'blender.voronoiTexture', 'blender.waveTexture',
   'blender.colorRamp', 'blender.mapRange', 'blender.mix',
+  'blender.floatCurve', 'blender.rgbCurve', 'blender.vectorCurve',
   'blender.attribute', 'blender.colorAttribute',
   'blender.bump', 'blender.normalMap',
   'blender.normal', 'blender.vectorRotate',

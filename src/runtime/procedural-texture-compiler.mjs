@@ -19,6 +19,15 @@ import {
   blenderNoiseND,
   blenderVoronoiND,
 } from './procedural-texture-noise-nd.mjs';
+import {
+  FLOAT_CURVE_CHANNELS,
+  RGB_CURVE_CHANNELS,
+  VECTOR_CURVE_CHANNELS,
+  compileCurveMapping,
+  evaluateFloatCurveMapping,
+  evaluateRgbCurveMapping,
+  evaluateVectorCurveMapping,
+} from './blender-curve-mapping.mjs';
 
 export const PROCEDURAL_TEXTURE_LIMITS = Object.freeze({
   maxNodes: 256,
@@ -87,6 +96,9 @@ const NODE_SPECS = Object.freeze({
   mapping: spec([['vector', 'coordinate']], ['vector', 'value'], [
     'location', 'translation', 'rotation', 'scale', 'vectorType',
   ]),
+  floatCurve: spec([], ['value'], ['mapping']),
+  rgbCurve: spec([], ['color'], ['mapping']),
+  vectorCurve: spec([], ['vector'], ['mapping']),
   valueNoise: spec([['coordinate', 'vector']], ['value', 'fac', 'factor', 'color'], [
     ...COMMON_NOISE_PARAMS, 'dimensions', 'noiseType',
   ]),
@@ -182,6 +194,9 @@ function classifyNode(node) {
   if (['separatecolor', 'shadernodeseparatecolor', 'blenderseparatecolor'].includes(key)) return { kind: 'separateColor', blenderDefaults: true };
   if (['combinecolor', 'shadernodecombinecolor', 'blendercombinecolor'].includes(key)) return { kind: 'combineColor', blenderDefaults: true };
   if (['mapping', 'vectormapping', 'shadernodemapping', 'blendermapping'].includes(key)) return { kind: 'mapping', blenderDefaults: key.startsWith('shadernode') || key.startsWith('blender') };
+  if (['floatcurve', 'shadernodefloatcurve', 'blenderfloatcurve'].includes(key)) return { kind: 'floatCurve', blenderDefaults: true };
+  if (['rgbcurve', 'shadernodergbcurve', 'blenderrgbcurve'].includes(key)) return { kind: 'rgbCurve', blenderDefaults: true };
+  if (['vectorcurve', 'shadernodevectorcurve', 'blendervectorcurve'].includes(key)) return { kind: 'vectorCurve', blenderDefaults: true };
   if (['valuenoise', 'noisevalue'].includes(key)) return { kind: 'valueNoise' };
   if (['fbm', 'noisefbm', 'noisetexture', 'shadernodetexnoise', 'blendernoisetexture'].includes(key)) return { kind: 'fbm', blenderDefaults: key.startsWith('shadernode') || key.startsWith('blender') };
   if (['voronoi', 'noisevoronoi', 'voronoitexture', 'shadernodetexvoronoi', 'blendervoronoitexture'].includes(key)) return { kind: 'voronoi', blenderDefaults: key.startsWith('shadernode') || key.startsWith('blender') };
@@ -1014,6 +1029,13 @@ function buildEvaluator(validation, options) {
   };
   const parameters = options.parameters ?? {};
   const sources = imageSources(options);
+  const compiledCurves = new Map();
+  for (const [nodeId, descriptor] of descriptors) {
+    const channelNames = descriptor.classification.kind === 'floatCurve' ? FLOAT_CURVE_CHANNELS
+      : descriptor.classification.kind === 'rgbCurve' ? RGB_CURVE_CHANNELS
+        : descriptor.classification.kind === 'vectorCurve' ? VECTOR_CURVE_CHANNELS : null;
+    if (channelNames) compiledCurves.set(nodeId, compileCurveMapping(descriptor.node.params.mapping, channelNames));
+  }
 
   const evaluate = (nodeId, context, cache) => {
     if (cache.has(nodeId)) return cache.get(nodeId);
@@ -1106,6 +1128,36 @@ function buildEvaluator(validation, options) {
           ? rotated
           : rotated.map((component, index) => component + location[index]);
         result = { vector: mapped, value: mapped };
+        break;
+      }
+      case 'floatCurve': {
+        result = {
+          value: evaluateFloatCurveMapping(
+            compiledCurves.get(node.id),
+            scalar(input('value', 1)),
+            scalar(input(['factor', 'fac'], 1)),
+          ),
+        };
+        break;
+      }
+      case 'rgbCurve': {
+        result = {
+          color: evaluateRgbCurveMapping(
+            compiledCurves.get(node.id),
+            vector(input('color', [1, 1, 1, 1]), 4),
+            scalar(input(['factor', 'fac'], 1)),
+          ),
+        };
+        break;
+      }
+      case 'vectorCurve': {
+        result = {
+          vector: evaluateVectorCurveMapping(
+            compiledCurves.get(node.id),
+            vector(input('vector', [0, 0, 0]), 3),
+            scalar(input(['factor', 'fac'], 1)),
+          ),
+        };
         break;
       }
       case 'valueNoise': {

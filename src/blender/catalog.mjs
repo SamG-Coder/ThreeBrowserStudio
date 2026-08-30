@@ -218,7 +218,7 @@ const entries = [
     canonicalRepresentation: 'Versioned typed shader graph documents validated against the curated Studio graph catalog.',
     mcpWorkflow: ['three_studio_inspect: graphCatalog domain shader', 'three_studio_apply: resource.create graphs', 'three_studio_validate'],
     runtimeNotes: 'Blender RNA aliases, typed socket values, and links compile through the supported TSL/WebGPU subset. The full official node inventory is discoverable and unsupported nodes fail candidate compilation explicitly.',
-    supportedSubset: ['typed sockets and per-node defaults', 'Blender RNA aliases', 'coordinates and mapping', 'procedural Noise/Voronoi/Wave', 'color ramps and utility math', 'Bump/Normal Map', 'Principled BSDF to Material Output', 'direct TSL/WebGPU compilation'],
+    supportedSubset: ['typed sockets and per-node defaults', 'Blender RNA aliases', 'coordinates and mapping', 'bounded Float/RGB/Vector curves', 'procedural Noise/Voronoi/Wave', 'color ramps and utility math', 'Bump/Normal Map', 'Principled BSDF to Material Output', 'direct TSL/WebGPU compilation'],
     unsupportedSubset: ['full Cycles/EEVEE closure parity', 'volumes', 'OSL', 'raw WGSL/GLSL/TSL', 'catalogued nodes without a live compiler'],
     officialUrls: ['https://docs.blender.org/manual/en/latest/render/shader_nodes/introduction.html'],
   }),

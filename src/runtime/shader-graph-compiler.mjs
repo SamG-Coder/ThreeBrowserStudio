@@ -1,5 +1,12 @@
 import { principledFeatureFlags } from '../graphs/live-sockets.mjs';
 import { assertValidGraph } from '../graphs/validator.mjs';
+import {
+  CURVE_TABLE_SIZE,
+  FLOAT_CURVE_CHANNELS,
+  RGB_CURVE_CHANNELS,
+  VECTOR_CURVE_CHANNELS,
+  compileCurveMapping,
+} from './blender-curve-mapping.mjs';
 
 const TYPE_ALIASES = Object.freeze({
   ShaderNodeValue: 'blender.value',
@@ -51,8 +58,17 @@ const TYPE_ALIASES = Object.freeze({
   ShaderNodeClamp: 'blender.clamp',
   ShaderNodeSeparateColor: 'blender.separateColor',
   ShaderNodeCombineColor: 'blender.combineColor',
+  ShaderNodeFloatCurve: 'blender.floatCurve',
+  ShaderNodeRGBCurve: 'blender.rgbCurve',
+  ShaderNodeVectorCurve: 'blender.vectorCurve',
   ShaderNodeBsdfPrincipled: 'blender.principledBSDF',
   ShaderNodeOutputMaterial: 'blender.materialOutput',
+});
+
+const CURVE_CHANNELS_BY_TYPE = Object.freeze({
+  'blender.floatCurve': FLOAT_CURVE_CHANNELS,
+  'blender.rgbCurve': RGB_CURVE_CHANNELS,
+  'blender.vectorCurve': VECTOR_CURVE_CHANNELS,
 });
 
 const SURFACE = Symbol('studio.shader.surface');
@@ -476,6 +492,63 @@ function blenderNoiseChannel(TSL, coordinate, {
 
 function component(value, name, fallback) {
   return value?.[name] ?? fallback;
+}
+
+function prepareCurveTablePool(TSL, graph) {
+  const entries = graph.nodes
+    .map(node => ({ node, type: canonicalType(node.type) }))
+    .filter(entry => Object.hasOwn(CURVE_CHANNELS_BY_TYPE, entry.type))
+    .sort((left, right) => left.node.id.localeCompare(right.node.id));
+  if (entries.length === 0) {
+    return Object.freeze({ buffer: null, mappings: new Map(), tableCount: 0, byteLength: 0 });
+  }
+  if (typeof TSL.buffer !== 'function') {
+    fail(
+      'shader_curve_buffer_unavailable',
+      'The Three.js TSL runtime must expose buffer() for live Curve Mapping nodes.',
+    );
+  }
+
+  const rowCount = entries.length * CURVE_TABLE_SIZE;
+  const data = new Float32Array(rowCount * 4);
+  const mappings = new Map();
+  entries.forEach((entry, index) => {
+    const compiled = compileCurveMapping(entry.node.params.mapping, CURVE_CHANNELS_BY_TYPE[entry.type]);
+    const rowOffset = index * CURVE_TABLE_SIZE;
+    data.set(compiled.packed.data, rowOffset * 4);
+    mappings.set(entry.node.id, Object.freeze({ compiled, rowOffset }));
+  });
+
+  return Object.freeze({
+    buffer: TSL.buffer(data, 'vec4', rowCount),
+    mappings,
+    tableCount: entries.length,
+    byteLength: data.byteLength,
+  });
+}
+
+function curveTableValue(TSL, curvePool, nodeId, channelName, value) {
+  const mapping = curvePool.mappings.get(nodeId);
+  if (!mapping) fail('shader_curve_table_missing', `Curve table for node ${nodeId} was not compiled.`, { nodeId });
+  const channel = mapping.compiled.channels[channelName];
+  if (!channel) fail('shader_curve_channel_missing', `Curve channel ${channelName} is unavailable on node ${nodeId}.`, { nodeId, channelName });
+  const channelIndex = mapping.compiled.packed.channelNames.indexOf(channelName);
+  const lane = ['x', 'y', 'z', 'w'][channelIndex];
+  const parameter = value.sub(channel.minimum).mul(channel.divider);
+  const coordinate = TSL.clamp(parameter, 0, 1).mul(CURVE_TABLE_SIZE - 1);
+  const lower = TSL.int(TSL.floor(coordinate));
+  const upper = TSL.int(TSL.min(lower.add(1), CURVE_TABLE_SIZE - 1));
+  const amount = coordinate.sub(TSL.float(lower));
+  const lowerRow = curvePool.buffer.element(lower.add(mapping.rowOffset));
+  const upperRow = curvePool.buffer.element(upper.add(mapping.rowOffset));
+  const sampled = TSL.mix(lowerRow[lane], upperRow[lane], amount);
+  const before = sampled.add(parameter.mul(channel.startSlope));
+  const after = sampled.add(parameter.sub(1).mul(channel.endSlope));
+  return TSL.select(
+    TSL.lessThan(parameter, 0),
+    before,
+    TSL.select(TSL.greaterThan(parameter, 1), after, sampled),
+  );
 }
 
 function arithmetic(TSL, operation, a, b) {
@@ -1199,7 +1272,7 @@ function makeInputResolver({ TSL, graph, compileOutput }) {
   };
 }
 
-function compileNodeFactory({ TSL, graph, parameters, textureResolver, featureTracker }) {
+function compileNodeFactory({ TSL, graph, parameters, textureResolver, featureTracker, curvePool }) {
   const nodes = new Map(graph.nodes.map(node => [node.id, node]));
   const cache = new Map();
   let input;
@@ -1631,6 +1704,38 @@ function compileNodeFactory({ TSL, graph, parameters, textureResolver, featureTr
       const factor = input.get(node, ['factor', 'value'], 0);
       return colorRamp(TSL, factor, p.stops, p.interpolation, p.colorMode, p.hueInterpolation);
     }
+    if (type === 'blender.floatCurve') {
+      const factor = input.get(node, 'factor', 1);
+      const value = input.get(node, 'value', 1);
+      const mapped = curveTableValue(TSL, curvePool, node.id, 'value', value);
+      return { value: TSL.mix(value, mapped, factor) };
+    }
+    if (type === 'blender.vectorCurve') {
+      const factor = input.get(node, 'factor', 1);
+      const vector = input.get(node, 'vector', [0, 0, 0], 'vec3');
+      const mapped = TSL.vec3(
+        curveTableValue(TSL, curvePool, node.id, 'x', vector.x),
+        curveTableValue(TSL, curvePool, node.id, 'y', vector.y),
+        curveTableValue(TSL, curvePool, node.id, 'z', vector.z),
+      );
+      return { vector: TSL.mix(vector, mapped, factor) };
+    }
+    if (type === 'blender.rgbCurve') {
+      const factor = input.get(node, 'factor', 1);
+      const color = input.get(node, 'color', [1, 1, 1, 1], 'color');
+      const combined = TSL.vec3(
+        curveTableValue(TSL, curvePool, node.id, 'combined', color.x),
+        curveTableValue(TSL, curvePool, node.id, 'combined', color.y),
+        curveTableValue(TSL, curvePool, node.id, 'combined', color.z),
+      );
+      const mapped = TSL.vec3(
+        curveTableValue(TSL, curvePool, node.id, 'red', combined.x),
+        curveTableValue(TSL, curvePool, node.id, 'green', combined.y),
+        curveTableValue(TSL, curvePool, node.id, 'blue', combined.z),
+      );
+      const rgb = TSL.mix(color.xyz, mapped, factor);
+      return { color: TSL.vec4(rgb, component(color, 'w', scalar(TSL, 1))) };
+    }
     if (type === 'blender.mapRange') {
       const value = input.get(node, 'value', 0);
       const fromMin = input.get(node, 'fromMin', 0); const fromMax = input.get(node, 'fromMax', 1);
@@ -1876,6 +1981,7 @@ export function compileShaderGraph({ TSL, graph, parameterValues = {}, textureRe
   if (!source) fail('shader_graph_missing', 'A shader graph document is required.');
   const canonical = assertValidGraph(source);
   if (!['shader', 'texture'].includes(canonical.domain)) fail('shader_domain_unsupported', `Graph domain ${canonical.domain} cannot compile as a material.`);
+  const curvePool = prepareCurveTablePool(TSL, canonical);
   const textureIds = new Set();
   const featureTracker = { requiresGeometryUv: false };
   const trackedTextureResolver = textureResolver
@@ -1891,6 +1997,7 @@ export function compileShaderGraph({ TSL, graph, parameterValues = {}, textureRe
     parameters: parameterValues,
     textureResolver: trackedTextureResolver,
     featureTracker,
+    curvePool,
   });
   const outputs = {};
   for (const [name, reference] of Object.entries(canonical.outputs)) outputs[name] = compileOutput(reference.nodeId, reference.port);
@@ -1945,6 +2052,8 @@ export function compileShaderGraph({ TSL, graph, parameterValues = {}, textureRe
     nodesCompiled: new Set([...cache.keys()].map(key => key.split('\u0000')[0])).size,
     textureIds: Object.freeze([...textureIds].sort()),
     requiresGeometryUv: featureTracker.requiresGeometryUv,
+    curveTableCount: curvePool.tableCount,
+    curveTableBytes: curvePool.byteLength,
   });
 }
 
