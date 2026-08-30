@@ -701,8 +701,14 @@ rebuild unrelated content.
 
 The current implementation snapshots authored transforms, deterministically
 evaluates the Action subset, stores mode/pause/tick/elapsed/input state, and
-restores authored state on stop. It does not create a separate game-state
-layer or execute scripts, blueprints, physics, or the remaining steps below.
+restores authored state on stop. It also executes a bounded GameMaker-style
+subset of blueprint graphs for one scene-owned controller entity: Create,
+Activate, Deactivate, Step, Fixed Step, Key Pressed/Down/Up, state,
+transform, visibility, speed/angular-speed, animation, camera, and custom
+events. Enter (or the configured activation key) captures the configured
+input/UI state; Escape is globally reserved and restores the authored pose.
+Arbitrary scripts, physics, spawning/destruction, delays/timers, and other
+catalogued-but-unimplemented blueprint nodes remain unavailable.
 The intended broader behaviour capability is:
 
 Author and Play are separate runtime modes over the same document:

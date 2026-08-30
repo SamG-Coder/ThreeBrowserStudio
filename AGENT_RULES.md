@@ -34,9 +34,11 @@ authority. In the current lean slice:
   while evidence and `status.viewport.effectiveCamera` stay on that authored
   shot; native ray-query lighting augments beauty only while the explicit RTX
   status is active;
-- Play changes and reports transient counters/input state but executes no game
-  behaviour; and
-- jobs, asset import, script authoring/execution, layout modes beyond the live
+- Play evaluates Actions, timeline modifiers, and capability-gated typed
+  blueprint controller graphs. A scene controller selects one exact entity;
+  Enter (or its authored activation key) starts runtime-only control and the
+  globally reserved Escape key stops and restores authored state; and
+- asset import, script authoring/execution, layout modes beyond the live
   linear/grid/radial/seeded-scatter patterns, diagnostic passes beyond beauty
   and object-id, export, and behavior simulation are not available.
 
@@ -56,8 +58,9 @@ Use it only after both status and the current tool schema expose it.
 6. Run current whole-project validation after graph or topology changes.
 7. Render WebGPU beauty and inspect the actual evidence before claiming visual
    completion.
-8. Never claim gameplay completion while `behaviorRuntime` is false; current
-   Play only verifies the Author/Play control boundary.
+8. `controllerRuntime: true` permits only the typed blueprint events/actions
+   reported by status. Never claim arbitrary script behaviour while
+   `behaviorRuntime` is false.
 9. Save the project after a verified milestone.
 
 ## Scene rules
@@ -175,6 +178,22 @@ operations.
 - Once that capability exists, hot-reload, enter Play, inject representative
   input, step, inspect state, and check diagnostics after changing behaviour
   code.
+
+## Typed controller logic
+
+- Scene-owned `settings.controller` selects one exact controlled `entityId`,
+  an activation key, runtime restoration, and bounded keyboard/pointer/HUD
+  capture. Escape is global and cannot be rebound or intercepted.
+- Attach blueprint resources through `components.logic.graphIds`. Only
+  catalogued nodes listed by `status.capabilities.logicRuntime` execute.
+- Controller transforms, state, speed, events, and animation commands live in
+  the transient Play layer. Escape restores the authored scene unless the
+  scene explicitly disables restoration.
+- Use `event.onStart`, `event.onActivate`, `event.onDeactivate`,
+  `event.onFixedUpdate`, `event.onUpdate`, `event.onKeyPressed`,
+  `event.onKeyDown`, `event.onKeyUp`, and bounded custom events.
+- Prefer fixed-step speed/angular-speed actions for controllable movement.
+  Use exact `entity.self` or stable entity references; never fuzzy lookup.
 
 ## Rendering rules
 

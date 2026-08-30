@@ -10,7 +10,7 @@ import {
 import { StudioError } from './errors.mjs';
 import { assertStableId, isStableId } from './ids.mjs';
 import { assertJsonValue, cloneJson, isPlainRecord, mergePatch, nowIso, uniqueSorted } from './util.mjs';
-import { entityComponentReferences, validateEntityComponents } from './component-validation.mjs';
+import { entityComponentReferences, validateEntityComponents, validateSceneControllerSettings } from './component-validation.mjs';
 import { validateIndexedMeshRecipe } from './indexed-mesh-editing.mjs';
 import { normalizeEditableMeshRecipe } from './editable-mesh.mjs';
 import {
@@ -656,6 +656,7 @@ function validateScene(scene, key, project, diagnostics) {
         issue(diagnostics, 'invalid_timeline', `${path}.settings.timeline.framesPerSecond`, 'framesPerSecond must be greater than zero and at most 240');
       }
     }
+    validateSceneControllerSettings(scene.settings.controller, `${path}.settings.controller`, diagnostics);
   }
   if (!Array.isArray(scene.scriptIds)) issue(diagnostics, 'invalid_scripts', `${path}.scriptIds`, 'scriptIds must be an array');
 
@@ -688,11 +689,14 @@ function validateScene(scene, key, project, diagnostics) {
       }
       const tables = {
         geometry: 'geometries', material: 'materials', animation: 'animations',
-        prefab: 'prefabs', audio: 'audio',
+        prefab: 'prefabs', audio: 'audio', logicGraph: 'graphs',
       };
       const table = tables[reference.kind];
       if (table && !project.resources?.[table]?.[reference.targetId]) {
         issue(diagnostics, 'missing_resource', `${path}.entities.${entity.id}.${reference.path}`, `${reference.kind} ${reference.targetId} does not exist`);
+      } else if (reference.kind === 'logicGraph'
+          && project.resources?.graphs?.[reference.targetId]?.graph?.domain !== 'blueprint') {
+        issue(diagnostics, 'invalid_logic_graph', `${path}.entities.${entity.id}.${reference.path}`, `Logic graph ${reference.targetId} must use the blueprint domain`);
       }
     }
   }
@@ -742,6 +746,10 @@ function validateScene(scene, key, project, diagnostics) {
     const camera = scene.entities[activeCameraId];
     if (!camera) issue(diagnostics, 'missing_camera', `${path}.settings.activeCameraId`, `Camera ${activeCameraId} does not exist`);
     else if (!CAMERA_KINDS.includes(camera.kind)) issue(diagnostics, 'invalid_camera', `${path}.settings.activeCameraId`, `${activeCameraId} is not a camera`);
+  }
+  const controllerEntityId = scene.settings?.controller?.entityId;
+  if (controllerEntityId && !scene.entities[controllerEntityId]) {
+    issue(diagnostics, 'missing_controller_entity', `${path}.settings.controller.entityId`, `Controller entity ${controllerEntityId} does not exist`);
   }
 
   const visiting = new Set();

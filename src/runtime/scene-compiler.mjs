@@ -769,12 +769,12 @@ export function compileSceneDocument({ THREE, TSL, project, sceneId = project.ac
       evaluateConstraints();
       return evaluations;
     },
-    advanceAnimation(deltaSeconds) {
+    advanceAnimation(deltaSeconds, { restorePose = true } = {}) {
       if (!Number.isFinite(deltaSeconds) || Math.abs(deltaSeconds) > 1_000_000_000) {
         throw compileError('runtime_animation_delta_invalid', 'Timeline delta must be a finite number with magnitude at most 1000000000 seconds.');
       }
       animationTime += deltaSeconds;
-      restoreAuthoredPose();
+      if (restorePose) restoreAuthoredPose();
       const evaluations = animationRuntime?.advance(deltaSeconds) ?? [];
       updateTimelineGeometry(animationTime);
       evaluateConstraints();

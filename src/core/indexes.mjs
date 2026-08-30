@@ -56,6 +56,7 @@ export class ProjectIndex {
       }
       for (const scriptId of scene.scriptIds ?? []) this.#addReference(scriptId, { kind: 'sceneScript', sourceId: scene.id, sceneId: scene.id });
       if (scene.settings?.activeCameraId) this.#addReference(scene.settings.activeCameraId, { kind: 'activeCamera', sourceId: scene.id, sceneId: scene.id });
+      if (scene.settings?.controller?.entityId) this.#addReference(scene.settings.controller.entityId, { kind: 'sceneController', sourceId: scene.id, sceneId: scene.id });
     }
     for (const type of RESOURCE_TYPES) {
       for (const resource of Object.values(this.project.resources?.[type] ?? {})) {

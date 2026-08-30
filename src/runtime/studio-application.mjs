@@ -92,6 +92,7 @@ import { RTX_SCENE_LIMITS } from './rtx-scene-collector.mjs';
 import { normalizeGeometryRecipe, queryGeometryCatalog, realizeGeometryRecipe } from './resource-factories.mjs';
 import { createTransactionId } from '../core/util.mjs';
 import { bakeProceduralTextureGraph } from './procedural-texture-compiler.mjs';
+import { createLogicControllerRuntime, LOGIC_CONTROLLER_LIMITS } from './logic-controller-runtime.mjs';
 
 const INSPECT_RESPONSE_ENVELOPE_RESERVE_BYTES = 2_048;
 
@@ -116,7 +117,10 @@ const STATUS_SELECT_PRESETS = Object.freeze({
     'revision', 'savedRevision', 'dirty', 'activeSceneId', 'mode',
     'viewport.ready', 'viewport.renderer', 'viewport.cameraId', 'viewport.viewMode',
     'viewport.width', 'viewport.height',
+    'play.controller.available', 'play.controller.active', 'play.controller.entityId',
+    'play.controller.activationKey',
     'rtx.supported', 'rtx.requested', 'rtx.active', 'rtx.failed', 'rtx.reason',
+    'capabilities.controllerRuntime', 'capabilities.logicRuntime.globalExitKey',
     'capabilities.toolContract.contractVersion', 'capabilities.toolContract.serverVersion',
     'capabilities.toolContract.hash',
   ],
@@ -128,6 +132,7 @@ const STATUS_SELECT_PRESETS = Object.freeze({
     'capabilities.geometryRecipes', 'capabilities.geometryEditCommands',
     'capabilities.layoutPatterns', 'capabilities.jobs', 'capabilities.jobKinds',
     'capabilities.materialRecipes', 'capabilities.renderPasses',
+    'capabilities.controllerRuntime', 'capabilities.logicRuntime', 'play.controller',
     'capabilities.toolContract.contractVersion', 'capabilities.toolContract.hash',
     'authoringTelemetry',
   ],
@@ -1153,6 +1158,7 @@ export class StudioApplication {
   #idempotency = new Map();
   #mode = 'author';
   #play = { paused: false, tick: 0, elapsed: 0, latestInput: null };
+  #logicController = null;
   #disposed = false;
   #viewHash = null;
   #beginCommand = null;
@@ -1179,6 +1185,75 @@ export class StudioApplication {
   get sessionId() { return this.#credentials.sessionId; }
   get markerPath() { return this.#markerPath; }
   get kernel() { return this.#kernel; }
+
+  getControllerStatus() {
+    return this.#logicController?.status ?? Object.freeze({
+      available: false, active: false, entityId: null, activationKey: null, heldKeys: [], graphCount: 0, diagnostics: [], capture: null,
+    });
+  }
+
+  #syncControllerState() {
+    this.#viewport.setControllerState?.(this.getControllerStatus());
+  }
+
+  #createLogicController() {
+    const project = this.#kernel?.document;
+    const scene = project?.scenes?.[project.activeSceneId];
+    this.#logicController = createLogicControllerRuntime({
+      project,
+      scene,
+      objects: this.#compiled?.objects,
+      animationRuntime: this.#compiled?.animationRuntime,
+      setActiveCamera: entityId => {
+        const camera = this.#compiled?.objects?.get?.(entityId);
+        if (!camera?.isCamera) return false;
+        this.#viewport.setAuthoredCamera?.(camera);
+        return true;
+      },
+    });
+    this.#syncControllerState();
+  }
+
+  #stopLogicController({ restore = true } = {}) {
+    const stopped = this.#logicController?.stop({ restore }) === true;
+    if (stopped) {
+      this.#mode = 'author';
+      this.#play = { paused: false, tick: 0, elapsed: 0, latestInput: null };
+    }
+    this.#syncControllerState();
+    return stopped;
+  }
+
+  controllerKeyDown(code, { repeat = false } = {}) {
+    const key = String(code ?? '');
+    if (key === 'Escape' && this.#logicController?.active) {
+      this.#stopLogicController();
+      return { handled: true, action: 'deactivated', ...this.getControllerStatus() };
+    }
+    if (!this.#logicController?.active) {
+      if (key !== this.#logicController?.settings?.activationKey || repeat) return { handled: false, ...this.getControllerStatus() };
+      if (!this.#logicController.activate()) return { handled: false, ...this.getControllerStatus() };
+      this.#mode = 'play';
+      this.#play = { paused: false, tick: 0, elapsed: 0, latestInput: null };
+      this.#syncControllerState();
+      return { handled: true, action: 'activated', ...this.getControllerStatus() };
+    }
+    const handled = this.#logicController.keyDown(key, { repeat });
+    this.#syncControllerState();
+    return { handled, action: 'input', ...this.getControllerStatus() };
+  }
+
+  controllerKeyUp(code) {
+    if (!this.#logicController?.active) return { handled: false, ...this.getControllerStatus() };
+    const handled = this.#logicController.keyUp(String(code ?? ''));
+    this.#syncControllerState();
+    return { handled, action: 'input', ...this.getControllerStatus() };
+  }
+
+  releaseControllerKeys() {
+    this.#logicController?.releaseKeys();
+    this.#syncControllerState();
+  }
 
   getActiveSceneRtxSettings() {
     if (!this.#kernel) return {};
@@ -1345,6 +1420,7 @@ export class StudioApplication {
     if (!next) return;
     this.#prepared = null;
     if (!immediate) await new Promise(resolve => (globalThis.requestAnimationFrame ?? (callback => setTimeout(callback, 0)))(resolve));
+    if (this.#logicController?.active) this.#stopLogicController();
     this.#bootstrap?.dispose();
     this.#bootstrap = null;
     this.#viewport.scene.add(next.root);
@@ -1362,6 +1438,7 @@ export class StudioApplication {
     }
     const previous = this.#compiled;
     this.#compiled = next;
+    this.#createLogicController();
     if (this.#mode !== 'play') {
       for (const action of next.animationRuntime?.actions.values() ?? []) {
         next.animationRuntime.pause(action.id);
@@ -1568,6 +1645,7 @@ export class StudioApplication {
         actions: this.#compiled?.animationStates() ?? [],
         timelineGeometryModifierIds: this.#compiled?.timelineGeometryModifierIds ?? [],
         timelineGeometrySampleCount: this.#compiled?.timelineGeometrySampleCount ?? 0,
+        controller: this.getControllerStatus(),
       },
       viewport: {
         ready: true,
@@ -1591,6 +1669,15 @@ export class StudioApplication {
         rtxAmbientOcclusion: rtx.supported === true,
         liveSceneCompilation: true,
         behaviorRuntime: false,
+        controllerRuntime: true,
+        logicRuntime: {
+          domain: 'blueprint',
+          events: ['Create', 'Activate', 'Deactivate', 'Step', 'Fixed Step', 'Key Pressed', 'Key Down', 'Key Up', 'Custom Event'],
+          actions: ['state', 'transform', 'visibility', 'speed', 'angularSpeed', 'animation', 'camera', 'customEvent'],
+          globalExitKey: 'Escape',
+          runtimeOnly: true,
+          limits: LOGIC_CONTROLLER_LIMITS,
+        },
         graphCompilation: Boolean(this.#TSL),
         graphRuntime: this.#TSL ? 'three-tsl-webgpu' : null,
         proceduralTextureBake: true,
@@ -2691,6 +2778,7 @@ export class StudioApplication {
     };
     if (params.baseRevision !== this.#kernel.revision) throw new StudioError('revision_conflict', `Base revision ${params.baseRevision} does not match ${this.#kernel.revision}.`);
     if (params.action === 'enter') {
+      if (this.#logicController?.active) this.#stopLogicController();
       this.#mode = 'play';
       this.#play = { paused: false, tick: 0, elapsed: 0, latestInput: null };
       this.#compiled?.setAnimationTime(0);
@@ -2700,6 +2788,7 @@ export class StudioApplication {
       }
     }
     else if (params.action === 'stop') {
+      if (this.#logicController?.active) this.#logicController.stop();
       this.#mode = 'author';
       this.#play = { paused: false, tick: 0, elapsed: 0, latestInput: null };
       const authoredTime = (timeline.currentFrame - timeline.frameStart) / timeline.framesPerSecond;
@@ -2707,6 +2796,7 @@ export class StudioApplication {
       for (const action of this.#compiled?.animationRuntime?.actions.values() ?? []) {
         this.#compiled.animationRuntime.pause(action.id);
       }
+      this.#syncControllerState();
     }
     else if (params.action === 'pause') this.#play.paused = true;
     else if (params.action === 'resume') this.#play.paused = false;
@@ -2729,7 +2819,7 @@ export class StudioApplication {
       ...this.#play,
       ...animationState(),
       revision: this.#kernel.revision,
-      warnings: [{ code: 'behavior_runtime_not_enabled', message: 'Play state is isolated, but scripts and blueprints are not executing yet.' }],
+      warnings: [{ code: 'script_runtime_not_enabled', message: 'Typed controller logic is live, but arbitrary behaviour scripts are not executing.' }],
     };
   }
 
@@ -2738,7 +2828,8 @@ export class StudioApplication {
     if (!Number.isFinite(deltaSeconds) || deltaSeconds <= 0) return;
     this.#play.elapsed += deltaSeconds;
     this.#play.tick = Math.round(this.#play.elapsed * 60);
-    this.#compiled?.advanceAnimation(deltaSeconds);
+    this.#compiled?.advanceAnimation(deltaSeconds, { restorePose: this.#logicController?.active !== true });
+    this.#logicController?.update(deltaSeconds);
   }
 
   #writeMarker(viewportReady, { required = false } = {}) {
@@ -2776,6 +2867,9 @@ export class StudioApplication {
     }
     this.#prepared?.dispose();
     this.#dryRunCandidate?.compiled.dispose();
+    this.#logicController?.stop();
+    this.#logicController = null;
+    this.#syncControllerState();
     const compiled = this.#compiled;
     if (typeof this.#viewport.setAppearance === 'function') this.#viewport.setAppearance({});
     else {

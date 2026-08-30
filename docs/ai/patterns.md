@@ -264,9 +264,17 @@ from the static RTX triangle scene; set `timelineScale: 0` only when a static
 Ocean result is intended. Keep the sum of `evaluated vertices × waveCount`
 within `capabilities.timelineGeometryMaxSamples` across distinct moving oceans.
 
-`behaviorRuntime` is false today. Scripts, blueprints, physics, and game
-logic do not run. Do not send script operations through apply. Do not claim
-a playable game.
+Typed blueprint controller graphs run when status reports
+`controllerRuntime: true`. Author scene-owned `settings.controller` with one
+exact controlled entity and attach blueprint graph IDs through that entity's
+`components.logic`. Enter (or the configured activation key) begins a
+runtime-only session; Escape is globally reserved, clears input, restores the
+authored pose/UI/cursor, and returns to Author. Use only the event/action nodes
+listed by `capabilities.logicRuntime` and validate after every graph change.
+
+`behaviorRuntime` remains false: arbitrary scripts do not run. Physics and
+uncatalogued blueprint nodes remain unavailable. Do not send script operations
+through apply or claim capabilities beyond the live controller contract.
 
 ---
 

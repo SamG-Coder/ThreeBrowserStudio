@@ -12,6 +12,11 @@ const vector3 = value => Array.isArray(value)
   && value.length === 3
   && value.every(number => Number.isFinite(number));
 
+const controllerKey = value => typeof value === 'string'
+  && value.length >= 1
+  && value.length <= 64
+  && /^[A-Za-z0-9]+$/u.test(value);
+
 function diagnostic(diagnostics, code, path, message) {
   diagnostics.push({ severity: 'error', code, path, message });
 }
@@ -102,6 +107,58 @@ function validateMeshComponent(mesh, path, diagnostics) {
   }
 }
 
+function validateLogicComponent(logic, path, diagnostics) {
+  const at = `${path}.components.logic`;
+  if (!isPlainRecord(logic)) {
+    diagnostic(diagnostics, 'invalid_logic_component', at, 'logic must be an object');
+    return;
+  }
+  if (logic.enabled !== undefined && typeof logic.enabled !== 'boolean') {
+    diagnostic(diagnostics, 'invalid_logic_enabled', `${at}.enabled`, 'enabled must be boolean');
+  }
+  if (!Array.isArray(logic.graphIds) || logic.graphIds.length < 1 || logic.graphIds.length > 16) {
+    diagnostic(diagnostics, 'invalid_logic_graphs', `${at}.graphIds`, 'graphIds must contain 1 to 16 graph IDs');
+    return;
+  }
+  if (new Set(logic.graphIds).size !== logic.graphIds.length || logic.graphIds.some(id => !isStableId(id))) {
+    diagnostic(diagnostics, 'invalid_logic_graphs', `${at}.graphIds`, 'graphIds must contain unique stable IDs');
+  }
+}
+
+export function validateSceneControllerSettings(controller, path, diagnostics) {
+  if (controller === undefined || controller === null) return;
+  if (!isPlainRecord(controller)) {
+    diagnostic(diagnostics, 'invalid_controller', path, 'controller must be an object or null');
+    return;
+  }
+  if (controller.enabled !== undefined && typeof controller.enabled !== 'boolean') {
+    diagnostic(diagnostics, 'invalid_controller_enabled', `${path}.enabled`, 'enabled must be boolean');
+  }
+  if (!isStableId(controller.entityId)) {
+    diagnostic(diagnostics, 'invalid_controller_entity', `${path}.entityId`, 'entityId must be a stable entity ID');
+  }
+  if (controller.activationKey !== undefined && !controllerKey(controller.activationKey)) {
+    diagnostic(diagnostics, 'invalid_controller_key', `${path}.activationKey`, 'activationKey must be a bounded keyboard code');
+  }
+  if (controller.activationKey === 'Escape') {
+    diagnostic(diagnostics, 'reserved_controller_key', `${path}.activationKey`, 'Escape is globally reserved for leaving Control mode');
+  }
+  if (controller.restoreOnExit !== undefined && typeof controller.restoreOnExit !== 'boolean') {
+    diagnostic(diagnostics, 'invalid_controller_restore', `${path}.restoreOnExit`, 'restoreOnExit must be boolean');
+  }
+  if (controller.capture !== undefined) {
+    if (!isPlainRecord(controller.capture)) {
+      diagnostic(diagnostics, 'invalid_controller_capture', `${path}.capture`, 'capture must be an object');
+    } else {
+      for (const key of ['keyboard', 'pointer', 'hideHud', 'hideCursor']) {
+        if (controller.capture[key] !== undefined && typeof controller.capture[key] !== 'boolean') {
+          diagnostic(diagnostics, 'invalid_controller_capture', `${path}.capture.${key}`, `${key} must be boolean`);
+        }
+      }
+    }
+  }
+}
+
 /**
  * Validates only the component contracts Studio understands. Unknown component
  * namespaces remain forward-compatible authored data and are capability-gated
@@ -111,6 +168,7 @@ export function validateEntityComponents(entity, path, diagnostics) {
   const components = entity.components;
   if (!isPlainRecord(components)) return;
   if (components.mesh !== undefined) validateMeshComponent(components.mesh, path, diagnostics);
+  if (components.logic !== undefined) validateLogicComponent(components.logic, path, diagnostics);
   if (components.modifiers !== undefined) {
     if (!Array.isArray(components.modifiers) || components.modifiers.length > 64) {
       diagnostic(diagnostics, 'invalid_modifiers', `${path}.components.modifiers`, 'modifiers must be an array with at most 64 entries');
@@ -156,6 +214,7 @@ export function entityComponentReferences(entity) {
   add(components.animation?.actionId, 'animation', 'components.animation.actionId');
   add(components.prefab?.prefabId, 'prefab', 'components.prefab.prefabId');
   add(components.audio?.audioId, 'audio', 'components.audio.audioId');
+  for (const graphId of components.logic?.graphIds ?? []) add(graphId, 'logicGraph', 'components.logic.graphIds');
   add(components.light?.targetId, 'lightTarget', 'components.light.targetId');
   for (const constraint of components.constraints ?? []) add(constraint?.targetId, 'constraintTarget', 'components.constraints.targetId');
   for (const modifier of components.modifiers ?? []) {

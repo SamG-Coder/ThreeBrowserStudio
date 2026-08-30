@@ -20,6 +20,7 @@ import {
 } from "../core/project-pack.mjs";
 import { openProjectPackFile, saveProjectPackFile } from "./project-file-transfer.mjs";
 import { showStarterProjectFromLocation } from "../browser/starter-project-scene.mjs";
+import { createSceneControllerInput } from './scene-controller-input.mjs';
 
 document.title = "ThreeBrowser Studio — waiting for project";
 
@@ -70,12 +71,13 @@ async function main() {
   const controls = createReviewControls(camera, renderer.domElement, {
     target: new THREE.Vector3(0, 1.8, 0),
   });
+  let controllerInput = null;
   const reviewSession = createReviewSession({
     THREE,
     reviewCamera: camera,
     controls,
     onChange() {
-      controls.enabled = reviewSession.viewMode !== VIEW_MODE_FOLLOW_SHOT;
+      controls.enabled = reviewSession.viewMode !== VIEW_MODE_FOLLOW_SHOT && controllerInput?.active !== true;
       liveFeed?.setViewMode?.(reviewSession.viewMode);
       const width = Math.max(1, Number(innerWidth) || 1);
       const height = Math.max(1, Number(innerHeight) || 1);
@@ -287,6 +289,8 @@ async function main() {
     commandTelemetry.dispose();
     capture.dispose();
     rtxLighting.dispose();
+    controllerInput?.dispose();
+    controllerInput = null;
     controls.dispose();
     if (!bootstrapDisposed) bootstrap.dispose();
     scene.clear();
@@ -375,9 +379,20 @@ async function main() {
     setExplorerOutline(outline) {
       liveFeed.setExplorerOutline?.(outline);
     },
+    setControllerState(state) {
+      controllerInput?.sync?.(state);
+    },
     dispose,
   });
   globalThis.__THREE_STUDIO_VIEWPORT__ = viewportApi;
+  controllerInput = createSceneControllerInput({
+    keyboard: globalThis,
+    document: globalThis.document,
+    domElement: renderer.domElement,
+    getApplication: () => application,
+    hud: liveFeed,
+    controls,
+  });
 
   try {
     if (host.attached && !browserPreview) {
@@ -456,7 +471,7 @@ async function main() {
       }
       if (bootstrap.root.parent) bootstrap.update(elapsed);
       application?.update(delta);
-      if (reviewSession.viewMode !== VIEW_MODE_FOLLOW_SHOT) controls.update(delta);
+      if (reviewSession.viewMode !== VIEW_MODE_FOLLOW_SHOT && controllerInput?.active !== true) controls.update(delta);
       renderer.setRenderTarget(null);
       renderer.setMRT(null);
       const activeCamera = reviewSession.renderCamera;
