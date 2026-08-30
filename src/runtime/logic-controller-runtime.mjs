@@ -247,6 +247,8 @@ export function createLogicControllerRuntime({ project, scene, objects, animatio
         physics.addImpulse(targetId, node.params?.space === 'local' ? rotateLocalYaw(impulse, object) : impulse);
         break;
       }
+      case 'physics.applyBrake': physics.applyBrake(targetId, finite(dataValue(plan, node.id, 'deceleration', context))); break;
+      case 'physics.setSteering': physics.setSteering(targetId, finite(dataValue(plan, node.id, 'angle', context))); break;
       case 'physics.setGravityScale': physics.setGravityScale(targetId, finite(dataValue(plan, node.id, 'scale', context), 1)); break;
       case 'animation.play': animationRuntime?.play?.(node.params?.clipId, { restart: node.params?.restart !== false }); break;
       case 'animation.stop': animationRuntime?.pause?.(node.params?.clipId); break;
@@ -373,7 +375,7 @@ export function createLogicControllerRuntime({ project, scene, objects, animatio
         activationKey: settings?.activationKey ?? null,
         heldKeys: Object.freeze([...heldKeys]),
         graphCount: plans.length,
-        physics: physics.status,
+        physics: Object.freeze({ ...physics.status, controlledBody: settings?.entityId ? physics.getBodyState?.(settings.entityId) ?? null : null }),
         diagnostics: Object.freeze(diagnostics.slice(-32)),
         capture: settings?.capture ?? null,
       });

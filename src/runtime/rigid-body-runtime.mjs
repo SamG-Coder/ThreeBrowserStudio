@@ -33,17 +33,26 @@ function bodyState(entity, object) {
     angularDamping: finite(source.angularDamping, 0.05),
     velocity: vector(source.velocity),
     angularVelocity: vector(source.angularVelocity),
+    maxLinearSpeed: source.maxLinearSpeed === undefined ? Infinity : finite(source.maxLinearSpeed, Infinity),
+    wheelBase: finite(source.wheelBase, 2.8),
+    steeringWheelIds: Array.isArray(source.steeringWheelIds) ? [...source.steeringWheelIds] : [],
+    steeringAngle: 0,
+    vehicleSteering: source.wheelBase !== undefined || Array.isArray(source.steeringWheelIds),
     force: [0, 0, 0],
+    lastAppliedForce: null,
+    forceApplicationCount: 0,
+    brakeAcceleration: 0,
     freezePosition: source.freezePosition ?? [false, false, false],
     freezeRotation: source.freezeRotation ?? [false, false, false],
   };
 }
 
-function colliderState(entity, object) {
+function colliderState(entity, object, bodyId = null) {
   const source = entity.components?.collider;
   if (!source || source.enabled === false) return null;
   return {
     id: entity.id,
+    bodyId,
     object,
     shape: source.shape,
     offset: vector(source.offset),
@@ -57,13 +66,58 @@ function colliderState(entity, object) {
   };
 }
 
+function worldMatrix(object) {
+  object?.updateWorldMatrix?.(true, false);
+  const elements = object?.matrixWorld?.elements;
+  return elements?.length >= 16 ? elements : null;
+}
+
+function worldScale(object) {
+  const matrix = worldMatrix(object);
+  if (matrix) return [
+    Math.hypot(matrix[0], matrix[1], matrix[2]),
+    Math.hypot(matrix[4], matrix[5], matrix[6]),
+    Math.hypot(matrix[8], matrix[9], matrix[10]),
+  ];
+  const result = [1, 1, 1];
+  for (let current = object; current; current = current.parent) {
+    const scale = readVector(current.scale ?? { x: 1, y: 1, z: 1 });
+    result[0] *= scale[0] || 1;
+    result[1] *= scale[1] || 1;
+    result[2] *= scale[2] || 1;
+  }
+  return result;
+}
+
 function colliderCenter(collider) {
-  return add(readVector(collider.object?.position), collider.offset);
+  const matrix = worldMatrix(collider.object);
+  if (matrix) {
+    const [x, y, z] = collider.offset;
+    return [
+      matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12],
+      matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13],
+      matrix[2] * x + matrix[6] * y + matrix[10] * z + matrix[14],
+    ];
+  }
+  let center = [...collider.offset];
+  for (let current = collider.object; current; current = current.parent) center = add(center, readVector(current.position));
+  return center;
+}
+
+function colliderSize(collider) {
+  const scale = worldScale(collider.object);
+  return collider.size.map((value, axis) => Math.abs(value * scale[axis]));
+}
+
+function colliderRadius(collider) {
+  return collider.radius * Math.max(...worldScale(collider.object).map(Math.abs));
 }
 
 function boxBox(a, b) {
   const delta = subtract(colliderCenter(b), colliderCenter(a));
-  const overlap = a.size.map((value, axis) => (value + b.size[axis]) * 0.5 - Math.abs(delta[axis]));
+  const aSize = colliderSize(a);
+  const bSize = colliderSize(b);
+  const overlap = aSize.map((value, axis) => (value + bSize[axis]) * 0.5 - Math.abs(delta[axis]));
   if (overlap.some(value => value <= 0)) return null;
   const axis = overlap.indexOf(Math.min(...overlap));
   const normal = [0, 0, 0];
@@ -74,19 +128,21 @@ function boxBox(a, b) {
 function sphereSphere(a, b) {
   const delta = subtract(colliderCenter(b), colliderCenter(a));
   const distance = length(delta);
-  const penetration = a.radius + b.radius - distance;
+  const penetration = colliderRadius(a) + colliderRadius(b) - distance;
   return penetration > 0 ? { normal: normalize(delta), penetration } : null;
 }
 
 function sphereBox(sphere, box, flip = false) {
   const sphereCenter = colliderCenter(sphere);
   const boxCenter = colliderCenter(box);
-  const closest = sphereCenter.map((value, axis) => Math.max(boxCenter[axis] - box.size[axis] * 0.5, Math.min(boxCenter[axis] + box.size[axis] * 0.5, value)));
+  const boxSize = colliderSize(box);
+  const radius = colliderRadius(sphere);
+  const closest = sphereCenter.map((value, axis) => Math.max(boxCenter[axis] - boxSize[axis] * 0.5, Math.min(boxCenter[axis] + boxSize[axis] * 0.5, value)));
   const boxToSphere = subtract(sphereCenter, closest);
   const distance = length(boxToSphere);
-  if (distance >= sphere.radius) return null;
+  if (distance >= radius) return null;
   const normalBoxToSphere = normalize(boxToSphere);
-  return { normal: flip ? normalBoxToSphere : multiply(normalBoxToSphere, -1), penetration: sphere.radius - distance };
+  return { normal: flip ? normalBoxToSphere : multiply(normalBoxToSphere, -1), penetration: radius - distance };
 }
 
 function intersection(a, b) {
@@ -108,11 +164,24 @@ export function createRigidBodyRuntime({ scene, objects } = {}) {
   const colliders = [];
   const contacts = new Set();
   const diagnostics = [];
-  for (const entity of entities.slice(0, MAX_BODIES)) {
+  const boundedEntities = entities.slice(0, MAX_BODIES);
+  for (const entity of boundedEntities) {
     const object = objects?.get?.(entity.id);
     if (!object) continue;
     if (entity.components?.rigidBody?.enabled !== false && entity.components?.rigidBody) bodies.set(entity.id, bodyState(entity, object));
-    const collider = colliderState(entity, object);
+  }
+  const bodyForObject = (entityId, object) => {
+    if (bodies.has(entityId)) return entityId;
+    for (let current = object?.parent; current; current = current.parent) {
+      const id = current.userData?.studioEntityId;
+      if (id && bodies.has(id)) return id;
+    }
+    return null;
+  };
+  for (const entity of boundedEntities) {
+    const object = objects?.get?.(entity.id);
+    if (!object) continue;
+    const collider = colliderState(entity, object, bodyForObject(entity.id, object));
     if (collider) colliders.push(collider);
   }
   if (entities.length > MAX_BODIES) diagnostics.push({ code: 'physics_body_budget', message: `Physics is bounded to ${MAX_BODIES} entities.` });
@@ -122,28 +191,33 @@ export function createRigidBodyRuntime({ scene, objects } = {}) {
     if (!body?.object) return;
     const position = readVector(body.object.position);
     writeVector(body.object.position, position.map((value, axis) => value + (body.freezePosition[axis] ? 0 : delta[axis])));
+    body.object.updateMatrix?.();
+    body.object.updateMatrixWorld?.(true);
   }
-  function resolve(aCollider, bCollider, hit) {
+  function resolve(aCollider, bCollider, hit, frictionPairs) {
     if (aCollider.isTrigger || bCollider.isTrigger) return;
-    const a = bodies.get(aCollider.id);
-    const b = bodies.get(bCollider.id);
+    const a = bodies.get(aCollider.bodyId);
+    const b = bodies.get(bCollider.bodyId);
     const inverseA = inverseMass(a);
     const inverseB = inverseMass(b);
     const total = inverseA + inverseB;
     if (total <= 0) return;
-    translate(a, multiply(hit.normal, -hit.penetration * inverseA / total));
-    translate(b, multiply(hit.normal, hit.penetration * inverseB / total));
+    const correction = Math.max(0, hit.penetration - 0.001) * 0.8;
+    translate(a, multiply(hit.normal, -correction * inverseA / total));
+    translate(b, multiply(hit.normal, correction * inverseB / total));
     const velocityA = a?.velocity ?? [0, 0, 0];
     const velocityB = b?.velocity ?? [0, 0, 0];
     const alongNormal = dot(subtract(velocityB, velocityA), hit.normal);
     if (alongNormal >= 0) return;
-    const restitution = Math.max(aCollider.restitution, bCollider.restitution);
+    const restitution = Math.abs(alongNormal) < 0.5 ? 0 : Math.max(aCollider.restitution, bCollider.restitution);
     const impulse = -(1 + restitution) * alongNormal / total;
     if (a) a.velocity = subtract(a.velocity, multiply(hit.normal, impulse * inverseA));
     if (b) b.velocity = add(b.velocity, multiply(hit.normal, impulse * inverseB));
     const postRelative = subtract(b?.velocity ?? velocityB, a?.velocity ?? velocityA);
     const tangentVector = subtract(postRelative, multiply(hit.normal, dot(postRelative, hit.normal)));
-    if (length(tangentVector) > 1e-9) {
+    const frictionKey = pairKey(aCollider.bodyId ?? aCollider.id, bCollider.bodyId ?? bCollider.id);
+    if (length(tangentVector) > 1e-9 && !frictionPairs.has(frictionKey)) {
+      frictionPairs.add(frictionKey);
       const tangent = normalize(tangentVector);
       const unclamped = -dot(postRelative, tangent) / total;
       const frictionLimit = impulse * Math.sqrt(aCollider.friction * bCollider.friction);
@@ -155,14 +229,49 @@ export function createRigidBodyRuntime({ scene, objects } = {}) {
 
   return Object.freeze({
     get available() { return enabled && (bodies.size > 0 || colliders.length > 0); },
-    get status() { return { available: enabled && (bodies.size > 0 || colliders.length > 0), bodyCount: bodies.size, colliderCount: colliders.length, activeContactCount: contacts.size, diagnostics: diagnostics.slice(-16) }; },
+    get status() { return { available: enabled && (bodies.size > 0 || colliders.length > 0), bodyCount: bodies.size, colliderCount: colliders.length, activeContactCount: contacts.size, activeContacts: [...contacts].slice(0, 16), diagnostics: diagnostics.slice(-16) }; },
     hasBody(id) { return bodies.has(id); },
     getVelocity(id) { return [...(bodies.get(id)?.velocity ?? [0, 0, 0])]; },
+    getBodyState(id) {
+      const body = bodies.get(id);
+      return body ? {
+        velocity: [...body.velocity],
+        angularVelocity: [...body.angularVelocity],
+        position: readVector(body.object?.position),
+        speed: length(body.velocity),
+        maxLinearSpeed: Number.isFinite(body.maxLinearSpeed) ? body.maxLinearSpeed : null,
+        lastAppliedForce: body.lastAppliedForce ? [...body.lastAppliedForce] : null,
+        forceApplicationCount: body.forceApplicationCount,
+        steeringAngle: body.steeringAngle,
+      } : null;
+    },
     setVelocity(id, value) { const body = bodies.get(id); if (!body) return false; body.velocity = vector(value); return true; },
     setAngularVelocity(id, value) { const body = bodies.get(id); if (!body) return false; body.angularVelocity = vector(value); return true; },
+    setSteering(id, value) {
+      const body = bodies.get(id);
+      if (!body || !Number.isFinite(value)) return false;
+      body.steeringAngle = Math.max(-0.75, Math.min(0.75, value));
+      for (const wheelId of body.steeringWheelIds) {
+        const wheel = objects?.get?.(wheelId);
+        if (!wheel?.rotation) continue;
+        wheel.rotation.y = body.steeringAngle;
+        wheel.updateMatrix?.();
+        wheel.updateMatrixWorld?.(true);
+      }
+      return true;
+    },
     setGravityScale(id, value) { const body = bodies.get(id); if (!body || !Number.isFinite(value)) return false; body.gravityScale = Math.max(-100, Math.min(100, value)); return true; },
-    addForce(id, value) { const body = bodies.get(id); if (!body || body.type !== 'dynamic') return false; body.force = add(body.force, vector(value)); return true; },
+    addForce(id, value) {
+      const body = bodies.get(id);
+      if (!body || body.type !== 'dynamic') return false;
+      const applied = vector(value);
+      body.force = add(body.force, applied);
+      body.lastAppliedForce = applied;
+      body.forceApplicationCount += 1;
+      return true;
+    },
     addImpulse(id, value) { const body = bodies.get(id); if (!body || body.type !== 'dynamic') return false; body.velocity = add(body.velocity, multiply(vector(value), 1 / body.mass)); return true; },
+    applyBrake(id, value) { const body = bodies.get(id); if (!body || body.type !== 'dynamic' || !Number.isFinite(value)) return false; body.brakeAcceleration = Math.max(body.brakeAcceleration, Math.max(0, value)); return true; },
     reset() {
       contacts.clear();
       for (const body of bodies.values()) {
@@ -170,7 +279,18 @@ export function createRigidBodyRuntime({ scene, objects } = {}) {
         body.velocity = vector(source.velocity);
         body.angularVelocity = vector(source.angularVelocity);
         body.gravityScale = finite(source.gravityScale, 1);
+        body.maxLinearSpeed = source.maxLinearSpeed === undefined ? Infinity : finite(source.maxLinearSpeed, Infinity);
         body.force = [0, 0, 0];
+        body.brakeAcceleration = 0;
+        body.steeringAngle = 0;
+        body.lastAppliedForce = null;
+        body.forceApplicationCount = 0;
+        for (const wheelId of body.steeringWheelIds) {
+          const wheel = objects?.get?.(wheelId);
+          if (!wheel) continue;
+          wheel.rotation.y = 0;
+          wheel.updateMatrixWorld?.(true);
+        }
       }
     },
     step(delta) {
@@ -178,27 +298,38 @@ export function createRigidBodyRuntime({ scene, objects } = {}) {
       for (const body of bodies.values()) {
         if (body.type === 'static') continue;
         if (body.type === 'dynamic') body.velocity = add(body.velocity, multiply(add(multiply(gravity, body.gravityScale), multiply(body.force, 1 / body.mass)), delta));
+        if (body.brakeAcceleration > 0) body.velocity = multiply(body.velocity, Math.max(0, 1 - body.brakeAcceleration * delta / Math.max(length(body.velocity), 1e-9)));
         const linearDecay = Math.exp(-body.linearDamping * delta);
         const angularDecay = Math.exp(-body.angularDamping * delta);
         body.velocity = multiply(body.velocity, linearDecay);
+        if (length(body.velocity) > body.maxLinearSpeed) body.velocity = multiply(normalize(body.velocity), body.maxLinearSpeed);
         body.angularVelocity = multiply(body.angularVelocity, angularDecay);
+        if (body.vehicleSteering) {
+          const yaw = finite(body.object?.rotation?.y);
+          const forward = [-Math.sin(yaw), 0, -Math.cos(yaw)];
+          const forwardSpeed = dot(body.velocity, forward);
+          body.angularVelocity[1] = Math.max(-1.8, Math.min(1.8, forwardSpeed / body.wheelBase * Math.tan(body.steeringAngle)));
+        }
         translate(body, multiply(body.velocity, delta));
         const rotation = readVector(body.object.rotation).map((value, axis) => value + (body.freezeRotation[axis] ? 0 : body.angularVelocity[axis] * delta));
         writeVector(body.object.rotation, rotation);
         body.force = [0, 0, 0];
+        body.brakeAcceleration = 0;
       }
       const nextContacts = new Set();
+      const frictionPairs = new Set();
       const events = [];
       let tested = 0;
       for (let i = 0; i < colliders.length; i += 1) for (let j = i + 1; j < colliders.length; j += 1) {
         if (++tested > MAX_COLLISION_PAIRS) break;
         const a = colliders[i]; const b = colliders[j];
+        if (a.bodyId && a.bodyId === b.bodyId) continue;
         if (((a.mask >>> b.layer) & 1) === 0 || ((b.mask >>> a.layer) & 1) === 0) continue;
         const hit = intersection(a, b);
         if (!hit) continue;
         const key = pairKey(a.id, b.id);
         nextContacts.add(key);
-        resolve(a, b, hit);
+        resolve(a, b, hit, frictionPairs);
         if (!contacts.has(key)) {
           events.push({ type: 'enter', selfId: a.id, otherId: b.id, normal: hit.normal });
           events.push({ type: 'enter', selfId: b.id, otherId: a.id, normal: multiply(hit.normal, -1) });

@@ -289,6 +289,49 @@ function rejectsWithCode(code) {
   };
 }
 
+test('controller camera activation switches the visible viewport from Review to Follow Shot', async (t) => {
+  const { application, viewport } = await applicationFixture(t);
+  const graphId = 'graph/game-camera';
+  const created = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1',
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    baseRevision: 0,
+    idempotencyKey: 'game-camera-follow-shot-0001',
+    label: 'Create a controller game camera',
+    operations: [
+      {
+        op: 'resource.create', resourceType: 'graph', resource: {
+          id: graphId, kind: 'graph', name: 'Game Camera',
+          graph: {
+            formatVersion: 1, id: graphId, domain: 'blueprint', outputs: {},
+            nodes: [
+              { id: 'activate', type: 'event.onActivate', params: {} },
+              { id: 'camera', type: 'entity.reference', params: { entityId: 'entity/game-camera' } },
+              { id: 'active', type: 'camera.setActive', params: {} },
+            ],
+            edges: [
+              { from: { nodeId: 'activate', port: 'out' }, to: { nodeId: 'active', port: 'in' } },
+              { from: { nodeId: 'camera', port: 'entity' }, to: { nodeId: 'active', port: 'camera' } },
+            ],
+          },
+        },
+      },
+      { op: 'entity.create', sceneId: 'scene/main', entity: { id: 'entity/game-camera', kind: 'perspectiveCamera', components: { camera: { fov: 55, near: 0.1, far: 200 } } } },
+      { op: 'entity.create', sceneId: 'scene/main', entity: { id: 'entity/player', kind: 'group', components: { logic: { enabled: true, graphIds: [graphId] } } } },
+      { op: 'scene.settings.patch', sceneId: 'scene/main', patch: { controller: { enabled: true, entityId: 'entity/player', activationKey: 'Enter' } } },
+    ],
+  });
+  assert.equal(created.success, true);
+  viewport.enterReview();
+  assert.equal(viewport.viewMode, 'review');
+  const activation = application.controllerKeyDown('Enter');
+  assert.equal(activation.handled, true);
+  assert.equal(viewport.viewMode, 'follow-shot');
+  assert.equal(viewport.authoredCamera?.userData?.studioEntityId, 'entity/game-camera');
+  assert.equal(viewport.renderCamera, viewport.authoredCamera);
+});
+
 test('raw live-bridge dispatch rejects unknown and oversized fields before execution', async (t) => {
   const { application } = await applicationFixture(t);
   const client = await LiveBridgeClient.fromMarker(application.markerPath, { timeoutMs: 1_000 });

@@ -1210,6 +1210,7 @@ export class StudioApplication {
         const camera = this.#compiled?.objects?.get?.(entityId);
         if (!camera?.isCamera) return false;
         this.#viewport.setAuthoredCamera?.(camera);
+        this.#viewport.followShot?.();
         return true;
       },
     });

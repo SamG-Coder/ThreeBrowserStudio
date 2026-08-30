@@ -146,6 +146,9 @@ function validateRigidBodyComponent(body, path, diagnostics) {
     if (body[key] !== undefined && !boundedNumber(body[key], 0, 100)) diagnostic(diagnostics, 'invalid_rigid_body_damping', `${at}.${key}`, `${key} must be from 0 to 100`);
   }
   if (body.gravityScale !== undefined && !boundedNumber(body.gravityScale, -100, 100)) diagnostic(diagnostics, 'invalid_gravity_scale', `${at}.gravityScale`, 'gravityScale must be from -100 to 100');
+  if (body.maxLinearSpeed !== undefined && !boundedNumber(body.maxLinearSpeed, 0.1, 1_000)) diagnostic(diagnostics, 'invalid_max_linear_speed', `${at}.maxLinearSpeed`, 'maxLinearSpeed must be from 0.1 to 1000');
+  if (body.wheelBase !== undefined && !boundedNumber(body.wheelBase, 0.1, 100)) diagnostic(diagnostics, 'invalid_vehicle_wheel_base', `${at}.wheelBase`, 'wheelBase must be from 0.1 to 100');
+  if (body.steeringWheelIds !== undefined && (!Array.isArray(body.steeringWheelIds) || body.steeringWheelIds.length > 8 || new Set(body.steeringWheelIds).size !== body.steeringWheelIds.length || body.steeringWheelIds.some(id => !isStableId(id)))) diagnostic(diagnostics, 'invalid_steering_wheel_ids', `${at}.steeringWheelIds`, 'steeringWheelIds must contain up to eight unique stable entity IDs');
   for (const key of ['velocity', 'angularVelocity']) {
     if (body[key] !== undefined && !vector3(body[key])) diagnostic(diagnostics, 'invalid_rigid_body_velocity', `${at}.${key}`, `${key} must contain three finite numbers`);
   }
