@@ -208,6 +208,23 @@ test('planar projection writes selected corners from exact position axes', () =>
   }), /axis must be/);
 });
 
+test('curved UV projection supports cylindrical and spherical organic meshes', () => {
+  const source = seamMesh();
+  const cylindrical = applyEditableMeshAttributeEdit(source, {
+    type: 'projectUvs', layer: 'UVMap', cornerIndices: 'all',
+    projection: 'cylindrical', axis: 'y', center: [1, 1, 0],
+  });
+  assert.ok(cylindrical.uvLayers.UVMap.every(Number.isFinite));
+  const spherical = applyEditableMeshAttributeEdit(source, {
+    type: 'projectUvs', layer: 'UVMap', cornerIndices: 'all',
+    projection: 'spherical', axis: 'y', center: [1, 1, 0],
+  });
+  for (let index = 0; index < spherical.uvLayers.UVMap.length; index += 2) {
+    assert.ok(spherical.uvLayers.UVMap[index] >= 0 && spherical.uvLayers.UVMap[index] <= 1);
+    assert.ok(spherical.uvLayers.UVMap[index + 1] >= 0 && spherical.uvLayers.UVMap[index + 1] <= 1);
+  }
+});
+
 test('color layer lifecycle and exact RGBA writes remain independent from UV attributes', () => {
   const source = seamMesh();
   const created = applyEditableMeshAttributeEdit(source, {

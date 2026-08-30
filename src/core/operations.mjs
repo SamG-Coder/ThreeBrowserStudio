@@ -72,7 +72,7 @@ const GEOMETRY_EDIT_KEYS = new Map([
   ['setActiveUvLayer', new Set(['type', 'name'])],
   ['setCornerUvs', new Set(['type', 'layer', 'cornerIndices', 'values'])],
   ['transformUvs', new Set(['type', 'layer', 'cornerIndices', 'translation', 'scale', 'rotation', 'pivot'])],
-  ['projectUvs', new Set(['type', 'layer', 'cornerIndices', 'axis', 'scale', 'offset'])],
+  ['projectUvs', new Set(['type', 'layer', 'cornerIndices', 'projection', 'axis', 'center', 'scale', 'offset'])],
   ['createColorLayer', new Set(['type', 'name', 'fill', 'values', 'setActive'])],
   ['deleteColorLayer', new Set(['type', 'name', 'nextActiveLayer'])],
   ['renameColorLayer', new Set(['type', 'name', 'newName'])],

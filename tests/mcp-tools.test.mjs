@@ -146,13 +146,14 @@ test('all tool inputs reject undeclared top-level fields', () => {
 });
 
 test('tool annotations reflect read-only versus stateful live effects', () => {
-  for (const name of ['three_studio_status', 'three_studio_inspect', 'three_studio_validate', 'three_studio_job']) {
+  for (const name of ['three_studio_status', 'three_studio_inspect', 'three_studio_validate']) {
     assert.equal(TOOL_DEFINITIONS[name].annotations.readOnlyHint, true, name);
   }
   for (const name of ['three_studio_apply', 'three_studio_render', 'three_studio_history', 'three_studio_project', 'three_studio_play']) {
     assert.equal(TOOL_DEFINITIONS[name].annotations.readOnlyHint, false, name);
   }
-  assert.match(TOOL_DEFINITIONS.three_studio_job.title, /Reserved/);
+  assert.equal(TOOL_DEFINITIONS.three_studio_job.annotations.readOnlyHint, false);
+  assert.match(TOOL_DEFINITIONS.three_studio_job.title, /Texture/);
   assert.match(TOOL_DEFINITIONS.three_studio_play.description, /do not execute/);
 });
 
@@ -163,10 +164,13 @@ test('checked-in JSON contract mirrors the lean capability enums', async () => {
   assert.deepEqual(contract.$defs.inspect.properties.query.enum, INSPECT_QUERIES);
   assert.deepEqual(contract.$defs.project.properties.action.enum, ['list', 'create', 'open', 'save']);
   assert.deepEqual(contract.$defs.history.properties.action.enum, ['list', 'inspect', 'undo', 'redo']);
-  assert.deepEqual(contract.$defs.render.properties.passes.items, { enum: ['beauty', 'objectId'] });
-  assert.equal(contract.$defs.render.properties.passes.maxItems, 2);
+  assert.deepEqual(contract.$defs.render.properties.passes.items, { enum: ['beauty', 'raster', 'objectId', 'albedo', 'roughness', 'normal', 'uv'] });
+  assert.equal(contract.$defs.render.properties.passes.maxItems, 7);
   assert.deepEqual(contract.$defs.render.properties.renderer, { const: 'webgpu' });
-  assert.deepEqual(Object.keys(contract.$defs.job.properties), ['protocolVersion', 'sessionId']);
+  assert.deepEqual(Object.keys(contract.$defs.job.properties), [
+    'protocolVersion', 'sessionId', 'action', 'projectId', 'graphId', 'textureId',
+    'output', 'resolution', 'name', 'baseRevision', 'idempotencyKey', 'label',
+  ]);
   assert.deepEqual(
     contract.$defs.layoutPattern.oneOf.map(pattern => pattern.properties.mode.const),
     [...LAYOUT_PATTERN_MODES],
@@ -571,8 +575,17 @@ test('project, play, and history mutation actions require correlation metadata',
   assert.equal(historySchema.safeParse({ action: 'inspect' }).success, false);
   assert.equal(historySchema.safeParse({ action: 'diff' }).success, false);
   assert.equal(historySchema.safeParse({ action: 'undo' }).success, false);
-  assert.equal(jobSchema.safeParse({}).success, true);
-  assert.equal(jobSchema.safeParse({ action: 'start' }).success, false);
+  assert.equal(jobSchema.safeParse({}).success, false);
+  assert.equal(jobSchema.safeParse({
+    action: 'textureBake', projectId: 'project/demo', graphId: 'graph/skin', textureId: 'texture/skin',
+    output: 'albedo', resolution: [256, 256], baseRevision: 0,
+    idempotencyKey: 'bake-skin', label: 'Bake skin',
+  }).success, true);
+  assert.equal(jobSchema.safeParse({
+    action: 'textureBake', projectId: 'project/demo', graphId: 'graph/skin', textureId: 'texture/skin',
+    output: 'albedo', resolution: [512, 512], baseRevision: 0,
+    idempotencyKey: 'bake-skin-large', label: 'Bake skin',
+  }).success, false);
 });
 
 test('registered handler forwards exact tool name and cancellation signal', async () => {

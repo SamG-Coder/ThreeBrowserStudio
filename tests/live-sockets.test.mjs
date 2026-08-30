@@ -62,11 +62,13 @@ test('Principled catalog-only sockets stay unbound while live lobes follow autho
   };
   const incoming = new Set();
   assert.equal(describeSocketLiveness(node, 'shader', 'weight', incoming).live, false);
+  assert.equal(describeSocketLiveness(node, 'shader', 'subsurfaceWeight', incoming).live, true);
   assert.equal(describeSocketLiveness(node, 'shader', 'sheenWeight', incoming).live, true);
   assert.equal(describeSocketLiveness(node, 'shader', 'specularIorLevel', incoming).live, true);
   assert.equal(describeSocketLiveness(node, 'shader', 'anisotropic', incoming).live, false);
   assert.equal(describeSocketLiveness({ ...node, inputs: {} }, 'shader', 'sheenWeight', incoming).live, false);
   assert.equal(principledFeatureFlags(node, incoming).sheen, true);
+  assert.equal(principledFeatureFlags({ ...node, inputs: { subsurfaceWeight: 0.18 } }, incoming).subsurface, true);
 });
 
 test('bump strength times distance below 8-bit is a no-op forecast', () => {

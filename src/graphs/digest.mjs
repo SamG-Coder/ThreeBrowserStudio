@@ -156,7 +156,7 @@ function describeNodeSockets(node, domain, edges) {
   };
 }
 
-function compactNode(node, domain, edges) {
+function compactNode(node, domain, edges, contribution) {
   const socketTruth = describeNodeSockets(node, domain, edges);
   return {
     id: compactString(String(node.id ?? ''), 128),
@@ -164,7 +164,50 @@ function compactNode(node, domain, edges) {
     ...(isPlainRecord(node.params) ? { params: compactSlice(node.params) } : {}),
     ...(isPlainRecord(node.inputs) ? { inputs: compactSlice(node.inputs) } : {}),
     ...(socketTruth ? socketTruth : {}),
+    contribution: contribution.get(node.id) ?? [],
     ...(isPlainRecord(node.layout) ? { layout: compactSlice(node.layout, 32) } : {}),
+  };
+}
+
+function graphContribution(nodes, edges, outputs) {
+  const incoming = new Map();
+  for (const edge of edges) {
+    const list = incoming.get(edge.to?.nodeId) ?? [];
+    if (edge.from?.nodeId) list.push(edge.from.nodeId);
+    incoming.set(edge.to?.nodeId, list);
+  }
+  const byNode = new Map(nodes.map(node => [node.id, []]));
+  const byOutput = {};
+  for (const [outputName, endpoint] of Object.entries(outputs ?? {}).sort(([a], [b]) => compareText(a, b))) {
+    const root = endpoint?.nodeId;
+    const visited = new Set();
+    const visit = (nodeId) => {
+      if (!nodeId || visited.has(nodeId) || !byNode.has(nodeId)) return;
+      visited.add(nodeId);
+      for (const sourceId of incoming.get(nodeId) ?? []) visit(sourceId);
+    };
+    visit(root);
+    const nodeIds = [...visited].sort(compareText);
+    byOutput[outputName] = {
+      rootNodeId: root ?? null,
+      reachableNodeCount: nodeIds.length,
+      nodeIds: nodeIds.length <= 128 ? nodeIds : nodeIds.slice(0, 128),
+      truncated: nodeIds.length > 128,
+      contentHash: contentHash(nodeIds),
+    };
+    for (const nodeId of nodeIds) byNode.get(nodeId).push(outputName);
+  }
+  const unusedNodeIds = nodes.map(node => node.id).filter(nodeId => (byNode.get(nodeId)?.length ?? 0) === 0).sort(compareText);
+  return {
+    byNode,
+    summary: {
+      outputs: byOutput,
+      contributingNodeCount: nodes.length - unusedNodeIds.length,
+      unusedNodeCount: unusedNodeIds.length,
+      unusedNodeIds: unusedNodeIds.length <= 128 ? unusedNodeIds : unusedNodeIds.slice(0, 128),
+      unusedNodeIdsTruncated: unusedNodeIds.length > 128,
+      unusedNodeIdsHash: contentHash(unusedNodeIds),
+    },
   };
 }
 
@@ -275,6 +318,7 @@ export function buildGraphDigest(resourceOrGraph, options = {}) {
     .filter(isPlainRecord)
     .slice()
     .sort((first, second) => compareText(edgeKey(first), edgeKey(second)));
+  const contribution = graphContribution(nodes, edges, inspectedGraph.outputs);
   const nodeLimit = finiteInteger(options.nodeLimit, DEFAULT_NODE_LIMIT, 0, 256);
   const edgeLimit = finiteInteger(options.edgeLimit, DEFAULT_EDGE_LIMIT, 0, 1024);
   if (nodeLimit === 0 && edgeLimit === 0) {
@@ -305,6 +349,7 @@ export function buildGraphDigest(resourceOrGraph, options = {}) {
       errors: [],
     },
     outputs: compactSlice(isPlainRecord(inspectedGraph.outputs) ? inspectedGraph.outputs : {}, 48),
+    contribution: contribution.summary,
     ...(inspectedGraph.settings === undefined ? {} : { settings: compactSlice(inspectedGraph.settings, 48) }),
     nodeCount: nodes.length,
     edgeCount: edges.length,
@@ -354,7 +399,7 @@ export function buildGraphDigest(resourceOrGraph, options = {}) {
 
   const nodeEnd = Math.min(nodes.length, nodeOffset + nodeLimit);
   for (let index = nodeOffset; index < nodeEnd; index += 1) {
-    const full = compactNode(nodes[index], inspectedGraph.domain, edges);
+    const full = compactNode(nodes[index], inspectedGraph.domain, edges, contribution.byNode);
     let candidate = structuredClone(result);
     candidate.nodes.push(full);
     nextNodeOffset = index + 1;

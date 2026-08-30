@@ -49,9 +49,6 @@ export const COMPILED_SHADER_NODE_TYPES = Object.freeze(new Set([
 export const PRINCIPLED_CATALOG_ONLY_SOCKETS = Object.freeze(new Set([
   'weight',
   'diffuseRoughness',
-  'subsurfaceWeight',
-  'subsurfaceRadius',
-  'subsurfaceScale',
   'subsurfaceIor',
   'subsurfaceAnisotropy',
   'coatIor',
@@ -70,6 +67,9 @@ export const PRINCIPLED_ALWAYS_LIVE_SOCKETS = Object.freeze(new Set([
   'coatWeight',
   'coatRoughness',
   'transmissionWeight',
+  'subsurfaceWeight',
+  'subsurfaceRadius',
+  'subsurfaceScale',
 ]));
 
 function valuesEqual(left, right) {
@@ -140,11 +140,16 @@ export function principledFeatureFlags(node, incoming) {
   const staticFilm = filmConnected ? null : Number(nodeStatic(node, 'thinFilmThickness', 0));
   const iridescence = filmConnected || (Number.isFinite(staticFilm) && staticFilm > 0);
 
+  const subsurfaceConnected = incomingHas(incoming, 'subsurfaceWeight');
+  const staticSubsurface = subsurfaceConnected ? null : Number(nodeStatic(node, 'subsurfaceWeight', 0));
+  const subsurface = subsurfaceConnected || (Number.isFinite(staticSubsurface) && staticSubsurface > 0);
+
   return {
     sheen,
     specular,
     anisotropy,
     iridescence,
+    subsurface,
     coatNormal: incomingHas(incoming, 'coatNormal'),
     normal: incomingHas(incoming, 'normal'),
   };

@@ -46,9 +46,9 @@ export const TOOL_DEFINITIONS = Object.freeze({
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   },
   three_studio_job: {
-    title: 'Three Studio Jobs (Reserved)',
-    description: 'Reserved nine-tool slot only. No job action is currently exposed; status.capabilities.jobs is false and invoking this tool returns job_not_implemented.',
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    title: 'Three Studio Texture Jobs',
+    description: 'Bake one deterministic procedural graph output into a canonical texture resource through the guarded authoring kernel.',
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   },
   three_studio_project: {
     title: 'Three Studio Project',

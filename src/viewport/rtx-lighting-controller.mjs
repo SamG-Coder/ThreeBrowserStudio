@@ -536,8 +536,20 @@ export class RtxLightingController {
 
   getDigest() {
     const status = this.getStatus();
+    const stats = this.#lastCollectionReport?.stats ?? null;
+    const meshesSeen = stats?.meshesSeen ?? 0;
+    const meshesIncluded = stats?.meshesIncluded ?? 0;
+    const materialExclusions = Object.fromEntries(Object.entries(this.#lastCollectionReport?.skipCounts ?? {})
+      .filter(([reason]) => /material|transparent|transmission|alpha|texture/iu.test(reason)));
     return deepFreeze({
       status,
+      preflight: {
+        safeToActivate: Boolean(this.#lastCollectionReport?.registrable && (stats?.triangleCount ?? 0) > 0),
+        rasterFallbackAlwaysAvailable: true,
+        meshCoverage: meshesSeen > 0 ? meshesIncluded / meshesSeen : 0,
+        materialExclusions,
+        pairedEvidencePasses: ['raster', 'beauty'],
+      },
       registeredToken: this.#registeredToken,
       collection: this.#lastCollectionReport
         ? {

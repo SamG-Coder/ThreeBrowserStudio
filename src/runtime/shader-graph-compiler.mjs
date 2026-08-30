@@ -138,6 +138,7 @@ function surface(channels, features = {}) {
       specular: Boolean(features.specular),
       anisotropy: Boolean(features.anisotropy),
       iridescence: Boolean(features.iridescence),
+      subsurface: Boolean(features.subsurface),
     }),
   });
 }
@@ -1940,6 +1941,9 @@ function compileNodeFactory({ TSL, graph, parameters, textureResolver, featureTr
         coatWeight: input.get(node, ['coatWeight', 'clearcoat'], 0),
         coatRoughness: input.get(node, ['coatRoughness', 'clearcoatRoughness'], 0.03),
         transmissionWeight: input.get(node, ['transmissionWeight', 'transmission'], 0),
+        subsurfaceWeight: input.get(node, 'subsurfaceWeight', 0),
+        subsurfaceRadius: input.get(node, 'subsurfaceRadius', [1, 0.2, 0.1], 'color'),
+        subsurfaceScale: input.get(node, 'subsurfaceScale', 0.05),
         sheenWeight: input.get(node, ['sheenWeight', 'sheen'], 0),
         sheenRoughness: input.get(node, 'sheenRoughness', 0.5),
         sheenTint: input.get(node, ['sheenTint', 'sheenColor'], [1, 1, 1], 'color'),
@@ -1957,6 +1961,7 @@ function compileNodeFactory({ TSL, graph, parameters, textureResolver, featureTr
         specular: extras.specular,
         anisotropy: extras.anisotropy,
         iridescence: extras.iridescence,
+        subsurface: extras.subsurface,
       }) };
     }
     if (type === 'blender.materialOutput') {
@@ -2008,6 +2013,7 @@ export function compileShaderGraph({ TSL, graph, parameterValues = {}, textureRe
     specular: false,
     anisotropy: false,
     iridescence: false,
+    subsurface: false,
   });
   if (isCompiledSurface(outputs.surface)) {
     const value = outputs.surface;
@@ -2022,6 +2028,11 @@ export function compileShaderGraph({ TSL, graph, parameterValues = {}, textureRe
     outputs.clearcoat ??= value.coatWeight;
     outputs.clearcoatRoughness ??= value.coatRoughness;
     outputs.transmission ??= value.transmissionWeight;
+    if (features.subsurface) {
+      outputs.subsurfaceWeight ??= value.subsurfaceWeight;
+      outputs.subsurfaceRadius ??= value.subsurfaceRadius;
+      outputs.subsurfaceScale ??= value.subsurfaceScale;
+    }
     if (features.sheen) {
       outputs.sheen ??= value.sheenWeight;
       outputs.sheenRoughness ??= value.sheenRoughness;

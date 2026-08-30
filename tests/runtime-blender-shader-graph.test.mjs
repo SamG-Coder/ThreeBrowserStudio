@@ -297,6 +297,7 @@ test('Blender Principled-to-Material-Output flow compiles to a live surface cont
     specular: false,
     anisotropy: false,
     iridescence: false,
+    subsurface: false,
   });
   assert.equal(isCompiledSurface(compilation.outputs.surface), true);
   assert.deepEqual(compilation.outputs.baseColor.arguments, [0.04, 0.24, 0.08, 1]);
@@ -354,6 +355,7 @@ test('authored Principled sheen sockets compile onto the physical NodeMaterial',
     specular: false,
     anisotropy: false,
     iridescence: false,
+    subsurface: false,
   });
   assert.deepEqual(compilation.outputs.sheen.arguments, [0.38]);
   assert.deepEqual(compilation.outputs.sheenRoughness.arguments, [0.42]);
@@ -372,6 +374,19 @@ test('authored Principled sheen sockets compile onto the physical NodeMaterial',
   assert.deepEqual(material.sheenRoughnessNode.arguments, [0.42]);
   assert.deepEqual(material.sheenColorNode.arguments, [0.72, 0.08, 0.16, 1]);
   assert.equal(material.sheen, 1);
+});
+
+test('authored Principled subsurface controls compile as an explicit organic-material approximation', () => {
+  const graph = blenderSurfaceGraph();
+  graph.id = 'shader/blender-subsurface-surface';
+  graph.nodes[0].inputs.subsurfaceWeight = 0.22;
+  graph.nodes[0].inputs.subsurfaceRadius = [1, 0.32, 0.12];
+  graph.nodes[0].inputs.subsurfaceScale = 0.08;
+  const compilation = compileShaderGraph({ TSL: FAKE_TSL, graph });
+  assert.equal(compilation.features.subsurface, true);
+  assert.deepEqual(compilation.outputs.subsurfaceWeight.arguments, [0.22]);
+  assert.deepEqual(compilation.outputs.subsurfaceRadius.arguments, [1, 0.32, 0.12]);
+  assert.deepEqual(compilation.outputs.subsurfaceScale.arguments, [0.08]);
 });
 
 test('authored Principled specular, anisotropy, and thin-film sockets compile live', () => {

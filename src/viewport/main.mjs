@@ -219,7 +219,7 @@ async function main() {
     getCamera: () => reviewSession.renderCamera,
     excludedObjects: [liveFeed.sprite],
     async renderFrame({ target, camera: activeCamera, width, height, pass }) {
-      if (pass !== "objectId") {
+      if (pass === "beauty") {
         const renderedWithRtx = await rtxLighting.render({
           scene,
           camera: activeCamera,

@@ -47,7 +47,7 @@ const COMMAND_KEYS = new Map([
   ['setActiveUvLayer', new Set([...COMMON_KEYS, 'name'])],
   ['setCornerUvs', new Set([...COMMON_KEYS, 'layer', 'cornerIndices', 'values'])],
   ['transformUvs', new Set([...COMMON_KEYS, 'layer', 'cornerIndices', 'translation', 'scale', 'rotation', 'pivot'])],
-  ['projectUvs', new Set([...COMMON_KEYS, 'layer', 'cornerIndices', 'axis', 'scale', 'offset'])],
+  ['projectUvs', new Set([...COMMON_KEYS, 'layer', 'cornerIndices', 'projection', 'axis', 'center', 'scale', 'offset'])],
   ['createColorLayer', new Set([...COMMON_KEYS, 'name', 'fill', 'values', 'setActive'])],
   ['deleteColorLayer', new Set([...COMMON_KEYS, 'name', 'nextActiveLayer'])],
   ['renameColorLayer', new Set([...COMMON_KEYS, 'name', 'newName'])],
@@ -329,9 +329,11 @@ function transformUvs(mesh, command) {
 function projectUvs(mesh, command) {
   const layer = requireLayer(mesh.uvLayers, command.layer, 'layer');
   const selection = selectedIndices(command.cornerIndices, mesh.cornerVertexIndices.length, 'cornerIndices');
-  if (!['xy', 'xz', 'yz'].includes(command.axis)) {
-    throw new TypeError("axis must be 'xy', 'xz', or 'yz'.");
-  }
+  const projection = command.projection ?? 'planar';
+  if (!['planar', 'cylindrical', 'spherical'].includes(projection)) throw new TypeError('Unsupported UV projection.');
+  if (projection === 'planar' && !['xy', 'xz', 'yz'].includes(command.axis)) throw new TypeError("Planar axis must be 'xy', 'xz', or 'yz'.");
+  if (projection !== 'planar' && !['x', 'y', 'z'].includes(command.axis)) throw new TypeError('Curved projection axis must be x, y, or z.');
+  const center = command.center === undefined ? [0, 0, 0] : vector(command.center, 3, 'center');
   const scale = command.scale === undefined ? [1, 1] : scalarOrVector2(command.scale, 'scale');
   const offset = command.offset === undefined
     ? [0, 0]
@@ -340,10 +342,22 @@ function projectUvs(mesh, command) {
   for (const cornerIndex of selection) {
     const vertexIndex = mesh.cornerVertexIndices[cornerIndex];
     const positionOffset = vertexIndex * 3;
-    const x = mesh.positions[positionOffset];
-    const y = mesh.positions[positionOffset + 1];
-    const z = mesh.positions[positionOffset + 2];
-    const projected = command.axis === 'xy' ? [x, y] : command.axis === 'xz' ? [x, z] : [y, z];
+    const x = mesh.positions[positionOffset] - center[0];
+    const y = mesh.positions[positionOffset + 1] - center[1];
+    const z = mesh.positions[positionOffset + 2] - center[2];
+    let projected;
+    if (projection === 'planar') projected = command.axis === 'xy' ? [x, y] : command.axis === 'xz' ? [x, z] : [y, z];
+    else {
+      const axial = command.axis === 'x' ? x : command.axis === 'y' ? y : z;
+      const first = command.axis === 'x' ? y : x;
+      const second = command.axis === 'z' ? y : z;
+      const longitude = Math.atan2(second, first) / (Math.PI * 2) + 0.5;
+      if (projection === 'cylindrical') projected = [longitude, axial];
+      else {
+        const radius = Math.hypot(x, y, z);
+        projected = [longitude, radius > 1e-12 ? Math.asin(Math.max(-1, Math.min(1, axial / radius))) / Math.PI + 0.5 : 0.5];
+      }
+    }
     values[cornerIndex * 2] = projected[0] * scale[0] + offset[0];
     values[cornerIndex * 2 + 1] = projected[1] * scale[1] + offset[1];
   }

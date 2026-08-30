@@ -77,6 +77,7 @@ import { LAYOUT_PATTERN_MODES } from '../core/layout-patterns.mjs';
 import { RTX_SCENE_LIMITS } from './rtx-scene-collector.mjs';
 import { normalizeGeometryRecipe } from './resource-factories.mjs';
 import { createTransactionId } from '../core/util.mjs';
+import { bakeProceduralTextureGraph } from './procedural-texture-compiler.mjs';
 
 const INSPECT_RESPONSE_ENVELOPE_RESERVE_BYTES = 2_048;
 
@@ -616,6 +617,7 @@ export class StudioApplication {
   #projectRoot = null;
   #compiled = null;
   #prepared = null;
+  #dryRunCandidate = null;
   #unsubscribe = null;
   #bridge = null;
   #credentials;
@@ -780,10 +782,14 @@ export class StudioApplication {
   async #prepare(document, context = {}) {
     const candidate = await this.#compile(document);
     if (context.dryRun === true) {
-      candidate.dispose();
+      if (this.#dryRunCandidate !== false) {
+        this.#dryRunCandidate?.dispose?.();
+        this.#dryRunCandidate = candidate;
+      } else candidate.dispose();
       return;
     }
     this.#prepared?.dispose();
+    if (this.#dryRunCandidate && this.#dryRunCandidate !== false) this.#dryRunCandidate.dispose();
     this.#prepared = candidate;
   }
 
@@ -791,6 +797,7 @@ export class StudioApplication {
     const next = this.#prepared;
     if (!next) return;
     this.#prepared = null;
+    this.#dryRunCandidate = null;
     if (!immediate) await new Promise(resolve => (globalThis.requestAnimationFrame ?? (callback => setTimeout(callback, 0)))(resolve));
     this.#bootstrap?.dispose();
     this.#bootstrap = null;
@@ -1048,7 +1055,8 @@ export class StudioApplication {
         timelineGeometryModifierTypes: ['ocean'],
         timelineGeometryMaxSamples: GEOMETRY_MODIFIER_LIMITS.maxOceanTimelineSamples,
         dynamicRtxGeometry: 'excluded-from-static-scene',
-        jobs: false,
+        jobs: true,
+        jobKinds: ['textureBake'],
         graphDomains: ['shader', 'texture', 'blueprint'],
         entityKinds: [
           'scene', 'group', 'empty', 'gameObject', 'mesh', 'instancedMesh',
@@ -1144,7 +1152,7 @@ export class StudioApplication {
         animationInterpolation: ['constant', 'linear', 'smooth', 'bezier'],
         animationLoops: ['once', 'repeat', 'pingpong'],
         renderers: ['webgpu'],
-        renderPasses: ['beauty', 'objectId'],
+        renderPasses: ['beauty', 'raster', 'objectId', 'albedo', 'roughness', 'normal', 'uv'],
         viewportReviewMode: true,
         overlayInvalidation: true,
         applyPixelForecast: true,
@@ -1185,7 +1193,7 @@ export class StudioApplication {
       case 'three_studio_play': return params.action === 'query'
         ? this.#playTool(params)
         : this.#idempotent(params, () => exclusive(() => this.#playTool(params)));
-      case 'three_studio_job': throw new StudioError('job_not_implemented', 'File-producing jobs are not enabled in the lean authoring slice yet.');
+      case 'three_studio_job': return this.#idempotent(params, () => exclusive(() => this.#job(params, context)));
       default: throw new StudioError('method_not_found', `Unknown Studio method ${method}.`);
     }
   }
@@ -1207,6 +1215,68 @@ export class StudioApplication {
       this.#idempotency.delete(key);
       throw error;
     }
+  }
+
+  async #job(params, context = {}) {
+    this.#assertTarget(params, { requireActiveScene: false });
+    if (params.action !== 'textureBake') throw new StudioError('job_not_implemented', `Job ${params.action} is not enabled.`);
+    const resource = this.#kernel.document.resources?.graphs?.[params.graphId];
+    if (!resource) throw new StudioError('not_found', `Graph ${params.graphId} does not exist.`, { id: params.graphId, kind: 'graph' });
+    const bake = bakeProceduralTextureGraph(resource.graph ?? resource, {
+      bake: {
+        resolution: params.resolution,
+        outputs: [params.output],
+        signal: context.signal,
+      },
+    });
+    const map = bake.maps[params.output];
+    if (!map || !(map.data instanceof Uint8Array)) {
+      throw new StudioError('texture_bake_output_unsupported', `Output ${params.output} did not produce an 8-bit raster map.`);
+    }
+    const result = await this.#apply({
+      protocolVersion: params.protocolVersion,
+      sessionId: params.sessionId,
+      projectId: params.projectId,
+      baseRevision: params.baseRevision,
+      idempotencyKey: params.idempotencyKey,
+      label: params.label,
+      operations: [{
+        op: 'resource.create',
+        resourceType: 'texture',
+        resource: {
+          id: params.textureId,
+          kind: 'texture',
+          name: params.name ?? `${params.output} bake`,
+          recipe: {
+            kind: 'dataTexture',
+            width: map.width,
+            height: map.height,
+            channels: map.channels,
+            data: Buffer.from(map.data).toString('base64'),
+            colorSpace: map.colorSpace,
+            flipY: true,
+            generateMipmaps: true,
+          },
+          metadata: {
+            generatedBy: 'textureBake',
+            sourceGraphId: params.graphId,
+            sourceGraphHash: contentHash(resource.graph ?? resource),
+            output: params.output,
+          },
+        },
+      }],
+    }, context);
+    return {
+      ...result,
+      job: {
+        action: params.action,
+        graphId: params.graphId,
+        textureId: params.textureId,
+        output: params.output,
+        resolution: [map.width, map.height],
+        range: map.range,
+      },
+    };
   }
 
   async #project(params) {
@@ -1533,15 +1603,55 @@ export class StudioApplication {
       { compiled: this.#compiled, THREE: this.#THREE },
     ));
     const pixelForecast = forecastPixelImpact({ before: document, operations });
-    const response = await this.#kernel.apply({
-      protocolVersion: params.protocolVersion,
-      projectId: params.projectId,
-      label: params.label,
-      baseRevision: params.baseRevision,
-      idempotencyKey: params.idempotencyKey,
-      dryRun: params.dryRun ?? false,
-      operations,
-    }, { signal: context.signal });
+    this.#dryRunCandidate = params.previewEvidence ? null : false;
+    let response;
+    try {
+      response = await this.#kernel.apply({
+        protocolVersion: params.protocolVersion,
+        projectId: params.projectId,
+        label: params.label,
+        baseRevision: params.baseRevision,
+        idempotencyKey: params.idempotencyKey,
+        dryRun: params.dryRun ?? false,
+        operations,
+      }, { signal: context.signal });
+    } catch (error) {
+      if (this.#dryRunCandidate && this.#dryRunCandidate !== false) this.#dryRunCandidate.dispose();
+      this.#dryRunCandidate = null;
+      throw error;
+    }
+    let previewEvidence;
+    if (params.previewEvidence && this.#dryRunCandidate) {
+      const candidate = this.#dryRunCandidate;
+      const scene = this.#viewport.scene;
+      const previousRootVisible = this.#compiled?.root?.visible;
+      const previousBackground = scene.background;
+      const previousBackgroundNode = scene.backgroundNode;
+      const previousFog = scene.fog;
+      try {
+        if (this.#compiled?.root) this.#compiled.root.visible = false;
+        scene.add(candidate.root);
+        scene.background = candidate.background;
+        scene.backgroundNode = candidate.backgroundNode;
+        scene.fog = candidate.fog;
+        previewEvidence = await this.#viewport.capture(undefined, {
+          ...params.previewEvidence,
+          pass: 'raster',
+          camera: candidate.activeCamera ?? this.#viewport.renderCamera,
+        });
+      } finally {
+        candidate.root.removeFromParent?.();
+        if (this.#compiled?.root && previousRootVisible !== undefined) this.#compiled.root.visible = previousRootVisible;
+        scene.background = previousBackground;
+        scene.backgroundNode = previousBackgroundNode;
+        scene.fog = previousFog;
+        candidate.dispose();
+        this.#dryRunCandidate = null;
+      }
+    } else if (this.#dryRunCandidate && this.#dryRunCandidate !== false) {
+      this.#dryRunCandidate.dispose();
+      this.#dryRunCandidate = null;
+    }
     if (response.success && params.dryRun !== true && operationsSnapFollowShot(operations)) {
       this.#viewport.followShot?.();
     }
@@ -1551,6 +1661,7 @@ export class StudioApplication {
       projectId: this.#kernel.projectId,
       evidenceRequested: params.evidence === true,
       pixelForecast,
+      ...(previewEvidence ? { previewEvidence } : {}),
     };
   }
 
@@ -1664,6 +1775,78 @@ export class StudioApplication {
     }
   }
 
+  #diagnosticMaterial(source, pass) {
+    const THREE = this.#THREE;
+    const TSL = this.#TSL;
+    const MaterialCtor = THREE.MeshBasicNodeMaterial ?? THREE.MeshBasicMaterial;
+    const material = new MaterialCtor();
+    const scalarColor = value => {
+      const bounded = Math.min(1, Math.max(0, Number(value) || 0));
+      material.color?.setRGB?.(bounded, bounded, bounded);
+    };
+    if (TSL?.vec3 && 'colorNode' in material) {
+      if (pass === 'albedo') {
+        material.colorNode = source?.colorNode
+          ?? (source?.map && TSL.texture ? TSL.texture(source.map).rgb : null)
+          ?? TSL.vec3(source?.color?.r ?? 1, source?.color?.g ?? 1, source?.color?.b ?? 1);
+      } else if (pass === 'roughness') {
+        const value = source?.roughnessNode ?? TSL.float?.(source?.roughness ?? 0.5) ?? (source?.roughness ?? 0.5);
+        material.colorNode = TSL.vec3(value, value, value);
+      } else if (pass === 'normal') {
+        const normal = source?.normalNode ?? TSL.normalView;
+        material.colorNode = normal?.mul?.(0.5)?.add?.(0.5) ?? TSL.vec3(0.5, 0.5, 1);
+      } else if (pass === 'uv') {
+        const uv = TSL.fract?.(TSL.uv?.()) ?? TSL.uv?.();
+        material.colorNode = uv ? TSL.vec3(uv.x, uv.y, 0) : TSL.vec3(0, 0, 0);
+      }
+    } else if (pass === 'albedo' && material.color?.copy && source?.color) material.color.copy(source.color);
+    else if (pass === 'roughness') scalarColor(source?.roughness ?? 0.5);
+    else if (pass === 'normal') material.color?.setRGB?.(0.5, 0.5, 1);
+    else material.color?.setRGB?.(0, 0, 0);
+    material.name = `Studio diagnostic ${pass}`;
+    material.toneMapped = false;
+    return material;
+  }
+
+  async #captureMaterialDiagnostic(captureCamera, params, pass) {
+    const scene = this.#viewport.scene;
+    const renderer = this.#viewport.renderer;
+    const restored = [];
+    const owned = [];
+    scene.traverse(object => {
+      if (!(object.isMesh || object.isSkinnedMesh || object.isInstancedMesh)) return;
+      const sources = Array.isArray(object.material) ? object.material : [object.material];
+      const replacements = sources.map(source => {
+        const material = this.#diagnosticMaterial(source, pass);
+        owned.push(material);
+        return material;
+      });
+      restored.push({ object, material: object.material });
+      object.material = Array.isArray(object.material) ? replacements : replacements[0];
+    });
+    const previousBackground = scene.background;
+    const previousBackgroundNode = scene.backgroundNode;
+    const previousTone = renderer.toneMapping;
+    scene.background = this.#THREE.Color ? new this.#THREE.Color(0, 0, 0) : 0;
+    scene.backgroundNode = null;
+    if (this.#THREE.NoToneMapping !== undefined) renderer.toneMapping = this.#THREE.NoToneMapping;
+    try {
+      const filePath = path.join(this.studioRoot, 'artifacts', `studio-${Date.now()}-${pass}.png`);
+      return await this.#viewport.capture(filePath, {
+        width: params.width,
+        height: params.height,
+        pass,
+        camera: captureCamera,
+      });
+    } finally {
+      scene.background = previousBackground;
+      scene.backgroundNode = previousBackgroundNode;
+      renderer.toneMapping = previousTone;
+      for (const { object, material } of restored) object.material = material;
+      for (const material of owned) material.dispose?.();
+    }
+  }
+
   async #render(params) {
     this.#assertTarget(params, { requireActiveScene: true });
     if (params.renderer && params.renderer !== 'webgpu') {
@@ -1713,8 +1896,21 @@ export class StudioApplication {
           }));
           continue;
         }
+        if (pass === 'raster') {
+          evidence.push(await this.#viewport.capture(undefined, {
+            width: params.width,
+            height: params.height,
+            pass,
+            camera: captureCamera,
+          }));
+          continue;
+        }
         if (pass === 'objectId') {
           evidence.push(await this.#captureObjectId(captureCamera, params));
+          continue;
+        }
+        if (['albedo', 'roughness', 'normal', 'uv'].includes(pass)) {
+          evidence.push(await this.#captureMaterialDiagnostic(captureCamera, params, pass));
           continue;
         }
         throw new StudioError('render_pass_not_implemented', `Render pass ${pass} is not enabled yet.`);
@@ -1887,6 +2083,7 @@ export class StudioApplication {
       if (owned) await rm(this.#markerPath, { force: true }).catch(() => {});
     }
     this.#prepared?.dispose();
+    if (this.#dryRunCandidate && this.#dryRunCandidate !== false) this.#dryRunCandidate.dispose();
     const compiled = this.#compiled;
     if (typeof this.#viewport.setAppearance === 'function') this.#viewport.setAppearance({});
     else {
@@ -1896,6 +2093,7 @@ export class StudioApplication {
     }
     compiled?.dispose();
     this.#prepared = null;
+    this.#dryRunCandidate = null;
     this.#compiled = null;
   }
 }

@@ -775,6 +775,20 @@ export function createMaterial(THREE, resource = {}, options = {}) {
   if (graphOutputs.normal) material.normalNode = graphOutputs.normal;
   else if (graphOutputs.height && options.TSL?.bumpMap) material.normalNode = options.TSL.bumpMap(graphOutputs.height, values.heightStrength ?? 1);
   if (graphOutputs.emissive) material.emissiveNode = graphOutputs.emissive;
+  if (graphOutputs.subsurfaceWeight && options.TSL?.normalWorld && options.TSL?.cameraPosition) {
+    const view = options.TSL.cameraPosition.sub(options.TSL.positionWorld).normalize();
+    const rim = options.TSL.float(1).sub(options.TSL.abs(options.TSL.dot(options.TSL.normalWorld, view))).saturate();
+    const scatter = (graphOutputs.baseColor ?? graphOutputs.albedo ?? options.TSL.vec3(1, 1, 1))
+      .mul(options.TSL.clamp(graphOutputs.subsurfaceRadius ?? options.TSL.vec3(1, 0.2, 0.1), 0, 1))
+      .mul(graphOutputs.subsurfaceWeight)
+      .mul(options.TSL.clamp((graphOutputs.subsurfaceScale ?? options.TSL.float(0.05)).mul(20), 0, 1))
+      .mul(rim.mul(0.3).add(0.04));
+    material.emissiveNode = material.emissiveNode?.add?.(scatter) ?? scatter;
+    material.userData = {
+      ...(material.userData ?? {}),
+      studioSubsurfaceApproximation: 'view-rim-wrap',
+    };
+  }
   if (graphOutputs.opacity ?? graphOutputs.mask) material.opacityNode = graphOutputs.opacity ?? graphOutputs.mask;
   if (graphOutputs.alphaTest) material.alphaTestNode = graphOutputs.alphaTest;
   if (graphOutputs.positionOffset) material.positionNode = options.TSL.positionLocal.add(graphOutputs.positionOffset);

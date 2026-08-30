@@ -845,10 +845,20 @@ const geometryProjectUvsEdit = z.object({
   type: z.literal('projectUvs'),
   layer: geometryLayerName,
   cornerIndices: geometryCornerIndices,
-  axis: z.enum(['xy', 'xz', 'yz']),
+  projection: z.enum(['planar', 'cylindrical', 'spherical']).optional(),
+  axis: z.enum(['xy', 'xz', 'yz', 'x', 'y', 'z']),
+  center: geometryVec3.optional(),
   scale: geometryUvScale.optional(),
   offset: geometryUvVec2.optional(),
-}).strict();
+}).strict().superRefine((value, context) => {
+  const projection = value.projection ?? 'planar';
+  if (projection === 'planar' && !['xy', 'xz', 'yz'].includes(value.axis)) {
+    context.addIssue({ code: 'custom', path: ['axis'], message: 'Planar projection requires xy, xz, or yz.' });
+  }
+  if (projection !== 'planar' && !['x', 'y', 'z'].includes(value.axis)) {
+    context.addIssue({ code: 'custom', path: ['axis'], message: 'Curved projection requires x, y, or z.' });
+  }
+});
 const geometryCreateColorLayerEdit = z.object({
   type: z.literal('createColorLayer'),
   name: geometryLayerName,
@@ -1077,8 +1087,15 @@ export const operationSchema = z.discriminatedUnion('op', [
 export const applySchema = z.object({
   ...mutationFields,
   dryRun: z.boolean().optional().default(false),
+  previewEvidence: z.object({
+    width: z.number().int().min(16).max(1920).optional().default(960),
+    height: z.number().int().min(16).max(1080).optional().default(720),
+  }).strict().optional(),
   operations: z.array(operationSchema).min(1).max(128),
-}).strict();
+}).strict().refine(value => value.previewEvidence === undefined || value.dryRun === true, {
+  message: 'previewEvidence requires dryRun true.',
+  path: ['previewEvidence'],
+});
 
 export const validateSchema = z.object({
   ...connectionFields,
@@ -1105,7 +1122,8 @@ export const renderSchema = z.object({
   frame: frameSchema.optional(),
   width: z.number().int().min(16).max(1920).optional().default(1280),
   height: z.number().int().min(16).max(1080).optional().default(720),
-  passes: z.array(z.enum(['beauty', 'objectId'])).min(1).max(2).optional().default(['beauty']),
+  passes: z.array(z.enum(['beauty', 'raster', 'objectId', 'albedo', 'roughness', 'normal', 'uv']))
+    .min(1).max(7).optional().default(['beauty']),
   renderer: z.literal('webgpu').optional().default('webgpu'),
 }).strict();
 
@@ -1136,7 +1154,26 @@ export const JOB_KINDS = Object.freeze([
 
 export const jobSchema = z.object({
   ...connectionFields,
-}).strict();
+  action: z.literal('textureBake'),
+  projectId: identifier,
+  graphId: identifier,
+  textureId: identifier,
+  output: z.enum(['albedo', 'roughness', 'normal']),
+  resolution: z.tuple([
+    z.number().int().min(1).max(512),
+    z.number().int().min(1).max(512),
+  ]),
+  name: z.string().min(1).max(160).optional(),
+  baseRevision: nonNegativeInteger,
+  idempotencyKey,
+  label,
+}).strict().refine(value => {
+  const channels = value.output === 'roughness' ? 1 : 4;
+  return value.resolution[0] * value.resolution[1] * channels <= DATA_TEXTURE_LIMITS.maxEncodedBytes;
+}, {
+  message: 'Texture bake decoded output exceeds the canonical encoded-source byte budget.',
+  path: ['resolution'],
+});
 
 export const projectSchema = z.object({
   ...connectionFields,
@@ -1193,8 +1230,8 @@ export const TOOL_SCHEMAS = Object.freeze({
 
 export const STUDIO_TOOL_NAMES = Object.freeze(Object.keys(TOOL_SCHEMAS));
 
-export const MCP_SERVER_VERSION = '0.2.4';
-export const TOOL_CONTRACT_VERSION = 'three-studio-tools/7';
+export const MCP_SERVER_VERSION = '0.3.0';
+export const TOOL_CONTRACT_VERSION = 'three-studio-tools/8';
 export const TOOL_INPUT_SCHEMAS = Object.freeze(Object.fromEntries(
   STUDIO_TOOL_NAMES.map(name => [name, z.toJSONSchema(TOOL_SCHEMAS[name], { io: 'input' })]),
 ));
@@ -1247,6 +1284,9 @@ const TOOL_CONTRACT_FEATURES = Object.freeze({
   applyPixelForecast: true,
   beautyDigest: true,
   objectIdPass: true,
+  materialDiagnosticPasses: Object.freeze(['raster', 'albedo', 'roughness', 'normal', 'uv']),
+  proceduralTextureBakeJob: true,
+  dryRunCandidateEvidence: true,
   beautyProbeEntityId: true,
   projectVisibility: true,
   projectVisibilityOcclusion: true,
