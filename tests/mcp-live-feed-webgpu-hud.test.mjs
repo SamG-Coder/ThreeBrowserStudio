@@ -256,6 +256,12 @@ test('side panel is visible by default and camera updates do not invalidate', ()
   assert.equal(hud.material.depthTest, false);
   assert.equal(hud.texture.colorSpace, 'srgb');
   assert.equal(hud.host.backColor, 'rgba(8, 13, 22, 0.92)', 'HUD backing keeps its intentional translucency');
+  const logPage = hud.host.children.find(child => child.name === 'log-page');
+  const explorerPage = hud.host.children.find(child => child.name === 'explorer-page');
+  assert.equal(logPage.backColor, 'rgba(0, 0, 0, 0)');
+  assert.equal(logPage.children.find(child => child.name === 'log-list').backColor, 'rgba(0, 0, 0, 0)');
+  assert.equal(explorerPage.backColor, 'rgba(0, 0, 0, 0)');
+  assert.equal(explorerPage.children.find(child => child.name === 'explorer-list').backColor, 'rgba(0, 0, 0, 0)');
   assert.equal(hud.panelBounds.left, 12);
   assert.equal(hud.panelBounds.pixelRatio, 1);
   assert.equal(hud.canvas.width, Math.round(hud.panelBounds.width * hud.panelBounds.pixelRatio));

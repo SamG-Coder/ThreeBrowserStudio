@@ -31,6 +31,7 @@ const TAB_HEIGHT = 30;
 const SCROLL_WIDTH = 10;
 const MAX_RETAINED_SOURCE_ENTRIES = 256;
 const PANEL_BACKGROUND = 'rgba(8, 13, 22, 0.92)';
+const PANEL_LAYER_TRANSPARENT = 'rgba(0, 0, 0, 0)';
 const STAGE_COLORS = Object.freeze({
   started: '#f2b45c',
   completed: '#58dc90',
@@ -294,10 +295,10 @@ export function createMcpLiveFeedWebGpuHud({
     },
   }));
 
-  const logPage = host.add(new Control({ name: 'log-page', backColor: PANEL_BACKGROUND }));
+  const logPage = host.add(new Control({ name: 'log-page', backColor: PANEL_LAYER_TRANSPARENT }));
   const logToolbar = logPage.add(new Control({
     name: 'log-toolbar',
-    backColor: PANEL_BACKGROUND,
+    backColor: PANEL_LAYER_TRANSPARENT,
   }));
   const logDetailToggle = logToolbar.add(new ToggleOption({
     name: 'log-expanded',
@@ -307,6 +308,7 @@ export function createMcpLiveFeedWebGpuHud({
   }));
   const list = logPage.add(new VirtualList({
     name: 'log-list',
+    backColor: PANEL_LAYER_TRANSPARENT,
     itemHeight: ROW_HEIGHT,
     paintItem(drawContext, drawFonts, { index, bounds }) {
       const entry = latest[index];
@@ -348,10 +350,11 @@ export function createMcpLiveFeedWebGpuHud({
   const explorerPage = host.add(new Control({
     name: 'explorer-page',
     visible: false,
-    backColor: PANEL_BACKGROUND,
+    backColor: PANEL_LAYER_TRANSPARENT,
   }));
   const explorerList = explorerPage.add(new VirtualList({
     name: 'explorer-list',
+    backColor: PANEL_LAYER_TRANSPARENT,
     itemHeight: EXPLORER_ROW_HEIGHT,
     paintItem(drawContext, drawFonts, { index, bounds }) {
       const row = explorerRows[index];
@@ -413,7 +416,7 @@ export function createMcpLiveFeedWebGpuHud({
   const settingsPage = host.add(new Control({
     name: 'settings-page',
     visible: false,
-    backColor: PANEL_BACKGROUND,
+    backColor: PANEL_LAYER_TRANSPARENT,
   }));
   const cameraLabel = settingsPage.add(new Label({
     text: 'Camera',
@@ -501,7 +504,7 @@ export function createMcpLiveFeedWebGpuHud({
   const promptPage = promptTab ? host.add(new Control({
     name: 'prompt-page',
     visible: false,
-    backColor: PANEL_BACKGROUND,
+    backColor: PANEL_LAYER_TRANSPARENT,
   })) : null;
   if (promptPage) {
     promptPage.add(new Label({
