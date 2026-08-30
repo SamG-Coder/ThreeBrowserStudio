@@ -5,7 +5,7 @@ import { StudioError } from './errors.mjs';
 import { loadObjectIdEvidence, sampleObjectId } from './object-id-evidence.mjs';
 import { decodePngRgba } from './png-rgba.mjs';
 
-export const STUDIO_EVIDENCE_NAME = /^studio-\d+\.png$/;
+export const STUDIO_EVIDENCE_NAME = /^studio-\d+(?:-raster)?\.png$/;
 export const BEAUTY_EVIDENCE_LIMITS = Object.freeze({
   maxProbes: 32,
   maxChanged: 32,
@@ -42,8 +42,8 @@ function latestObjectIdMeta(latestEvidence, requested) {
 }
 
 /**
- * Resolve a Studio beauty PNG. Only `studio-<timestamp>.png` files inside the
- * session artifacts directory are readable. Bare filenames resolve there.
+ * Resolve a Studio beauty or explicit raster-preview PNG inside the session
+ * artifacts directory. Object-id and material diagnostic passes stay excluded.
  */
 export function resolveStudioEvidencePath(requested, {
   studioRoot,

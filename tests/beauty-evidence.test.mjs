@@ -141,3 +141,13 @@ test('beauty evidence paths stay inside studio artifacts', async (t) => {
     error => error.code === 'beauty_evidence_path_invalid',
   );
 });
+
+test('dry-run raster previews are digestible but diagnostic passes remain excluded', async (t) => {
+  const { studioRoot, artifacts } = await withArtifacts(t);
+  await writeFile(path.join(artifacts, 'studio-600-raster.png'), encodePngRgba(1, 1, Buffer.from([20, 30, 40, 255])));
+  assert.equal(buildBeautyDigest({ studioRoot, evidence: { path: 'studio-600-raster.png' } }).stats.pixelCount, 1);
+  assert.throws(
+    () => resolveStudioEvidencePath('studio-600-objectid.png', { studioRoot }),
+    error => error.code === 'beauty_evidence_path_invalid',
+  );
+});
