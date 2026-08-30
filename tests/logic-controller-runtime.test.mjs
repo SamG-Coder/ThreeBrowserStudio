@@ -205,6 +205,7 @@ test('camera follow lerps on every Step update even before a fixed physics tick'
   runtime.update(1 / 120);
   assert.ok(camera.position.x > 0, 'camera should interpolate on a display Step before the first fixed physics tick');
   assert.ok(camera.position.x < 8, 'smoothing should lerp rather than snap');
+  assert.ok(camera.lastLookAt[0] > 0 && camera.lastLookAt[0] < 8, 'camera aim should smooth the fixed-step target instead of snapping');
 });
 
 test('local rigid-body force follows Self yaw for vehicle controls', () => {

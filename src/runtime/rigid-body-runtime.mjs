@@ -35,8 +35,17 @@ function bodyState(entity, object) {
     angularVelocity: vector(source.angularVelocity),
     maxLinearSpeed: source.maxLinearSpeed === undefined ? Infinity : finite(source.maxLinearSpeed, Infinity),
     wheelBase: finite(source.wheelBase, 2.8),
+    trackWidth: finite(source.trackWidth, 1.6),
     steeringWheelIds: Array.isArray(source.steeringWheelIds) ? [...source.steeringWheelIds] : [],
+    rollingWheelIds: Array.isArray(source.rollingWheelIds) ? [...source.rollingWheelIds] : [],
+    wheelRadius: finite(source.wheelRadius, 0.5),
+    steeringResponse: finite(source.steeringResponse, 10),
+    lateralGrip: finite(source.lateralGrip, 9),
+    maxYawRate: finite(source.maxYawRate, 1.8),
     steeringAngle: 0,
+    steeringTargetAngle: 0,
+    wheelRotations: new Map((Array.isArray(source.rollingWheelIds) ? source.rollingWheelIds : []).map(id => [id, 0])),
+    steeringVisualAngles: [],
     vehicleSteering: source.wheelBase !== undefined || Array.isArray(source.steeringWheelIds),
     force: [0, 0, 0],
     lastAppliedForce: null,
@@ -243,6 +252,10 @@ export function createRigidBodyRuntime({ scene, objects } = {}) {
         lastAppliedForce: body.lastAppliedForce ? [...body.lastAppliedForce] : null,
         forceApplicationCount: body.forceApplicationCount,
         steeringAngle: body.steeringAngle,
+        steeringTargetAngle: body.steeringTargetAngle,
+        steeringVisualAngles: [...body.steeringVisualAngles],
+        forwardSpeed: body.forwardSpeed ?? 0,
+        lateralSpeed: body.lateralSpeed ?? 0,
       } : null;
     },
     setVelocity(id, value) { const body = bodies.get(id); if (!body) return false; body.velocity = vector(value); return true; },
@@ -250,14 +263,7 @@ export function createRigidBodyRuntime({ scene, objects } = {}) {
     setSteering(id, value) {
       const body = bodies.get(id);
       if (!body || !Number.isFinite(value)) return false;
-      body.steeringAngle = Math.max(-0.75, Math.min(0.75, value));
-      for (const wheelId of body.steeringWheelIds) {
-        const wheel = objects?.get?.(wheelId);
-        if (!wheel?.rotation) continue;
-        wheel.rotation.y = body.steeringAngle;
-        wheel.updateMatrix?.();
-        wheel.updateMatrixWorld?.(true);
-      }
+      body.steeringTargetAngle = Math.max(-0.75, Math.min(0.75, value));
       return true;
     },
     setGravityScale(id, value) { const body = bodies.get(id); if (!body || !Number.isFinite(value)) return false; body.gravityScale = Math.max(-100, Math.min(100, value)); return true; },
@@ -283,12 +289,24 @@ export function createRigidBodyRuntime({ scene, objects } = {}) {
         body.force = [0, 0, 0];
         body.brakeAcceleration = 0;
         body.steeringAngle = 0;
+        body.steeringTargetAngle = 0;
+        body.wheelRotations.clear();
+        for (const wheelId of body.rollingWheelIds) body.wheelRotations.set(wheelId, 0);
+        body.steeringVisualAngles = [];
+        body.forwardSpeed = 0;
+        body.lateralSpeed = 0;
         body.lastAppliedForce = null;
         body.forceApplicationCount = 0;
         for (const wheelId of body.steeringWheelIds) {
           const wheel = objects?.get?.(wheelId);
           if (!wheel) continue;
           wheel.rotation.y = 0;
+          wheel.updateMatrixWorld?.(true);
+        }
+        for (const wheelId of body.rollingWheelIds) {
+          const wheel = objects?.get?.(wheelId);
+          if (!wheel) continue;
+          wheel.rotation.x = 0;
           wheel.updateMatrixWorld?.(true);
         }
       }
@@ -307,17 +325,53 @@ export function createRigidBodyRuntime({ scene, objects } = {}) {
         if (body.vehicleSteering) {
           const yaw = finite(body.object?.rotation?.y);
           const forward = [-Math.sin(yaw), 0, -Math.cos(yaw)];
+          const right = [Math.cos(yaw), 0, -Math.sin(yaw)];
           const forwardSpeed = dot(body.velocity, forward);
-          body.angularVelocity[1] = Math.max(-1.8, Math.min(1.8, forwardSpeed / body.wheelBase * Math.tan(body.steeringAngle)));
+          const lateralSpeed = dot(body.velocity, right) * Math.exp(-body.lateralGrip * delta);
+          const steeringAlpha = 1 - Math.exp(-body.steeringResponse * delta);
+          body.steeringAngle += (body.steeringTargetAngle - body.steeringAngle) * steeringAlpha;
+          body.angularVelocity[1] = Math.max(-body.maxYawRate, Math.min(body.maxYawRate, forwardSpeed / body.wheelBase * Math.tan(body.steeringAngle)));
+          const nextYaw = yaw + (body.freezeRotation[1] ? 0 : body.angularVelocity[1] * delta);
+          const nextForward = [-Math.sin(nextYaw), 0, -Math.cos(nextYaw)];
+          const nextRight = [Math.cos(nextYaw), 0, -Math.sin(nextYaw)];
+          body.velocity = [
+            nextForward[0] * forwardSpeed + nextRight[0] * lateralSpeed,
+            body.velocity[1],
+            nextForward[2] * forwardSpeed + nextRight[2] * lateralSpeed,
+          ];
+          body.forwardSpeed = forwardSpeed;
+          body.lateralSpeed = lateralSpeed;
+          const centerAngle = body.steeringAngle;
+          const turnRadius = Math.abs(centerAngle) > 1e-6 ? body.wheelBase / Math.abs(Math.tan(centerAngle)) : Infinity;
+          const innerAngle = Number.isFinite(turnRadius) ? Math.atan(body.wheelBase / Math.max(0.05, turnRadius - body.trackWidth * 0.5)) : 0;
+          const outerAngle = Number.isFinite(turnRadius) ? Math.atan(body.wheelBase / (turnRadius + body.trackWidth * 0.5)) : 0;
+          body.steeringVisualAngles = centerAngle >= 0
+            ? [innerAngle, outerAngle]
+            : [-outerAngle, -innerAngle];
+          for (const [index, wheelId] of body.steeringWheelIds.entries()) {
+            const wheel = objects?.get?.(wheelId);
+            if (wheel?.rotation) wheel.rotation.y = body.steeringVisualAngles[index] ?? centerAngle;
+          }
+          for (const [index, wheelId] of body.rollingWheelIds.entries()) {
+            const wheel = objects?.get?.(wheelId);
+            const sideSpeed = forwardSpeed + (index % 2 === 0 ? -1 : 1) * body.angularVelocity[1] * body.trackWidth * 0.5;
+            const rotation = (body.wheelRotations.get(wheelId) ?? 0) + sideSpeed / body.wheelRadius * delta;
+            body.wheelRotations.set(wheelId, rotation);
+            if (wheel?.rotation) wheel.rotation.x = rotation;
+          }
+          writeVector(body.object.rotation, [finite(body.object.rotation?.x), nextYaw, finite(body.object.rotation?.z)]);
+          translate(body, multiply(body.velocity, delta));
+        } else {
+          translate(body, multiply(body.velocity, delta));
+          const rotation = readVector(body.object.rotation).map((value, axis) => value + (body.freezeRotation[axis] ? 0 : body.angularVelocity[axis] * delta));
+          writeVector(body.object.rotation, rotation);
         }
-        translate(body, multiply(body.velocity, delta));
-        const rotation = readVector(body.object.rotation).map((value, axis) => value + (body.freezeRotation[axis] ? 0 : body.angularVelocity[axis] * delta));
-        writeVector(body.object.rotation, rotation);
         body.force = [0, 0, 0];
         body.brakeAcceleration = 0;
       }
       const nextContacts = new Set();
       const frictionPairs = new Set();
+      const resolutionHits = new Map();
       const events = [];
       let tested = 0;
       for (let i = 0; i < colliders.length; i += 1) for (let j = i + 1; j < colliders.length; j += 1) {
@@ -329,12 +383,17 @@ export function createRigidBodyRuntime({ scene, objects } = {}) {
         if (!hit) continue;
         const key = pairKey(a.id, b.id);
         nextContacts.add(key);
-        resolve(a, b, hit, frictionPairs);
+        if (!a.isTrigger && !b.isTrigger) {
+          const resolutionKey = pairKey(a.bodyId ?? a.id, b.bodyId ?? b.id);
+          const previous = resolutionHits.get(resolutionKey);
+          if (!previous || hit.penetration > previous.hit.penetration) resolutionHits.set(resolutionKey, { a, b, hit });
+        }
         if (!contacts.has(key)) {
           events.push({ type: 'enter', selfId: a.id, otherId: b.id, normal: hit.normal });
           events.push({ type: 'enter', selfId: b.id, otherId: a.id, normal: multiply(hit.normal, -1) });
         }
       }
+      for (const { a, b, hit } of resolutionHits.values()) resolve(a, b, hit, frictionPairs);
       for (const key of contacts) if (!nextContacts.has(key)) {
         const [a, b] = key.split('|');
         events.push({ type: 'exit', selfId: a, otherId: b });

@@ -162,7 +162,7 @@ test('vehicle steering turns front wheels and derives yaw from longitudinal spee
   const scene = {
     settings: { physics: { gravity: [0, 0, 0] } },
     entities: {
-      car: { id: 'car', components: { rigidBody: { bodyType: 'dynamic', mass: 1, linearDamping: 0, angularDamping: 0, velocity: [0, 0, -10], wheelBase: 4, steeringWheelIds: ['front-left', 'front-right'] } } },
+      car: { id: 'car', components: { rigidBody: { bodyType: 'dynamic', mass: 1, linearDamping: 0, angularDamping: 0, velocity: [0, 0, -10], wheelBase: 4, trackWidth: 2, wheelRadius: 0.5, steeringWheelIds: ['front-left', 'front-right'], rollingWheelIds: ['front-left', 'front-right'] } } },
       'front-left': { id: 'front-left', parentId: 'car', components: {} },
       'front-right': { id: 'front-right', parentId: 'car', components: {} },
     },
@@ -170,9 +170,14 @@ test('vehicle steering turns front wheels and derives yaw from longitudinal spee
   const runtime = createRigidBodyRuntime({ scene, objects: new Map([['car', car], ['front-left', left], ['front-right', right]]) });
   runtime.setSteering('car', 0.4);
   runtime.step(0.1);
-  assert.equal(left.rotation.y, 0.4);
-  assert.equal(right.rotation.y, 0.4);
+  assert.ok(left.rotation.y > 0 && left.rotation.y < 0.4, 'steering should build progressively');
+  assert.ok(left.rotation.y > right.rotation.y, 'inside wheel should use the sharper Ackermann angle');
+  assert.ok(Math.abs(left.rotation.x) > 0, 'wheel pivots should roll with longitudinal travel');
+  assert.ok(Math.abs(left.rotation.x) < Math.abs(right.rotation.x), 'inside wheel should roll more slowly around a turn');
   assert.ok(runtime.getBodyState('car').angularVelocity[1] > 0);
+  const forwardSpeed = Math.abs(runtime.getBodyState('car').forwardSpeed);
+  const lateralSpeed = Math.abs(runtime.getBodyState('car').lateralSpeed);
+  assert.ok(lateralSpeed < forwardSpeed * 0.01, 'tyre grip should keep velocity aligned with the car');
 
   runtime.setVelocity('car', [0, 0, 10]);
   runtime.step(0.1);
@@ -182,6 +187,8 @@ test('vehicle steering turns front wheels and derives yaw from longitudinal spee
   runtime.reset();
   assert.equal(left.rotation.y, 0);
   assert.equal(right.rotation.y, 0);
+  assert.equal(left.rotation.x, 0);
+  assert.equal(right.rotation.x, 0);
   assert.equal(runtime.getBodyState('car').steeringAngle, 0);
   assert.equal(runtime.getBodyState('car').forceApplicationCount, 0);
 });

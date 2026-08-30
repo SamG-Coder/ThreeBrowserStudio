@@ -266,11 +266,16 @@ export function createLogicControllerRuntime({ project, scene, objects, animatio
       }
       case 'camera.followEntity': {
         const cameraId = dataValue(plan, node.id, 'camera', context);
+        const targetId = dataValue(plan, node.id, 'target', context);
+        const previous = cameraBehaviors.get(cameraId);
         cameraBehaviors.set(cameraId, {
-          targetId: dataValue(plan, node.id, 'target', context),
+          targetId,
           offset: vec3(dataValue(plan, node.id, 'offset', context)),
           smoothing: Math.max(0, finite(dataValue(plan, node.id, 'smoothing', context))),
           space: node.params?.space ?? 'world',
+          lookPosition: previous?.targetId === targetId
+            ? previous.lookPosition
+            : readVector(entityObject(targetId), 'position'),
         });
         break;
       }
@@ -354,10 +359,13 @@ export function createLogicControllerRuntime({ project, scene, objects, animatio
       if (!camera || !target) continue;
       const offset = behavior.space === 'local' ? rotateLocalYaw(behavior.offset, target) : behavior.offset;
       const desired = addVectors(readVector(target, 'position'), offset);
+      const targetPosition = readVector(target, 'position');
       const current = readVector(camera, 'position');
       const alpha = behavior.smoothing > 0 ? 1 - Math.exp(-behavior.smoothing * delta) : 1;
       writeVector(camera, 'position', current.map((value, axis) => value + (desired[axis] - value) * alpha));
-      camera.lookAt?.(...readVector(target, 'position'));
+      behavior.lookPosition ??= targetPosition;
+      behavior.lookPosition = behavior.lookPosition.map((value, axis) => value + (targetPosition[axis] - value) * alpha);
+      camera.lookAt?.(...behavior.lookPosition);
       camera.updateMatrix?.();
       camera.updateMatrixWorld?.(true);
     }

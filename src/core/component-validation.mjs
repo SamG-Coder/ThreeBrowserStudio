@@ -148,7 +148,13 @@ function validateRigidBodyComponent(body, path, diagnostics) {
   if (body.gravityScale !== undefined && !boundedNumber(body.gravityScale, -100, 100)) diagnostic(diagnostics, 'invalid_gravity_scale', `${at}.gravityScale`, 'gravityScale must be from -100 to 100');
   if (body.maxLinearSpeed !== undefined && !boundedNumber(body.maxLinearSpeed, 0.1, 1_000)) diagnostic(diagnostics, 'invalid_max_linear_speed', `${at}.maxLinearSpeed`, 'maxLinearSpeed must be from 0.1 to 1000');
   if (body.wheelBase !== undefined && !boundedNumber(body.wheelBase, 0.1, 100)) diagnostic(diagnostics, 'invalid_vehicle_wheel_base', `${at}.wheelBase`, 'wheelBase must be from 0.1 to 100');
+  if (body.trackWidth !== undefined && !boundedNumber(body.trackWidth, 0.1, 100)) diagnostic(diagnostics, 'invalid_vehicle_track_width', `${at}.trackWidth`, 'trackWidth must be from 0.1 to 100');
   if (body.steeringWheelIds !== undefined && (!Array.isArray(body.steeringWheelIds) || body.steeringWheelIds.length > 8 || new Set(body.steeringWheelIds).size !== body.steeringWheelIds.length || body.steeringWheelIds.some(id => !isStableId(id)))) diagnostic(diagnostics, 'invalid_steering_wheel_ids', `${at}.steeringWheelIds`, 'steeringWheelIds must contain up to eight unique stable entity IDs');
+  if (body.rollingWheelIds !== undefined && (!Array.isArray(body.rollingWheelIds) || body.rollingWheelIds.length > 8 || new Set(body.rollingWheelIds).size !== body.rollingWheelIds.length || body.rollingWheelIds.some(id => !isStableId(id)))) diagnostic(diagnostics, 'invalid_rolling_wheel_ids', `${at}.rollingWheelIds`, 'rollingWheelIds must contain up to eight unique stable entity IDs');
+  if (body.wheelRadius !== undefined && !boundedNumber(body.wheelRadius, 0.05, 10)) diagnostic(diagnostics, 'invalid_vehicle_wheel_radius', `${at}.wheelRadius`, 'wheelRadius must be from 0.05 to 10');
+  if (body.steeringResponse !== undefined && !boundedNumber(body.steeringResponse, 0.1, 100)) diagnostic(diagnostics, 'invalid_vehicle_steering_response', `${at}.steeringResponse`, 'steeringResponse must be from 0.1 to 100');
+  if (body.lateralGrip !== undefined && !boundedNumber(body.lateralGrip, 0, 100)) diagnostic(diagnostics, 'invalid_vehicle_lateral_grip', `${at}.lateralGrip`, 'lateralGrip must be from 0 to 100');
+  if (body.maxYawRate !== undefined && !boundedNumber(body.maxYawRate, 0.1, 10)) diagnostic(diagnostics, 'invalid_vehicle_max_yaw_rate', `${at}.maxYawRate`, 'maxYawRate must be from 0.1 to 10');
   for (const key of ['velocity', 'angularVelocity']) {
     if (body[key] !== undefined && !vector3(body[key])) diagnostic(diagnostics, 'invalid_rigid_body_velocity', `${at}.${key}`, `${key} must contain three finite numbers`);
   }
