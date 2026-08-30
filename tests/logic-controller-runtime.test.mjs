@@ -172,6 +172,41 @@ test('controller graphs can activate and smoothly follow with an authored camera
   assert.deepEqual(camera.lastLookAt, [4, 1, -2]);
 });
 
+test('camera follow lerps on every Step update even before a fixed physics tick', () => {
+  const graph = {
+    formatVersion: 1, id: 'blueprint/step-camera', domain: 'blueprint', outputs: {},
+    nodes: [
+      { id: 'activate', type: 'event.onActivate', params: {} },
+      { id: 'camera', type: 'entity.reference', params: { entityId: 'camera/player' } },
+      { id: 'self', type: 'entity.self', params: {} },
+      { id: 'follow', type: 'camera.followEntity', params: { space: 'local' }, inputs: { offset: [0, 2, 6], smoothing: 8 } },
+    ],
+    edges: [
+      ['activate', 'out', 'follow', 'in'],
+      ['camera', 'entity', 'follow', 'camera'],
+      ['self', 'entity', 'follow', 'target'],
+    ].map(([fromNode, fromPort, toNode, toPort]) => ({ from: { nodeId: fromNode, port: fromPort }, to: { nodeId: toNode, port: toPort } })),
+  };
+  const player = object();
+  const camera = object(); camera.position.set(0, 2, 6);
+  const runtime = createLogicControllerRuntime({
+    project: { resources: { graphs: { 'blueprint/step-camera': { graph } } } },
+    scene: {
+      settings: { controller: { enabled: true, entityId: 'player' } },
+      entities: {
+        player: { id: 'player', components: { logic: { graphIds: ['blueprint/step-camera'] } } },
+        'camera/player': { id: 'camera/player', components: { camera: {} } },
+      },
+    },
+    objects: new Map([['player', player], ['camera/player', camera]]),
+  });
+  runtime.activate();
+  player.position.x = 8;
+  runtime.update(1 / 120);
+  assert.ok(camera.position.x > 0, 'camera should interpolate on a display Step before the first fixed physics tick');
+  assert.ok(camera.position.x < 8, 'smoothing should lerp rather than snap');
+});
+
 test('local rigid-body force follows Self yaw for vehicle controls', () => {
   const graph = {
     formatVersion: 1, id: 'blueprint/local-force', domain: 'blueprint', outputs: {},

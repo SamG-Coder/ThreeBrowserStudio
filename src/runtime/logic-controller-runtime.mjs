@@ -421,11 +421,11 @@ export function createLogicControllerRuntime({ project, scene, objects, animatio
           if (collision.selfId !== settings.entityId) continue;
           dispatch(collision.type === 'enter' ? 'event.onCollisionEnter' : 'event.onCollisionExit', collision);
         }
-        updateCameras(FIXED_STEP);
         fixedAccumulator -= FIXED_STEP;
         steps += 1;
       }
       dispatch('event.onUpdate', { delta });
+      updateCameras(delta);
       while (emitted.length > 0) {
         const event = emitted.shift();
         dispatch('event.onEvent', { payload: event.payload, eventId: event.eventId });
