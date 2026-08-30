@@ -5,6 +5,7 @@ import {
   createMaterial,
   indexedMeshRecipeFromBufferGeometry,
   normalizeGeometryRecipe,
+  realizeGeometryRecipe,
 } from '../src/runtime/resource-factories.mjs';
 
 class FakeGeometry {
@@ -14,11 +15,16 @@ class FakeGeometry {
   }
 
   getAttribute(name) { return this.attributes[name]; }
+  getIndex() {
+    if (!this.index) return null;
+    return { count: this.index.length, getX: index => this.index[index] };
+  }
   computeVertexNormals() { this.attributes.normal = true; this.normalsComputed = true; }
   computeBoundingBox() { this.boundingBoxComputed = true; }
   computeBoundingSphere() { this.boundingSphereComputed = true; }
   setAttribute(name, value) { this.attributes[name] = value; return this; }
   setIndex(value) { this.index = value; return this; }
+  dispose() { this.disposeCount = (this.disposeCount ?? 0) + 1; }
 }
 
 class FakePath {
@@ -39,7 +45,12 @@ class FakeCurve {
 
 const FAKE_THREE = {
   BufferGeometry: FakeGeometry,
-  Float32BufferAttribute: class { constructor(array, itemSize) { this.array = array; this.itemSize = itemSize; } },
+  Float32BufferAttribute: class {
+    constructor(array, itemSize) { this.array = array; this.itemSize = itemSize; this.count = array.length / itemSize; }
+    getX(index) { return this.array[index * this.itemSize]; }
+    getY(index) { return this.array[index * this.itemSize + 1]; }
+    getZ(index) { return this.array[index * this.itemSize + 2]; }
+  },
   Vector2: class { constructor(x, y) { Object.assign(this, { x, y }); } },
   Vector3: class { constructor(x, y, z) { Object.assign(this, { x, y, z }); } },
   CatmullRomCurve3: FakeCurve,
@@ -187,6 +198,42 @@ test('loft creates one continuous bounded shell across exact equal-size profiles
   assert.throws(() => createGeometry(FAKE_THREE, {
     kind: 'loft', sections: [[[0, 0, 0], [1, 0, 0], [0, 1, 0]], [[0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]]],
   }), /same number/);
+});
+
+test('geometry realization converts a procedural loft into canonical editable topology', () => {
+  const recipe = realizeGeometryRecipe(FAKE_THREE, {
+    kind: 'loft',
+    sections: [
+      [[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0]],
+      [[-0.5, -0.5, 1], [0.5, -0.5, 1], [0.5, 0.5, 1], [-0.5, 0.5, 1]],
+    ],
+  });
+  assert.equal(recipe.kind, 'editableMesh');
+  assert.equal(recipe.positions.length, 24);
+  assert.equal(recipe.faceOffsets.length, 13);
+  assert.equal(recipe.cornerVertexIndices.length, 36);
+  assert.equal(recipe.faceMaterialIndices.length, 12);
+});
+
+test('loft v2 resamples named transformed rings, interpolates sections, and emits UVs', () => {
+  const loft = createGeometry(FAKE_THREE, {
+    kind: 'loft',
+    profileResolution: 8,
+    subdivisions: 2,
+    alignProfile: 'closest',
+    sections: [
+      { id: 'section/root', points: [[-1, -1, 0], [1, -1, 0], [0, 1, 0]] },
+      {
+        id: 'section/crown',
+        points: [[-1, -1, 0], [0, -1.4, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0]],
+        transform: { scale: [0.6, 0.6, 1], rotation: [0, 0, 0.2], translation: [0, 0, 3] },
+      },
+    ],
+  });
+  assert.equal(loft.attributes.position.count, 32, 'two authored rings plus two interpolated rings');
+  assert.equal(loft.attributes.uv.count, 32);
+  assert.equal(loft.index.length, 180);
+  assert.ok(Math.max(...loft.attributes.position.array.filter((_, index) => index % 3 === 2)) >= 3);
 });
 
 test('shape and extrude recipes build contours and holes with bounded options', () => {

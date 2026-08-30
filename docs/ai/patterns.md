@@ -91,6 +91,13 @@ only one candidate alive, and fail closed after another dry run or project
 switch. Use `resource.createMany` when provisioning several independent typed
 resources so one semantic operation and compact inverse replace many core ops.
 
+Procedural geometry is intentionally concise during block-out. Before detailed
+vertex, UV, paint, or topology work, call `geometry.realize` with the inspected
+`resourceHash`; it atomically replaces the recipe with canonical editable
+triangle topology. Loft recipes may use named section descriptors, per-section
+TRS, `profileResolution` resampling, interpolated `subdivisions`, closest-ring
+alignment, and generated side UVs.
+
 Compile-heavy tools (`apply`, `render`, `project`, `history`) have a 120s
 budget. Status and inspect stay at 15s. If apply times out, it aborted
 **before** commit. Re-inspect revision. Do **not** retry the same

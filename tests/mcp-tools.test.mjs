@@ -271,7 +271,7 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
     'camera.frame', 'layout.pattern', 'stroke.apply',
     'lighting.rig.create',
     'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
-    'geometry.edit',
+    'geometry.edit', 'geometry.realize', 'geometry.loft.edit',
     'material.variant.create',
     'resource.create', 'resource.createMany', 'resource.patch', 'resource.delete',
   ]);

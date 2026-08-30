@@ -1,5 +1,5 @@
 import { compileShaderGraph, isCompiledSurface } from './shader-graph-compiler.mjs';
-import { triangulateEditableMesh } from '../core/editable-mesh.mjs';
+import { normalizeEditableMeshRecipe, triangulateEditableMesh } from '../core/editable-mesh.mjs';
 import { MAX_MATERIAL_SLOTS_PER_MESH } from '../core/constants.mjs';
 import {
   MATERIAL_TEXTURE_BINDINGS,
@@ -44,6 +44,9 @@ export const GEOMETRY_PARAMETER_DEFAULTS = Object.freeze({
     closedProfile: true,
     capStart: true,
     capEnd: true,
+    profileResolution: null,
+    subdivisions: 0,
+    alignProfile: 'authored',
   },
   shape: {
     points: [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]],
@@ -117,6 +120,7 @@ export function queryGeometryCatalog({ search, kind, limit = 50 } = {}) {
       kind: entryKind,
       category: DATA_GEOMETRY_KINDS.includes(entryKind) ? 'authored-data' : 'procedural',
       editable: entryKind === 'editableMesh',
+      realizable: entryKind !== 'editableMesh',
       meshElements: DATA_GEOMETRY_KINDS.includes(entryKind),
       fields: Object.keys(defaults),
       defaults,
@@ -205,12 +209,16 @@ function proceduralCountEstimate(recipe) {
   }
   if (recipe.kind === 'loft') {
     const sections = Array.isArray(recipe.sections) ? recipe.sections.length : 0;
-    const profile = Array.isArray(recipe.sections?.[0]) ? recipe.sections[0].length : 0;
-    const sideTriangles = Math.max(0, sections - 1) * profile * 2;
+    const firstPoints = Array.isArray(recipe.sections?.[0])
+      ? recipe.sections[0]
+      : recipe.sections?.[0]?.points;
+    const profile = recipe.profileResolution ?? (Array.isArray(firstPoints) ? firstPoints.length : 0);
+    const evaluatedSections = Math.max(0, sections - 1) * (Math.max(0, recipe.subdivisions ?? 0) + 1) + (sections > 0 ? 1 : 0);
+    const sideTriangles = Math.max(0, evaluatedSections - 1) * profile * 2;
     const capTriangles = recipe.closedProfile === false ? 0
       : (recipe.capStart === false ? 0 : Math.max(0, profile - 2))
         + (recipe.capEnd === false ? 0 : Math.max(0, profile - 2));
-    return { vertices: sections * profile, triangles: sideTriangles + capTriangles };
+    return { vertices: evaluatedSections * profile, triangles: sideTriangles + capTriangles };
   }
   if (recipe.kind === 'shape') return { vertices: pointCount, triangles: Math.max(0, pointCount * 2) };
   if (recipe.kind === 'extrude') {
@@ -264,11 +272,18 @@ export function normalizeGeometryRecipe(resource = {}) {
     recipe.radialSegments = integer(recipe.radialSegments, defaults.radialSegments, 3, 128);
   } else if (source.kind === 'loft') {
     recipe.sections = Array.isArray(source.sections)
-      ? source.sections.map(section => clonePoints(section))
+      ? source.sections.map(section => (Array.isArray(section)
+          ? clonePoints(section)
+          : { ...section, points: clonePoints(section?.points) }))
       : source.sections;
     recipe.closedProfile = bool(source.closedProfile, defaults.closedProfile);
     recipe.capStart = bool(source.capStart, defaults.capStart);
     recipe.capEnd = bool(source.capEnd, defaults.capEnd);
+    recipe.profileResolution = source.profileResolution == null
+      ? null
+      : integer(source.profileResolution, 8, 3, GEOMETRY_CONTROL_POINT_LIMITS.loftPointsPerSection);
+    recipe.subdivisions = integer(source.subdivisions, defaults.subdivisions, 0, 32);
+    recipe.alignProfile = source.alignProfile ?? defaults.alignProfile;
   } else if (source.kind === 'shape' || source.kind === 'extrude') {
     recipe.points = clonePoints(source.points ?? source.contour ?? defaults.points);
     recipe.holes = cloneContours(recipe.holes);
@@ -431,23 +446,118 @@ function tubeGeometry(THREE, recipe) {
   ));
 }
 
-function loftGeometry(THREE, recipe) {
+function transformLoftPoint(point, transform = {}) {
+  const scale = Array.isArray(transform.scale) ? transform.scale : [1, 1, 1];
+  const rotation = Array.isArray(transform.rotation) ? transform.rotation : [0, 0, 0];
+  const translation = Array.isArray(transform.translation) ? transform.translation : [0, 0, 0];
+  for (const [name, value] of [['scale', scale], ['rotation', rotation], ['translation', translation]]) {
+    if (value.length !== 3 || value.some(component => !Number.isFinite(component))) {
+      throw new Error(`Loft section ${name} must contain three finite numbers.`);
+    }
+  }
+  let [x, y, z] = point.map((value, axis) => value * scale[axis]);
+  const [rx, ry, rz] = rotation;
+  [y, z] = [y * Math.cos(rx) - z * Math.sin(rx), y * Math.sin(rx) + z * Math.cos(rx)];
+  [x, z] = [x * Math.cos(ry) + z * Math.sin(ry), -x * Math.sin(ry) + z * Math.cos(ry)];
+  [x, y] = [x * Math.cos(rz) - y * Math.sin(rz), x * Math.sin(rz) + y * Math.cos(rz)];
+  return [x + translation[0], y + translation[1], z + translation[2]];
+}
+
+function resampleLoftProfile(points, count, closed) {
+  if (points.length === count) return points.map(point => [...point]);
+  const segmentCount = closed ? points.length : points.length - 1;
+  const lengths = [];
+  let total = 0;
+  for (let index = 0; index < segmentCount; index += 1) {
+    const next = points[(index + 1) % points.length];
+    const current = points[index];
+    total += Math.hypot(next[0] - current[0], next[1] - current[1], next[2] - current[2]);
+    lengths.push(total);
+  }
+  if (!(total > 0)) throw new Error('Loft profile perimeter must be greater than zero.');
+  return Array.from({ length: count }, (_, sample) => {
+    const distance = total * (closed ? sample / count : sample / Math.max(1, count - 1));
+    let segment = lengths.findIndex(end => end >= distance);
+    if (segment < 0) segment = lengths.length - 1;
+    const startDistance = segment === 0 ? 0 : lengths[segment - 1];
+    const span = Math.max(Number.EPSILON, lengths[segment] - startDistance);
+    const factor = Math.min(1, Math.max(0, (distance - startDistance) / span));
+    const start = points[segment];
+    const end = points[(segment + 1) % points.length];
+    return start.map((value, axis) => value + (end[axis] - value) * factor);
+  });
+}
+
+function alignedLoftProfile(previous, current, enabled) {
+  if (!enabled || previous.length !== current.length) return current;
+  let bestOffset = 0;
+  let bestDistance = Infinity;
+  for (let offset = 0; offset < current.length; offset += 1) {
+    let distance = 0;
+    for (let index = 0; index < current.length; index += 1) {
+      const point = current[(index + offset) % current.length];
+      const prior = previous[index];
+      distance += (point[0] - prior[0]) ** 2 + (point[1] - prior[1]) ** 2 + (point[2] - prior[2]) ** 2;
+    }
+    if (distance < bestDistance) [bestDistance, bestOffset] = [distance, offset];
+  }
+  return current.map((_, index) => current[(index + bestOffset) % current.length]);
+}
+
+function evaluatedLoftSections(recipe) {
   if (!Array.isArray(recipe.sections) || recipe.sections.length < 2
       || recipe.sections.length > GEOMETRY_CONTROL_POINT_LIMITS.loftSections) {
     throw new Error(`Loft requires 2 to ${GEOMETRY_CONTROL_POINT_LIMITS.loftSections} sections.`);
   }
-  const sections = recipe.sections.map((section, index) => validatedPoints(
-    section, 3, 3, GEOMETRY_CONTROL_POINT_LIMITS.loftPointsPerSection, `Loft section ${index}`,
-  ));
-  const profileSize = sections[0].length;
-  if (sections.some(section => section.length !== profileSize)) {
+  const closed = bool(recipe.closedProfile, true);
+  const authored = recipe.sections.map((section, index) => {
+    const descriptor = Array.isArray(section) ? { points: section } : section;
+    if (!descriptor || typeof descriptor !== 'object') throw new Error(`Loft section ${index} must be a point array or descriptor.`);
+    if (descriptor.id !== undefined && (typeof descriptor.id !== 'string' || !/^[A-Za-z][A-Za-z0-9/_-]{0,127}$/u.test(descriptor.id))) {
+      throw new Error(`Loft section ${index} id is invalid.`);
+    }
+    const points = validatedPoints(
+      descriptor.points, 3, 3, GEOMETRY_CONTROL_POINT_LIMITS.loftPointsPerSection, `Loft section ${index}`,
+    );
+    return points.map(point => transformLoftPoint(point, descriptor.transform));
+  });
+  const profileSize = recipe.profileResolution ?? authored[0].length;
+  if (recipe.profileResolution == null && authored.some(section => section.length !== profileSize)) {
     throw new Error('Every loft section must contain the same number of profile points.');
   }
-  if (sections.length * profileSize > GEOMETRY_CONTROL_POINT_LIMITS.loftTotalPoints) {
+  const sections = authored.map((section, index) => alignedLoftProfile(
+    index === 0 ? section : resampleLoftProfile(authored[index - 1], profileSize, closed),
+    resampleLoftProfile(section, profileSize, closed),
+    recipe.alignProfile === 'closest' && closed && index > 0,
+  ));
+  if (!['authored', 'closest'].includes(recipe.alignProfile)) throw new Error('Loft alignProfile must be authored or closest.');
+  const subdivisions = integer(recipe.subdivisions, 0, 0, 32);
+  const evaluated = [];
+  for (let section = 0; section < sections.length - 1; section += 1) {
+    evaluated.push(sections[section]);
+    for (let step = 1; step <= subdivisions; step += 1) {
+      const factor = step / (subdivisions + 1);
+      evaluated.push(sections[section].map((point, index) => point.map(
+        (value, axis) => value + (sections[section + 1][index][axis] - value) * factor,
+      )));
+    }
+  }
+  evaluated.push(sections.at(-1));
+  if (evaluated.length * profileSize > GEOMETRY_CONTROL_POINT_LIMITS.loftTotalPoints) {
     throw new Error(`Loft exceeds ${GEOMETRY_CONTROL_POINT_LIMITS.loftTotalPoints} total control points.`);
   }
-  const closed = bool(recipe.closedProfile, true);
+  return { sections: evaluated, profileSize, closed };
+}
+
+function loftGeometry(THREE, recipe) {
+  const { sections, profileSize, closed } = evaluatedLoftSections(recipe);
   const positions = sections.flat(2);
+  const uvs = [];
+  for (let section = 0; section < sections.length; section += 1) {
+    for (let point = 0; point < profileSize; point += 1) {
+      uvs.push(closed ? point / profileSize : point / Math.max(1, profileSize - 1), section / (sections.length - 1));
+    }
+  }
   const indices = [];
   const edges = closed ? profileSize : profileSize - 1;
   for (let section = 0; section < sections.length - 1; section += 1) {
@@ -469,6 +579,7 @@ function loftGeometry(THREE, recipe) {
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
   geometry.computeBoundingBox();
@@ -705,6 +816,64 @@ export function createGeometry(THREE, resource = {}) {
       });
     }
     default: throw new Error(`Unsupported geometry recipe: ${p.kind}`);
+  }
+}
+
+/**
+ * Converts any live procedural/indexed recipe into canonical editable triangle
+ * topology. This is an explicit authoring boundary: generated Three.js objects
+ * remain disposable, while the returned recipe is stable project-owned data.
+ */
+export function realizeGeometryRecipe(THREE, resource = {}) {
+  const geometry = createGeometry(THREE, resource);
+  try {
+    const position = geometry.getAttribute?.('position');
+    if (!position || position.itemSize !== 3 || position.count < 3) {
+      throw new Error('Geometry realization requires a finite position attribute with at least three vertices.');
+    }
+    if (position.count > MAX_RUNTIME_GEOMETRY_VERTICES) {
+      throw new Error(`Geometry realization exceeds ${MAX_RUNTIME_GEOMETRY_VERTICES} vertices.`);
+    }
+    const positions = [];
+    for (let index = 0; index < position.count; index += 1) {
+      positions.push(position.getX(index), position.getY(index), position.getZ(index));
+    }
+    const sourceIndex = geometry.getIndex?.();
+    const cornerVertexIndices = sourceIndex
+      ? Array.from({ length: sourceIndex.count }, (_, index) => sourceIndex.getX(index))
+      : Array.from({ length: position.count }, (_, index) => index);
+    if (cornerVertexIndices.length % 3 !== 0) {
+      throw new Error('Geometry realization requires triangle-list topology.');
+    }
+    const faceCount = cornerVertexIndices.length / 3;
+    if (faceCount > MAX_RUNTIME_GEOMETRY_TRIANGLES) {
+      throw new Error(`Geometry realization exceeds ${MAX_RUNTIME_GEOMETRY_TRIANGLES} triangles.`);
+    }
+    const faceOffsets = Array.from({ length: faceCount + 1 }, (_, index) => index * 3);
+    const uv = geometry.getAttribute?.('uv');
+    const uvLayers = {};
+    if (uv?.itemSize === 2 && uv.count === position.count) {
+      uvLayers.UVMap = cornerVertexIndices.flatMap(index => [uv.getX(index), uv.getY(index)]);
+    }
+    const faceMaterialIndices = Array(faceCount).fill(0);
+    for (const group of geometry.groups ?? []) {
+      const firstFace = Math.max(0, Math.floor(group.start / 3));
+      const finalFace = Math.min(faceCount, Math.ceil((group.start + group.count) / 3));
+      for (let face = firstFace; face < finalFace; face += 1) faceMaterialIndices[face] = group.materialIndex ?? 0;
+    }
+    return normalizeEditableMeshRecipe({
+      kind: 'editableMesh',
+      positions,
+      faceOffsets,
+      cornerVertexIndices,
+      uvLayers,
+      activeUvLayer: Object.keys(uvLayers)[0] ?? null,
+      faceMaterialIndices,
+      sharpEdges: [],
+      edgeCreases: [],
+    });
+  } finally {
+    geometry.dispose?.();
   }
 }
 

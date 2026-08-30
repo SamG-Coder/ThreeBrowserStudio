@@ -86,7 +86,7 @@ import { operationsSnapFollowShot } from '../viewport/view-mode.mjs';
 import { buildExplorerOutline } from '../viewport/scene-explorer.mjs';
 import { LAYOUT_PATTERN_MODES } from '../core/layout-patterns.mjs';
 import { RTX_SCENE_LIMITS } from './rtx-scene-collector.mjs';
-import { normalizeGeometryRecipe, queryGeometryCatalog } from './resource-factories.mjs';
+import { normalizeGeometryRecipe, queryGeometryCatalog, realizeGeometryRecipe } from './resource-factories.mjs';
 import { createTransactionId } from '../core/util.mjs';
 import { bakeProceduralTextureGraph } from './procedural-texture-compiler.mjs';
 
@@ -626,6 +626,76 @@ export function translateToolOperation(operation, document) {
     default:
       throw new StudioError('operation_not_implemented', `${operation.op} is not in the lean v1 authoring slice yet.`, { operation: operation.op });
   }
+}
+
+function materializeGeometryRealizeOperation(operation, { document, THREE }) {
+  const { resource } = new ProjectIndex(document).getResource(operation.resourceId, 'geometries');
+  const resourceHash = contentHash(resource);
+  if (operation.expectedResourceHash && operation.expectedResourceHash !== resourceHash) {
+    throw new StudioError('resource_conflict', `Geometry resource ${operation.resourceId} changed after inspection.`, {
+      resourceId: operation.resourceId,
+      expectedResourceHash: operation.expectedResourceHash,
+      actualResourceHash: resourceHash,
+    });
+  }
+  return {
+    type: 'resource.patch',
+    resourceType: 'geometries',
+    resourceId: operation.resourceId,
+    patch: {
+      recipe: {
+        ...Object.fromEntries(Object.keys(resource.recipe ?? resource.parameters ?? {}).map(key => [key, null])),
+        ...realizeGeometryRecipe(THREE, resource),
+      },
+    },
+  };
+}
+
+function materializeLoftEditOperation(operation, document) {
+  const { resource } = new ProjectIndex(document).getResource(operation.resourceId, 'geometries');
+  const resourceHash = contentHash(resource);
+  if (operation.expectedResourceHash && operation.expectedResourceHash !== resourceHash) {
+    throw new StudioError('resource_conflict', `Geometry resource ${operation.resourceId} changed after inspection.`, {
+      resourceId: operation.resourceId,
+      expectedResourceHash: operation.expectedResourceHash,
+      actualResourceHash: resourceHash,
+    });
+  }
+  const recipe = normalizeGeometryRecipe(resource);
+  if (recipe.kind !== 'loft' || !Array.isArray(recipe.sections)) {
+    throw new StudioError('invalid_geometry_target', 'geometry.loft.edit requires a procedural loft resource.');
+  }
+  const sections = recipe.sections.map((section, index) => (Array.isArray(section)
+    ? { id: `section/${index}`, points: structuredClone(section) }
+    : structuredClone(section)));
+  const find = sectionId => {
+    const index = sections.findIndex(section => section.id === sectionId);
+    if (index < 0) throw new StudioError('loft_section_not_found', `Loft section ${sectionId} does not exist.`);
+    return index;
+  };
+  for (const change of operation.changes) {
+    if (change.type === 'create') {
+      if (sections.some(section => section.id === change.section.id)) {
+        throw new StudioError('duplicate_id', `Loft section ${change.section.id} already exists.`);
+      }
+      const index = Math.min(change.index ?? sections.length, sections.length);
+      sections.splice(index, 0, structuredClone(change.section));
+    } else if (change.type === 'patch') {
+      const index = find(change.sectionId);
+      sections[index] = mergePatch(sections[index], change.patch);
+    } else if (change.type === 'move') {
+      const index = find(change.sectionId);
+      const [section] = sections.splice(index, 1);
+      sections.splice(Math.min(change.index, sections.length), 0, section);
+    } else if (change.type === 'delete') sections.splice(find(change.sectionId), 1);
+  }
+  if (sections.length < 2) throw new StudioError('invalid_loft', 'A loft must retain at least two sections.');
+  return {
+    type: 'resource.patch',
+    resourceType: 'geometries',
+    resourceId: operation.resourceId,
+    patch: { recipe: { sections } },
+  };
 }
 
 export function materializeCameraFrameOperation(operation, { compiled, THREE } = {}) {
@@ -2043,7 +2113,11 @@ export class StudioApplication {
     const translationDocument = structuredClone(document);
     const operations = [];
     for (const operation of params.operations) {
-      const translated = translateToolOperation(operation, translationDocument);
+      const translated = operation.op === 'geometry.realize'
+        ? materializeGeometryRealizeOperation(operation, { document: translationDocument, THREE: this.#THREE })
+        : operation.op === 'geometry.loft.edit'
+          ? materializeLoftEditOperation(operation, translationDocument)
+          : translateToolOperation(operation, translationDocument);
       for (const candidateValue of (Array.isArray(translated) ? translated : [translated])) {
         const candidate = materializeCameraFrameOperation(candidateValue, { compiled: this.#compiled, THREE: this.#THREE });
         operations.push(candidate);
@@ -2057,6 +2131,15 @@ export class StudioApplication {
             const resourceType = normalizeResourceType(item.resourceType);
             const resource = createResourceDocument(resourceType, item.resource);
             translationDocument.resources[resourceType][resource.id] = resource;
+          }
+        } else if ((candidate.type ?? candidate.op) === 'resource.patch') {
+          const resourceType = normalizeResourceType(candidate.resourceType);
+          const current = translationDocument.resources[resourceType][candidate.resourceId];
+          if (current) {
+            translationDocument.resources[resourceType][candidate.resourceId] = createResourceDocument(
+              resourceType,
+              mergePatch(current, candidate.patch),
+            );
           }
         }
       }

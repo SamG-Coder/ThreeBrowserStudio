@@ -3525,6 +3525,174 @@
                   "properties": {
                     "op": {
                       "type": "string",
+                      "const": "geometry.realize"
+                    },
+                    "resourceId": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                    },
+                    "expectedResourceHash": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
+                    }
+                  },
+                  "required": [
+                    "op",
+                    "resourceId"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "op": {
+                      "type": "string",
+                      "const": "geometry.loft.edit"
+                    },
+                    "resourceId": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                    },
+                    "changes": {
+                      "minItems": 1,
+                      "maxItems": 64,
+                      "type": "array",
+                      "items": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "create"
+                              },
+                              "section": {
+                                "type": "object",
+                                "properties": {
+                                  "id": {
+                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                                  },
+                                  "points": {
+                                    "minItems": 3,
+                                    "maxItems": 256,
+                                    "type": "array",
+                                    "items": {
+                                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
+                                    }
+                                  },
+                                  "transform": {
+                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema60"
+                                  }
+                                },
+                                "required": [
+                                  "id",
+                                  "points"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "index": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 255
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "section"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "patch"
+                              },
+                              "sectionId": {
+                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                              },
+                              "patch": {
+                                "type": "object",
+                                "properties": {
+                                  "points": {
+                                    "minItems": 3,
+                                    "maxItems": 256,
+                                    "type": "array",
+                                    "items": {
+                                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
+                                    }
+                                  },
+                                  "transform": {
+                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema60"
+                                  }
+                                },
+                                "additionalProperties": false
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "sectionId",
+                              "patch"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "move"
+                              },
+                              "sectionId": {
+                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                              },
+                              "index": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 255
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "sectionId",
+                              "index"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "type": "string",
+                                "const": "delete"
+                              },
+                              "sectionId": {
+                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                              }
+                            },
+                            "required": [
+                              "type",
+                              "sectionId"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    },
+                    "expectedResourceHash": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
+                    }
+                  },
+                  "required": [
+                    "op",
+                    "resourceId",
+                    "changes"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "op": {
+                      "type": "string",
                       "const": "material.variant.create"
                     },
                     "baseMaterialId": {
@@ -3534,7 +3702,7 @@
                       "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
                     },
                     "patch": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema60"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema61"
                     },
                     "alias": {
                       "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
@@ -3556,10 +3724,10 @@
                       "const": "resource.create"
                     },
                     "resourceType": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema62"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema63"
                     },
                     "resource": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema60"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema61"
                     },
                     "alias": {
                       "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
@@ -3587,10 +3755,10 @@
                         "type": "object",
                         "properties": {
                           "resourceType": {
-                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema62"
+                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema63"
                           },
                           "resource": {
-                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema60"
+                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema61"
                           },
                           "alias": {
                             "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
@@ -3618,13 +3786,13 @@
                       "const": "resource.patch"
                     },
                     "resourceType": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema62"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema63"
                     },
                     "resourceId": {
                       "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
                     },
                     "patch": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema60"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema61"
                     }
                   },
                   "required": [
@@ -3643,7 +3811,7 @@
                       "const": "resource.delete"
                     },
                     "resourceType": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema62"
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema63"
                     },
                     "resourceId": {
                       "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
@@ -6334,15 +6502,30 @@
           },
           "__schema60": {
             "type": "object",
+            "properties": {
+              "translation": {
+                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
+              },
+              "rotation": {
+                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
+              },
+              "scale": {
+                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
+              }
+            },
+            "additionalProperties": false
+          },
+          "__schema61": {
+            "type": "object",
             "propertyNames": {
               "type": "string",
               "maxLength": 160
             },
             "additionalProperties": {
-              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema61"
+              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema62"
             }
           },
-          "__schema61": {
+          "__schema62": {
             "anyOf": [
               {
                 "type": "null"
@@ -6361,7 +6544,7 @@
                 "maxItems": 6000000,
                 "type": "array",
                 "items": {
-                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema61"
+                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema62"
                 }
               },
               {
@@ -6371,12 +6554,12 @@
                   "maxLength": 160
                 },
                 "additionalProperties": {
-                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema61"
+                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema62"
                 }
               }
             ]
           },
-          "__schema62": {
+          "__schema63": {
             "type": "string",
             "enum": [
               "geometries",

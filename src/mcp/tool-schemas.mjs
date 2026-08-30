@@ -223,7 +223,7 @@ export const OPERATION_TYPES = Object.freeze([
   'camera.frame', 'layout.pattern', 'stroke.apply',
   'lighting.rig.create',
   'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
-  'geometry.edit',
+  'geometry.edit', 'geometry.realize', 'geometry.loft.edit',
   'material.variant.create',
   'resource.create', 'resource.createMany', 'resource.patch', 'resource.delete',
 ]);
@@ -1181,6 +1181,27 @@ const collectionMembershipOperation = operation('collection.membership.patch', {
   }
 });
 
+const loftSectionTransformSchema = z.object({
+  translation: geometryVec3.optional(),
+  rotation: geometryVec3.optional(),
+  scale: geometryVec3.optional(),
+}).strict();
+const loftSectionSchema = z.object({
+  id: identifier,
+  points: z.array(geometryVec3).min(3).max(256),
+  transform: loftSectionTransformSchema.optional(),
+}).strict();
+const loftSectionPatchSchema = z.object({
+  points: z.array(geometryVec3).min(3).max(256).optional(),
+  transform: loftSectionTransformSchema.optional(),
+}).strict().refine(value => Object.keys(value).length > 0, { message: 'Loft section patch cannot be empty.' });
+const loftChangesSchema = z.array(z.discriminatedUnion('type', [
+  z.object({ type: z.literal('create'), section: loftSectionSchema, index: z.number().int().min(0).max(255).optional() }).strict(),
+  z.object({ type: z.literal('patch'), sectionId: identifier, patch: loftSectionPatchSchema }).strict(),
+  z.object({ type: z.literal('move'), sectionId: identifier, index: z.number().int().min(0).max(255) }).strict(),
+  z.object({ type: z.literal('delete'), sectionId: identifier }).strict(),
+])).min(1).max(64);
+
 const directOperations = [
   operation('scene.create', { scene: jsonObjectSchema, alias: alias.optional(), index: insertionIndex.optional() }),
   operation('scene.patch', { sceneId: reference, patch: jsonObjectSchema }),
@@ -1274,6 +1295,8 @@ const directOperations = [
     entityId: reference, changes: modifierStackEditsSchema, expectedStackHash: hash,
   }),
   operation('geometry.edit', { resourceId: reference, edits: geometryEditsSchema, expectedTopologyHash: hash.optional() }),
+  operation('geometry.realize', { resourceId: identifier, expectedResourceHash: hash.optional() }),
+  operation('geometry.loft.edit', { resourceId: identifier, changes: loftChangesSchema, expectedResourceHash: hash.optional() }),
   operation('material.variant.create', {
     baseMaterialId: reference,
     materialId: identifier,

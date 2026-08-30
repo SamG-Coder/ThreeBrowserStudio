@@ -139,6 +139,22 @@ function fakeThree() {
 
     updateProjectionMatrix() {}
   }
+  class BufferAttribute {
+    constructor(array, itemSize) { this.array = array; this.itemSize = itemSize; this.count = array.length / itemSize; }
+    getX(index) { return this.array[index * this.itemSize]; }
+    getY(index) { return this.array[index * this.itemSize + 1]; }
+    getZ(index) { return this.array[index * this.itemSize + 2]; }
+  }
+  class BufferGeometry extends Disposable {
+    constructor() { super(); this.attributes = {}; this.groups = []; this.index = null; }
+    setAttribute(name, value) { this.attributes[name] = value; return this; }
+    getAttribute(name) { return this.attributes[name]; }
+    setIndex(value) { this.index = value; return this; }
+    getIndex() { return this.index ? { count: this.index.length, getX: index => this.index[index] } : null; }
+    computeVertexNormals() { this.attributes.normal = { count: this.attributes.position?.count ?? 0 }; }
+    computeBoundingBox() {}
+    computeBoundingSphere() {}
+  }
   return {
     groups,
     Group: class extends Group {
@@ -156,6 +172,8 @@ function fakeThree() {
     },
     Mesh,
     PerspectiveCamera,
+    BufferGeometry,
+    Float32BufferAttribute: BufferAttribute,
     BoxGeometry: class extends Disposable {},
     MeshStandardNodeMaterial: class extends Disposable {},
     FrontSide: 0,
@@ -862,6 +880,48 @@ test('high-level resources may depend on resources created earlier in the same a
   assert.deepEqual(application.kernel.document.resources.materials['material/variant'].recipe, {
     kind: 'physical', color: '#334455', roughness: 0.1, metalness: 0.8,
   });
+});
+
+test('geometry.realize turns a procedural resource into editable vertices in the same apply', async (t) => {
+  const { application } = await applicationFixture(t);
+  const result = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1',
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    baseRevision: 0,
+    idempotencyKey: 'realize-loft-geometry-0001',
+    label: 'Create and realize a loft',
+    operations: [
+      { op: 'resource.create', resourceType: 'geometries', resource: {
+        id: 'geometry/realized-loft',
+        recipe: {
+          kind: 'loft',
+          sections: [
+            [[-1, -1, 0], [1, -1, 0], [1, 1, 0], [-1, 1, 0]],
+            [[-0.5, -0.5, 1], [0.5, -0.5, 1], [0.5, 0.5, 1], [-0.5, 0.5, 1]],
+          ],
+        },
+      } },
+      { op: 'geometry.loft.edit', resourceId: 'geometry/realized-loft', changes: [
+        { type: 'patch', sectionId: 'section/1', patch: { transform: { translation: [0, 0, 1] } } },
+      ] },
+      { op: 'geometry.realize', resourceId: 'geometry/realized-loft' },
+    ],
+  });
+  assert.equal(result.success, true);
+  const recipe = application.kernel.document.resources.geometries['geometry/realized-loft'].recipe;
+  assert.equal(recipe.kind, 'editableMesh');
+  assert.equal(recipe.positions.length, 24);
+  assert.ok(recipe.uvLayers.UVMap.length > 0);
+  assert.deepEqual(result.authoring.authoredOperationTypes, [
+    { type: 'geometry.loft.edit', count: 1 },
+    { type: 'geometry.realize', count: 1 },
+    { type: 'resource.create', count: 1 },
+  ]);
+  assert.deepEqual(result.authoring.loweredOperationTypes, [
+    { type: 'resource.create', count: 1 },
+    { type: 'resource.patch', count: 2 },
+  ]);
 });
 
 test('dry-run apply retains one guarded candidate and promotes it without a second compile', async (t) => {
