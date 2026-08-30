@@ -28,6 +28,9 @@ test('pages artifact keeps the browser shell and does not replace site-entry', a
   assert.doesNotMatch(main, /^import .*studio-application/m);
   assert.doesNotMatch(main, /^import .*system-typeface/m);
   assert.doesNotMatch(main, /^import .*project-file-transfer-native/m);
+  assert.match(main, /const nativeTransfer = !browserHost;/);
+  assert.doesNotMatch(main, /native: Boolean\(application\)/);
+  assert.match(main, /Studio project is still loading\. Try again in a moment\./);
   assert.match(
     await readFile(path.join(output, 'templates', 'starter-project', 'project.threestudio.json'), 'utf8'),
     /Starter Project/,

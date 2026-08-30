@@ -4,8 +4,26 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const studioRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
-/** Bump when Pages must ignore cached ES modules. */
-export const PAGES_ASSET_STAMP = "prompt-15";
+function normalizeAssetStamp(value) {
+  return String(value ?? "")
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .slice(0, 64);
+}
+
+export function resolvePagesAssetStamp({
+  env = process.env,
+  now = Date.now,
+} = {}) {
+  const explicit = normalizeAssetStamp(env.THREE_STUDIO_PAGES_ASSET_STAMP);
+  if (explicit) return explicit;
+  const commit = normalizeAssetStamp(env.GITHUB_SHA);
+  if (commit) return commit.slice(0, 12);
+  return `local-${Number(now()).toString(36)}`;
+}
+
+/** Immutable per deployment so browsers never reuse incompatible ES modules. */
+export const PAGES_ASSET_STAMP = resolvePagesAssetStamp();
 
 export function bustRelativeModuleImports(source, stamp = PAGES_ASSET_STAMP) {
   return String(source)

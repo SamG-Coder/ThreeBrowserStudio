@@ -89,6 +89,7 @@ async function main() {
   };
 
   const browserHost = browserPreview || !host.attached;
+  const nativeTransfer = !browserHost;
   const bootstrap = createBootstrapScene();
   if (!browserHost) scene.add(bootstrap.root);
   const commandTelemetry = createStudioCommandTelemetry({
@@ -152,6 +153,14 @@ async function main() {
       liveFeed.setProjectTransferStatus("A transfer is already running.");
       return;
     }
+    if (nativeTransfer && !application) {
+      liveFeed.setProjectTransferStatus("Studio project is still loading. Try again in a moment.");
+      return;
+    }
+    if (!nativeTransfer && !preview) {
+      liveFeed.setProjectTransferStatus("Project preview is still loading. Try again in a moment.");
+      return;
+    }
     transferBusy = true;
     try {
       if (action === "export") {
@@ -160,7 +169,7 @@ async function main() {
           ? await application.exportProjectDocument()
           : createProjectPack(preview?.document ?? createBrowserPreviewDocument());
         const saved = await saveProjectPackFile(projectPackFileName(pack.document), pack, {
-          native: Boolean(application),
+          native: nativeTransfer,
         });
         if (!saved) {
           liveFeed.setProjectTransferStatus("Export cancelled.");
@@ -170,7 +179,7 @@ async function main() {
         return;
       }
       liveFeed.setProjectTransferStatus("Choose a JSON pack…");
-      const picked = await openProjectPackFile({ native: Boolean(application) });
+      const picked = await openProjectPackFile({ native: nativeTransfer });
       if (!picked) {
         liveFeed.setProjectTransferStatus("Import cancelled.");
         return;
