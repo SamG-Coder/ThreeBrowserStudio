@@ -57,6 +57,7 @@ test('modifier evaluator exposes a bounded deterministic geometry subset', () =>
     'subdivision',
     'decimate',
     'displace',
+    'simpleDeform',
     'ocean',
   ]);
   assert.equal(GEOMETRY_MODIFIER_LIMITS.maxModifiers, 64);
@@ -65,6 +66,26 @@ test('modifier evaluator exposes a bounded deterministic geometry subset', () =>
   assert.equal(GEOMETRY_MODIFIER_LIMITS.maxOceanWaveCount, 32);
   assert.equal(GEOMETRY_MODIFIER_LIMITS.maxOceanTimelineSamples, 131_072);
   assert.equal(GEOMETRY_MODIFIER_LIMITS.maxOceanSamples, 8_000_000);
+});
+
+test('simple deform bends, twists, tapers, and stretches without changing topology', () => {
+  const source = {
+    kind: 'indexedMesh',
+    positions: [0, 0, 0, 1, 0, 0, 0, 2, 0],
+    indices: [0, 1, 2],
+  };
+  for (const mode of ['bend', 'twist', 'taper', 'stretch']) {
+    const result = applyGeometryModifier(source, {
+      id: `modifier/${mode}`,
+      type: 'simpleDeform',
+      mode,
+      axis: 'y',
+      factor: mode === 'bend' ? Math.PI / 4 : 0.5,
+    });
+    assert.equal(result.positions.length, source.positions.length, mode);
+    assert.deepEqual(result.indices, source.indices, mode);
+    assert.equal(result.positions.every(Number.isFinite), true, mode);
+  }
 });
 
 test('ordered stacks honor viewport and render flags without mutating authored data', () => {

@@ -36,6 +36,15 @@ const GEOMETRY_PARAMETER_DEFAULTS = Object.freeze({
     curveType: 'centripetal',
     tension: 0.5,
   },
+  loft: {
+    sections: [
+      [[-0.5, -0.5, 0], [0.5, -0.5, 0], [0.5, 0.5, 0], [-0.5, 0.5, 0]],
+      [[-0.35, -0.35, 1], [0.35, -0.35, 1], [0.35, 0.35, 1], [-0.35, 0.35, 1]],
+    ],
+    closedProfile: true,
+    capStart: true,
+    capEnd: true,
+  },
   shape: {
     points: [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]],
     holes: [],
@@ -59,6 +68,9 @@ const CONTROL_POINT_LIMITS = Object.freeze({
   lathe: 512,
   tube: 1024,
   shape: 2048,
+  loftSections: 256,
+  loftPointsPerSection: 256,
+  loftTotalPoints: 65_536,
 });
 const MAX_SHAPE_HOLES = 64;
 const MAX_COORDINATE = 1_000_000;
@@ -140,6 +152,15 @@ function proceduralCountEstimate(recipe) {
     const radial = segment('radialSegments', 8);
     return { vertices: (tubular + 1) * (radial + 1), triangles: 2 * tubular * radial };
   }
+  if (recipe.kind === 'loft') {
+    const sections = Array.isArray(recipe.sections) ? recipe.sections.length : 0;
+    const profile = Array.isArray(recipe.sections?.[0]) ? recipe.sections[0].length : 0;
+    const sideTriangles = Math.max(0, sections - 1) * profile * 2;
+    const capTriangles = recipe.closedProfile === false ? 0
+      : (recipe.capStart === false ? 0 : Math.max(0, profile - 2))
+        + (recipe.capEnd === false ? 0 : Math.max(0, profile - 2));
+    return { vertices: sections * profile, triangles: sideTriangles + capTriangles };
+  }
   if (recipe.kind === 'shape') return { vertices: pointCount, triangles: Math.max(0, pointCount * 2) };
   if (recipe.kind === 'extrude') {
     const layers = segment('steps') + 1 + (recipe.bevelEnabled ? 2 * (segment('bevelSegments', 3) + 1) : 0);
@@ -190,6 +211,13 @@ export function normalizeGeometryRecipe(resource = {}) {
     recipe.points = clonePoints(source.points ?? source.path ?? defaults.points);
     recipe.tubularSegments = integer(recipe.tubularSegments, defaults.tubularSegments, 1, 512);
     recipe.radialSegments = integer(recipe.radialSegments, defaults.radialSegments, 3, 128);
+  } else if (source.kind === 'loft') {
+    recipe.sections = Array.isArray(source.sections)
+      ? source.sections.map(section => clonePoints(section))
+      : source.sections;
+    recipe.closedProfile = bool(source.closedProfile, defaults.closedProfile);
+    recipe.capStart = bool(source.capStart, defaults.capStart);
+    recipe.capEnd = bool(source.capEnd, defaults.capEnd);
   } else if (source.kind === 'shape' || source.kind === 'extrude') {
     recipe.points = clonePoints(source.points ?? source.contour ?? defaults.points);
     recipe.holes = cloneContours(recipe.holes);
@@ -350,6 +378,51 @@ function tubeGeometry(THREE, recipe) {
     integer(recipe.radialSegments, 8, 3, 128),
     closed,
   ));
+}
+
+function loftGeometry(THREE, recipe) {
+  if (!Array.isArray(recipe.sections) || recipe.sections.length < 2
+      || recipe.sections.length > CONTROL_POINT_LIMITS.loftSections) {
+    throw new Error(`Loft requires 2 to ${CONTROL_POINT_LIMITS.loftSections} sections.`);
+  }
+  const sections = recipe.sections.map((section, index) => validatedPoints(
+    section, 3, 3, CONTROL_POINT_LIMITS.loftPointsPerSection, `Loft section ${index}`,
+  ));
+  const profileSize = sections[0].length;
+  if (sections.some(section => section.length !== profileSize)) {
+    throw new Error('Every loft section must contain the same number of profile points.');
+  }
+  if (sections.length * profileSize > CONTROL_POINT_LIMITS.loftTotalPoints) {
+    throw new Error(`Loft exceeds ${CONTROL_POINT_LIMITS.loftTotalPoints} total control points.`);
+  }
+  const closed = bool(recipe.closedProfile, true);
+  const positions = sections.flat(2);
+  const indices = [];
+  const edges = closed ? profileSize : profileSize - 1;
+  for (let section = 0; section < sections.length - 1; section += 1) {
+    for (let point = 0; point < edges; point += 1) {
+      const next = (point + 1) % profileSize;
+      const a = section * profileSize + point;
+      const b = section * profileSize + next;
+      const c = (section + 1) * profileSize + next;
+      const d = (section + 1) * profileSize + point;
+      indices.push(a, b, d, b, c, d);
+    }
+  }
+  if (closed && recipe.capStart !== false) {
+    for (let point = 1; point < profileSize - 1; point += 1) indices.push(0, point + 1, point);
+  }
+  if (closed && recipe.capEnd !== false) {
+    const offset = (sections.length - 1) * profileSize;
+    for (let point = 1; point < profileSize - 1; point += 1) indices.push(offset, offset + point, offset + point + 1);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
+  return geometry;
 }
 
 function shapeGeometry(THREE, recipe) {
@@ -568,6 +641,7 @@ export function createGeometry(THREE, resource = {}) {
     case 'torusKnot': return new THREE.TorusKnotGeometry(finite(p.radius, 0.5), finite(p.tube, 0.15), integer(p.tubularSegments, 96, 3), integer(p.radialSegments, 16, 3), integer(p.p, 2), integer(p.q, 3));
     case 'lathe': return latheGeometry(THREE, p);
     case 'tube': return tubeGeometry(THREE, p);
+    case 'loft': return loftGeometry(THREE, p);
     case 'shape': return shapeGeometry(THREE, p);
     case 'extrude': return extrudeGeometry(THREE, p);
     case 'explicit':

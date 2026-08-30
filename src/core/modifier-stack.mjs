@@ -17,6 +17,7 @@ export const MAX_BAKE_BOUNDARY_PARAMETER_BYTES = 24 * 1024;
 export const LIVE_INSTANCE_MODIFIER_TYPES = Object.freeze(['array', 'mirror', 'pattern']);
 export const LIVE_EDITABLE_MESH_GEOMETRY_MODIFIERS = Object.freeze([
   'triangulate', 'smooth', 'weightedNormal', 'displace', 'ocean', 'edgeSplit',
+  'simpleDeform',
 ]);
 const BLOCKED_EDITABLE_MESH_GEOMETRY_MODIFIERS = new Set([
   'weld', 'subdivision', 'solidify', 'decimate',
@@ -41,6 +42,7 @@ const GEOMETRY_KEYS = Object.freeze({
   subdivision: ['levels', 'scheme', 'recalculateNormals'],
   decimate: ['ratio', 'targetTriangles', 'recalculateNormals'],
   displace: ['source', 'direction', 'coordinateSpace', 'strength', 'midlevel', 'recalculateNormals'],
+  simpleDeform: ['mode', 'axis', 'factor', 'origin', 'recalculateNormals'],
   ocean: [
     'mode', 'seed', 'time', 'timelineScale', 'spatialSize', 'waveScale',
     'waveScaleMin', 'windVelocity', 'waveDirection', 'waveAlignment',
@@ -58,6 +60,7 @@ export const LIVE_GEOMETRY_OPERATOR_TYPES = Object.freeze({
   subdivision: 'SUBSURF',
   decimate: 'DECIMATE',
   displace: 'DISPLACE',
+  simpleDeform: 'SIMPLE_DEFORM',
   ocean: 'OCEAN',
 });
 
@@ -201,6 +204,18 @@ function validateGeometryModifier(modifier) {
     }
     optionalFinite(modifier, 'strength', -10_000, 10_000);
     optionalFinite(modifier, 'midlevel', 0, 1);
+  }
+  if (modifier.type === 'simpleDeform') {
+    if (modifier.mode !== undefined && !['bend', 'twist', 'taper', 'stretch'].includes(modifier.mode)) {
+      fail('invalid_geometry_modifier', 'mode must be bend, twist, taper, or stretch.', modifier);
+    }
+    if (modifier.axis !== undefined && !['x', 'y', 'z'].includes(modifier.axis)) {
+      fail('invalid_geometry_modifier', 'axis must be x, y, or z.', modifier);
+    }
+    optionalFinite(modifier, 'factor', -1000, 1000);
+    if (modifier.origin !== undefined && !vector3(modifier.origin)) {
+      fail('invalid_geometry_modifier', 'origin must contain three finite numbers.', modifier);
+    }
   }
   if (modifier.type === 'ocean') {
     if (modifier.mode !== 'displace') {

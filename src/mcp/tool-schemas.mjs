@@ -551,6 +551,13 @@ export const modifierDocumentSchema = z.discriminatedUnion('type', [
     midlevel: z.number().finite().min(0).max(1).optional(),
     ...recalculateNormalsField,
   }),
+  modifierDocument('simpleDeform', {
+    mode: z.enum(['bend', 'twist', 'taper', 'stretch']).optional(),
+    axis: z.enum(['x', 'y', 'z']).optional(),
+    factor: z.number().finite().min(-1_000).max(1_000).optional(),
+    origin: vec3.optional(),
+    ...recalculateNormalsField,
+  }),
   modifierDocument('ocean', oceanModifierFields),
   bakeBoundaryModifierSchema,
 ]).superRefine((modifier, context) => {
@@ -647,6 +654,13 @@ export const modifierPatchSchema = z.union([
     coordinateSpace: patchable(z.literal('local')),
     strength: patchable(z.number().finite().min(-10_000).max(10_000)),
     midlevel: patchable(z.number().finite().min(0).max(1)),
+    recalculateNormals: patchable(z.boolean()),
+  }),
+  modifierPatch('simpleDeform', {
+    mode: patchable(z.enum(['bend', 'twist', 'taper', 'stretch'])),
+    axis: patchable(z.enum(['x', 'y', 'z'])),
+    factor: patchable(z.number().finite().min(-1_000).max(1_000)),
+    origin: patchable(vec3),
     recalculateNormals: patchable(z.boolean()),
   }),
   modifierPatch('ocean', {

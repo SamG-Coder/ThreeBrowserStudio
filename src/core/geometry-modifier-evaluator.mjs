@@ -47,6 +47,7 @@ export const GEOMETRY_MODIFIER_TYPES = Object.freeze([
   'subdivision',
   'decimate',
   'displace',
+  'simpleDeform',
   'ocean',
 ]);
 
@@ -65,6 +66,8 @@ const TYPE_ALIASES = Object.freeze({
   subsurf: 'subdivision',
   decimate: 'decimate',
   displace: 'displace',
+  simpleDeform: 'simpleDeform',
+  simple_deform: 'simpleDeform',
   ocean: 'ocean',
 });
 
@@ -1208,6 +1211,55 @@ function applyDisplace(mesh, modifier) {
   return recalculateIfRequested(output, modifier);
 }
 
+function applySimpleDeform(mesh, modifier) {
+  const mode = modifier.mode ?? 'taper';
+  if (!['bend', 'twist', 'taper', 'stretch'].includes(mode)) {
+    throw modifierError('invalid_geometry_modifier', 'simpleDeform mode must be bend, twist, taper, or stretch.', modifier);
+  }
+  const axisName = modifier.axis ?? 'x';
+  const axis = { x: 0, y: 1, z: 2 }[axisName];
+  if (axis === undefined) throw modifierError('invalid_geometry_modifier', 'simpleDeform axis must be x, y, or z.', modifier);
+  const factor = finiteNumber(modifier.factor ?? 0, 'factor', -1000, 1000, modifier);
+  const origin = vector3(modifier.origin ?? [0, 0, 0], 'origin', modifier);
+  const values = [];
+  for (let index = axis; index < mesh.positions.length; index += 3) values.push(mesh.positions[index] - origin[axis]);
+  const minimum = Math.min(...values); const maximum = Math.max(...values);
+  const span = maximum - minimum || 1;
+  const center = (minimum + maximum) * 0.5;
+  const perpendicular = [0, 1, 2].filter(value => value !== axis);
+  const positions = [...mesh.positions];
+  for (let vertexIndex = 0; vertexIndex < positions.length / 3; vertexIndex += 1) {
+    const point = positionAt(mesh.positions, vertexIndex).map((value, index) => value - origin[index]);
+    const along = point[axis];
+    const t = (along - center) / span;
+    if (mode === 'taper') {
+      const scale = Math.max(0.001, 1 + factor * t);
+      for (const component of perpendicular) point[component] *= scale;
+    } else if (mode === 'stretch') {
+      point[axis] = center + (along - center) * Math.max(0.001, 1 + factor);
+    } else if (mode === 'twist') {
+      const angle = factor * t;
+      const [a, b] = perpendicular; const cosine = Math.cos(angle); const sine = Math.sin(angle);
+      const first = point[a]; const second = point[b];
+      point[a] = first * cosine - second * sine;
+      point[b] = first * sine + second * cosine;
+    } else if (Math.abs(factor) > 1e-9) {
+      const [radial, depth] = perpendicular;
+      const radius = span / factor;
+      const angle = (along - center) / radius;
+      const offset = point[radial] + radius;
+      point[axis] = center + Math.sin(angle) * offset;
+      point[radial] = Math.cos(angle) * offset - radius;
+    }
+    for (let component = 0; component < 3; component += 1) {
+      positions[vertexIndex * 3 + component] = finiteNumber(
+        point[component] + origin[component], `result.positions[${vertexIndex}][${component}]`, -1_000_000, 1_000_000, modifier,
+      );
+    }
+  }
+  return recalculateIfRequested({ ...mesh, positions }, { ...modifier, recalculateNormals: modifier.recalculateNormals ?? true });
+}
+
 const EVALUATORS = Object.freeze({
   triangulate: (mesh, modifier, budget) => applyTriangulate(mesh, modifier, budget),
   weld: (mesh, modifier, budget) => applyWeld(mesh, modifier, budget),
@@ -1218,6 +1270,7 @@ const EVALUATORS = Object.freeze({
   subdivision: applySubdivision,
   decimate: applyDecimate,
   displace: (mesh, modifier, budget) => applyDisplace(mesh, modifier, budget),
+  simpleDeform: (mesh, modifier, budget) => applySimpleDeform(mesh, modifier, budget),
   ocean: (mesh, modifier, budget, options) => applyOcean(mesh, modifier, options),
 });
 

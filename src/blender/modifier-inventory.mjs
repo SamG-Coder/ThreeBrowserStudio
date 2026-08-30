@@ -114,7 +114,7 @@ const modifierRows = [
   ['LATTICE', 'LatticeModifier', 'deform', 'Lattice', 'Deform geometry with a lattice object.', 'bake-required'],
   ['MESH_DEFORM', 'MeshDeformModifier', 'deform', 'Mesh Deform', 'Deform geometry using another mesh as a cage.', 'bake-required'],
   ['SHRINKWRAP', 'ShrinkwrapModifier', 'deform', 'Shrinkwrap', 'Project geometry onto target geometry.', 'bake-required'],
-  ['SIMPLE_DEFORM', 'SimpleDeformModifier', 'deform', 'Simple Deform', 'Twist, bend, taper, or stretch geometry.', 'bake-required'],
+  ['SIMPLE_DEFORM', 'SimpleDeformModifier', 'deform', 'Simple Deform', 'Twist, bend, taper, or stretch geometry.', 'live-geometry', 'Studio evaluates bounded local-axis bend, twist, taper, and stretch deformation with an explicit origin.'],
   ['SMOOTH', 'SmoothModifier', 'deform', 'Smooth', 'Relax vertex positions to flatten angles between faces.', 'live-geometry', 'Studio evaluates bounded whole-mesh Laplacian smoothing with optional boundary preservation.'],
   ['CORRECTIVE_SMOOTH', 'CorrectiveSmoothModifier', 'deform', 'Smooth Corrective', 'Smooth deformations while preserving volume.', 'bake-required'],
   ['LAPLACIANSMOOTH', 'LaplacianSmoothModifier', 'deform', 'Smooth Laplacian', 'Reduce surface noise while preserving overall shape.', 'bake-required'],
@@ -210,8 +210,8 @@ if (liveRuntimeTypes.join(',') !== 'ARRAY,MIRROR') {
 }
 
 export const BLENDER_LIVE_GEOMETRY_MODIFIER_TYPES = Object.freeze([
-  'DECIMATE', 'DISPLACE', 'EDGE_SPLIT', 'OCEAN', 'SMOOTH', 'SOLIDIFY', 'SUBSURF',
-  'TRIANGULATE', 'WEIGHTED_NORMAL', 'WELD',
+  'DECIMATE', 'DISPLACE', 'EDGE_SPLIT', 'OCEAN', 'SIMPLE_DEFORM', 'SMOOTH',
+  'SOLIDIFY', 'SUBSURF', 'TRIANGULATE', 'WEIGHTED_NORMAL', 'WELD',
 ]);
 const liveGeometryTypes = entries
   .filter((entry) => entry.status === 'live-geometry')

@@ -17,6 +17,8 @@ class FakeGeometry {
   computeVertexNormals() { this.attributes.normal = true; this.normalsComputed = true; }
   computeBoundingBox() { this.boundingBoxComputed = true; }
   computeBoundingSphere() { this.boundingSphereComputed = true; }
+  setAttribute(name, value) { this.attributes[name] = value; return this; }
+  setIndex(value) { this.index = value; return this; }
 }
 
 class FakePath {
@@ -36,6 +38,8 @@ class FakeCurve {
 }
 
 const FAKE_THREE = {
+  BufferGeometry: FakeGeometry,
+  Float32BufferAttribute: class { constructor(array, itemSize) { this.array = array; this.itemSize = itemSize; } },
   Vector2: class { constructor(x, y) { Object.assign(this, { x, y }); } },
   Vector3: class { constructor(x, y, z) { Object.assign(this, { x, y, z }); } },
   CatmullRomCurve3: FakeCurve,
@@ -166,6 +170,23 @@ test('lathe and tube recipes build typed Three.js curves and finalized geometry'
   assert.deepEqual(curve.points.map(({ x, y, z }) => [x, y, z]), [[0, 0, 0], [0.5, 1, 0], [1, 0, 0]]);
   assert.deepEqual([curve.closed, curve.curveType, curve.tension], [true, 'catmullrom', 0.25]);
   assert.deepEqual([tubularSegments, radius, radialSegments, closed], [40, 0.2, 7, true]);
+});
+
+test('loft creates one continuous bounded shell across exact equal-size profiles', () => {
+  const loft = createGeometry(FAKE_THREE, {
+    kind: 'loft',
+    sections: [
+      [[-1, -0.5, 0], [1, -0.5, 0], [1, 0.5, 0], [-1, 0.5, 0]],
+      [[-0.8, -0.4, 1], [0.8, -0.4, 1], [0.8, 0.4, 1], [-0.8, 0.4, 1]],
+      [[-0.3, -0.2, 2], [0.3, -0.2, 2], [0.3, 0.2, 2], [-0.3, 0.2, 2]],
+    ],
+  });
+  assert.equal(loft.attributes.position.array.length, 36);
+  assert.equal(loft.index.length, 60);
+  assert.equal(loft.normalsComputed, true);
+  assert.throws(() => createGeometry(FAKE_THREE, {
+    kind: 'loft', sections: [[[0, 0, 0], [1, 0, 0], [0, 1, 0]], [[0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]]],
+  }), /same number/);
 });
 
 test('shape and extrude recipes build contours and holes with bounded options', () => {

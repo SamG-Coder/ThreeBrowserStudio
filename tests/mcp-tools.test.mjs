@@ -180,7 +180,7 @@ test('checked-in JSON contract mirrors the lean capability enums', async () => {
 test('modifier schemas expose every strict per-type control and mirror the checked-in contract', async () => {
   const runtimeDocument = z.toJSONSchema(modifierDocumentSchema, { io: 'input' });
   const runtimeBranches = modifierDocumentBranches(runtimeDocument);
-  assert.equal(runtimeDocument.oneOf.length, 14, 'array, mirror, nested pattern, ten geometry types, and bakeBoundary');
+  assert.equal(runtimeDocument.oneOf.length, 15, 'array, mirror, nested pattern, eleven geometry types, and bakeBoundary');
   assert.deepEqual(
     [...new Set(runtimeBranches.map(branch => branch.properties.type.const))],
     [...AUTHORABLE_MODIFIER_TYPES],
@@ -202,6 +202,8 @@ test('modifier schemas expose every strict per-type control and mirror the check
     byType('displace').properties.source.oneOf.map(source => source.properties.type.const),
     ['constant', 'wave', 'noise'],
   );
+  assert.deepEqual(byType('simpleDeform').properties.mode.enum, ['bend', 'twist', 'taper', 'stretch']);
+  assert.deepEqual(byType('simpleDeform').properties.axis.enum, ['x', 'y', 'z']);
   assert.equal(byType('ocean').properties.mode.const, 'displace');
   assert.equal(byType('ocean').properties.waveCount.maximum, 32);
   assert.equal(byType('ocean').properties.timelineScale.minimum, -64);
@@ -248,6 +250,7 @@ test('modifier patch schemas expose bounded partial controls without permitting 
     { levels: 3, scheme: 'loop' },
     { ratio: 0.5 },
     { source: { type: 'noise', seed: 42, octaves: 4 }, strength: 0.2 },
+    { mode: 'bend', axis: 'z', factor: 0.5, origin: [0, 0, 0] },
     { waveScale: 1.5, windVelocity: 28, waveCount: 24, timelineScale: 0.8 },
     { operatorType: 'BEVEL', parameters: { width: 0.04 } },
     { enabled: null },
