@@ -7,6 +7,7 @@ import { LiveBridgeClient, RpcError } from '../src/bridge/index.mjs';
 import {
   AtomicProjectStore,
   MAX_INSPECT_RESPONSE_BYTES,
+  StudioError,
   contentHash,
   createProjectDocument,
   createResourceDocument,
@@ -1296,4 +1297,43 @@ test('host Settings import writes a new managed project and export returns a pac
   assert.equal(exported.kind, 'ThreeStudioProjectPack');
   assert.equal(exported.document.name, 'Packed Scene');
   assert.equal(parseProjectPack(JSON.stringify(exported)).scriptTrustPolicy, 'agent-safe');
+});
+
+test('host Settings applies active-scene RTX controls through the canonical kernel', async (t) => {
+  const { application } = await applicationFixture(t);
+
+  const response = await application.patchActiveSceneRtx({
+    enabled: true,
+    lighting: true,
+    shadows: true,
+    ambientOcclusion: false,
+    directionalSampleCount: 5,
+    shadowStrength: 0.72,
+  });
+
+  assert.equal(response.success, true);
+  assert.equal(response.revision, 1);
+  assert.deepEqual(application.getActiveSceneRtxSettings(), {
+    enabled: true,
+    lighting: true,
+    shadows: true,
+    ambientOcclusion: false,
+    directionalSampleCount: 5,
+    directionalAngularRadius: 0.0065,
+    shadowStrength: 0.72,
+    aoSampleCount: 2,
+    aoStrength: 0.22,
+    aoRadius: 0.8,
+    maxDistance: 10_000,
+    rayBias: 0.002,
+  });
+  const copy = application.getActiveSceneRtxSettings();
+  copy.enabled = false;
+  assert.equal(application.getActiveSceneRtxSettings().enabled, true);
+
+  await assert.rejects(
+    application.patchActiveSceneRtx({ reflections: true }),
+    error => error instanceof StudioError && error.code === 'unknown_property',
+  );
+  assert.equal(application.kernel.revision, 1);
 });

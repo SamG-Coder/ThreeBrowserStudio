@@ -190,7 +190,13 @@ Windows ACL.
 Press **Ctrl+Shift+M** in the native window to hide the side panel. The panel
 is retained 2D chrome (Log + Explorer + Settings), not an inspector: a
 virtualized, redacted MCP command log with compact or expanded details, a visible scrollbar, a read-only
-scene tree of objects and groups, and Follow shot / Review camera settings.
+scene tree of objects and groups, and a scrollable Settings page. Settings owns
+Follow shot / Review, the complete canonical ray-lighting/shadow/AO controls,
+and a separately capability-gated DLSS 5 Neural Rendering switch. DLSS 5 is
+shown as unavailable unless the active Runtime, GPU, and signed plug-in all
+report support; its Advanced style choices are exactly 0, 1, and 2.
+Advanced also exposes the real intensity, local/global tone, local/skin
+structure, and automatic-mask controls supplied by the staged plug-in path.
 Follow shot is the authored camera; the first drag on the view enters a
 session-only Review look/fly camera that never writes that camera.
 Evidence stays on the authored shot. The log excludes bridge pings and never

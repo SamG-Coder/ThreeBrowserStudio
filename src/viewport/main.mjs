@@ -101,6 +101,8 @@ async function main() {
   }
   let promptSheet = null;
   let application = null;
+  let rtxLighting = null;
+  let activeRtxSettings = {};
   let preview = null;
   let bootstrapDisposed = browserHost;
   let transferBusy = false;
@@ -116,9 +118,34 @@ async function main() {
     onViewModeChange(mode) {
       reviewSession.setViewMode(mode);
     },
+    async onRtxSettingsChange(patch) {
+      if (!application) throw new Error('The native Studio project is not ready.');
+      await application.patchActiveSceneRtx(patch);
+      activeRtxSettings = application.getActiveSceneRtxSettings();
+      syncGraphicsSettingsState();
+    },
+    onDlss5SettingsChange(patch) {
+      if (!rtxLighting) throw new Error('The native DLSS 5 controller is not ready.');
+      rtxLighting.setDlss5Settings(patch);
+      syncGraphicsSettingsState();
+    },
     onExportProject() { void transferProject("export"); },
     onImportProject() { void transferProject("import"); },
   });
+
+  function syncGraphicsSettingsState() {
+    if (!rtxLighting) return;
+    liveFeed.setGraphicsSettingsState?.({
+      rtx: {
+        authored: application?.getActiveSceneRtxSettings?.() ?? activeRtxSettings,
+        status: rtxLighting.getStatus(),
+      },
+      dlss5: {
+        settings: rtxLighting.getDlss5Settings(),
+        status: rtxLighting.getDlss5Status(),
+      },
+    });
+  }
 
   async function transferProject(action) {
     if (transferBusy) {
@@ -165,14 +192,16 @@ async function main() {
       transferBusy = false;
     }
   }
-  const rtxLighting = createRtxLightingController({
+  rtxLighting = createRtxLightingController({
     THREE,
+    TSL,
     renderer,
     rtx: globalThis.navigator?.gpu?.threeBrowserRTX ?? null,
     collectScene: root => collectRtxScene(root),
     normalizeSettings: adaptSceneRtxSettings,
     settings: {},
   });
+  syncGraphicsSettingsState();
   const capture = createFrameCapture({
     renderer,
     scene,
@@ -289,22 +318,30 @@ async function main() {
       scene.fog = fog;
       if (!background && !backgroundNode) renderer.setClearColor(STUDIO_RENDER_STATE.clearColor, 1);
     },
-    configureRtx({ root, settings = {} } = {}) {
+    async configureRtx({ root, settings = {} } = {}) {
+      activeRtxSettings = structuredClone(settings);
       rtxLighting.setSettings(settings);
-      if (settings.enabled !== true) return Promise.resolve(false);
-      rtxLighting.markStale("compiled scene revision changed");
-      return rtxLighting.configure({
-        scene: root,
-        width: renderer.domElement.width,
-        height: renderer.domElement.height,
-        settings,
-      });
+      try {
+        if (settings.enabled !== true) return false;
+        rtxLighting.markStale("compiled scene revision changed");
+        return await rtxLighting.configure({
+          scene: root,
+          width: renderer.domElement.width,
+          height: renderer.domElement.height,
+          settings,
+        });
+      } finally {
+        syncGraphicsSettingsState();
+      }
     },
     getRtxStatus() {
       return rtxLighting.getStatus();
     },
     getRtxDigest() {
       return rtxLighting.getDigest();
+    },
+    getDlss5Status() {
+      return rtxLighting.getDlss5Status();
     },
     capture: capture.capture,
     async focusBounds(bounds) {
@@ -374,11 +411,13 @@ async function main() {
   liveFeed.setProjectTransferStatus(application
     ? "Exports the open project as JSON."
     : "Exports the compiled starter. Import replaces it in this tab.");
+  syncGraphicsSettingsState();
 
   globalThis.addEventListener("resize", resize);
   globalThis.addEventListener("beforeunload", () => { void dispose(); }, { once: true });
   resize();
   let previousFrame = performance.now() * 0.001;
+  let nextGraphicsStatusSync = 0;
   let renderingFrame = false;
   renderer.setAnimationLoop(async () => {
     if (disposed || renderingFrame) return;
@@ -388,6 +427,10 @@ async function main() {
       const elapsed = now - started;
       const delta = Math.min(0.1, Math.max(0, now - previousFrame));
       previousFrame = now;
+      if (now >= nextGraphicsStatusSync) {
+        nextGraphicsStatusSync = now + 0.25;
+        syncGraphicsSettingsState();
+      }
       if (bootstrap.root.parent) bootstrap.update(elapsed);
       application?.update(delta);
       if (reviewSession.viewMode !== VIEW_MODE_FOLLOW_SHOT) controls.update(delta);

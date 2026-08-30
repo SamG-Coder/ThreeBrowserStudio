@@ -72,6 +72,7 @@ import { buildExplorerOutline } from '../viewport/scene-explorer.mjs';
 import { LAYOUT_PATTERN_MODES } from '../core/layout-patterns.mjs';
 import { RTX_SCENE_LIMITS } from './rtx-scene-collector.mjs';
 import { normalizeGeometryRecipe } from './resource-factories.mjs';
+import { createTransactionId } from '../core/util.mjs';
 
 const INSPECT_RESPONSE_ENVELOPE_RESERVE_BYTES = 2_048;
 
@@ -647,6 +648,32 @@ export class StudioApplication {
   get sessionId() { return this.#credentials.sessionId; }
   get markerPath() { return this.#markerPath; }
   get kernel() { return this.#kernel; }
+
+  getActiveSceneRtxSettings() {
+    if (!this.#kernel) return {};
+    const document = this.#kernel.document;
+    return structuredClone(document.scenes[document.activeSceneId]?.settings?.rtx ?? {});
+  }
+
+  patchActiveSceneRtx(patch = {}) {
+    return this.#exclusive(async () => {
+      if (!this.#kernel) throw new StudioError('project_not_open', 'No project is open.');
+      if (!isRecord(patch)) {
+        throw new StudioError('invalid_rtx_configuration', 'RTX settings patch must be an object.');
+      }
+      const document = this.#kernel.document;
+      const sceneId = document.activeSceneId;
+      return this.#apply({
+        protocolVersion: PROTOCOL_VERSION,
+        projectId: document.projectId,
+        baseRevision: document.revision,
+        idempotencyKey: createTransactionId('ui-rtx'),
+        label: 'Update RTX settings from Studio',
+        dryRun: false,
+        operations: [{ op: 'scene.rtx.patch', sceneId, patch: structuredClone(patch) }],
+      });
+    });
+  }
 
   async start({ projectPath = process.env.THREE_STUDIO_PROJECT } = {}) {
     await secureSessionMarkerDirectory(path.dirname(this.#markerPath));

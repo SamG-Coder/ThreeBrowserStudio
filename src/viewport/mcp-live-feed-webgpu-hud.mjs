@@ -1,4 +1,6 @@
 import { sanitizeLiveFeedText } from '../runtime/mcp-live-feed-telemetry.mjs';
+import { DEFAULT_RTX_SETTINGS, normalizeRtxSettings } from '../core/rtx-settings.mjs';
+import { DEFAULT_DLSS5_SETTINGS } from './dlss5-neural-controller.mjs';
 import { createFontRunCache } from './overlay-fonts.mjs';
 import { pointInRect } from './overlay-geometry.mjs';
 import {
@@ -6,8 +8,10 @@ import {
   Control,
   Label,
   OverlayHost,
+  RangeOption,
   RadioOption,
   ScrollBar,
+  ScrollPanel,
   TabStrip,
   ToggleOption,
   VirtualList,
@@ -32,6 +36,8 @@ const SCROLL_WIDTH = 10;
 const MAX_RETAINED_SOURCE_ENTRIES = 256;
 const PANEL_BACKGROUND = 'rgba(8, 13, 22, 0.92)';
 const PANEL_LAYER_TRANSPARENT = 'rgba(0, 0, 0, 0)';
+const SETTINGS_CONTENT_HEIGHT = 1_570;
+const DLSS5_STYLES = Object.freeze([0, 1, 2]);
 const STAGE_COLORS = Object.freeze({
   started: '#f2b45c',
   completed: '#58dc90',
@@ -47,6 +53,95 @@ function finite(value, fallback) {
 
 function clamp(value, minimum, maximum) {
   return Math.min(maximum, Math.max(minimum, value));
+}
+
+function shortNumber(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '—';
+  const absolute = Math.abs(number);
+  if (absolute >= 100_000 || (absolute > 0 && absolute < 0.001)) return number.toExponential(2);
+  if (absolute >= 100) return number.toFixed(0);
+  if (absolute >= 10) return number.toFixed(1);
+  if (absolute >= 1) return number.toFixed(2);
+  return number.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+function normalizeRtxUiState(value = {}) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const nestedLighting = source.lighting && typeof source.lighting === 'object' ? source.lighting : null;
+  const nestedShadows = source.shadows && typeof source.shadows === 'object' ? source.shadows : null;
+  const nestedAo = source.ambientOcclusion && typeof source.ambientOcclusion === 'object'
+    ? source.ambientOcclusion
+    : null;
+  const settings = {
+    lighting: nestedLighting ? nestedLighting.enabled : source.lighting,
+    shadows: nestedShadows ? nestedShadows.enabled : source.shadows,
+    ambientOcclusion: nestedAo ? nestedAo.enabled : source.ambientOcclusion,
+    directionalSampleCount: source.directionalSampleCount ?? nestedShadows?.sampleCount,
+    aoSampleCount: source.aoSampleCount ?? nestedAo?.sampleCount,
+    directionalAngularRadius: source.directionalAngularRadius ?? nestedShadows?.angularRadius,
+    shadowStrength: source.shadowStrength ?? nestedShadows?.strength,
+    aoStrength: source.aoStrength ?? nestedAo?.strength,
+    aoRadius: source.aoRadius ?? nestedAo?.radius,
+    maxDistance: source.maxDistance ?? nestedLighting?.maxDistance,
+    rayBias: source.rayBias ?? nestedLighting?.rayBias,
+  };
+  for (const [key, setting] of Object.entries(settings)) {
+    if (setting === undefined) delete settings[key];
+  }
+  try {
+    return Object.freeze({ enabled: source.enabled === true, ...normalizeRtxSettings(settings) });
+  } catch {
+    return Object.freeze({ enabled: false, ...DEFAULT_RTX_SETTINGS });
+  }
+}
+
+function normalizeDlss5UiState(value = {}) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const style = Number(source.style ?? 0);
+  const setting = (key, minimum, maximum) => {
+    const candidate = Number(source[key]);
+    const fallback = DEFAULT_DLSS5_SETTINGS[key];
+    return clamp(Number.isFinite(candidate) ? candidate : fallback, minimum, maximum);
+  };
+  return Object.freeze({
+    enabled: source.enabled === true,
+    intensity: setting('intensity', 0, 1),
+    localToneStrength: setting('localToneStrength', -1, 1),
+    localStructureStrength: setting('localStructureStrength', -1, 1),
+    globalToneStrength: setting('globalToneStrength', 0, 1),
+    skinStructureStrength: setting('skinStructureStrength', -1, 1),
+    style: DLSS5_STYLES.includes(style) ? style : 0,
+    performanceMode: 'dlaa',
+    useAutoMask: source.useAutoMask === undefined
+      ? DEFAULT_DLSS5_SETTINGS.useAutoMask
+      : source.useAutoMask === true,
+  });
+}
+
+function normalizeFeatureStatus(value, fallbackReason) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  const supported = source.supported === true;
+  return Object.freeze({
+    supported,
+    available: source.available === undefined ? supported : source.available === true,
+    requested: source.requested === true,
+    configured: source.configured === true,
+    active: source.active === true,
+    building: source.building === true,
+    failed: source.failed === true,
+    reason: sanitizeLiveFeedText(source.reason, { maximum: 120, fallback: fallbackReason }),
+  });
+}
+
+function featureStatusText(status, label) {
+  if (!status.available) return `${label} unavailable · ${status.reason}`;
+  if (status.failed) return `${label} failed · ${status.reason}`;
+  if (status.building) return `${label} building…`;
+  if (status.active) return `${label} active`;
+  if (status.configured) return `${label} configured`;
+  if (status.requested) return `${label} requested · ${status.reason}`;
+  return `${label} available`;
 }
 
 function exactToggle(event) {
@@ -151,6 +246,8 @@ export function createMcpLiveFeedWebGpuHud({
   onVisibilityChange,
   onExportProject,
   onImportProject,
+  onRtxSettingsChange,
+  onDlss5SettingsChange,
 } = {}) {
   const document = suppliedDocument ?? globalThis.document;
   const keyboard = eventTarget ?? globalThis;
@@ -233,6 +330,13 @@ export function createMcpLiveFeedWebGpuHud({
   let explorerExpanded = new Set();
   let explorerKnownIds = new Set();
   let explorerRows = Object.freeze([]);
+  let rtxAuthoritativeSettings = normalizeRtxUiState();
+  let rtxUiSettings = rtxAuthoritativeSettings;
+  const pendingRtxSettings = new Map();
+  let rtxPatchSequence = 0;
+  let rtxUiStatus = normalizeFeatureStatus(null, 'Waiting for native RTX capability status.');
+  let dlss5UiSettings = normalizeDlss5UiState();
+  let dlss5UiStatus = normalizeFeatureStatus(null, 'Waiting for native DLSS 5 capability status.');
 
   const timeNow = () => {
     try {
@@ -418,84 +522,292 @@ export function createMcpLiveFeedWebGpuHud({
     visible: false,
     backColor: PANEL_LAYER_TRANSPARENT,
   }));
-  const cameraLabel = settingsPage.add(new Label({
+  const settingsViewport = settingsPage.add(new ScrollPanel({
+    name: 'settings-scroll-panel',
+    backColor: PANEL_LAYER_TRANSPARENT,
+    contentHeight: SETTINGS_CONTENT_HEIGHT,
+    onScroll(value) {
+      settingsScroll.setScroll(value, { notify: false });
+    },
+  }));
+  const settingsScroll = settingsPage.add(new ScrollBar({
+    name: 'settings-scroll',
+    onScroll(value) {
+      settingsViewport.setScroll(value, { notify: false });
+    },
+  }));
+  const settingsContent = settingsViewport.content;
+  const cameraLabel = settingsContent.add(new Label({
+    name: 'camera-label',
     text: 'Camera',
     font: UI_FONT_BOLD,
     color: '#9fc6f2',
   }));
-  const followOption = settingsPage.add(new RadioOption({
+  const followOption = settingsContent.add(new RadioOption({
     name: 'follow-shot',
     text: 'Follow shot',
     selected: viewMode === VIEW_MODE_FOLLOW_SHOT,
     onSelect() { setViewMode(VIEW_MODE_FOLLOW_SHOT, { fromUi: true }); },
   }));
-  const reviewOption = settingsPage.add(new RadioOption({
+  const reviewOption = settingsContent.add(new RadioOption({
     name: 'review',
     text: 'Review  ·  look / fly',
     selected: viewMode === VIEW_MODE_REVIEW,
     onSelect() { setViewMode(VIEW_MODE_REVIEW, { fromUi: true }); },
   }));
-  const cameraHint = settingsPage.add(new Label({
+  const cameraHint = settingsContent.add(new Label({
     text: 'Review never writes the authored camera. Evidence stays on the shot.',
     color: '#7f94ad',
   }));
-  const panelHint = settingsPage.add(new Label({
+  const panelHint = settingsContent.add(new Label({
     text: 'Drag looks. WASD moves. Space up, Ctrl down. Ctrl+Shift+M hides this panel.',
     color: '#7f94ad',
   }));
-  const logSettingsLabel = settingsPage.add(new Label({
+  const rtxSettingsLabel = settingsContent.add(new Label({
+    name: 'rtx-settings-label',
+    text: 'RTX Lighting',
+    font: UI_FONT_BOLD,
+    color: '#9fc6f2',
+  }));
+  const rtxStatusLabel = settingsContent.add(new Label({
+    name: 'rtx-status',
+    text: '',
+    color: '#7f94ad',
+  }));
+  const rtxEnabledToggle = settingsContent.add(new ToggleOption({
+    name: 'rtx-enabled',
+    text: 'Enable native RTX',
+    onChange(selected) { requestRtxPatch({ enabled: selected }); },
+  }));
+  const rtxLightingToggle = settingsContent.add(new ToggleOption({
+    name: 'rtx-lighting',
+    text: 'Ray lighting',
+    onChange(selected) { requestRtxPatch({ lighting: selected }); },
+  }));
+  const rtxShadowsToggle = settingsContent.add(new ToggleOption({
+    name: 'rtx-shadows',
+    text: 'Ray-traced shadows',
+    onChange(selected) { requestRtxPatch({ shadows: selected }); },
+  }));
+  const rtxAoToggle = settingsContent.add(new ToggleOption({
+    name: 'rtx-ambient-occlusion',
+    text: 'Ray-traced ambient occlusion',
+    onChange(selected) { requestRtxPatch({ ambientOcclusion: selected }); },
+  }));
+  const rtxDirectionalSamples = settingsContent.add(new RangeOption({
+    name: 'rtx-directional-samples',
+    text: 'Shadow samples',
+    minimum: 1,
+    maximum: 64,
+    step: 1,
+    formatValue: value => String(Math.round(value)),
+    onChange(value) { requestRtxPatch({ directionalSampleCount: value }); },
+  }));
+  const rtxDirectionalRadius = settingsContent.add(new RangeOption({
+    name: 'rtx-directional-radius',
+    text: 'Sun angular radius',
+    minimum: 0,
+    maximum: Math.PI / 2 - 0.0001,
+    step: 0.0001,
+    curve: 3,
+    formatValue: value => shortNumber(value),
+    onChange(value) { requestRtxPatch({ directionalAngularRadius: value }); },
+  }));
+  const rtxShadowStrength = settingsContent.add(new RangeOption({
+    name: 'rtx-shadow-strength',
+    text: 'Shadow strength',
+    minimum: 0,
+    maximum: 1,
+    step: 0.01,
+    formatValue: value => value.toFixed(2),
+    onChange(value) { requestRtxPatch({ shadowStrength: value }); },
+  }));
+  const rtxAoSamples = settingsContent.add(new RangeOption({
+    name: 'rtx-ao-samples',
+    text: 'AO samples',
+    minimum: 1,
+    maximum: 64,
+    step: 1,
+    formatValue: value => String(Math.round(value)),
+    onChange(value) { requestRtxPatch({ aoSampleCount: value }); },
+  }));
+  const rtxAoStrength = settingsContent.add(new RangeOption({
+    name: 'rtx-ao-strength',
+    text: 'AO strength',
+    minimum: 0,
+    maximum: 1,
+    step: 0.01,
+    formatValue: value => value.toFixed(2),
+    onChange(value) { requestRtxPatch({ aoStrength: value }); },
+  }));
+  const rtxAoRadius = settingsContent.add(new RangeOption({
+    name: 'rtx-ao-radius',
+    text: 'AO radius',
+    minimum: 0.001,
+    maximum: 10_000,
+    step: 0,
+    scale: 'log',
+    formatValue: value => shortNumber(value),
+    onChange(value) { requestRtxPatch({ aoRadius: value }); },
+  }));
+  const rtxMaxDistance = settingsContent.add(new RangeOption({
+    name: 'rtx-max-distance',
+    text: 'Maximum ray distance',
+    minimum: 0.01,
+    maximum: 1_000_000,
+    step: 0,
+    scale: 'log',
+    formatValue: value => shortNumber(value),
+    onChange(value) { requestRtxPatch({ maxDistance: value }); },
+  }));
+  const rtxRayBias = settingsContent.add(new RangeOption({
+    name: 'rtx-ray-bias',
+    text: 'Ray bias',
+    minimum: 0.000001,
+    maximum: 10_000,
+    step: 0,
+    scale: 'log',
+    formatValue: value => shortNumber(value),
+    onChange(value) { requestRtxPatch({ rayBias: value }); },
+  }));
+
+  const dlss5SettingsLabel = settingsContent.add(new Label({
+    name: 'dlss5-settings-label',
+    text: 'DLSS 5 · Neural Rendering',
+    font: UI_FONT_BOLD,
+    color: '#9fc6f2',
+  }));
+  const dlss5StatusLabel = settingsContent.add(new Label({
+    name: 'dlss5-status',
+    text: '',
+    color: '#7f94ad',
+  }));
+  const dlss5EnabledToggle = settingsContent.add(new ToggleOption({
+    name: 'dlss5-enabled',
+    text: 'Enable DLSS 5',
+    onChange(selected) { requestDlss5Patch({ enabled: selected }); },
+  }));
+  const dlss5AdvancedLabel = settingsContent.add(new Label({
+    name: 'dlss5-advanced-label',
+    text: 'Advanced · Style',
+    font: UI_FONT_BOLD,
+    color: '#9fc6f2',
+  }));
+  const dlss5StyleOptions = DLSS5_STYLES.map(style => settingsContent.add(new RadioOption({
+    name: `dlss5-style-${style}`,
+    text: `Style ${style}`,
+    selected: style === 0,
+    onSelect() { requestDlss5Patch({ style }); },
+  })));
+  const dlss5Hint = settingsContent.add(new Label({
+    name: 'dlss5-hint',
+    text: 'Only the three real plug-in styles are exposed: 0, 1, and 2.',
+    color: '#7f94ad',
+  }));
+  const dlss5Intensity = settingsContent.add(new RangeOption({
+    name: 'dlss5-intensity',
+    text: 'Neural intensity',
+    minimum: 0,
+    maximum: 1,
+    step: 0.01,
+    formatValue: value => value.toFixed(2),
+    onChange(value) { requestDlss5Patch({ intensity: value }); },
+  }));
+  const dlss5LocalTone = settingsContent.add(new RangeOption({
+    name: 'dlss5-local-tone',
+    text: 'Local tone',
+    minimum: -1,
+    maximum: 1,
+    step: 0.01,
+    formatValue: value => value.toFixed(2),
+    onChange(value) { requestDlss5Patch({ localToneStrength: value }); },
+  }));
+  const dlss5LocalStructure = settingsContent.add(new RangeOption({
+    name: 'dlss5-local-structure',
+    text: 'Local structure',
+    minimum: -1,
+    maximum: 1,
+    step: 0.01,
+    formatValue: value => value.toFixed(2),
+    onChange(value) { requestDlss5Patch({ localStructureStrength: value }); },
+  }));
+  const dlss5GlobalTone = settingsContent.add(new RangeOption({
+    name: 'dlss5-global-tone',
+    text: 'Global tone',
+    minimum: 0,
+    maximum: 1,
+    step: 0.01,
+    formatValue: value => value.toFixed(2),
+    onChange(value) { requestDlss5Patch({ globalToneStrength: value }); },
+  }));
+  const dlss5SkinStructure = settingsContent.add(new RangeOption({
+    name: 'dlss5-skin-structure',
+    text: 'Skin structure',
+    minimum: -1,
+    maximum: 1,
+    step: 0.01,
+    formatValue: value => value.toFixed(2),
+    onChange(value) { requestDlss5Patch({ skinStructureStrength: value }); },
+  }));
+  const dlss5AutoMask = settingsContent.add(new ToggleOption({
+    name: 'dlss5-auto-mask',
+    text: 'Automatic control mask',
+    onChange(selected) { requestDlss5Patch({ useAutoMask: selected }); },
+  }));
+
+  const logSettingsLabel = settingsContent.add(new Label({
     text: 'Log',
     font: UI_FONT_BOLD,
     color: '#9fc6f2',
   }));
-  const settingsDetailToggle = settingsPage.add(new ToggleOption({
+  const settingsDetailToggle = settingsContent.add(new ToggleOption({
     name: 'settings-log-expanded',
     text: 'Expanded details',
     selected: false,
     onChange(selected) { setLogExpanded(selected); },
   }));
-  const logHint = settingsPage.add(new Label({
+  const logHint = settingsContent.add(new Label({
     text: 'Expanded details name whitelisted operation types. Never raw arguments or results.',
     color: '#7f94ad',
   }));
-  const projectLabel = settingsPage.add(new Label({
+  const projectLabel = settingsContent.add(new Label({
     name: 'project-label',
     text: 'Project',
     font: UI_FONT_BOLD,
     color: '#9fc6f2',
   }));
-  const exportProjectButton = settingsPage.add(new Button({
+  const exportProjectButton = settingsContent.add(new Button({
     name: 'export-project',
     text: 'Export JSON',
     onClick() { onExportProject?.(); },
   }));
-  const importProjectButton = settingsPage.add(new Button({
+  const importProjectButton = settingsContent.add(new Button({
     name: 'import-project',
     text: 'Import JSON',
     onClick() { onImportProject?.(); },
   }));
-  const projectTransferStatus = settingsPage.add(new Label({
+  const projectTransferStatus = settingsContent.add(new Label({
     name: 'project-transfer-status',
     text: '',
     color: '#9fc6f2',
   }));
-  const projectHint = settingsPage.add(new Label({
+  const projectHint = settingsContent.add(new Label({
     name: 'project-hint',
     text: 'JSON pack of the canonical project. History, recovery, and Prompt keys stay out.',
     color: '#7f94ad',
   }));
-  const promptSettingsLabel = promptTab ? settingsPage.add(new Label({
+  const promptSettingsLabel = promptTab ? settingsContent.add(new Label({
     name: 'prompt-settings-label',
     text: 'Prompt',
     font: UI_FONT_BOLD,
     color: '#9fc6f2',
   })) : null;
-  const promptSettingsButton = promptTab ? settingsPage.add(new Button({
+  const promptSettingsButton = promptTab ? settingsContent.add(new Button({
     name: 'open-prompt',
     text: 'Open Prompt  ·  models',
     onClick() { tabs.setSelected('prompt'); },
   })) : null;
-  const promptSettingsHint = promptTab ? settingsPage.add(new Label({
+  const promptSettingsHint = promptTab ? settingsContent.add(new Label({
     name: 'prompt-settings-hint',
     text: 'Connect HTTP chat APIs here. Tokens stay PIN-encrypted in this browser.',
     color: '#7f94ad',
@@ -547,23 +859,60 @@ export function createMcpLiveFeedWebGpuHud({
     );
     explorerList.setBounds(0, 0, Math.max(40, explorerPage.width - SCROLL_WIDTH), explorerPage.height);
     explorerScroll.setBounds(explorerPage.width - SCROLL_WIDTH, 0, SCROLL_WIDTH, explorerPage.height);
-    cameraLabel.setBounds(12, 10, settingsPage.width - 24, 20);
-    followOption.setBounds(8, 34, settingsPage.width - 16, 28);
-    reviewOption.setBounds(8, 64, settingsPage.width - 16, 28);
-    cameraHint.setBounds(12, 100, settingsPage.width - 24, 36);
-    panelHint.setBounds(12, 138, settingsPage.width - 24, 36);
-    logSettingsLabel.setBounds(12, 186, settingsPage.width - 24, 20);
-    settingsDetailToggle.setBounds(8, 210, settingsPage.width - 16, 28);
-    logHint.setBounds(12, 242, settingsPage.width - 24, 36);
-    projectLabel.setBounds(12, 286, settingsPage.width - 24, 20);
-    const buttonWidth = Math.max(80, Math.floor((settingsPage.width - 24) / 2));
-    exportProjectButton.setBounds(8, 310, buttonWidth, 28);
-    importProjectButton.setBounds(8 + buttonWidth + 8, 310, Math.max(80, settingsPage.width - 16 - buttonWidth - 8), 28);
-    projectTransferStatus.setBounds(12, 344, settingsPage.width - 24, 32);
-    projectHint.setBounds(12, 378, settingsPage.width - 24, 36);
-    promptSettingsLabel?.setBounds(12, 422, settingsPage.width - 24, 20);
-    promptSettingsButton?.setBounds(8, 446, settingsPage.width - 16, 28);
-    promptSettingsHint?.setBounds(12, 480, settingsPage.width - 24, 36);
+    settingsViewport.setBounds(0, 0, Math.max(40, settingsPage.width - SCROLL_WIDTH), settingsPage.height);
+    settingsViewport.setContentHeight(SETTINGS_CONTENT_HEIGHT);
+    settingsScroll.setBounds(settingsPage.width - SCROLL_WIDTH, 0, SCROLL_WIDTH, settingsPage.height);
+    settingsScroll.minimum = 0;
+    settingsScroll.maximum = settingsViewport.maxScroll;
+    settingsScroll.viewportSize = settingsViewport.height;
+    settingsScroll.setScroll(settingsViewport.value, { notify: false });
+    settingsScroll.setVisible(settingsViewport.maxScroll > 0);
+    const settingsWidth = settingsContent.width;
+    cameraLabel.setBounds(12, 10, settingsWidth - 24, 20);
+    followOption.setBounds(8, 34, settingsWidth - 16, 28);
+    reviewOption.setBounds(8, 64, settingsWidth - 16, 28);
+    cameraHint.setBounds(12, 100, settingsWidth - 24, 36);
+    panelHint.setBounds(12, 138, settingsWidth - 24, 36);
+    rtxSettingsLabel.setBounds(12, 186, settingsWidth - 24, 20);
+    rtxStatusLabel.setBounds(12, 210, settingsWidth - 24, 36);
+    rtxEnabledToggle.setBounds(8, 250, settingsWidth - 16, 28);
+    rtxLightingToggle.setBounds(8, 280, settingsWidth - 16, 28);
+    rtxShadowsToggle.setBounds(8, 310, settingsWidth - 16, 28);
+    rtxAoToggle.setBounds(8, 340, settingsWidth - 16, 28);
+    rtxDirectionalSamples.setBounds(8, 374, settingsWidth - 16, 36);
+    rtxDirectionalRadius.setBounds(8, 412, settingsWidth - 16, 36);
+    rtxShadowStrength.setBounds(8, 450, settingsWidth - 16, 36);
+    rtxAoSamples.setBounds(8, 488, settingsWidth - 16, 36);
+    rtxAoStrength.setBounds(8, 526, settingsWidth - 16, 36);
+    rtxAoRadius.setBounds(8, 564, settingsWidth - 16, 36);
+    rtxMaxDistance.setBounds(8, 602, settingsWidth - 16, 36);
+    rtxRayBias.setBounds(8, 640, settingsWidth - 16, 36);
+    dlss5SettingsLabel.setBounds(12, 690, settingsWidth - 24, 20);
+    dlss5StatusLabel.setBounds(12, 714, settingsWidth - 24, 36);
+    dlss5EnabledToggle.setBounds(8, 754, settingsWidth - 16, 28);
+    dlss5AdvancedLabel.setBounds(12, 792, settingsWidth - 24, 20);
+    dlss5StyleOptions[0].setBounds(8, 816, settingsWidth - 16, 28);
+    dlss5StyleOptions[1].setBounds(8, 846, settingsWidth - 16, 28);
+    dlss5StyleOptions[2].setBounds(8, 876, settingsWidth - 16, 28);
+    dlss5Hint.setBounds(12, 910, settingsWidth - 24, 36);
+    dlss5Intensity.setBounds(8, 952, settingsWidth - 16, 36);
+    dlss5LocalTone.setBounds(8, 990, settingsWidth - 16, 36);
+    dlss5LocalStructure.setBounds(8, 1028, settingsWidth - 16, 36);
+    dlss5GlobalTone.setBounds(8, 1066, settingsWidth - 16, 36);
+    dlss5SkinStructure.setBounds(8, 1104, settingsWidth - 16, 36);
+    dlss5AutoMask.setBounds(8, 1144, settingsWidth - 16, 28);
+    logSettingsLabel.setBounds(12, 1214, settingsWidth - 24, 20);
+    settingsDetailToggle.setBounds(8, 1238, settingsWidth - 16, 28);
+    logHint.setBounds(12, 1270, settingsWidth - 24, 36);
+    projectLabel.setBounds(12, 1314, settingsWidth - 24, 20);
+    const buttonWidth = Math.max(80, Math.floor((settingsWidth - 24) / 2));
+    exportProjectButton.setBounds(8, 1338, buttonWidth, 28);
+    importProjectButton.setBounds(8 + buttonWidth + 8, 1338, Math.max(80, settingsWidth - 16 - buttonWidth - 8), 28);
+    projectTransferStatus.setBounds(12, 1372, settingsWidth - 24, 32);
+    projectHint.setBounds(12, 1406, settingsWidth - 24, 36);
+    promptSettingsLabel?.setBounds(12, 1450, settingsWidth - 24, 20);
+    promptSettingsButton?.setBounds(8, 1474, settingsWidth - 16, 28);
+    promptSettingsHint?.setBounds(12, 1508, settingsWidth - 24, 36);
     if (promptPage) {
       const [promptTitle, promptHint, promptKernelHint] = promptPage.children;
       promptTitle.setBounds(12, 10, promptPage.width - 24, 20);
@@ -591,9 +940,183 @@ export function createMcpLiveFeedWebGpuHud({
     explorerScroll.setVisible(explorerList.maxScroll > 0);
   }
 
+  function syncSettingsScroll() {
+    settingsScroll.minimum = 0;
+    settingsScroll.maximum = settingsViewport.maxScroll;
+    settingsScroll.viewportSize = settingsViewport.height;
+    settingsScroll.setScroll(settingsViewport.value, { notify: false });
+    settingsScroll.setVisible(settingsViewport.maxScroll > 0);
+  }
+
   function syncScroll() {
     syncLogScroll();
     syncExplorerScroll();
+    syncSettingsScroll();
+  }
+
+  const rtxValueControls = [
+    rtxDirectionalSamples,
+    rtxDirectionalRadius,
+    rtxShadowStrength,
+    rtxAoSamples,
+    rtxAoStrength,
+    rtxAoRadius,
+    rtxMaxDistance,
+    rtxRayBias,
+  ];
+  const rtxDetailControls = [
+    rtxLightingToggle,
+    rtxShadowsToggle,
+    rtxAoToggle,
+    ...rtxValueControls,
+  ];
+  const dlss5AdvancedControls = [
+    ...dlss5StyleOptions,
+    dlss5Intensity,
+    dlss5LocalTone,
+    dlss5LocalStructure,
+    dlss5GlobalTone,
+    dlss5SkinStructure,
+    dlss5AutoMask,
+  ];
+
+  function syncRangeValue(control, value) {
+    if (!control.interacting) control.setValue(value);
+  }
+
+  function refreshOptimisticRtxSettings() {
+    const pending = {};
+    for (const [key, entry] of pendingRtxSettings) pending[key] = entry.value;
+    rtxUiSettings = normalizeRtxUiState({ ...rtxAuthoritativeSettings, ...pending });
+  }
+
+  function syncGraphicsControls() {
+    rtxEnabledToggle.setSelected(rtxUiSettings.enabled);
+    rtxLightingToggle.setSelected(rtxUiSettings.lighting);
+    rtxShadowsToggle.setSelected(rtxUiSettings.shadows);
+    rtxAoToggle.setSelected(rtxUiSettings.ambientOcclusion);
+    syncRangeValue(rtxDirectionalSamples, rtxUiSettings.directionalSampleCount);
+    syncRangeValue(rtxDirectionalRadius, rtxUiSettings.directionalAngularRadius);
+    syncRangeValue(rtxShadowStrength, rtxUiSettings.shadowStrength);
+    syncRangeValue(rtxAoSamples, rtxUiSettings.aoSampleCount);
+    syncRangeValue(rtxAoStrength, rtxUiSettings.aoStrength);
+    syncRangeValue(rtxAoRadius, rtxUiSettings.aoRadius);
+    syncRangeValue(rtxMaxDistance, rtxUiSettings.maxDistance);
+    syncRangeValue(rtxRayBias, rtxUiSettings.rayBias);
+    rtxEnabledToggle.setEnabled(rtxUiStatus.available);
+    for (const control of rtxDetailControls) control.setEnabled(rtxUiStatus.available);
+    rtxStatusLabel.setText(featureStatusText(rtxUiStatus, 'RTX'));
+
+    dlss5EnabledToggle.setSelected(dlss5UiSettings.enabled);
+    dlss5EnabledToggle.setEnabled(dlss5UiStatus.available);
+    for (const [index, control] of dlss5StyleOptions.entries()) {
+      control.setSelected(dlss5UiSettings.style === DLSS5_STYLES[index]);
+    }
+    syncRangeValue(dlss5Intensity, dlss5UiSettings.intensity);
+    syncRangeValue(dlss5LocalTone, dlss5UiSettings.localToneStrength);
+    syncRangeValue(dlss5LocalStructure, dlss5UiSettings.localStructureStrength);
+    syncRangeValue(dlss5GlobalTone, dlss5UiSettings.globalToneStrength);
+    syncRangeValue(dlss5SkinStructure, dlss5UiSettings.skinStructureStrength);
+    dlss5AutoMask.setSelected(dlss5UiSettings.useAutoMask);
+    for (const control of dlss5AdvancedControls) {
+      control.setEnabled(dlss5UiStatus.available && dlss5UiSettings.enabled);
+    }
+    dlss5StatusLabel.setText(featureStatusText(dlss5UiStatus, 'DLSS 5'));
+  }
+
+  function requestRtxPatch(patch) {
+    const merged = { ...rtxUiSettings, ...patch };
+    const { enabled, ...settings } = merged;
+    let normalized;
+    try {
+      normalized = Object.freeze({ enabled: enabled === true, ...normalizeRtxSettings(settings) });
+    } catch (error) {
+      rtxStatusLabel.setText(`RTX setting rejected · ${error?.message ?? String(error)}`);
+      syncGraphicsControls();
+      return false;
+    }
+    const token = ++rtxPatchSequence;
+    const keys = Object.keys(patch);
+    for (const key of keys) pendingRtxSettings.set(key, { token, value: normalized[key] });
+    refreshOptimisticRtxSettings();
+    syncGraphicsControls();
+    try {
+      const result = onRtxSettingsChange?.(Object.freeze({ ...patch }));
+      Promise.resolve(result).then(() => {
+        const committed = { ...rtxAuthoritativeSettings };
+        for (const key of keys) {
+          const entry = pendingRtxSettings.get(key);
+          if (entry?.token !== token) continue;
+          committed[key] = entry.value;
+          pendingRtxSettings.delete(key);
+        }
+        rtxAuthoritativeSettings = normalizeRtxUiState(committed);
+        refreshOptimisticRtxSettings();
+        syncGraphicsControls();
+      }).catch(error => {
+        for (const key of keys) {
+          if (pendingRtxSettings.get(key)?.token === token) pendingRtxSettings.delete(key);
+        }
+        refreshOptimisticRtxSettings();
+        syncGraphicsControls();
+        rtxStatusLabel.setText(`RTX update failed · ${error?.message ?? String(error)}`);
+      });
+    } catch (error) {
+      for (const key of keys) {
+        if (pendingRtxSettings.get(key)?.token === token) pendingRtxSettings.delete(key);
+      }
+      refreshOptimisticRtxSettings();
+      syncGraphicsControls();
+      rtxStatusLabel.setText(`RTX update failed · ${error?.message ?? String(error)}`);
+    }
+    return true;
+  }
+
+  function requestDlss5Patch(patch) {
+    const merged = normalizeDlss5UiState({ ...dlss5UiSettings, ...patch });
+    if (patch.style !== undefined && merged.style !== patch.style) {
+      dlss5StatusLabel.setText('DLSS 5 style must be 0, 1, or 2.');
+      return false;
+    }
+    dlss5UiSettings = merged;
+    syncGraphicsControls();
+    try {
+      const result = onDlss5SettingsChange?.(Object.freeze({ ...patch }));
+      Promise.resolve(result).catch(error => {
+        dlss5StatusLabel.setText(`DLSS 5 update failed · ${error?.message ?? String(error)}`);
+      });
+    } catch (error) {
+      dlss5StatusLabel.setText(`DLSS 5 update failed · ${error?.message ?? String(error)}`);
+    }
+    return true;
+  }
+
+  function setGraphicsSettingsState(value = {}) {
+    const state = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    if (state.rtx && typeof state.rtx === 'object') {
+      const authored = state.rtx.authored ?? state.rtx.settings;
+      if (authored && typeof authored === 'object') {
+        rtxAuthoritativeSettings = normalizeRtxUiState(authored);
+        refreshOptimisticRtxSettings();
+      }
+      const status = state.rtx.status ?? (state.rtx.supported !== undefined ? state.rtx : undefined);
+      if (status !== undefined) {
+        rtxUiStatus = normalizeFeatureStatus(status, 'Native RTX is unavailable.');
+      }
+    }
+    if (state.dlss5 && typeof state.dlss5 === 'object') {
+      const settings = state.dlss5.settings;
+      if (settings && typeof settings === 'object') dlss5UiSettings = normalizeDlss5UiState(settings);
+      const status = state.dlss5.status ?? (state.dlss5.supported !== undefined ? state.dlss5 : undefined);
+      if (status !== undefined) {
+        dlss5UiStatus = normalizeFeatureStatus(status, 'DLSS 5 is unavailable.');
+      }
+    }
+    syncGraphicsControls();
+    return Object.freeze({
+      rtx: Object.freeze({ authored: rtxUiSettings, status: rtxUiStatus }),
+      dlss5: Object.freeze({ settings: dlss5UiSettings, status: dlss5UiStatus }),
+    });
   }
 
   function refreshExplorer({ fromIndex = 0 } = {}) {
@@ -863,9 +1386,16 @@ export function createMcpLiveFeedWebGpuHud({
     const modeScale = event?.deltaMode === 1 ? 16 : event?.deltaMode === 2 ? host.height : 1;
     const delta = finite(event?.deltaY, 0) * modeScale;
     const hit = host.hitTest(point.x, point.y);
-    const handled = hit?.onWheel?.(event, { ...point, delta }) === true
+    let handled = false;
+    let control = hit;
+    while (control && !handled) {
+      handled = control.onWheel?.(event, { ...point, delta }) === true;
+      control = control.parent;
+    }
+    handled = handled
       || (tab === 'log' && list.onWheel(event, { delta }))
-      || (tab === 'explorer' && explorerList.onWheel(event, { delta }));
+      || (tab === 'explorer' && explorerList.onWheel(event, { delta }))
+      || (tab === 'settings' && settingsViewport.onWheel(event, { delta }));
     if (handled) {
       syncScroll();
       syncStatus();
@@ -881,6 +1411,7 @@ export function createMcpLiveFeedWebGpuHud({
     syncTimer();
   };
 
+  syncGraphicsControls();
   latest = boundedEntries(safeSnapshot(source));
   resize(width, height, pixelRatio);
   sprite.visible = true;
@@ -939,6 +1470,7 @@ export function createMcpLiveFeedWebGpuHud({
     updateCamera,
     setViewMode,
     setExplorerOutline,
+    setGraphicsSettingsState,
     setProjectTransferStatus(text) {
       projectTransferStatus.setText(text);
     },
@@ -952,6 +1484,14 @@ export function createMcpLiveFeedWebGpuHud({
     get visible() { return visible; },
     get drawRevision() { return host.paintGeneration; },
     get scrollIndex() { return list.scrollIndex; },
+    get settingsScrollOffset() { return settingsViewport.value; },
+    get settingsMaxScroll() { return settingsViewport.maxScroll; },
+    get graphicsSettingsState() {
+      return Object.freeze({
+        rtx: Object.freeze({ authored: rtxUiSettings, status: rtxUiStatus }),
+        dlss5: Object.freeze({ settings: dlss5UiSettings, status: dlss5UiStatus }),
+      });
+    },
     get visibleRowCount() { return Math.min(list.capacity, latest.length); },
     get visibleLogText() {
       return latest.slice(list.scrollIndex, list.scrollIndex + list.capacity).map(entry => {

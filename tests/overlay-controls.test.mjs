@@ -7,6 +7,8 @@ import {
   Button,
   Label,
   OverlayHost,
+  RangeOption,
+  ScrollPanel,
   VirtualList,
   claimStudioViewportFocus,
   isEditableStudioEvent,
@@ -213,6 +215,77 @@ test('button click only invalidates the button bounds', () => {
   assert.equal(clicks, 1);
   const clip = host.paintedRects.at(-1);
   assert.ok(clip.y >= 100);
+});
+
+test('scroll panel clips offscreen children and scrolls in pixels', () => {
+  const { host, canvas } = hostFixture();
+  const panel = host.add(new ScrollPanel({
+    name: 'settings',
+    x: 10,
+    y: 20,
+    width: 160,
+    height: 80,
+    contentHeight: 240,
+  }));
+  const below = panel.addContent(new Label({
+    name: 'below',
+    text: 'BELOW',
+    x: 0,
+    y: 180,
+    width: 140,
+    height: 20,
+  }));
+  host.paintedRects = [];
+  below.invalidate();
+  assert.deepEqual(host.paintedRects, [], 'offscreen children cannot dirty outside the clipped viewport');
+
+  assert.equal(panel.onWheel({}, { delta: 120 }), true);
+  assert.ok(panel.value > 0);
+  panel.setScroll(panel.maxScroll);
+  assert.equal(panel.value, 160);
+  assert.ok(below.absoluteBounds.y >= panel.absoluteBounds.y);
+  panel.invalidate();
+  assert.ok(canvas.context.clips.some(clip => clip.x === 10 && clip.y === 20 && clip.width === 160 && clip.height === 80));
+});
+
+test('scroll panel follows high-resolution wheel deltas without relaying out its tree', () => {
+  const { host } = hostFixture();
+  const panel = host.add(new ScrollPanel({ width: 160, height: 80, contentHeight: 240 }));
+  let layouts = 0;
+  panel.addContent(new class extends Label {
+    performLayout() { layouts += 1; }
+  }({ text: 'child', width: 100, height: 20 }));
+  layouts = 0;
+  for (let index = 0; index < 4; index += 1) panel.onWheel({}, { delta: 0.4 });
+  assert.equal(panel.value, 2);
+  assert.equal(layouts, 0, 'scrolling only repositions retained content');
+});
+
+test('range option previews a drag and commits exactly once on pointer release', () => {
+  const { host } = hostFixture();
+  const values = [];
+  const range = host.add(new RangeOption({
+    text: 'Strength',
+    x: 10,
+    y: 40,
+    width: 180,
+    height: 36,
+    value: 0.2,
+    minimum: 0,
+    maximum: 1,
+    step: 0.01,
+    onChange(value) { values.push(value); },
+  }));
+  const bounds = range.absoluteBounds;
+  range.onPointerDown({}, { x: bounds.x + 20 });
+  assert.equal(range.interacting, true);
+  range.onPointerMove({}, { x: bounds.x + 100 });
+  range.onPointerMove({}, { x: bounds.x + 150 });
+  assert.equal(values.length, 0);
+  range.onPointerUp({}, { x: bounds.x + 150 });
+  assert.equal(range.interacting, false);
+  assert.equal(values.length, 1);
+  assert.equal(values[0], range.value);
 });
 
 test('camera.frame snaps follow-shot; review keeps the free camera', () => {

@@ -727,7 +727,9 @@ The scene is the interface. The viewport occupies the window.
 The only persistent chrome is a left side panel composited through one
 `CanvasTexture` sprite: Log (virtualized MCP command feed plus a visible
 scrollbar), Explorer (a read-only tree of the active scene's objects, groups,
-and collections), and Settings (Follow shot / Review). The panel bitmap is a
+and collections), and a clipped, pixel-scroll Settings page (Follow shot /
+Review, canonical RTX controls, capability-gated DLSS 5 controls, Log, and
+project transfer). The panel bitmap is a
 fixed size; window resize only moves the sprite. It is not an inspector.
 A Follow-shot chip is the camera control; first drag on the view enters Review.
 Ctrl+Shift+M hides the panel.
@@ -763,6 +765,17 @@ separately, exposes `renderer: webgpu` for evidence, and keeps compiled TSL and
 raster-map materials active in the WebGPU viewport. `scene.rtx.patch` can
 request the available ray lighting, shadows, and AO without replacing those
 materials.
+
+Settings mutates canonical RTX values through `scene.rtx.patch`, so the same
+validation, one-revision transaction, inverse history, compile-before-commit,
+and visible swap rules apply as MCP authoring. DLSS 5 presentation settings are
+session-only: they never imply project portability or support on another GPU.
+The DLSS path is opt-in only when Runtime capability, plug-in API, motion-vector
+MRT, and a distinct rgba16float output are all available. It consumes the
+authored HDR raster result after optional ray lighting, and the HUD is composited
+afterward. Any unavailable or failed evaluation presents the authored frame.
+The current same-resolution integration uses DLAA and exposes only the real
+style values 0, 1, and 2.
 
 Topology and opaque membership edits mark static RTX data stale. Rebuild after
 300–500 ms idle or on an explicit RTX render request. Transform-only repeated

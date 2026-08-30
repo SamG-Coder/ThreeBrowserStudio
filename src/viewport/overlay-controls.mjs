@@ -32,6 +32,7 @@ export class Control {
     visible = true,
     enabled = true,
     backColor = null,
+    clipChildren = false,
   } = {}) {
     this.name = name;
     this.x = x;
@@ -41,6 +42,7 @@ export class Control {
     this.visible = visible;
     this.enabled = enabled;
     this.backColor = backColor;
+    this.clipChildren = clipChildren;
     this.parent = null;
     this.children = [];
   }
@@ -77,6 +79,14 @@ export class Control {
     if (this.visible && this.isShown()) this.invalidate();
   }
 
+  setEnabled(enabled) {
+    const next = enabled === true;
+    if (this.enabled === next) return false;
+    this.enabled = next;
+    this.invalidate();
+    return true;
+  }
+
   add(child) {
     if (!child) return child;
     child.parent = this;
@@ -108,7 +118,13 @@ export class Control {
   invalidate(rect) {
     if (!this.isShown()) return;
     const bounds = this.absoluteBounds;
-    const region = rect ? intersectRect(offsetRect(rect, bounds.x, bounds.y), bounds) : bounds;
+    let region = rect ? intersectRect(offsetRect(rect, bounds.x, bounds.y), bounds) : bounds;
+    let ancestor = this.parent;
+    while (ancestor && !rectEmpty(region)) {
+      if (ancestor.clipChildren) region = intersectRect(region, ancestor.absoluteBounds);
+      ancestor = ancestor.parent;
+    }
+    if (rectEmpty(region)) return;
     this.host?.invalidateRect(region);
   }
 
@@ -118,7 +134,14 @@ export class Control {
     const local = intersectRect(bounds, clip);
     if (rectEmpty(local)) return;
     this.onPaint(context, fonts, local, bounds);
-    for (const child of this.children) child.paint(context, fonts, clip);
+    if (!this.clipChildren) {
+      for (const child of this.children) child.paint(context, fonts, clip);
+      return;
+    }
+    context.save?.();
+    clipContext(context, local);
+    for (const child of this.children) child.paint(context, fonts, local);
+    context.restore?.();
   }
 
   onPaint(context, fonts, clip, bounds) {
@@ -506,6 +529,210 @@ export class ScrollBar extends Control {
     const travel = Math.max(1, bounds.height - thumb.height);
     const t = Math.min(1, Math.max(0, (y - bounds.y - this.#grab) / travel));
     this.setScroll(this.minimum + (t * this.range));
+  }
+}
+
+/** Pixel-scrolled retained content clipped to a fixed viewport. */
+export class ScrollPanel extends Control {
+  constructor({
+    value = 0,
+    contentHeight = 0,
+    onScroll,
+    ...rest
+  } = {}) {
+    super({ clipChildren: true, ...rest });
+    this.value = Math.max(0, Math.round(finite(value, 0)));
+    this.#wheelPosition = this.value;
+    this.contentHeight = Math.max(0, Math.round(finite(contentHeight, 0)));
+    this.onScroll = onScroll;
+    this.content = Control.prototype.add.call(this, new Control({
+      name: `${this.name}-content`,
+    }));
+  }
+
+  #wheelPosition;
+
+  get maxScroll() {
+    return Math.max(0, this.contentHeight - this.height);
+  }
+
+  addContent(child) {
+    return this.content.add(child);
+  }
+
+  setContentHeight(value) {
+    const next = Math.max(0, Math.round(finite(value, 0)));
+    if (next === this.contentHeight) return false;
+    this.contentHeight = next;
+    this.value = Math.min(this.value, this.maxScroll);
+    this.#wheelPosition = this.value;
+    this.#layoutContent();
+    this.invalidate();
+    return true;
+  }
+
+  setScroll(value, { notify = true } = {}) {
+    const next = Math.min(this.maxScroll, Math.max(0, Math.round(finite(value, this.value))));
+    this.#wheelPosition = next;
+    if (next === this.value) return false;
+    this.value = next;
+    this.content.y = -this.value;
+    this.invalidate();
+    if (notify) this.onScroll?.(this.value);
+    return true;
+  }
+
+  performLayout() {
+    this.value = Math.min(this.value, this.maxScroll);
+    this.#wheelPosition = this.value;
+    this.#layoutContent();
+  }
+
+  #layoutContent() {
+    this.content.x = 0;
+    this.content.y = -this.value;
+    this.content.width = this.width;
+    this.content.height = Math.max(this.height, this.contentHeight);
+    this.content.performLayout();
+  }
+
+  onWheel(event, { delta }) {
+    if (this.maxScroll <= 0 || delta === 0) return false;
+    const boundedDelta = Math.max(-this.height * 0.9, Math.min(this.height * 0.9, delta));
+    const position = Math.min(this.maxScroll, Math.max(0, this.#wheelPosition + boundedDelta));
+    this.#wheelPosition = position;
+    const next = Math.round(position);
+    if (next !== this.value) {
+      this.value = next;
+      this.content.y = -this.value;
+      this.invalidate();
+      this.onScroll?.(this.value);
+    }
+    return true;
+  }
+}
+
+function quantizedRangeValue(value, minimum, maximum, step) {
+  const clamped = Math.min(maximum, Math.max(minimum, finite(value, minimum)));
+  if (!(step > 0)) return clamped;
+  const steps = Math.round((clamped - minimum) / step);
+  const result = minimum + (steps * step);
+  const precision = Math.min(12, Math.max(0, String(step).split('.')[1]?.length ?? 0));
+  return Math.min(maximum, Math.max(minimum, Number(result.toFixed(precision))));
+}
+
+/** Canvas range input. Dragging previews locally and commits once on release. */
+export class RangeOption extends Control {
+  constructor({
+    text = '',
+    value = 0,
+    minimum = 0,
+    maximum = 1,
+    step = 0,
+    curve = 1,
+    scale = 'linear',
+    formatValue,
+    onChange,
+    ...rest
+  } = {}) {
+    super(rest);
+    this.text = text;
+    this.minimum = finite(minimum, 0);
+    this.maximum = finite(maximum, 1);
+    if (!(this.maximum > this.minimum)) throw new RangeError('RangeOption maximum must exceed minimum.');
+    this.step = Math.max(0, finite(step, 0));
+    this.curve = Math.max(0.01, finite(curve, 1));
+    this.scale = scale === 'log' ? 'log' : 'linear';
+    if (this.scale === 'log' && !(this.minimum > 0)) {
+      throw new RangeError('A logarithmic RangeOption requires a positive minimum.');
+    }
+    this.formatValue = typeof formatValue === 'function' ? formatValue : valueToFormat => String(valueToFormat);
+    this.onChange = onChange;
+    this.value = quantizedRangeValue(value, this.minimum, this.maximum, this.step);
+    this.#dragging = false;
+    this.#committedValue = this.value;
+  }
+
+  #dragging;
+  #committedValue;
+
+  get interacting() {
+    return this.#dragging;
+  }
+
+  setValue(value, { notify = false } = {}) {
+    const next = quantizedRangeValue(value, this.minimum, this.maximum, this.step);
+    if (Object.is(next, this.value)) return false;
+    this.value = next;
+    this.invalidate();
+    if (notify) this.onChange?.(this.value, this);
+    return true;
+  }
+
+  #fraction() {
+    if (this.scale === 'log') {
+      return Math.log(this.value / this.minimum) / Math.log(this.maximum / this.minimum);
+    }
+    const normalized = (this.value - this.minimum) / (this.maximum - this.minimum);
+    return Math.pow(Math.min(1, Math.max(0, normalized)), 1 / this.curve);
+  }
+
+  #valueAt(x) {
+    const bounds = this.absoluteBounds;
+    const left = bounds.x + 8;
+    const width = Math.max(1, bounds.width - 16);
+    const fraction = Math.min(1, Math.max(0, (x - left) / width));
+    if (this.scale === 'log') {
+      return this.minimum * Math.pow(this.maximum / this.minimum, fraction);
+    }
+    return this.minimum + ((this.maximum - this.minimum) * Math.pow(fraction, this.curve));
+  }
+
+  onPaint(context, fonts, clip, bounds) {
+    super.onPaint(context, fonts, clip, bounds);
+    const enabled = this.enabled;
+    const valueText = this.formatValue(this.value);
+    fonts.blit(context, this.text, bounds.x + 4, bounds.y + 13, {
+      font: '12px "Segoe UI", Arial, sans-serif',
+      fillStyle: enabled ? '#9fb1c6' : '#596b80',
+      maxWidth: Math.max(20, bounds.width - 92),
+    });
+    const measured = fonts.measure(context, valueText, '12px "Cascadia Mono", Consolas, monospace').width;
+    fonts.blit(context, valueText, bounds.x + bounds.width - measured - 4, bounds.y + 13, {
+      font: '12px "Cascadia Mono", Consolas, monospace',
+      fillStyle: enabled ? '#dce8f7' : '#596b80',
+      maxWidth: 84,
+    });
+    const left = bounds.x + 8;
+    const width = Math.max(1, bounds.width - 16);
+    const y = bounds.y + bounds.height - 9;
+    context.fillStyle = enabled ? '#31455d' : '#202d3d';
+    context.fillRect(left, y, width, 3);
+    const filled = Math.round(width * this.#fraction());
+    context.fillStyle = enabled ? '#7eb0e8' : '#40536a';
+    context.fillRect(left, y, filled, 3);
+    context.fillRect(left + Math.max(0, filled - 2), y - 4, 5, 11);
+  }
+
+  onPointerDown(event, { x }) {
+    this.#dragging = true;
+    this.#committedValue = this.value;
+    this.setValue(this.#valueAt(x));
+    return true;
+  }
+
+  onPointerMove(event, { x }) {
+    if (!this.#dragging) return false;
+    this.setValue(this.#valueAt(x));
+    return true;
+  }
+
+  onPointerUp(event, { x } = {}) {
+    if (!this.#dragging) return false;
+    if (Number.isFinite(x)) this.setValue(this.#valueAt(x));
+    this.#dragging = false;
+    if (!Object.is(this.value, this.#committedValue)) this.onChange?.(this.value, this);
+    return true;
   }
 }
 

@@ -1,3 +1,8 @@
+import {
+  DEFAULT_DLSS5_SETTINGS,
+  createDlss5NeuralController,
+} from './dlss5-neural-controller.mjs';
+
 const DEFAULT_SETTINGS = Object.freeze({
   enabled: false,
   lighting: Object.freeze({
@@ -85,8 +90,8 @@ export function normalizeRtxLightingSettings(value = {}) {
     enabled: Boolean(source.enabled ?? source.masterEnabled ?? false),
     lighting: {
       enabled: Boolean(lighting.enabled),
-      maxDistance: clamp(lighting.maxDistance, 0.01, 10_000_000, DEFAULT_SETTINGS.lighting.maxDistance),
-      rayBias: clamp(lighting.rayBias, 0.000001, 1, DEFAULT_SETTINGS.lighting.rayBias),
+      maxDistance: clamp(lighting.maxDistance, 0.01, 1_000_000, DEFAULT_SETTINGS.lighting.maxDistance),
+      rayBias: clamp(lighting.rayBias, 0.000001, 10_000, DEFAULT_SETTINGS.lighting.rayBias),
       depthInverted: Boolean(lighting.depthInverted),
     },
     shadows: {
@@ -101,7 +106,7 @@ export function normalizeRtxLightingSettings(value = {}) {
       angularRadius: clamp(
         shadows.angularRadius,
         0,
-        1,
+        Math.PI / 2,
         DEFAULT_SETTINGS.shadows.angularRadius,
       ),
     },
@@ -334,6 +339,7 @@ function defaultDelay(milliseconds) {
  */
 export class RtxLightingController {
   #THREE;
+  #TSL;
   #renderer;
   #rtx;
   #device;
@@ -345,7 +351,9 @@ export class RtxLightingController {
   #delay;
   #now;
   #target = null;
+  #targetHasMotionVectors = false;
   #presenter = null;
+  #neural = null;
   #width = 1;
   #height = 1;
   #buildToken = 0;
@@ -368,8 +376,10 @@ export class RtxLightingController {
 
   constructor({
     THREE,
+    TSL,
     renderer,
     rtx,
+    neuralController,
     collectScene,
     normalizeSettings = normalizeRtxLightingSettings,
     settings = DEFAULT_SETTINGS,
@@ -383,6 +393,7 @@ export class RtxLightingController {
     if (typeof collectScene !== 'function') throw new TypeError('collectScene dependency is required.');
     if (typeof normalizeSettings !== 'function') throw new TypeError('normalizeSettings must be a function.');
     this.#THREE = THREE;
+    this.#TSL = TSL;
     this.#renderer = renderer;
     this.#rtx = rtx;
     this.#device = renderer.backend?.device ?? null;
@@ -393,6 +404,9 @@ export class RtxLightingController {
     this.#delay = delay;
     this.#now = now;
     this.#settings = normalizeRtxLightingSettings(this.#normalizeSettings(settings));
+    this.#neural = neuralController ?? (TSL
+      ? createDlss5NeuralController({ THREE, TSL, renderer, rtx })
+      : null);
     if (this.#settings.enabled) this.#reason = this.#supportReason() ?? 'not configured';
   }
 
@@ -421,6 +435,60 @@ export class RtxLightingController {
 
   get settings() {
     return this.#settings;
+  }
+
+  getDlss5Settings() {
+    return this.#neural?.settings ?? DEFAULT_DLSS5_SETTINGS;
+  }
+
+  getDlss5Status() {
+    return this.#neural?.getStatus?.() ?? deepFreeze({
+      supported: false,
+      apiLoaded: false,
+      methodAvailable: false,
+      available: false,
+      requested: false,
+      configured: false,
+      active: false,
+      failed: false,
+      reason: 'Studio DLSS 5 motion-vector support is unavailable.',
+      evaluationCount: 0,
+      failureCount: 0,
+      lastResult: 0,
+      controls: { styles: [0, 1, 2], performanceModes: [] },
+      settings: DEFAULT_DLSS5_SETTINGS,
+    });
+  }
+
+  setDlss5Settings(value = {}) {
+    if (!this.#neural?.setSettings) return this.getDlss5Settings();
+    const settings = this.#neural.setSettings(value);
+    this.resize(this.#width, this.#height);
+    return settings;
+  }
+
+  #neuralReady() {
+    const status = this.getDlss5Status();
+    return Boolean(status.requested && status.available && !status.failed);
+  }
+
+  #rayLightingReady() {
+    return Boolean(
+      this.#settings.enabled
+      && this.#settings.lighting.enabled
+      && this.#isSupported()
+      && this.#configured
+      && !this.#building
+      && !this.#stale
+      && !this.#failed
+    );
+  }
+
+  #needsRenderTarget() {
+    return Boolean(
+      (this.#settings.enabled && this.#isSupported())
+      || this.#neuralReady()
+    );
   }
 
   getStatus() {
@@ -487,7 +555,8 @@ export class RtxLightingController {
       const teardown = () => {
         if (this.#settings.enabled || this.#disposed) return false;
         const destroyed = this.destroyStaticScene('disabled');
-        this.#disposeTarget();
+        if (!this.#neuralReady()) this.#disposeTarget();
+        else this.resize(this.#width, this.#height);
         return destroyed;
       };
       if (this.#gpuPending === 0) teardown();
@@ -752,6 +821,21 @@ export class RtxLightingController {
     };
   }
 
+  #setPresenterTexture(texture) {
+    if (!texture || !this.#presenter?.quad) return false;
+    if (this.#presenter.material?.map === texture
+        && this.#presenter.quad.material === this.#presenter.material) return false;
+    const previous = this.#presenter.material;
+    const material = this.#createPresenterMaterial(texture);
+    this.#presenter.material = material;
+    this.#presenter.quad.material = material;
+    if (previous) {
+      previous.map = null;
+      previous.dispose?.();
+    }
+    return true;
+  }
+
   #setPresenterOverlay(value) {
     const presenter = this.#presenter;
     if (!presenter?.overlayQuad || !presenter.overlayMaterial) return;
@@ -793,16 +877,27 @@ export class RtxLightingController {
     if (!this.#target) return;
     this.#target.dispose?.();
     this.#target = null;
+    this.#targetHasMotionVectors = false;
   }
 
   resize(width, height) {
     const nextWidth = dimension(width, this.#width);
     const nextHeight = dimension(height, this.#height);
-    if (this.#target && nextWidth === this.#width && nextHeight === this.#height) return false;
+    const needsMotionVectors = this.#neuralReady();
+    if (this.#target
+        && nextWidth === this.#width
+        && nextHeight === this.#height
+        && this.#targetHasMotionVectors === needsMotionVectors) {
+      this.#neural?.resize?.(nextWidth, nextHeight);
+      return false;
+    }
     this.#width = nextWidth;
     this.#height = nextHeight;
     this.#disposeTarget();
-    if (!this.#settings.enabled || !this.#isSupported() || this.#disposed) return true;
+    if (!this.#needsRenderTarget() || this.#disposed) {
+      this.#neural?.resize?.(nextWidth, nextHeight);
+      return true;
+    }
 
     const THREE = this.#THREE;
     const depthTexture = new THREE.DepthTexture(nextWidth, nextHeight, THREE.FloatType);
@@ -818,6 +913,7 @@ export class RtxLightingController {
       depthTexture,
       samples: 0,
       generateMipmaps: false,
+      ...(needsMotionVectors ? { count: 2 } : {}),
     });
     target.texture.name = 'ThreeBrowser Studio RTX rgba16float storage';
     target.texture.format = THREE.RGBAFormat;
@@ -826,18 +922,28 @@ export class RtxLightingController {
     target.texture.isStorageTexture = true;
     target.texture.generateMipmaps = false;
     target.texture.mipmapsAutoUpdate = false;
+    if (needsMotionVectors) {
+      const motionTexture = target.textures?.[1];
+      if (!motionTexture) {
+        target.dispose?.();
+        this.#neural?.setSettings?.({ enabled: false });
+        this.#reason = 'DLSS 5 disabled because Three.js did not create the motion-vector attachment.';
+        return true;
+      }
+      motionTexture.name = 'ThreeBrowser Studio DLSS 5 rg16float motion vectors';
+      motionTexture.format = THREE.RGFormat;
+      motionTexture.type = THREE.HalfFloatType;
+      motionTexture.colorSpace = THREE.NoColorSpace;
+      motionTexture.generateMipmaps = false;
+      motionTexture.mipmapsAutoUpdate = false;
+    }
     this.#renderer.initRenderTarget?.(target);
     this.#target = target;
+    this.#targetHasMotionVectors = needsMotionVectors;
+    this.#neural?.resize?.(nextWidth, nextHeight);
 
     if (!this.#presenter) this.#presenter = this.#createPresenter(target.texture);
-    else {
-      // WebGPURenderer compiles the sampled texture into a material binding.
-      // A fresh material per render-target texture prevents a live/evidence
-      // resize from presenting the disposed target cached by the prior frame.
-      const material = this.#createPresenterMaterial(target.texture);
-      this.#presenter.material = material;
-      this.#presenter.quad.material = material;
-    }
+    else this.#setPresenterTexture(target.texture);
     this.#active = false;
     if (this.#configured) this.#reason = 'configured; awaiting a native lighting frame';
     return true;
@@ -851,15 +957,15 @@ export class RtxLightingController {
     if (result && typeof result.then === 'function') await result;
   }
 
-  async #renderBase(scene, camera) {
+  async #renderBase(scene, camera, { disableRasterShadows = false } = {}) {
     const previousTarget = this.#renderer.getRenderTarget?.() ?? null;
     const previousOutputTarget = this.#renderer.getOutputRenderTarget();
     const previousMrt = this.#renderer.getMRT?.() ?? null;
     const shadowMap = this.#renderer.shadowMap;
     const previousShadows = shadowMap?.enabled;
     try {
-      if (shadowMap && this.#settings.shadows.enabled) shadowMap.enabled = false;
-      this.#renderer.setMRT?.(null);
+      if (shadowMap && disableRasterShadows && this.#settings.shadows.enabled) shadowMap.enabled = false;
+      this.#renderer.setMRT?.(this.#targetHasMotionVectors ? this.#neural?.mrt ?? null : null);
       this.#renderer.setOutputRenderTarget(null);
       this.#renderer.setRenderTarget(this.#target);
       await this.#renderThree(scene, camera);
@@ -896,9 +1002,14 @@ export class RtxLightingController {
     outputTarget = null,
     overlay = null,
   } = {}) {
-    if (this.#disposed || !this.#settings.enabled || !this.#settings.lighting.enabled) return false;
-    if (!this.#isSupported() || !this.#configured || this.#building || this.#stale || this.#failed) return false;
+    if (this.#disposed) return false;
+    let rayLightingReady = this.#rayLightingReady();
+    let neuralReady = this.#neuralReady();
+    if (!rayLightingReady && !neuralReady) return false;
     this.resize(width, height);
+    rayLightingReady = this.#rayLightingReady();
+    neuralReady = this.#neuralReady();
+    if (!rayLightingReady && !neuralReady) return false;
     if (!this.#target || !this.#presenter) return false;
 
     try {
@@ -907,7 +1018,7 @@ export class RtxLightingController {
       const previousOverlayVisibility = overlayObject?.visible;
       try {
         if (overlayObject) overlayObject.visible = false;
-        await this.#renderBase(scene, camera);
+        await this.#renderBase(scene, camera, { disableRasterShadows: rayLightingReady });
       } finally {
         if (overlayObject && previousOverlayVisibility !== undefined) {
           overlayObject.visible = previousOverlayVisibility;
@@ -920,37 +1031,57 @@ export class RtxLightingController {
         throw new Error('Three.js did not expose the rgba16float color and depth32float textures');
       }
 
-      const encoder = this.#device.createCommandEncoder({ label: 'ThreeBrowser Studio RTX lighting' });
-      const layouts = this.#rtx.vulkanImageLayouts;
-      const result = this.#rtx.evaluateRayLighting({
-        commandEncoder: encoder,
-        color: textureResource(nativeColor, layouts.colorAttachment, this.#width, this.#height),
-        depth: textureResource(nativeDepth, layouts.depthStencilAttachment, this.#width, this.#height),
-        width: this.#width,
-        height: this.#height,
-        inverseViewProjection: inverseViewProjection(camera),
-        cameraPosition: cameraPosition(camera),
-        directionalLightDirection: this.#directionalLight.direction,
-        directionalLightIntensity: this.#directionalLight.intensity,
-        directionalAngularRadius: this.#settings.shadows.angularRadius,
-        directionalSampleCount: this.#settings.shadows.sampleCount,
-        aoSampleCount: this.#settings.ambientOcclusion.sampleCount,
-        maxDistance: this.#settings.lighting.maxDistance,
-        rayBias: this.#settings.lighting.rayBias,
-        frameIndex: this.#frameIndex,
-        shadowStrength: this.#settings.shadows.enabled ? this.#settings.shadows.strength : 0,
-        aoStrength: this.#settings.ambientOcclusion.enabled ? this.#settings.ambientOcclusion.strength : 0,
-        aoRadius: this.#settings.ambientOcclusion.radius,
-        depthInverted: this.#settings.lighting.depthInverted,
-      });
-      if (result?.queued !== true) throw new Error(result?.reason || 'native ray lighting dispatch was rejected');
-      const commandBuffer = encoder.finish();
-      this.#device.queue.submit([commandBuffer]);
+      if (rayLightingReady) {
+        const encoder = this.#device.createCommandEncoder({ label: 'ThreeBrowser Studio RTX lighting' });
+        const layouts = this.#rtx.vulkanImageLayouts;
+        const result = this.#rtx.evaluateRayLighting({
+          commandEncoder: encoder,
+          color: textureResource(nativeColor, layouts.colorAttachment, this.#width, this.#height),
+          depth: textureResource(nativeDepth, layouts.depthStencilAttachment, this.#width, this.#height),
+          width: this.#width,
+          height: this.#height,
+          inverseViewProjection: inverseViewProjection(camera),
+          cameraPosition: cameraPosition(camera),
+          directionalLightDirection: this.#directionalLight.direction,
+          directionalLightIntensity: this.#directionalLight.intensity,
+          directionalAngularRadius: this.#settings.shadows.angularRadius,
+          directionalSampleCount: this.#settings.shadows.sampleCount,
+          aoSampleCount: this.#settings.ambientOcclusion.sampleCount,
+          maxDistance: this.#settings.lighting.maxDistance,
+          rayBias: this.#settings.lighting.rayBias,
+          frameIndex: this.#frameIndex,
+          shadowStrength: this.#settings.shadows.enabled ? this.#settings.shadows.strength : 0,
+          aoStrength: this.#settings.ambientOcclusion.enabled ? this.#settings.ambientOcclusion.strength : 0,
+          aoRadius: this.#settings.ambientOcclusion.radius,
+          depthInverted: this.#settings.lighting.depthInverted,
+        });
+        if (result?.queued !== true) throw new Error(result?.reason || 'native ray lighting dispatch was rejected');
+        const commandBuffer = encoder.finish();
+        this.#device.queue.submit([commandBuffer]);
+      }
+
+      let presentationTexture = this.#target.texture;
+      if (neuralReady && this.#targetHasMotionVectors) {
+        const motionTexture = this.#target.textures?.[1] ?? null;
+        const nativeMotion = this.#renderer.backend?.get?.(motionTexture)?.texture ?? null;
+        const neuralTexture = this.#neural.evaluate({
+          color: nativeColor,
+          depth: nativeDepth,
+          motionVectors: nativeMotion,
+          camera,
+          width: this.#width,
+          height: this.#height,
+        });
+        if (neuralTexture) presentationTexture = neuralTexture;
+      }
+      this.#setPresenterTexture(presentationTexture);
       await this.#present(outputTarget, overlay);
-      this.#frameIndex += 1;
-      this.#active = true;
-      this.#failed = false;
-      this.#reason = 'active';
+      if (rayLightingReady) {
+        this.#frameIndex += 1;
+        this.#active = true;
+        this.#failed = false;
+        this.#reason = 'active';
+      }
       return true;
     } catch (error) {
       this.#active = false;
@@ -976,6 +1107,7 @@ export class RtxLightingController {
     } catch {
       // Disposal must release the local renderer resources even if native teardown fails.
     }
+    this.#neural?.dispose?.();
     this.#disposeTarget();
     this.#presenter?.geometry?.dispose?.();
     this.#presenter?.material?.dispose?.();

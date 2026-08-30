@@ -41,7 +41,8 @@ function makeThree(targets = [], materials = []) {
       this.width = width;
       this.height = height;
       this.options = options;
-      this.texture = new Texture();
+      this.textures = Array.from({ length: options.count ?? 1 }, () => new Texture());
+      this.texture = this.textures[0];
       this.depthTexture = options.depthTexture;
       this.disposed = false;
       targets.push(this);
@@ -49,8 +50,8 @@ function makeThree(targets = [], materials = []) {
 
     dispose() {
       this.disposed = true;
-      this.texture.disposed = true;
-      this.depthTexture.disposed = true;
+      for (const texture of this.textures) texture.disposed = true;
+      if (this.depthTexture) this.depthTexture.disposed = true;
     }
   }
 
@@ -137,6 +138,7 @@ function makeThree(targets = [], materials = []) {
     HalfFloatType: 'half-float',
     DepthFormat: 'depth',
     RGBAFormat: 'rgba',
+    RGFormat: 'rg',
     LinearSRGBColorSpace: 'linear-srgb',
     NoColorSpace: 'none',
   };
@@ -247,6 +249,7 @@ function makeHarness({
   featureSupported = true,
   featureActive,
   normalizeSettings,
+  neuralController,
 } = {}) {
   const events = [];
   const renderStates = [];
@@ -294,8 +297,12 @@ function makeHarness({
     currentMrt: null,
     initRenderTarget(target) {
       events.push('target:init');
-      target.texture.native = { name: `native-color-${targets.indexOf(target)}` };
-      target.depthTexture.native = { name: `native-depth-${targets.indexOf(target)}` };
+      for (const [index, texture] of target.textures.entries()) {
+        texture.native = { name: `native-color-${targets.indexOf(target)}-${index}` };
+      }
+      if (target.depthTexture) {
+        target.depthTexture.native = { name: `native-depth-${targets.indexOf(target)}` };
+      }
     },
     getRenderTarget() {
       return this.currentTarget;
@@ -412,6 +419,7 @@ function makeHarness({
     THREE,
     renderer,
     rtx,
+    neuralController,
     collectScene,
     normalizeSettings,
     settings,
@@ -444,10 +452,18 @@ test('settings normalizer maps independent master, lighting, shadow, and AO cont
   });
   assert.deepEqual(settings, {
     enabled: true,
-    lighting: { enabled: false, maxDistance: 0.01, rayBias: 1, depthInverted: true },
+    lighting: { enabled: false, maxDistance: 0.01, rayBias: 7, depthInverted: true },
     shadows: { enabled: false, strength: 1, sampleCount: 64, angularRadius: 0 },
     ambientOcclusion: { enabled: true, strength: 0, sampleCount: 1, radius: 0.001 },
   });
+
+  const maximums = normalizeRtxLightingSettings({
+    lighting: { maxDistance: 2_000_000, rayBias: 20_000 },
+    shadows: { angularRadius: Math.PI },
+  });
+  assert.equal(maximums.lighting.maxDistance, 1_000_000);
+  assert.equal(maximums.lighting.rayBias, 10_000);
+  assert.equal(maximums.shadows.angularRadius, Math.PI / 2);
   assert.ok(Object.isFrozen(settings));
   assert.ok(Object.isFrozen(settings.ambientOcclusion));
 
@@ -700,6 +716,54 @@ test('native frame order is raster, evaluate on a fresh encoder, submit, then fu
   const registration = rtx.registrations[0];
   assert.equal(registration.lights.length, 16);
   assert.equal(controller.getStatus().staticScene.packedLightCount, 1);
+});
+
+test('DLSS 5 can present a separate neural output without requiring ray lighting', async () => {
+  const neuralTexture = { name: 'separate-neural-output' };
+  const neural = {
+    settings: Object.freeze({ enabled: true, style: 2 }),
+    requested: true,
+    mrt: { output: 'color', velocity: 'motion' },
+    evaluations: [],
+    resizes: [],
+    getStatus() {
+      return {
+        supported: true,
+        available: true,
+        requested: true,
+        active: true,
+        failed: false,
+        settings: this.settings,
+      };
+    },
+    resize(width, height) { this.resizes.push([width, height]); },
+    evaluate(value) {
+      this.evaluations.push(value);
+      return neuralTexture;
+    },
+    dispose() {},
+  };
+  const harness = makeHarness({
+    settings: { enabled: false },
+    neuralController: neural,
+  });
+
+  const rendered = await harness.controller.render({
+    scene: { name: 'authored' },
+    camera: makeCamera(),
+    width: 8,
+    height: 6,
+  });
+
+  assert.equal(rendered, true);
+  assert.equal(harness.rtx.evaluations.length, 0);
+  assert.equal(neural.evaluations.length, 1);
+  assert.equal(neural.evaluations[0].color.name, 'native-color-0-0');
+  assert.equal(neural.evaluations[0].motionVectors.name, 'native-color-0-1');
+  assert.equal(neural.evaluations[0].depth.name, 'native-depth-0');
+  assert.equal(harness.presenterBindings.at(-1), neuralTexture);
+  const authoredPass = harness.renderStates.find(item => item.scene === 'authored');
+  assert.equal(authoredPass.shadows, true);
 });
 
 test('RTX presentation composites the HUD after lighting without a second renderer swap', async () => {

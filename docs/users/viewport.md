@@ -21,6 +21,23 @@ shot. Do not treat the Review pose as the camera the model is rendering.
 
 Switch modes from the header button or Settings.
 
+## RTX and DLSS 5 settings
+
+The Settings page scrolls. Its RTX section controls the canonical project
+settings for native ray lighting, shadows, ambient occlusion, samples,
+strengths, radius, maximum distance, and ray bias. A slider commits once when
+you release it; each accepted change is an ordinary undoable project revision.
+
+DLSS 5 Neural Rendering has its own enable switch and status. It remains
+disabled when the active Runtime build, NVIDIA GPU, or signed plug-in API does
+not report complete availability. Its Advanced style selector contains only
+styles **0**, **1**, and **2**. The same-resolution Studio path uses DLAA.
+Advanced also includes intensity, local and global tone, local and skin
+structure, and automatic-mask controls; all remain disabled until the complete
+capability gate passes.
+If native evaluation fails, Studio keeps the authored raster/RTX frame instead
+of presenting the neural output.
+
 ## Import / Export
 
 Settings has **Export JSON** and **Import JSON** for a portable pack of the

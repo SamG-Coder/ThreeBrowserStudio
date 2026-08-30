@@ -228,6 +228,8 @@ function fixture({
   promptTab = false,
   onExportProject,
   onImportProject,
+  onRtxSettingsChange,
+  onDlss5SettingsChange,
 } = {}) {
   const document = new FakeDocument();
   const eventTarget = new FakeEventTarget();
@@ -239,11 +241,22 @@ function fixture({
     width, height, pixelRatio, maxVisibleRows, now, promptTab,
     onExportProject,
     onImportProject,
+    onRtxSettingsChange,
+    onDlss5SettingsChange,
     setIntervalFn: timers.setIntervalFn,
     clearIntervalFn: timers.clearIntervalFn,
     schedulePaint: callback => callback(),
   });
   return { document, eventTarget, timers, telemetry, scene, hud, context: hud.canvas.context };
+}
+
+function findControl(root, name) {
+  if (root?.name === name) return root;
+  for (const child of root?.children ?? []) {
+    const match = findControl(child, name);
+    if (match) return match;
+  }
+  return undefined;
 }
 
 test('side panel is visible by default and camera updates do not invalidate', () => {
@@ -344,9 +357,7 @@ test('expanded log toggle shows whitelisted operation types and stays redacted',
 
   const tabs = hud.host.children.find(child => child.name === 'tabs');
   tabs.setSelected('settings');
-  const settingsToggle = hud.host.children
-    .find(child => child.name === 'settings-page')
-    .children.find(child => child.name === 'settings-log-expanded');
+  const settingsToggle = findControl(hud.host, 'settings-log-expanded');
   assert.equal(settingsToggle.selected, true);
   settingsToggle.onPointerDown();
   assert.equal(hud.logExpanded, false);
@@ -460,9 +471,7 @@ test('settings tab switches without a full-tree glyph rebuild and view-mode is r
   const tabs = hud.host.children.find(child => child.name === 'tabs');
   tabs.setSelected('settings');
   assert.equal(hud.tab, 'settings');
-  const review = hud.host.children
-    .find(child => child.name === 'settings-page')
-    .children.find(child => child.name === 'review');
+  const review = findControl(hud.host, 'review');
   review.onPointerDown();
   assert.equal(hud.viewMode, 'review');
 
@@ -472,6 +481,237 @@ test('settings tab switches without a full-tree glyph rebuild and view-mode is r
   eventTarget.dispatch('keydown', keyEvent({ key: 'M' }));
   assert.equal(hud.visible, true);
   assert.equal(hud.tab, 'settings');
+});
+
+test('Settings is a clipped pixel-scroll page with a visible synchronized scrollbar', () => {
+  const { eventTarget, hud } = fixture({ width: 1000, height: 700, pixelRatio: 1 });
+  hud.host.children.find(child => child.name === 'tabs').setSelected('settings');
+  assert.ok(hud.settingsMaxScroll > 0);
+  assert.equal(hud.settingsScrollOffset, 0);
+  const settingsScroll = findControl(hud.host, 'settings-scroll');
+  assert.equal(settingsScroll.visible, true);
+  assert.equal(settingsScroll.maximum, hud.settingsMaxScroll);
+
+  const bounds = hud.panelBounds;
+  const wheel = wheelEvent(bounds.left + 100, bounds.top + 180, 180);
+  eventTarget.dispatch('wheel', wheel);
+  assert.equal(wheel.prevented, true);
+  assert.ok(hud.settingsScrollOffset > 0);
+  assert.equal(settingsScroll.value, hud.settingsScrollOffset);
+
+  settingsScroll.setScroll(settingsScroll.maximum);
+  assert.equal(hud.settingsScrollOffset, hud.settingsMaxScroll);
+  const promptHint = findControl(hud.host, 'project-hint');
+  assert.ok(promptHint.absoluteBounds.y < bounds.top + bounds.height);
+});
+
+test('Settings exposes the complete RTX controls and numeric drag commits only on release', () => {
+  const rtxChanges = [];
+  const { hud } = fixture({
+    onRtxSettingsChange(patch) { rtxChanges.push(patch); },
+  });
+  hud.setGraphicsSettingsState({
+    rtx: {
+      authored: {
+        enabled: true,
+        lighting: true,
+        shadows: true,
+        ambientOcclusion: true,
+        directionalSampleCount: 4,
+        aoSampleCount: 6,
+        directionalAngularRadius: 0.02,
+        shadowStrength: 0.8,
+        aoStrength: 0.3,
+        aoRadius: 1.2,
+        maxDistance: 5_000,
+        rayBias: 0.003,
+      },
+      status: { supported: true, requested: true, configured: true, active: true, reason: 'active' },
+    },
+  });
+  const names = [
+    'rtx-enabled', 'rtx-lighting', 'rtx-shadows', 'rtx-ambient-occlusion',
+    'rtx-directional-samples', 'rtx-directional-radius', 'rtx-shadow-strength',
+    'rtx-ao-samples', 'rtx-ao-strength', 'rtx-ao-radius', 'rtx-max-distance', 'rtx-ray-bias',
+  ];
+  assert.deepEqual(names.filter(name => !findControl(hud.host, name)), []);
+  assert.equal(findControl(hud.host, 'rtx-status').text, 'RTX active');
+
+  const range = findControl(hud.host, 'rtx-shadow-strength');
+  const bounds = range.absoluteBounds;
+  range.onPointerDown({}, { x: bounds.x + 20 });
+  range.onPointerMove({}, { x: bounds.x + bounds.width * 0.5 });
+  range.onPointerMove({}, { x: bounds.x + bounds.width - 20 });
+  assert.equal(rtxChanges.length, 0, 'dragging previews without compiling each pointer move');
+  range.onPointerUp({}, { x: bounds.x + bounds.width - 20 });
+  assert.equal(rtxChanges.length, 1);
+  assert.deepEqual(Object.keys(rtxChanges[0]), ['shadowStrength']);
+});
+
+test('live graphics refreshes cannot snap back an active or compiling RTX slider', async () => {
+  let finishUpdate;
+  const update = new Promise(resolve => { finishUpdate = resolve; });
+  const rtxChanges = [];
+  const { hud } = fixture({
+    onRtxSettingsChange(patch) {
+      rtxChanges.push(patch);
+      return update;
+    },
+  });
+  const status = { supported: true, available: true, requested: true, reason: 'ready' };
+  const initial = { enabled: true, shadowStrength: 0.2 };
+  hud.setGraphicsSettingsState({ rtx: { authored: initial, status } });
+
+  const range = findControl(hud.host, 'rtx-shadow-strength');
+  const bounds = range.absoluteBounds;
+  const x = bounds.x + (bounds.width * 0.8);
+  range.onPointerDown({}, { x });
+  const preview = range.value;
+  hud.setGraphicsSettingsState({ rtx: { authored: initial, status } });
+  assert.equal(range.value, preview, 'periodic state sync leaves the live drag alone');
+
+  range.onPointerUp({}, { x });
+  assert.deepEqual(rtxChanges, [{ shadowStrength: preview }]);
+  hud.setGraphicsSettingsState({ rtx: { authored: initial, status } });
+  assert.equal(range.value, preview, 'stale canonical state cannot overwrite an in-flight update');
+
+  hud.setGraphicsSettingsState({
+    rtx: { authored: { ...initial, shadowStrength: preview }, status },
+  });
+  finishUpdate();
+  await update;
+  await Promise.resolve();
+  assert.equal(range.value, preview);
+});
+
+test('DLSS 5 has a capability-gated enable and exactly the real styles 0, 1, and 2', () => {
+  const dlssChanges = [];
+  const { hud } = fixture({
+    onDlss5SettingsChange(patch) { dlssChanges.push(patch); },
+  });
+  const styleControls = findControl(hud.host, 'settings-scroll-panel-content').children
+    .filter(control => control.name.startsWith('dlss5-style-'));
+  assert.deepEqual(styleControls.map(control => control.name), [
+    'dlss5-style-0', 'dlss5-style-1', 'dlss5-style-2',
+  ]);
+  assert.equal(findControl(hud.host, 'dlss5-enabled').enabled, false);
+
+  hud.setGraphicsSettingsState({
+    dlss5: {
+      settings: { enabled: true, style: 1 },
+      status: { supported: true, requested: true, configured: true, active: false, reason: 'ready' },
+    },
+  });
+  assert.equal(findControl(hud.host, 'dlss5-enabled').enabled, true);
+  assert.equal(findControl(hud.host, 'dlss5-style-1').selected, true);
+  assert.equal(styleControls.every(control => control.enabled), true);
+  findControl(hud.host, 'dlss5-style-2').onPointerDown();
+  assert.deepEqual(dlssChanges, [{ style: 2 }]);
+  assert.equal(hud.graphicsSettingsState.dlss5.settings.style, 2);
+});
+
+test('DLSS 5 advanced controls mirror native settings, gate together, and commit drags once', () => {
+  const dlssChanges = [];
+  const { hud } = fixture({
+    onDlss5SettingsChange(patch) { dlssChanges.push(patch); },
+  });
+  const advancedNames = [
+    'dlss5-style-0', 'dlss5-style-1', 'dlss5-style-2',
+    'dlss5-intensity', 'dlss5-local-tone', 'dlss5-local-structure',
+    'dlss5-global-tone', 'dlss5-skin-structure', 'dlss5-auto-mask',
+  ];
+  const advancedControls = advancedNames.map(name => findControl(hud.host, name));
+  assert.deepEqual(advancedNames.filter((name, index) => !advancedControls[index]), []);
+  assert.equal(advancedControls.every(control => control.enabled === false), true);
+
+  hud.setGraphicsSettingsState({
+    dlss5: {
+      settings: {
+        enabled: true,
+        intensity: 0.82,
+        localToneStrength: -0.25,
+        localStructureStrength: 0.64,
+        globalToneStrength: 0.45,
+        skinStructureStrength: -0.7,
+        style: 1,
+        performanceMode: 'dlaa',
+        useAutoMask: true,
+      },
+      status: {
+        supported: true,
+        available: true,
+        requested: true,
+        configured: true,
+        active: true,
+        reason: 'active',
+      },
+    },
+  });
+
+  assert.equal(advancedControls.every(control => control.enabled === true), true);
+  assert.equal(findControl(hud.host, 'dlss5-intensity').value, 0.82);
+  assert.equal(findControl(hud.host, 'dlss5-local-tone').value, -0.25);
+  assert.equal(findControl(hud.host, 'dlss5-local-structure').value, 0.64);
+  assert.equal(findControl(hud.host, 'dlss5-global-tone').value, 0.45);
+  assert.equal(findControl(hud.host, 'dlss5-skin-structure').value, -0.7);
+  assert.equal(findControl(hud.host, 'dlss5-auto-mask').selected, true);
+
+  const localTone = findControl(hud.host, 'dlss5-local-tone');
+  const bounds = localTone.absoluteBounds;
+  localTone.onPointerDown({}, { x: bounds.x + 20 });
+  localTone.onPointerMove({}, { x: bounds.x + bounds.width * 0.75 });
+  assert.equal(dlssChanges.length, 0, 'advanced slider movement stays local until release');
+  localTone.onPointerUp({}, { x: bounds.x + bounds.width * 0.75 });
+  assert.equal(dlssChanges.length, 1);
+  assert.deepEqual(Object.keys(dlssChanges[0]), ['localToneStrength']);
+
+  findControl(hud.host, 'dlss5-auto-mask').onPointerDown();
+  assert.deepEqual(dlssChanges[1], { useAutoMask: false });
+  assert.equal(hud.graphicsSettingsState.dlss5.settings.useAutoMask, false);
+
+  hud.setGraphicsSettingsState({
+    dlss5: {
+      settings: { enabled: false, style: 2 },
+      status: { supported: true, available: true, requested: false, reason: 'disabled' },
+    },
+  });
+  assert.equal(advancedControls.every(control => control.enabled === false), true);
+});
+
+test('graphics status accepts controller snapshots and gates DLSS on complete availability', () => {
+  const { hud } = fixture();
+  hud.setGraphicsSettingsState({
+    rtx: {
+      supported: true,
+      requested: false,
+      configured: false,
+      active: false,
+      settings: {
+        enabled: false,
+        lighting: { enabled: true, maxDistance: 2_500, rayBias: 0.001 },
+        shadows: { enabled: true, strength: 0.64, sampleCount: 7, angularRadius: 0.01 },
+        ambientOcclusion: { enabled: false, strength: 0.2, sampleCount: 3, radius: 2 },
+      },
+      reason: 'disabled',
+    },
+    dlss5: {
+      supported: true,
+      available: false,
+      requested: false,
+      configured: false,
+      active: false,
+      failed: false,
+      settings: { enabled: false, style: 2 },
+      reason: 'The signed plug-in API is unavailable.',
+    },
+  });
+
+  assert.equal(findControl(hud.host, 'rtx-enabled').enabled, true);
+  assert.equal(findControl(hud.host, 'rtx-directional-samples').value, 7);
+  assert.equal(findControl(hud.host, 'rtx-ambient-occlusion').selected, false);
+  assert.equal(findControl(hud.host, 'dlss5-enabled').enabled, false);
+  assert.equal(findControl(hud.host, 'dlss5-style-2').selected, true);
+  assert.match(findControl(hud.host, 'dlss5-status').text, /DLSS 5 unavailable/);
 });
 
 test('exact shortcut and disposal update GPU presentation state safely', () => {
@@ -533,9 +773,7 @@ test('Prompt tab is browser-only and does not appear on the native HUD', () => {
   const status = browser.hud.host.children.find(child => child.name === 'status');
   assert.equal(status.text, 'Prompt  ·  PIN-encrypted models');
   browserTabs.setSelected('settings');
-  const openPrompt = browser.hud.host.children
-    .find(child => child.name === 'settings-page')
-    .children.find(child => child.name === 'open-prompt');
+  const openPrompt = findControl(browser.hud.host, 'open-prompt');
   openPrompt.onClick();
   assert.equal(browser.hud.tab, 'prompt');
   browser.hud.dispose();
@@ -548,9 +786,8 @@ test('Settings Import/Export is always present and does not create file inputs',
     onImportProject() { calls.push('import'); },
   });
   assert.equal(document.canvases.length > 0, true);
-  const settings = hud.host.children.find(child => child.name === 'settings-page');
-  const exportButton = settings.children.find(child => child.name === 'export-project');
-  const importButton = settings.children.find(child => child.name === 'import-project');
+  const exportButton = findControl(hud.host, 'export-project');
+  const importButton = findControl(hud.host, 'import-project');
   assert.equal(exportButton.text, 'Export JSON');
   assert.equal(importButton.text, 'Import JSON');
   exportButton.onClick();
