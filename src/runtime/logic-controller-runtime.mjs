@@ -22,6 +22,14 @@ function vec3(value, fallback = [0, 0, 0]) {
 
 const addVectors = (a, b) => a.map((value, axis) => value + b[axis]);
 
+function rotateLocalYaw(value, object) {
+  const [x, y, z] = vec3(value);
+  const yaw = finite(object?.rotation?.y);
+  const cosine = Math.cos(yaw);
+  const sine = Math.sin(yaw);
+  return [cosine * x + sine * z, y, -sine * x + cosine * z];
+}
+
 function readVector(object, property) {
   const value = object?.[property];
   if (!value) return [0, 0, 0];
@@ -229,8 +237,16 @@ export function createLogicControllerRuntime({ project, scene, objects, animatio
       case 'motion.setAngularSpeed': motionFor(targetId).angularSpeed = vec3(dataValue(plan, node.id, 'radiansPerSecond', context)); break;
       case 'physics.setVelocity': physics.setVelocity(targetId, dataValue(plan, node.id, 'velocity', context)); break;
       case 'physics.setAngularVelocity': physics.setAngularVelocity(targetId, dataValue(plan, node.id, 'velocity', context)); break;
-      case 'physics.addForce': physics.addForce(targetId, dataValue(plan, node.id, 'force', context)); break;
-      case 'physics.addImpulse': physics.addImpulse(targetId, dataValue(plan, node.id, 'impulse', context)); break;
+      case 'physics.addForce': {
+        const force = dataValue(plan, node.id, 'force', context);
+        physics.addForce(targetId, node.params?.space === 'local' ? rotateLocalYaw(force, object) : force);
+        break;
+      }
+      case 'physics.addImpulse': {
+        const impulse = dataValue(plan, node.id, 'impulse', context);
+        physics.addImpulse(targetId, node.params?.space === 'local' ? rotateLocalYaw(impulse, object) : impulse);
+        break;
+      }
       case 'physics.setGravityScale': physics.setGravityScale(targetId, finite(dataValue(plan, node.id, 'scale', context), 1)); break;
       case 'animation.play': animationRuntime?.play?.(node.params?.clipId, { restart: node.params?.restart !== false }); break;
       case 'animation.stop': animationRuntime?.pause?.(node.params?.clipId); break;
@@ -252,6 +268,7 @@ export function createLogicControllerRuntime({ project, scene, objects, animatio
           targetId: dataValue(plan, node.id, 'target', context),
           offset: vec3(dataValue(plan, node.id, 'offset', context)),
           smoothing: Math.max(0, finite(dataValue(plan, node.id, 'smoothing', context))),
+          space: node.params?.space ?? 'world',
         });
         break;
       }
@@ -333,7 +350,8 @@ export function createLogicControllerRuntime({ project, scene, objects, animatio
       const camera = entityObject(cameraId);
       const target = entityObject(behavior.targetId);
       if (!camera || !target) continue;
-      const desired = addVectors(readVector(target, 'position'), behavior.offset);
+      const offset = behavior.space === 'local' ? rotateLocalYaw(behavior.offset, target) : behavior.offset;
+      const desired = addVectors(readVector(target, 'position'), offset);
       const current = readVector(camera, 'position');
       const alpha = behavior.smoothing > 0 ? 1 - Math.exp(-behavior.smoothing * delta) : 1;
       writeVector(camera, 'position', current.map((value, axis) => value + (desired[axis] - value) * alpha));

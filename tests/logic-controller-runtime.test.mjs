@@ -134,7 +134,7 @@ test('controller graphs can activate and smoothly follow with an authored camera
       { id: 'activate', type: 'event.onActivate', params: {} },
       { id: 'camera', type: 'entity.reference', params: { entityId: 'camera/player' } },
       { id: 'self', type: 'entity.self', params: {} },
-      { id: 'follow', type: 'camera.followEntity', params: {}, inputs: { offset: [0, 3, 6], smoothing: 0 } },
+      { id: 'follow', type: 'camera.followEntity', params: { space: 'local' }, inputs: { offset: [0, 3, 6], smoothing: 0 } },
       { id: 'active', type: 'camera.setActive', params: {} },
     ],
     edges: [
@@ -145,6 +145,7 @@ test('controller graphs can activate and smoothly follow with an authored camera
   assert.equal(validateGraph(graph).valid, true, JSON.stringify(validateGraph(graph).errors));
   const player = object();
   player.position.set(4, 1, -2);
+  player.rotation.y = Math.PI / 2;
   const camera = object();
   camera.isPerspectiveCamera = true;
   let activeCamera = null;
@@ -165,8 +166,37 @@ test('controller graphs can activate and smoothly follow with an authored camera
   runtime.update(1 / 60);
 
   assert.equal(activeCamera, 'camera/player');
-  assert.deepEqual(camera.position.toArray(), [4, 4, 4]);
+  assert.ok(Math.abs(camera.position.x - 10) < 1e-9);
+  assert.ok(Math.abs(camera.position.y - 4) < 1e-9);
+  assert.ok(Math.abs(camera.position.z + 2) < 1e-9);
   assert.deepEqual(camera.lastLookAt, [4, 1, -2]);
+});
+
+test('local rigid-body force follows Self yaw for vehicle controls', () => {
+  const graph = {
+    formatVersion: 1, id: 'blueprint/local-force', domain: 'blueprint', outputs: {},
+    nodes: [
+      { id: 'step', type: 'event.onFixedUpdate', params: {} },
+      { id: 'self', type: 'entity.self', params: {} },
+      { id: 'force', type: 'physics.addForce', params: { space: 'local' }, inputs: { force: [0, 0, -60] } },
+    ],
+    edges: [
+      ['step', 'out', 'force', 'in'], ['self', 'entity', 'force', 'entity'],
+    ].map(([fromNode, fromPort, toNode, toPort]) => ({ from: { nodeId: fromNode, port: fromPort }, to: { nodeId: toNode, port: toPort } })),
+  };
+  assert.equal(validateGraph(graph).valid, true, JSON.stringify(validateGraph(graph).errors));
+  const car = object(); car.rotation.y = Math.PI / 2;
+  const runtime = createLogicControllerRuntime({
+    project: { resources: { graphs: { 'blueprint/local-force': { graph } } } },
+    scene: {
+      settings: { controller: { enabled: true, entityId: 'car' }, physics: { gravity: [0, 0, 0] } },
+      entities: { car: { id: 'car', components: { logic: { graphIds: ['blueprint/local-force'] }, rigidBody: { bodyType: 'dynamic', mass: 1, linearDamping: 0 } } } },
+    },
+    objects: new Map([['car', car]]),
+  });
+  runtime.activate(); runtime.update(1 / 60);
+  assert.ok(car.position.x < 0);
+  assert.ok(Math.abs(car.position.z) < 1e-9);
 });
 
 test('Self can reference its rigidBody and react to collision events', () => {
