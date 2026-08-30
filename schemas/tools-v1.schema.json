@@ -266,6 +266,14 @@
       },
       "allOf": [
         {
+          "if": { "properties": { "op": { "const": "entity.createMany" } }, "required": ["op"] },
+          "then": { "required": ["sceneId", "items"], "properties": { "items": { "items": { "required": ["entity"] } } } }
+        },
+        {
+          "if": { "properties": { "op": { "const": "entity.duplicateMany" } }, "required": ["op"] },
+          "then": { "required": ["entityId", "items"], "properties": { "items": { "items": { "required": ["newId"] } } } }
+        },
+        {
           "if": {
             "required": ["minFilter"],
             "properties": { "minFilter": { "enum": ["nearestMipmapNearest", "nearestMipmapLinear", "linearMipmapNearest", "linearMipmapLinear"] } }
@@ -1235,7 +1243,7 @@
       "properties": {
         "op": { "enum": [
           "scene.create", "scene.patch", "scene.delete", "scene.setActive", "scene.settings.patch", "scene.rtx.patch", "scene.setActiveCamera",
-          "entity.create", "entity.patch", "entity.patchMany", "entity.transformMany", "entity.group", "entity.ungroup", "entity.duplicate", "entity.reparent", "entity.delete",
+          "entity.create", "entity.createMany", "entity.patch", "entity.patchMany", "entity.transformMany", "entity.group", "entity.ungroup", "entity.duplicate", "entity.duplicateMany", "entity.reparent", "entity.delete",
           "collection.create", "collection.patch", "collection.membership.patch", "collection.reparent", "collection.delete",
           "camera.frame", "layout.pattern", "stroke.apply", "modifier.create", "modifier.patch", "modifier.move", "modifier.delete", "modifier.stack.edit", "geometry.edit",
           "resource.create", "resource.patch", "resource.delete"
@@ -1250,6 +1258,19 @@
         "name": { "type": "string", "minLength": 1, "maxLength": 240 },
         "resourceType": { "enum": ["geometries", "materials", "textures", "graphs", "animations", "prefabs", "audio", "assets", "geometry", "material", "texture", "graph", "animation", "prefab", "asset"] },
         "scene": { "type": "object" }, "entity": { "type": "object" }, "group": { "type": "object" }, "collection": { "type": "object" }, "modifier": { "$ref": "#/$defs/modifierDocument" }, "resource": { "type": "object" }, "patch": { "type": "object" },
+        "items": {
+          "type": "array", "minItems": 1, "maxItems": 128,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "properties": {
+              "entity": { "type": "object" }, "newId": { "$ref": "#/$defs/reference" },
+              "name": { "type": "string", "minLength": 1, "maxLength": 240 },
+              "parentId": { "oneOf": [{ "$ref": "#/$defs/reference" }, { "type": "null" }] },
+              "index": { "type": "integer", "minimum": 0, "maximum": 20000 },
+              "alias": { "type": "string", "pattern": "^\\$[a-z][a-z0-9_-]{0,63}$" }
+            }
+          }
+        },
         "entityIds": { "type": "array", "minItems": 1, "maxItems": 200, "uniqueItems": true, "items": { "$ref": "#/$defs/reference" } },
         "addEntityIds": { "type": "array", "maxItems": 200, "uniqueItems": true, "items": { "$ref": "#/$defs/reference" } },
         "removeEntityIds": { "type": "array", "maxItems": 200, "uniqueItems": true, "items": { "$ref": "#/$defs/reference" } },

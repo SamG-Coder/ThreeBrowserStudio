@@ -214,8 +214,8 @@ export const inspectSchema = z.object({
 export const OPERATION_TYPES = Object.freeze([
   'scene.create', 'scene.patch', 'scene.delete', 'scene.setActive',
   'scene.settings.patch', 'scene.rtx.patch', 'scene.setActiveCamera',
-  'entity.create', 'entity.patch', 'entity.patchMany', 'entity.transformMany',
-  'entity.group', 'entity.ungroup', 'entity.duplicate', 'entity.reparent', 'entity.delete',
+  'entity.create', 'entity.createMany', 'entity.patch', 'entity.patchMany', 'entity.transformMany',
+  'entity.group', 'entity.ungroup', 'entity.duplicate', 'entity.duplicateMany', 'entity.reparent', 'entity.delete',
   'collection.create', 'collection.patch', 'collection.membership.patch', 'collection.reparent', 'collection.delete',
   'camera.frame', 'layout.pattern', 'stroke.apply',
   'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
@@ -1131,6 +1131,19 @@ const transformManyPatch = z.object({
   message: 'entity.transformMany requires at least one transform field.',
 });
 
+const entityCreateBatchItem = z.object({
+  entity: jsonObjectSchema,
+  alias: alias.optional(),
+  index: insertionIndex.optional(),
+}).strict();
+const entityDuplicateBatchItem = z.object({
+  newId: reference,
+  name: z.string().min(1).max(240).optional(),
+  parentId: reference.nullable().optional(),
+  index: insertionIndex.optional(),
+  alias: alias.optional(),
+}).strict();
+
 const optionalExactEntityReferences = z.array(reference).max(200).refine(
   values => new Set(values).size === values.length,
   { message: 'Entity ID lists cannot contain duplicates.' },
@@ -1165,6 +1178,7 @@ const directOperations = [
   operation('scene.rtx.patch', { sceneId: reference, patch: rtxPatchSchema }),
   operation('scene.setActiveCamera', { sceneId: reference, cameraId: reference.nullable() }),
   operation('entity.create', { sceneId: reference, entity: jsonObjectSchema, alias: alias.optional(), index: insertionIndex.optional() }),
+  operation('entity.createMany', { sceneId: reference, items: z.array(entityCreateBatchItem).min(1).max(128) }),
   operation('entity.patch', { entityId: reference, patch: jsonObjectSchema }),
   operation('entity.patchMany', { entityIds: exactEntityReferences, patch: jsonObjectSchema, expectedEntitySetHash: hash }),
   operation('entity.transformMany', {
@@ -1191,6 +1205,10 @@ const directOperations = [
     deep: z.boolean().optional().default(false),
     idMap: z.record(identifier, reference).optional(),
     alias: alias.optional(),
+  }),
+  operation('entity.duplicateMany', {
+    entityId: reference,
+    items: z.array(entityDuplicateBatchItem).min(1).max(128),
   }),
   operation('entity.reparent', { entityId: reference, parentId: reference.nullable(), index: insertionIndex.optional() }),
   operation('entity.delete', {

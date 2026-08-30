@@ -15,6 +15,28 @@ test('runtime forwards strict core-shaped MCP operations without weakening them'
   assert.notEqual(translated, operation);
 });
 
+test('runtime lowers bounded create and linked-duplicate batches into one atomic core transaction', () => {
+  const project = createProjectDocument({ projectId: 'project/test' });
+  assert.deepEqual(translateToolOperation({
+    op: 'entity.createMany', sceneId: 'scene/main', items: [
+      { entity: { id: 'entity/a', kind: 'empty' }, alias: '$a' },
+      { entity: { id: 'entity/b', kind: 'empty' }, index: 2 },
+    ],
+  }, project), [
+    { type: 'entity.create', sceneId: 'scene/main', entity: { id: 'entity/a', kind: 'empty' }, alias: '$a' },
+    { type: 'entity.create', sceneId: 'scene/main', entity: { id: 'entity/b', kind: 'empty' }, index: 2 },
+  ]);
+  assert.deepEqual(translateToolOperation({
+    op: 'entity.duplicateMany', entityId: 'entity/source', items: [
+      { newId: 'entity/copy-a', name: 'Copy A' },
+      { newId: 'entity/copy-b', parentId: null },
+    ],
+  }, project), [
+    { type: 'entity.duplicate', entityId: 'entity/source', newId: 'entity/copy-a', deep: false, name: 'Copy A' },
+    { type: 'entity.duplicate', entityId: 'entity/source', newId: 'entity/copy-b', deep: false, parentId: null },
+  ]);
+});
+
 test('runtime forwards layout.pattern as a direct canonical core operation', () => {
   const project = createProjectDocument({ projectId: 'project/test' });
   const operation = {

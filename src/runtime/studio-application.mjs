@@ -447,6 +447,17 @@ function translateStrokeOperation(operation, document) {
 export function translateToolOperation(operation, document) {
   const data = operation.data ?? {};
   if (operation.op === 'stroke.apply') return translateStrokeOperation(operation, document);
+  if (operation.op === 'entity.createMany') return operation.items.map(item => ({
+    type: 'entity.create', sceneId: operation.sceneId, entity: item.entity,
+    ...(item.alias ? { alias: item.alias } : {}), ...(item.index === undefined ? {} : { index: item.index }),
+  }));
+  if (operation.op === 'entity.duplicateMany') return operation.items.map(item => ({
+    type: 'entity.duplicate', entityId: operation.entityId, newId: item.newId, deep: false,
+    ...(item.name ? { name: item.name } : {}),
+    ...(item.parentId === undefined ? {} : { parentId: item.parentId }),
+    ...(item.index === undefined ? {} : { index: item.index }),
+    ...(item.alias ? { alias: item.alias } : {}),
+  }));
   if (DIRECT_CORE_OPERATIONS.has(operation.op)) {
     const direct = structuredClone(operation);
     if (direct.op === 'camera.frame') {

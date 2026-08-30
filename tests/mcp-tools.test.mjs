@@ -320,8 +320,8 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
   assert.deepEqual(OPERATION_TYPES, [
     'scene.create', 'scene.patch', 'scene.delete', 'scene.setActive',
     'scene.settings.patch', 'scene.rtx.patch', 'scene.setActiveCamera',
-    'entity.create', 'entity.patch', 'entity.patchMany', 'entity.transformMany',
-    'entity.group', 'entity.ungroup', 'entity.duplicate', 'entity.reparent', 'entity.delete',
+    'entity.create', 'entity.createMany', 'entity.patch', 'entity.patchMany', 'entity.transformMany',
+    'entity.group', 'entity.ungroup', 'entity.duplicate', 'entity.duplicateMany', 'entity.reparent', 'entity.delete',
     'collection.create', 'collection.patch', 'collection.membership.patch', 'collection.reparent', 'collection.delete',
     'camera.frame', 'layout.pattern', 'stroke.apply',
     'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
