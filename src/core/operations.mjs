@@ -60,6 +60,7 @@ const GEOMETRY_EDIT_KEYS = new Map([
   ['move', new Set(['type', 'vertexIndices', 'selection', 'offset'])],
   ['proportionalMove', new Set(['type', 'vertexIndices', 'selection', 'center', 'radius', 'offset', 'falloff', 'axisScale'])],
   ['sculptStroke', new Set(['type', 'vertexIndices', 'selection', 'stroke', 'brush', 'amount', 'direction', 'falloff'])],
+  ['transformRegion', new Set(['type', 'bounds', 'offset', 'scale', 'rotation', 'pivot'])],
   ['scale', new Set(['type', 'vertexIndices', 'selection', 'scale', 'pivot'])],
   ['rotate', new Set(['type', 'vertexIndices', 'selection', 'rotation', 'axis', 'angle', 'pivot'])],
   ['smooth', new Set(['type', 'vertexIndices', 'selection', 'iterations', 'factor', 'preserveBoundary'])],
@@ -91,10 +92,10 @@ const GEOMETRY_EDIT_KEYS = new Map([
   ['removeEdgeCreases', new Set(['type', 'edges'])],
 ]);
 const INDEXED_GEOMETRY_EDIT_TYPES = new Set([
-  'move', 'proportionalMove', 'sculptStroke', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
+  'move', 'proportionalMove', 'sculptStroke', 'transformRegion', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
 ]);
 const EDITABLE_GEOMETRY_EDIT_TYPES = new Set([
-  'move', 'proportionalMove', 'sculptStroke', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'subdivideFaces', 'insetFaces', 'extrudeFaces',
+  'move', 'proportionalMove', 'sculptStroke', 'transformRegion', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'subdivideFaces', 'insetFaces', 'extrudeFaces',
   'bevelEdges', 'deleteFaces', 'mergeVertices',
   ...EDITABLE_MESH_ATTRIBUTE_COMMAND_TYPES, 'paintColorStroke',
 ]);
@@ -128,7 +129,7 @@ const OPERATION_KEYS = new Map([
   ['collection.membership.patch', new Set(['type', 'op', 'collectionId', 'addEntityIds', 'removeEntityIds', 'expectedMembershipHash'])],
   ['collection.reparent', new Set(['type', 'op', 'collectionId', 'parentId', 'index'])],
   ['collection.delete', new Set(['type', 'op', 'collectionId', 'recursive', 'expectedSubtreeHash'])],
-  ['camera.frame', new Set(['type', 'op', 'cameraId', 'bounds', 'targetIds', 'aspect', 'padding', 'direction', 'lockPreviewAspect'])],
+  ['camera.frame', new Set(['type', 'op', 'cameraId', 'bounds', 'targetIds', 'aspect', 'padding', 'direction', 'minHeight', 'lockPreviewAspect'])],
   ['layout.pattern', new Set(['type', 'op', 'entityId', 'pattern'])],
   ['modifier.create', new Set(['type', 'op', 'entityId', 'modifier', 'expectedStackHash', 'index'])],
   ['modifier.patch', new Set(['type', 'op', 'entityId', 'modifierId', 'patch', 'expectedStackHash'])],
@@ -1260,6 +1261,7 @@ function applyCameraFrame(draft, operation, aliases) {
       aspect: operation.aspect,
       padding: operation.padding,
       direction: operation.direction,
+      minHeight: operation.minHeight,
       lockPreviewAspect: operation.lockPreviewAspect,
     });
   } catch (error) {
@@ -1290,6 +1292,7 @@ function applyCameraFrame(draft, operation, aliases) {
       aspect: framed.framing.aspect,
       padding: framed.framing.padding,
       direction: cloneJson(framed.framing.direction),
+      ...(operation.minHeight === undefined ? {} : { minHeight: operation.minHeight }),
       lockPreviewAspect: framed.framing.lockPreviewAspect,
     },
     inverse: { type: '_entity.fields.restore', entityId: cameraId, fields },
@@ -1421,6 +1424,34 @@ function assertGeometryEditCommand(command, editIndex, recipeKind) {
       { editIndex },
     );
   }
+  if (command.type === 'transformRegion') {
+    studioAssert(isPlainRecord(command.bounds), 'invalid_geometry_edit', 'transformRegion requires bounds.', { editIndex });
+    studioAssert(
+      command.offset !== undefined || command.scale !== undefined || command.rotation !== undefined,
+      'invalid_geometry_edit', 'transformRegion requires offset, scale, or rotation.', { editIndex },
+    );
+  }
+}
+
+function lowerRegionTransform(recipe, command) {
+  const minimum = command.bounds?.min; const maximum = command.bounds?.max;
+  if (!Array.isArray(minimum) || !Array.isArray(maximum) || minimum.length !== 3 || maximum.length !== 3
+      || !minimum.every(Number.isFinite) || !maximum.every(Number.isFinite)
+      || minimum.some((value, axis) => value > maximum[axis])) {
+    throw new TypeError('transformRegion bounds require finite ordered min and max vec3 values.');
+  }
+  const vertexIndices = [];
+  for (let vertex = 0; vertex < recipe.positions.length / 3; vertex += 1) {
+    const position = recipe.positions.slice(vertex * 3, vertex * 3 + 3);
+    if (position.every((value, axis) => value >= minimum[axis] && value <= maximum[axis])) vertexIndices.push(vertex);
+  }
+  if (vertexIndices.length === 0) throw new RangeError('transformRegion selected no vertices.');
+  const pivot = command.pivot ?? minimum.map((value, axis) => (value + maximum[axis]) * 0.5);
+  return [
+    ...(command.scale === undefined ? [] : [{ type: 'scale', vertexIndices, scale: command.scale, pivot }]),
+    ...(command.rotation === undefined ? [] : [{ type: 'rotate', vertexIndices, rotation: command.rotation, pivot }]),
+    ...(command.offset === undefined ? [] : [{ type: 'move', vertexIndices, offset: command.offset }]),
+  ];
 }
 
 function applyGeometryEdit(draft, operation, aliases) {
@@ -1474,7 +1505,11 @@ function applyGeometryEdit(draft, operation, aliases) {
     const command = edits[editIndex];
     assertGeometryEditCommand(command, editIndex, canonical.kind);
     try {
-      if (command.type === 'sculptStroke') {
+      if (command.type === 'transformRegion') {
+        for (const lowered of lowerRegionTransform(recipe, command)) recipe = canonical.kind === 'editableMesh'
+          ? applyEditableMeshEdit(recipe, lowered)
+          : applyIndexedMeshEdit(recipe, lowered);
+      } else if (command.type === 'sculptStroke') {
         recipe = canonical.kind === 'editableMesh'
           ? sculptEditableMeshWithStroke(recipe, command)
           : sculptIndexedMeshWithStroke(recipe, command);

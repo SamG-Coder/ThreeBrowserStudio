@@ -113,6 +113,24 @@ test('geometry.edit resolves transaction aliases and applies ordered edits to a 
   });
 });
 
+test('transformRegion selects vertices by local bounds and composes scale, rotation, and offset', async () => {
+  const kernel = kernelWithGeometry();
+  await kernel.apply(applyRequest({
+    idempotencyKey: 'geometry-region-transform-0001',
+    operations: [{
+      type: 'geometry.edit', resourceId: 'geometry/editable', edits: [{
+        type: 'transformRegion', bounds: { min: [0.9, -0.1, -0.1], max: [1.1, 0.1, 0.1] },
+        scale: 2, offset: [0, 1, 0],
+      }],
+    }],
+  }));
+  assert.deepEqual(kernel.document.resources.geometries['geometry/editable'].recipe.positions, [
+    0, 0, 0,
+    1, 1, 0,
+    0, 1, 0,
+  ]);
+});
+
 test('resource create and patch reject malformed indexed topology before commit', async () => {
   const kernel = new AuthoringKernel(createProjectDocument({
     projectId: 'project/geometry-edit',
@@ -271,6 +289,7 @@ test('geometry.edit preserves direct indexed triangle material slots during cano
 test('MCP geometry.edit exposes every strict bounded command shape', () => {
   const edits = [
     { type: 'move', selection: 'all', offset: [1, 2, 3] },
+    { type: 'transformRegion', bounds: { min: [-1, -1, -1], max: [1, 1, 1] }, scale: 1.1, offset: [0, 0.1, 0] },
     { type: 'scale', vertexIndices: [0, 1], scale: [2, 1, 0.5] },
     { type: 'rotate', vertexIndices: [1], rotation: [0, Math.PI / 2, 0], pivot: [0, 0, 0] },
     { type: 'rotate', vertexIndices: [2], axis: [0, 1, 0], angle: Math.PI },
@@ -287,7 +306,7 @@ test('MCP geometry.edit exposes every strict bounded command shape', () => {
   ];
   assert.equal(applySchema.safeParse(mcpRequest(edits, 'a'.repeat(64))).success, true);
   assert.deepEqual(GEOMETRY_EDIT_COMMAND_TYPES, [
-    'move', 'proportionalMove', 'sculptStroke', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
+    'move', 'proportionalMove', 'sculptStroke', 'transformRegion', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
     'subdivideFaces', 'insetFaces', 'extrudeFaces', 'bevelEdges', 'deleteFaces', 'mergeVertices',
     'createUvLayer', 'deleteUvLayer', 'renameUvLayer', 'setActiveUvLayer', 'setCornerUvs',
     'transformUvs', 'projectUvs', 'createColorLayer', 'deleteColorLayer', 'renameColorLayer',
@@ -301,6 +320,7 @@ test('MCP geometry.edit exposes every strict bounded command shape', () => {
   assert.equal(parseEdit({ type: 'move', selection: 'visible', offset: [1, 0, 0] }), false);
   assert.equal(parseEdit({ type: 'move', vertexIndices: [1_000_000], offset: [1, 0, 0] }), false);
   assert.equal(parseEdit({ type: 'move', vertexIndices: [0], offset: [1_000_001, 0, 0] }), false);
+  assert.equal(parseEdit({ type: 'transformRegion', bounds: { min: [0, 0, 0], max: [1, 1, 1] } }), false);
   assert.equal(parseEdit({ type: 'rotate', vertexIndices: [0], rotation: [0, 0, 1], axis: [0, 0, 1], angle: 1 }), false);
   assert.equal(parseEdit({ type: 'rotate', vertexIndices: [0], axis: [0, 0, 0], angle: 1 }), false);
   assert.equal(parseEdit({ type: 'smooth', factor: 1.1 }), false);

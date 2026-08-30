@@ -134,3 +134,22 @@ test('material variants inherit a canonical base and apply one typed merge patch
     },
   });
 });
+
+test('typed lighting rigs lower to raster-safe lights with explicit optional RTX policy', () => {
+  const project = createProjectDocument({ projectId: 'project/lighting-rig' });
+  const automatic = translateToolOperation({
+    op: 'lighting.rig.create', sceneId: 'scene/main', rigId: 'entity/rig/product',
+    preset: 'product', center: [0, 1, 0], scale: 2, intensity: 0.5, rtx: 'auto',
+  }, project);
+  assert.equal(automatic.length, 5);
+  assert.deepEqual(automatic.map(entry => entry.type), new Array(5).fill('entity.create'));
+  assert.equal(automatic[2].entity.components.light.intensity, 32.5);
+  const explicit = translateToolOperation({
+    op: 'lighting.rig.create', sceneId: 'scene/main', rigId: 'entity/rig/outdoor',
+    preset: 'outdoor', center: [0, 0, 0], scale: 1, intensity: 1, rtx: 'on',
+  }, project);
+  assert.deepEqual(explicit.at(-1), {
+    type: 'scene.rtx.patch', sceneId: 'scene/main',
+    patch: { enabled: true, lighting: true, shadows: true, ambientOcclusion: true },
+  });
+});

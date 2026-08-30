@@ -218,6 +218,7 @@ export const OPERATION_TYPES = Object.freeze([
   'entity.group', 'entity.ungroup', 'entity.duplicate', 'entity.duplicateMany', 'entity.reparent', 'entity.delete',
   'collection.create', 'collection.patch', 'collection.membership.patch', 'collection.reparent', 'collection.delete',
   'camera.frame', 'layout.pattern', 'stroke.apply',
+  'lighting.rig.create',
   'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
   'geometry.edit',
   'material.variant.create',
@@ -695,7 +696,7 @@ const modifierStackEditSchema = z.discriminatedUnion('type', [
 export const modifierStackEditsSchema = z.array(modifierStackEditSchema).min(1).max(128);
 
 export const GEOMETRY_EDIT_COMMAND_TYPES = Object.freeze([
-  'move', 'proportionalMove', 'sculptStroke', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
+  'move', 'proportionalMove', 'sculptStroke', 'transformRegion', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
   'subdivideFaces', 'insetFaces', 'extrudeFaces', 'bevelEdges', 'deleteFaces', 'mergeVertices',
   ...EDITABLE_MESH_ATTRIBUTE_COMMAND_TYPES, 'paintColorStroke',
 ]);
@@ -792,6 +793,16 @@ const geometrySculptStrokeEdit = z.object({
   if (value.stroke.space !== 'local') {
     context.addIssue({ code: 'custom', path: ['stroke', 'space'], message: 'Geometry edit sculpt strokes must already be in local space; use stroke.apply for world or surface strokes.' });
   }
+});
+const geometryTransformRegionEdit = z.object({
+  type: z.literal('transformRegion'),
+  bounds: bounds3,
+  offset: geometryVec3.optional(),
+  scale: geometryScale.optional(),
+  rotation: geometryVec3.optional(),
+  pivot: geometryVec3.optional(),
+}).strict().refine(value => value.offset !== undefined || value.scale !== undefined || value.rotation !== undefined, {
+  message: 'transformRegion requires offset, scale, or rotation.',
 });
 const geometryScaleEdit = geometrySelectedVariants('scale', {
   scale: geometryScale,
@@ -1019,6 +1030,7 @@ export const geometryEditCommandSchema = z.union([
   geometryMoveEdit,
   geometryProportionalMoveEdit,
   geometrySculptStrokeEdit,
+  geometryTransformRegionEdit,
   geometryScaleEdit,
   geometryEulerRotateEdit,
   geometryAxisRotateEdit,
@@ -1062,6 +1074,13 @@ const cameraDirection = vec3.refine(
   direction => direction.some(component => component !== 0),
   { message: 'direction must not be zero.' },
 );
+const cameraFrameViewSchema = z.object({
+  azimuth: z.number().finite().min(-Math.PI * 8).max(Math.PI * 8).optional().default(0),
+  elevation: z.number().finite().min(-Math.PI * 0.49).max(Math.PI * 0.49).optional().default(0.2),
+  distanceScale: z.number().finite().min(0.1).max(10).optional().default(1),
+  targetOffset: vec3.optional().default([0, 0, 0]),
+  minHeight: z.number().finite().min(-1_000_000).max(1_000_000).optional(),
+}).strict();
 
 const strokeTargetSchema = z.discriminatedUnion('kind', [
   z.object({
@@ -1232,7 +1251,18 @@ const directOperations = [
     aspect: z.number().finite().min(0.1).max(10),
     padding: z.number().finite().min(1).max(10).optional().default(1.15),
     direction: cameraDirection.optional().default([0, -0.2, -1]),
+    view: cameraFrameViewSchema.optional(),
     lockPreviewAspect: z.boolean().optional().default(true),
+  }),
+  operation('lighting.rig.create', {
+    sceneId: reference,
+    rigId: identifier,
+    preset: z.enum(['product', 'outdoor', 'cinematic', 'studio']),
+    center: vec3.optional().default([0, 0, 0]),
+    scale: z.number().finite().gt(0).max(1_000_000).optional().default(1),
+    intensity: z.number().finite().gt(0).max(1_000_000).optional().default(1),
+    parentId: reference.nullable().optional(),
+    rtx: z.enum(['auto', 'on', 'off']).optional().default('auto'),
   }),
   operation('layout.pattern', { entityId: reference, pattern: layoutPatternSchema }),
   strokeApplyOperation,
@@ -1273,6 +1303,16 @@ export const applySchema = z.object({
   previewEvidence: z.object({
     width: z.number().int().min(16).max(1920).optional().default(960),
     height: z.number().int().min(16).max(1080).optional().default(720),
+    digest: z.boolean().optional().default(true),
+    probes: z.array(z.object({
+      name: z.string().min(1).max(64).optional(),
+      x: z.number().int().min(0).max(4095),
+      y: z.number().int().min(0).max(4095),
+    }).strict()).max(32).optional(),
+    bbox: z.object({
+      x0: z.number().int().min(0).max(4095), y0: z.number().int().min(0).max(4095),
+      x1: z.number().int().min(0).max(4095), y1: z.number().int().min(0).max(4095),
+    }).strict().optional(),
   }).strict().optional(),
   operations: z.array(operationSchema).min(1).max(128),
 }).strict().refine(value => value.previewEvidence === undefined || value.dryRun === true, {

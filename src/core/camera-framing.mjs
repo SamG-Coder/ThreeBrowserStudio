@@ -87,6 +87,7 @@ export function solveCameraFrame({
   aspect,
   padding = 1.25,
   direction = [0, -0.2, -1],
+  minHeight,
   lockPreviewAspect = true,
 } = {}) {
   if (!['perspectiveCamera', 'orthographicCamera'].includes(kind)) {
@@ -121,15 +122,19 @@ export function solveCameraFrame({
     framedCamera.bottom = -halfHeight;
   }
 
-  framedCamera.near = Math.max(0.005, distance - radius * 2);
-  framedCamera.far = Math.max(framedCamera.near + 10, distance + radius * 4);
+  const position = centre.map((value, index) => value - viewDirection[index] * distance);
+  if (minHeight !== undefined) position[1] = Math.max(position[1], finiteNumber(minHeight, 'minHeight'));
+  const actualDistance = Math.hypot(...centre.map((value, index) => value - position[index]));
+  const actualDirection = normalizeDirection(centre.map((value, index) => value - position[index]));
+  framedCamera.near = Math.max(0.005, actualDistance - radius * 2);
+  framedCamera.far = Math.max(framedCamera.near + 10, actualDistance + radius * 4);
   if (lockPreviewAspect) framedCamera.presentationAspect = safeAspect;
   else delete framedCamera.presentationAspect;
 
   return {
     transform: {
-      position: centre.map((value, index) => value - viewDirection[index] * distance),
-      rotation: cameraEulerForDirection(viewDirection),
+      position,
+      rotation: cameraEulerForDirection(actualDirection),
       scale: Array.isArray(transform.scale) ? [...transform.scale] : [1, 1, 1],
     },
     camera: framedCamera,
@@ -138,8 +143,8 @@ export function solveCameraFrame({
       fit: 'contain',
       aspect: safeAspect,
       padding: safePadding,
-      direction: viewDirection,
-      distance,
+      direction: actualDirection,
+      distance: actualDistance,
       radius,
       lockPreviewAspect: Boolean(lockPreviewAspect),
     },

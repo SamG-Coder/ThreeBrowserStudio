@@ -6,7 +6,7 @@ import {
   materializeCameraFrameOperation,
   translateToolOperation,
 } from '../src/runtime/studio-application.mjs';
-import { cameraEulerForDirection } from '../src/core/camera-framing.mjs';
+import { cameraEulerForDirection, solveCameraFrame } from '../src/core/camera-framing.mjs';
 
 function kernel() {
   let sequence = 0;
@@ -160,4 +160,26 @@ test('MCP camera.frame is strict and compiled target bounds materialize before t
     () => materializeCameraFrameOperation({ ...translated, targetIds: ['missing'] }, { compiled, THREE: { Box3 } }),
     error => error instanceof StudioError && error.code === 'camera_frame_target_not_compiled',
   );
+});
+
+test('camera composition lowers orbit controls, target offset, distance, and floor safety deterministically', () => {
+  const parsed = applySchema.parse({
+    protocolVersion: 'three-studio/1', sessionId: 'session/test',
+    projectId: 'project/camera-frame-operation', baseRevision: 0,
+    idempotencyKey: 'camera-composition-0001', label: 'Compose safe hero shot',
+    operations: [{
+      op: 'camera.frame', cameraId: 'camera/tutorial', target: { bounds: { min: [-1, 0, -1], max: [1, 2, 1] } },
+      aspect: 16 / 9, padding: 1.2,
+      view: { azimuth: Math.PI / 4, elevation: 0.3, distanceScale: 1.5, targetOffset: [0, 0.5, 0], minHeight: 0.25 },
+    }],
+  });
+  const translated = translateToolOperation(parsed.operations[0], createProjectDocument({ projectId: 'project/camera-frame-operation' }));
+  assert.ok(Math.abs(translated.padding - 1.8) < 1e-12);
+  assert.equal(translated.minHeight, 0.25);
+  assert.equal(Object.hasOwn(translated, 'view'), false);
+  const materialized = materializeCameraFrameOperation(translated);
+  assert.deepEqual(materialized.bounds, { min: [-1, 0.5, -1], max: [1, 2.5, 1] });
+  assert.equal(Object.hasOwn(materialized, 'targetOffset'), false);
+  const framed = solveCameraFrame({ kind: 'perspectiveCamera', camera: { fov: 46 }, ...materialized });
+  assert.ok(framed.transform.position[1] >= 0.25);
 });

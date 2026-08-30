@@ -948,7 +948,7 @@ test('a project switch compile failure preserves the active project and live sce
   assert.equal(status.capabilities.implementedOperations.includes('modifier.stack.edit'), true);
   assert.equal(status.capabilities.geometryEditing, true);
   assert.deepEqual(status.capabilities.geometryEditCommands, [
-    'move', 'proportionalMove', 'sculptStroke', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
+    'move', 'proportionalMove', 'sculptStroke', 'transformRegion', 'scale', 'rotate', 'smooth', 'recalculateNormals', 'weld', 'triangulate',
     'subdivideFaces', 'insetFaces', 'extrudeFaces', 'bevelEdges', 'deleteFaces', 'mergeVertices',
     'createUvLayer', 'deleteUvLayer', 'renameUvLayer', 'setActiveUvLayer', 'setCornerUvs',
     'transformUvs', 'projectUvs', 'createColorLayer', 'deleteColorLayer', 'renameColorLayer',

@@ -523,6 +523,16 @@
           }
         },
         {
+          "type": "object", "additionalProperties": false, "required": ["type", "bounds"],
+          "anyOf": [{ "required": ["offset"] }, { "required": ["scale"] }, { "required": ["rotation"] }],
+          "properties": {
+            "type": { "const": "transformRegion" }, "bounds": { "$ref": "#/$defs/bounds3" },
+            "offset": { "$ref": "#/$defs/geometryVec3" },
+            "scale": { "oneOf": [{ "type": "number", "minimum": -1000000, "maximum": 1000000 }, { "$ref": "#/$defs/geometryVec3" }] },
+            "rotation": { "$ref": "#/$defs/geometryVec3" }, "pivot": { "$ref": "#/$defs/geometryVec3" }
+          }
+        },
+        {
           "type": "object", "additionalProperties": false,
           "required": ["type", "scale"],
           "oneOf": [{ "required": ["vertexIndices"] }, { "required": ["selection"] }],
@@ -1249,12 +1259,15 @@
           "scene.create", "scene.patch", "scene.delete", "scene.setActive", "scene.settings.patch", "scene.rtx.patch", "scene.setActiveCamera",
           "entity.create", "entity.createMany", "entity.patch", "entity.patchMany", "entity.transformMany", "entity.group", "entity.ungroup", "entity.duplicate", "entity.duplicateMany", "entity.reparent", "entity.delete",
           "collection.create", "collection.patch", "collection.membership.patch", "collection.reparent", "collection.delete",
-          "camera.frame", "layout.pattern", "stroke.apply", "modifier.create", "modifier.patch", "modifier.move", "modifier.delete", "modifier.stack.edit", "geometry.edit", "material.variant.create",
+          "camera.frame", "layout.pattern", "stroke.apply", "lighting.rig.create", "modifier.create", "modifier.patch", "modifier.move", "modifier.delete", "modifier.stack.edit", "geometry.edit", "material.variant.create",
           "resource.create", "resource.patch", "resource.delete"
         ] },
         "sceneId": { "$ref": "#/$defs/reference" }, "entityId": { "$ref": "#/$defs/reference" }, "collectionId": { "$ref": "#/$defs/reference" }, "cameraId": { "oneOf": [{ "$ref": "#/$defs/reference" }, { "type": "null" }] },
         "resourceId": { "$ref": "#/$defs/reference" }, "modifierId": { "$ref": "#/$defs/id" },
         "baseMaterialId": { "$ref": "#/$defs/reference" }, "materialId": { "$ref": "#/$defs/id" },
+        "rigId": { "$ref": "#/$defs/id" }, "preset": { "enum": ["product", "outdoor", "cinematic", "studio"] },
+        "center": { "$ref": "#/$defs/vec3" }, "scale": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000000 }, "intensity": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000000 },
+        "rtx": { "enum": ["auto", "on", "off"] },
         "parentId": { "oneOf": [{ "$ref": "#/$defs/reference" }, { "type": "null" }] }, "newId": { "$ref": "#/$defs/reference" },
         "alias": { "type": "string", "pattern": "^\\$[a-z][a-z0-9_-]{0,63}$" },
         "expectedSceneHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }, "expectedSubtreeHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
@@ -1295,6 +1308,16 @@
             { "not": { "const": [0, 0, 0] } }
           ]
         },
+        "view": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "azimuth": { "type": "number", "minimum": -25.132741228718345, "maximum": 25.132741228718345 },
+            "elevation": { "type": "number", "minimum": -1.5393804002589986, "maximum": 1.5393804002589986 },
+            "distanceScale": { "type": "number", "minimum": 0.1, "maximum": 10 },
+            "targetOffset": { "$ref": "#/$defs/vec3" },
+            "minHeight": { "type": "number", "minimum": -1000000, "maximum": 1000000 }
+          }
+        },
         "lockPreviewAspect": { "type": "boolean" },
         "edits": {
           "type": "array", "minItems": 1, "maxItems": 64,
@@ -1307,6 +1330,10 @@
         "idMap": { "type": "object", "additionalProperties": { "$ref": "#/$defs/reference" } }
       },
       "allOf": [
+        {
+          "if": { "properties": { "op": { "const": "lighting.rig.create" } }, "required": ["op"] },
+          "then": { "required": ["sceneId", "rigId", "preset"] }
+        },
         {
           "if": { "properties": { "op": { "const": "material.variant.create" } }, "required": ["op"] },
           "then": { "required": ["baseMaterialId", "materialId", "patch"] }
@@ -1431,7 +1458,12 @@
         "protocolVersion": { "$ref": "#/$defs/protocolVersion" }, "sessionId": { "$ref": "#/$defs/sessionId" }, "projectId": { "$ref": "#/$defs/id" },
         "baseRevision": { "$ref": "#/$defs/revision" }, "idempotencyKey": { "$ref": "#/$defs/idempotencyKey" }, "label": { "$ref": "#/$defs/label" },
         "dryRun": { "type": "boolean" },
-        "previewEvidence": { "type": "object", "additionalProperties": false, "properties": { "width": { "type": "integer", "minimum": 16, "maximum": 1920 }, "height": { "type": "integer", "minimum": 16, "maximum": 1080 } } },
+        "previewEvidence": { "type": "object", "additionalProperties": false, "properties": {
+          "width": { "type": "integer", "minimum": 16, "maximum": 1920 }, "height": { "type": "integer", "minimum": 16, "maximum": 1080 },
+          "digest": { "type": "boolean" },
+          "probes": { "type": "array", "maxItems": 32, "items": { "type": "object", "additionalProperties": false, "required": ["x", "y"], "properties": { "name": { "type": "string", "minLength": 1, "maxLength": 64 }, "x": { "type": "integer", "minimum": 0, "maximum": 4095 }, "y": { "type": "integer", "minimum": 0, "maximum": 4095 } } } },
+          "bbox": { "type": "object", "additionalProperties": false, "required": ["x0", "y0", "x1", "y1"], "properties": { "x0": { "type": "integer", "minimum": 0, "maximum": 4095 }, "y0": { "type": "integer", "minimum": 0, "maximum": 4095 }, "x1": { "type": "integer", "minimum": 0, "maximum": 4095 }, "y1": { "type": "integer", "minimum": 0, "maximum": 4095 } } }
+        } },
         "operations": { "type": "array", "minItems": 1, "maxItems": 128, "items": { "$ref": "#/$defs/operation" } }
       }
     },

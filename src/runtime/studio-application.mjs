@@ -321,6 +321,41 @@ function projectLocalStrokeToSurface(stroke, recipe, entityId) {
   };
 }
 
+function lightingRigOperations(operation) {
+  const center = operation.center ?? [0, 0, 0]; const scale = operation.scale ?? 1; const intensity = operation.intensity ?? 1;
+  const position = offset => center.map((value, axis) => value + offset[axis] * scale);
+  const entity = (suffix, kind, name, offset, light) => ({
+    type: 'entity.create', sceneId: operation.sceneId,
+    entity: {
+      id: `${operation.rigId}/${suffix}`, kind, name, parentId: operation.rigId,
+      transform: { position: position(offset), rotation: [0, 0, 0], scale: [1, 1, 1] },
+      components: { light: { ...light, intensity: light.intensity * intensity } },
+      tags: ['lighting', `rig-${operation.preset}`],
+    },
+  });
+  const result = [{
+    type: 'entity.create', sceneId: operation.sceneId,
+    entity: { id: operation.rigId, kind: 'group', name: `${operation.preset} lighting rig`, parentId: operation.parentId ?? null, tags: ['lighting', 'lighting-rig'] },
+  }];
+  if (operation.preset === 'outdoor') {
+    result.push(entity('sky', 'hemisphereLight', 'Outdoor sky fill', [0, 0, 0], { color: [0.55, 0.72, 1], groundColor: [0.18, 0.14, 0.09], intensity: 0.75, castShadow: false }));
+    result.push(entity('sun', 'directionalLight', 'Outdoor sun', [-5, 8, 4], { color: [1, 0.84, 0.62], intensity: 2.4, castShadow: true, shadowMapSize: 2048, shadowBias: -0.0002, shadowNormalBias: 0.02 }));
+  } else {
+    const cinematic = operation.preset === 'cinematic'; const product = operation.preset === 'product';
+    result.push(entity('ambient', 'ambientLight', 'Visibility fill', [0, 0, 0], { color: [0.42, 0.48, 0.6], intensity: cinematic ? 0.08 : 0.22, castShadow: false }));
+    result.push(entity('key', 'pointLight', 'Key light', [4, 5, 5], { color: product ? [1, 0.93, 0.84] : [1, 0.72, 0.5], intensity: product ? 65 : 42, distance: 30 * scale, decay: 2, castShadow: true, shadowMapSize: 2048 }));
+    result.push(entity('fill', 'pointLight', 'Fill light', [-4, 3, 2], { color: [0.48, 0.68, 1], intensity: cinematic ? 20 : 34, distance: 28 * scale, decay: 2, castShadow: false }));
+    result.push(entity('rim', 'pointLight', 'Rim light', [1, 4, -5], { color: cinematic ? [0.9, 0.25, 0.12] : [0.65, 0.82, 1], intensity: cinematic ? 52 : 38, distance: 26 * scale, decay: 2, castShadow: false }));
+  }
+  if (operation.rtx !== 'auto') result.push({
+    type: 'scene.rtx.patch', sceneId: operation.sceneId,
+    patch: operation.rtx === 'on'
+      ? { enabled: true, lighting: true, shadows: true, ambientOcclusion: true }
+      : { enabled: false },
+  });
+  return result;
+}
+
 function localStrokeForEntity(strokeValue, document, entityId) {
   const stroke = normalizeStroke(strokeValue);
   if (stroke.space === 'local') return stroke;
@@ -468,6 +503,7 @@ export function translateToolOperation(operation, document) {
       ...(operation.alias ? { alias: operation.alias } : {}),
     };
   }
+  if (operation.op === 'lighting.rig.create') return lightingRigOperations(operation);
   if (DIRECT_CORE_OPERATIONS.has(operation.op)) {
     const direct = structuredClone(operation);
     if (direct.op === 'camera.frame') {
@@ -475,6 +511,15 @@ export function translateToolOperation(operation, document) {
       direct.bounds = target?.bounds;
       direct.targetIds = target?.targetIds;
       delete direct.target;
+      if (direct.view) {
+        const { azimuth, elevation, distanceScale, targetOffset, minHeight } = direct.view;
+        const horizontal = Math.cos(elevation);
+        direct.direction = [-Math.sin(azimuth) * horizontal, -Math.sin(elevation), -Math.cos(azimuth) * horizontal];
+        direct.padding *= distanceScale;
+        direct.targetOffset = targetOffset;
+        if (minHeight !== undefined) direct.minHeight = minHeight;
+        delete direct.view;
+      }
       if (direct.bounds === undefined) delete direct.bounds;
       if (direct.targetIds === undefined) delete direct.targetIds;
     }
@@ -556,7 +601,18 @@ export function translateToolOperation(operation, document) {
 
 export function materializeCameraFrameOperation(operation, { compiled, THREE } = {}) {
   if (operation?.op !== 'camera.frame' && operation?.type !== 'camera.frame') return operation;
-  if (operation.bounds !== undefined) return operation;
+  const shifted = value => {
+    if (!operation.targetOffset) return value;
+    return {
+      min: value.min.map((component, axis) => component + operation.targetOffset[axis]),
+      max: value.max.map((component, axis) => component + operation.targetOffset[axis]),
+    };
+  };
+  if (operation.bounds !== undefined) {
+    const result = { ...operation, bounds: shifted(operation.bounds) };
+    delete result.targetOffset;
+    return result;
+  }
   if (!Array.isArray(operation.targetIds) || operation.targetIds.length === 0) {
     throw new StudioError('invalid_camera_frame_targets', 'camera.frame requires targetIds or explicit bounds.');
   }
@@ -581,10 +637,12 @@ export function materializeCameraFrameOperation(operation, { compiled, THREE } =
       targetIds: structuredClone(operation.targetIds),
     });
   }
-  return {
+  const result = {
     ...operation,
-    bounds: { min: bounds.min.toArray(), max: bounds.max.toArray() },
+    bounds: shifted({ min: bounds.min.toArray(), max: bounds.max.toArray() }),
   };
+  delete result.targetOffset;
+  return result;
 }
 
 function compactEntity(entity, include, { index, compiled, THREE } = {}) {
@@ -1930,6 +1988,7 @@ export class StudioApplication {
       throw error;
     }
     let previewEvidence;
+    let previewDigest;
     if (params.previewEvidence && this.#dryRunCandidate) {
       const candidate = this.#dryRunCandidate;
       const scene = this.#viewport.scene;
@@ -1944,9 +2003,19 @@ export class StudioApplication {
         scene.backgroundNode = candidate.backgroundNode;
         scene.fog = candidate.fog;
         previewEvidence = await this.#viewport.capture(undefined, {
-          ...params.previewEvidence,
+          width: params.previewEvidence.width,
+          height: params.previewEvidence.height,
           pass: 'raster',
           camera: candidate.activeCamera ?? this.#viewport.renderCamera,
+        });
+        if (params.previewEvidence.digest !== false) previewDigest = buildBeautyDigest({
+          studioRoot: this.studioRoot,
+          latestEvidence: previewEvidence,
+          evidence: {
+            path: previewEvidence.path,
+            ...(params.previewEvidence.probes ? { probes: params.previewEvidence.probes } : {}),
+            ...(params.previewEvidence.bbox ? { bbox: params.previewEvidence.bbox } : {}),
+          },
         });
       } finally {
         candidate.root.removeFromParent?.();
@@ -1971,6 +2040,7 @@ export class StudioApplication {
       evidenceRequested: params.evidence === true,
       pixelForecast,
       ...(previewEvidence ? { previewEvidence } : {}),
+      ...(previewDigest ? { previewDigest } : {}),
     };
   }
 

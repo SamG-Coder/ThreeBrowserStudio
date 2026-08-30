@@ -308,6 +308,11 @@ test('apply enforces shared mutation metadata and the 128-operation bound', () =
   assert.equal(applySchema.safeParse({ ...valid, baseRevision: -1 }).success, false);
   assert.equal(applySchema.safeParse({ ...valid, operations: Array(129).fill(valid.operations[0]) }).success, false);
   assert.equal(applySchema.safeParse({ ...valid, operations: [{ ...valid.operations[0], typo: true }] }).success, false);
+  assert.equal(applySchema.safeParse({
+    ...valid, dryRun: true,
+    previewEvidence: { width: 640, height: 360, digest: true, probes: [{ name: 'hero', x: 320, y: 180 }] },
+  }).success, true);
+  assert.equal(applySchema.safeParse({ ...valid, previewEvidence: { width: 640, height: 360 } }).success, false);
 });
 
 test('MCP contract exposes only the live inspect and mutation slice', () => {
@@ -324,6 +329,7 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
     'entity.group', 'entity.ungroup', 'entity.duplicate', 'entity.duplicateMany', 'entity.reparent', 'entity.delete',
     'collection.create', 'collection.patch', 'collection.membership.patch', 'collection.reparent', 'collection.delete',
     'camera.frame', 'layout.pattern', 'stroke.apply',
+    'lighting.rig.create',
     'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
     'geometry.edit',
     'material.variant.create',
