@@ -102,6 +102,10 @@ triangle topology. Loft recipes may use named section descriptors, per-section
 TRS, `profileResolution` resampling, interpolated `subdivisions`, closest-ring
 alignment, and generated side UVs.
 
+Static `smooth`, `simpleDeform`, and `displace` modifiers on editable meshes run
+before UV seams are split into render vertices, so one authored vertex cannot
+crack into independently smoothed triangle copies.
+
 Compile-heavy tools (`apply`, `render`, `project`, `history`) have a 120s
 budget. Status and inspect stay at 15s. If apply times out, it aborted
 **before** commit. Re-inspect revision. Do **not** retry the same

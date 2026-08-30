@@ -593,6 +593,51 @@ test('derived geometry is cached by resource, exact stack hash, and viewport tar
   assert.equal(third.geometry.disposeCount, 1);
 });
 
+test('editable deformation modifiers evaluate before UV seam triangulation', () => {
+  const geometry = {
+    id: 'geometry/editable-quad',
+    recipe: {
+      kind: 'editableMesh',
+      positions: [0, 0, 0, 2, 0, 0, 2, 1, 0, 0, 1, 0],
+      faceOffsets: [0, 4],
+      cornerVertexIndices: [0, 1, 2, 3],
+      uvLayers: { UVMap: [0, 0, 1, 0, 1, 1, 0, 1] },
+      activeUvLayer: 'UVMap',
+      faceMaterialIndices: [0],
+    },
+  };
+  const project = createProjectDocument({
+    projectId: 'project/editable-preseam',
+    resources: { geometries: [geometry], materials: [{ id: 'material/a' }] },
+    scenes: [{
+      id: 'scene/main',
+      entities: [entity('entity/quad', 'mesh', { components: {
+        mesh: { geometryId: geometry.id, materialIds: ['material/a'] },
+        modifiers: [{ id: 'modifier/smooth', type: 'smooth', factor: 0.5, iterations: 1, preserveBoundary: false }],
+      } })],
+    }],
+  });
+  const baselineProject = structuredClone(project);
+  delete baselineProject.scenes['scene/main'].entities['entity/quad'].components.modifiers;
+  const baseline = compileSceneDocument({ THREE: fakeThree(), TSL: fakeTsl(), project: baselineProject });
+  const compiled = compileSceneDocument({ THREE: fakeThree(), TSL: fakeTsl(), project });
+  assert.deepEqual(compiled.diagnostics, []);
+  const before = baseline.objects.get('entity/quad').geometry.getAttribute('position');
+  const after = compiled.objects.get('entity/quad').geometry.getAttribute('position');
+  const positionsBySource = new Map();
+  for (let index = 0; index < before.count; index += 1) {
+    const source = [before.getX(index), before.getY(index), before.getZ(index)].join(',');
+    const result = [after.getX(index), after.getY(index), after.getZ(index)].join(',');
+    if (!positionsBySource.has(source)) positionsBySource.set(source, new Set());
+    positionsBySource.get(source).add(result);
+  }
+  assert.ok([...positionsBySource.values()].some(results => results.size === 1));
+  assert.ok([...positionsBySource.values()].every(results => results.size === 1), 'all seam copies of one vertex move together');
+  assert.deepEqual(compiled.objects.get('entity/quad').geometry.userData.studioAppliedGeometryModifiers, ['modifier/smooth']);
+  baseline.dispose();
+  compiled.dispose();
+});
+
 test('bake and order boundaries show only the exact evaluable modifier prefix', () => {
   const project = createProjectDocument({
     projectId: 'project/modifier-boundaries',

@@ -20,6 +20,22 @@ import {
   multiplyTransformMatrices,
   transformPointByMatrix,
 } from '../core/transform-math.mjs';
+import { normalizeEditableMeshRecipe, triangulateEditableMesh } from '../core/editable-mesh.mjs';
+
+const EDITABLE_PRESEAM_MODIFIERS = new Set(['smooth', 'simpleDeform', 'displace']);
+
+function editablePreseamRecipe(sourceRecipe) {
+  const mesh = normalizeEditableMeshRecipe(sourceRecipe);
+  const triangulated = triangulateEditableMesh(mesh);
+  return {
+    mesh,
+    indexed: {
+      kind: 'indexedMesh',
+      positions: [...mesh.positions],
+      indices: triangulated.sourceCornerIndices.map(cornerIndex => mesh.cornerVertexIndices[cornerIndex]),
+    },
+  };
+}
 
 function colorFrom(THREE, value, fallback = [0.035, 0.045, 0.06]) {
   const color = new THREE.Color();
@@ -386,6 +402,17 @@ export function compileSceneDocument({ THREE, TSL, project, sceneId = project.ac
     let dynamicSampleCount = 0;
     let value;
     if (plan.hasActiveGeometryModifiers) {
+      const evaluateBeforeSeams = sourceRecipe.kind === 'editableMesh'
+        && plan.geometryModifiers.every(modifier => EDITABLE_PRESEAM_MODIFIERS.has(modifier.type));
+      if (evaluateBeforeSeams) {
+        const preseam = editablePreseamRecipe(sourceRecipe);
+        evaluation = evaluateGeometryModifierStack(preseam.indexed, plan.geometryModifiers, {
+          target,
+          unsupported: 'error',
+          timeSeconds: animationTime,
+        });
+        value = createGeometry(THREE, { recipe: { ...preseam.mesh, positions: evaluation.recipe.positions } });
+      } else {
       let baseGeometry = null;
       try {
         baseGeometry = createGeometry(THREE, resource);
@@ -443,6 +470,7 @@ export function compileSceneDocument({ THREE, TSL, project, sceneId = project.ac
         value = createGeometry(THREE, { recipe: evaluation.recipe });
       } finally {
         baseGeometry?.dispose?.();
+      }
       }
     } else {
       value = createGeometry(THREE, resource);
