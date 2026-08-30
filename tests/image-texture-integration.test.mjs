@@ -47,6 +47,31 @@ function sampledGraph(id, textureId, colorSpace = 'srgb') {
   };
 }
 
+function blenderImageGraph(id, textureId, colorSpace = 'srgb') {
+  return {
+    id,
+    kind: 'graph',
+    graph: {
+      formatVersion: 1,
+      id,
+      domain: 'shader',
+      nodes: [{
+        id: 'sample',
+        type: 'ShaderNodeTexImage',
+        params: {
+          textureId,
+          colorSpace,
+          projection: 'FLAT',
+          interpolation: 'LINEAR',
+          extension: 'EXTEND',
+        },
+      }],
+      edges: [],
+      outputs: { baseColor: { nodeId: 'sample', port: 'Color' } },
+    },
+  };
+}
+
 function constantColorGraph(id, output = 'baseColor') {
   return {
     id,
@@ -672,4 +697,27 @@ test('material and graph indexes both guard a referenced texture from deletion',
     && error.details.references.some(reference => reference.kind === 'graphTexture'));
   assert.equal(kernel.revision, 0);
   assert.ok(kernel.document.resources.textures['texture/albedo']);
+});
+
+test('Blender Image Texture aliases participate in project validation and deletion guards', () => {
+  const project = createProjectDocument({
+    projectId: 'project/blender-image-texture-reference',
+    resources: {
+      textures: [texture('texture/albedo')],
+      graphs: [blenderImageGraph('graph/blender-image', 'texture/albedo')],
+    },
+  });
+  assert.equal(validateProjectDocument(project).valid, true);
+  assert.deepEqual(buildProjectIndex(project).getReferencesTo('texture/albedo'), [{
+    kind: 'graphTexture',
+    sourceId: 'graph/blender-image',
+    path: 'graph.nodes.sample.params.textureId',
+  }]);
+
+  project.resources.graphs['graph/blender-image'].graph.nodes[0].params.textureId = 'texture/missing';
+  const validation = validateProjectDocument(project);
+  assert.ok(validation.diagnostics.some(entry => (
+    entry.code === 'missing_resource'
+      && entry.path.endsWith('.graph.nodes.sample.params.textureId')
+  )));
 });

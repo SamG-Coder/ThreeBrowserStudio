@@ -10,6 +10,8 @@ export const COMPILED_SHADER_NODE_TYPES = Object.freeze(new Set([
   'constant.vec2', 'constant.vec3',
   'constant.color', 'blender.rgb',
   'blender.inputVector', 'blender.inputInt', 'blender.cameraData', 'blender.rgbToBw',
+  'blender.uvMap', 'blender.imageTexture', 'blender.tangent', 'blender.vectorTransform',
+  'blender.blackbody', 'blender.wavelength', 'blender.radialTiling',
   'blender.reroute',
   'input.uv', 'input.worldPosition', 'input.normal', 'input.viewDirection', 'input.time',
   'uv', 'worldPosition', 'constant',

@@ -4,6 +4,7 @@ import { assertStableId } from './ids.mjs';
 import { contentHash } from './util.mjs';
 import { entityComponentReferences } from './component-validation.mjs';
 import { materialTextureReferences } from './material-textures.mjs';
+import { getGraphNode } from '../graphs/catalogs.mjs';
 
 export class ProjectIndex {
   constructor(project) {
@@ -74,7 +75,10 @@ export class ProjectIndex {
         }
         if (type === 'graphs') {
           for (const node of resource.graph?.nodes ?? []) {
-            if (node?.type === 'texture.sample2d' && node.params?.textureId) {
+            const definition = getGraphNode(resource.graph?.domain, node?.type);
+            const canonicalNodeType = definition?.canonicalType ?? definition?.type ?? node?.type;
+            if (['texture.sample2d', 'blender.imageTexture'].includes(canonicalNodeType)
+                && node.params?.textureId) {
               this.#addReference(node.params.textureId, {
                 kind: 'graphTexture', sourceId: resource.id, path: `graph.nodes.${node.id}.params.textureId`,
               });

@@ -223,6 +223,11 @@ test('expands every source channel layout into deterministic RGBA8 runtime bytes
       studioResourceId: `texture/channels-${channels}`,
       studioSourceChannels: channels,
       studioColorSpace: 'none',
+      studioWrapS: 'repeat',
+      studioWrapT: 'mirror',
+      studioMinFilter: 'linearMipmapLinear',
+      studioMagFilter: 'nearest',
+      studioGenerateMipmaps: true,
       studioDecodedBytes: channels,
       studioGpuBytes: 4,
     });

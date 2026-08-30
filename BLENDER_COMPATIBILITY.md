@@ -171,14 +171,19 @@ colour space.
 Raster maps require an active UV layer. They shade the WebGPU material path but
 are not sampled by native RTX hit shading.
 
-Direct color-role map bindings and `texture.sample2d` may use `linear` instead
-of sRGB when their bytes are already linear; a graph sampler declaration must
-exactly match its texture resource. Canonical textures default to trilinear
-generated mipmaps, linear magnification, clamp wrapping, and anisotropy 4;
+Direct color-role map bindings, `texture.sample2d`, and the bounded Blender
+Image Texture node may use `linear` instead of sRGB when their bytes are already
+linear; a graph sampler declaration must exactly match its texture resource.
+Image Texture currently compiles flat projection only. Linear/closest filtering
+and repeat/extend/mirror extension execute only when the canonical dataTexture
+declares the corresponding filter and wrap state. Box, sphere, tube, cubic,
+smart, and clip modes fail candidate compilation explicitly. Canonical textures
+default to trilinear generated mipmaps, linear magnification, clamp wrapping,
+and anisotropy 4;
 normalized recipes always contain bounded anisotropy. A direct map is rejected
 when a material graph outputs the same property or a `surface` value that
 supersedes that slot; use
-`texture.sample2d` inside that graph. Graph `image` asset nodes remain
+one of the live sampler nodes inside that graph. Graph `image` asset nodes remain
 CPU-bake-only. Generic format-v1 texture placeholders remain valid for project
 compatibility but cannot enter these live raster paths.
 
@@ -200,12 +205,20 @@ white `sheenColor`) and preserves white `specularColor`/unit
 Authored controls override these neutral defaults.
 
 The pinned Blender 5.2 inventory distinguishes 115 current Add-menu entries,
-100 direct `ShaderNode` API subclasses, API-only and legacy nodes, and 44 live
+100 direct `ShaderNode` API subclasses, API-only and legacy nodes, and 51 live
 TSL nodes. `NodeFrame` plus bounded node layout metadata preserve tutorial
 organization; numeric `NodeReroute` executes as a typed pass-through. The live
 numeric/vector tranche includes Integer Input, Camera Data, Normal, Vector
-Rotate, and object-space scalar/vector Displacement; world/tangent displacement
-remains explicitly rejected. Engine closures, world/volume outputs, and
+Rotate, and object-space scalar/vector Displacement. The active render UV layer
+now drives UV Map, flat dataTexture Image Texture, and fragment Tangent; named UV
+maps, From Instancer, and radial tangents are rejected. Vector Transform handles
+direction vectors between OBJECT and WORLD while POINT, NORMAL, and CAMERA modes
+remain explicit boundaries. Blackbody and Wavelength use bounded analytic
+linear-RGB fits. Radial Tiling executes Blender's sharp regular-segment equations
+for a constant integer Sides value and constant zero Roundness, with both
+normalized and unnormalized coordinates; connected/non-integer Sides and rounded
+segments fail explicitly. World/tangent displacement remains explicitly
+rejected. Engine closures, world/volume outputs, and
 context-specific nodes remain catalogued with explicit candidate-compile
 failure until their runtime contract exists.
 

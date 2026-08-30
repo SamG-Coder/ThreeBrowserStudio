@@ -940,7 +940,9 @@ export function validateProjectDocument(project, {
         || !Array.isArray(graphResource.graph.nodes)) continue;
     for (const node of graphResource.graph.nodes) {
       if (!isPlainRecord(node)) continue;
-      if (node.type === 'image') {
+      const definition = getGraphNode(graphResource.graph.domain, node.type);
+      const canonicalNodeType = definition?.canonicalType ?? definition?.type ?? node.type;
+      if (canonicalNodeType === 'image') {
         const assetId = node.params?.assetId;
         const path = `$.resources.graphs.${id}.graph.nodes.${node.id}.params.assetId`;
         if (!project.resources?.assets?.[assetId]) {
@@ -948,7 +950,7 @@ export function validateProjectDocument(project, {
         }
         continue;
       }
-      if (node.type !== 'texture.sample2d') continue;
+      if (!['texture.sample2d', 'blender.imageTexture'].includes(canonicalNodeType)) continue;
       const textureId = node.params?.textureId;
       const path = `$.resources.graphs.${id}.graph.nodes.${node.id}.params.textureId`;
       if (!project.resources?.textures?.[textureId]) {

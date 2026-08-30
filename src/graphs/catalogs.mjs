@@ -109,6 +109,24 @@ function blenderUtilityNodes(stages = []) {
         ['viewDistance', blenderSocket('float', 'View Distance')],
       ],
     })),
+    blenderNode('blender.uvMap', 'ShaderNodeUVMap', 'UV Map', 'input', staged({
+      description: 'Reads the active render UV layer. Named layers and instancer UV inheritance remain explicit live boundaries.',
+      outputs: [['uv', blenderSocket('vec3', 'UV')]],
+      params: [
+        ['uvMap', param('string', { default: '' })],
+        ['fromInstancer', param('boolean', { default: false })],
+      ],
+    })),
+    blenderNode('blender.tangent', 'ShaderNodeTangent', 'Tangent', 'input', {
+      ...(fragmentStages.length ? { stages: fragmentStages } : {}),
+      description: 'Reads the active UV tangent in fragment shading. Named UV and radial tangent modes remain explicit boundaries.',
+      outputs: [['tangent', blenderSocket('vec3', 'Tangent')]],
+      params: [
+        ['directionType', param('enum', { values: ['RADIAL', 'UV_MAP'], default: 'RADIAL' })],
+        ['axis', param('enum', { values: ['X', 'Y', 'Z'], default: 'Z' })],
+        ['uvMap', param('string', { default: '' })],
+      ],
+    }),
     blenderNode('blender.rgbToBw', 'ShaderNodeRGBToBW', 'RGB to BW', 'converter', staged({
       description: 'Converts linear RGB to one luminance value in the project working colour space.',
       inputs: [['color', blenderSocket('color', 'Color', { default: [0.5, 0.5, 0.5, 1] })]],
@@ -225,6 +243,45 @@ function blenderUtilityNodes(stages = []) {
         ['dot', blenderSocket('float', 'Dot')],
       ],
     })),
+    blenderNode('blender.vectorTransform', 'ShaderNodeVectorTransform', 'Vector Transform', 'vector', staged({
+      cost: 3,
+      description: 'Transforms direction vectors between object and world space. Point, normal, and camera modes remain explicit live boundaries.',
+      inputs: [['vector', blenderSocket('vec3', 'Vector', { default: [0, 0, 0] })]],
+      outputs: [['vector', blenderSocket('vec3', 'Vector')]],
+      params: [
+        ['vectorType', param('enum', { values: ['POINT', 'VECTOR', 'NORMAL'], default: 'POINT' })],
+        ['convertFrom', param('enum', { values: ['WORLD', 'OBJECT', 'CAMERA'], default: 'WORLD' })],
+        ['convertTo', param('enum', { values: ['WORLD', 'OBJECT', 'CAMERA'], default: 'OBJECT' })],
+      ],
+    })),
+    blenderNode('blender.radialTiling', 'ShaderNodeRadialTiling', 'Radial Tiling', 'vector', staged({
+      cost: 8,
+      description: 'Exact sharp regular-segment coordinates for a constant integer side count. Rounded and irregular live tiling remain explicit boundaries.',
+      inputs: [
+        ['vector', blenderSocket('vec3', 'Vector', { default: [0, 0, 0], dimensions: 2 })],
+        ['sides', blenderSocket('float', 'Sides', { default: 5, min: 2, max: 1000 })],
+        ['roundness', blenderSocket('float', 'Roundness', { default: 0, min: 0, max: 1 })],
+      ],
+      outputs: [
+        ['segmentCoordinates', blenderSocket('vec3', 'Segment Coordinates')],
+        ['segmentId', blenderSocket('float', 'Segment ID')],
+        ['segmentWidth', blenderSocket('float', 'Segment Width')],
+        ['segmentRotation', blenderSocket('float', 'Segment Rotation')],
+      ],
+      params: [['normalize', param('boolean', { default: false })]],
+    })),
+    blenderNode('blender.blackbody', 'ShaderNodeBlackbody', 'Blackbody', 'color', staged({
+      cost: 8,
+      description: 'Bounded analytic blackbody colour in the linear working colour space.',
+      inputs: [['temperature', blenderSocket('float', 'Temperature', { default: 6500, min: 800, max: 12000, unit: 'kelvin' })]],
+      outputs: [['color', blenderSocket('color', 'Color')]],
+    })),
+    blenderNode('blender.wavelength', 'ShaderNodeWavelength', 'Wavelength', 'color', staged({
+      cost: 12,
+      description: 'Visible wavelength converted through analytic CIE XYZ fits into linear RGB.',
+      inputs: [['wavelength', blenderSocket('float', 'Wavelength', { default: 500, min: 380, max: 780, unit: 'nanometers' })]],
+      outputs: [['color', blenderSocket('color', 'Color')]],
+    })),
     blenderNode('blender.vectorRotate', 'ShaderNodeVectorRotate', 'Vector Rotate', 'vector', staged({
       cost: 5,
       description: 'Rotates a vector around a center using Blender axis-angle, principal-axis, or XYZ Euler modes.',
@@ -291,6 +348,23 @@ function blenderProceduralNodes(stages = []) {
         ['reflection', blenderSocket('vec3', 'Reflection')],
       ],
       params: [['fromInstancer', param('boolean', { default: false })]],
+    })),
+    blenderNode('blender.imageTexture', 'ShaderNodeTexImage', 'Image Texture', 'texture', staged({
+      cost: 8,
+      description: 'Samples a canonical dataTexture with flat projection. Filtering and extension must match the texture resource sampler.',
+      inputs: [['vector', blenderSocket('vec3', 'Vector')]],
+      outputs: [
+        ['color', blenderSocket('color', 'Color')],
+        ['alpha', blenderSocket('float', 'Alpha')],
+      ],
+      params: [
+        ['textureId', param('stableId', { required: true })],
+        ['colorSpace', param('enum', { values: ['srgb', 'linear', 'none'], required: true })],
+        ['projection', param('enum', { values: ['FLAT', 'BOX', 'SPHERE', 'TUBE'], default: 'FLAT' })],
+        ['interpolation', param('enum', { values: ['LINEAR', 'CLOSEST', 'CUBIC', 'SMART'], default: 'LINEAR' })],
+        ['extension', param('enum', { values: ['REPEAT', 'EXTEND', 'CLIP', 'MIRROR'], default: 'REPEAT' })],
+      ],
+      tags: ['sampler'],
     })),
     blenderNode('blender.separateXYZ', 'ShaderNodeSeparateXYZ', 'Separate XYZ', 'converter', staged({
       description: 'Separates a vector into its X, Y, and Z components.',

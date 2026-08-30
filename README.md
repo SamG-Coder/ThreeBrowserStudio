@@ -289,7 +289,9 @@ The current native loop is functional, not a static design mock:
   Principled-to-Material-Output flow, live TSL/WebGPU compilation, an official
   115-node Add-menu inventory plus all 100 direct ShaderNode API subclasses,
   and explicit unsupported-node failures;
-- 44 live Blender RNA nodes, including Integer/Vector Input, Camera Data, Normal,
+- 51 live Blender RNA nodes, including active UV Map/Image Texture/Tangent,
+  OBJECT/WORLD direction Vector Transform, analytic Blackbody/Wavelength,
+  sharp regular Radial Tiling, Integer/Vector Input, Camera Data, Normal,
   Vector Rotate, object-space scalar/vector Displacement, RGB to BW, Noise,
   Voronoi, Wave, Checker, all Gradient modes, White Noise, Magic, Brick, Color
   Ramp, Mix/Map Range, Bump, Principled, Material Output, and numeric Reroute;
@@ -318,11 +320,12 @@ The current native loop is functional, not a static design mock:
   base64 cap imposed beneath the one-MiB MCP request, so full-resolution
   three/four-channel payloads need a future chunk/blob path;
 - sRGB and pre-linearized color maps both bind to color-role material slots and
-  `texture.sample2d` when its declaration exactly matches the resource, while
+  `texture.sample2d` or the flat Blender Image Texture node when its declaration
+  exactly matches the resource, while
   numeric/data maps require no colour space; a direct material map is
   rejected when its material graph outputs the same property or a `surface`
   value that supersedes that slot, so the texture must be sampled inside it with
-  `texture.sample2d`; graph `image` asset nodes remain CPU-bake-only;
+  a live sampler; graph `image` asset nodes remain CPU-bake-only;
 - generic format-v1 texture placeholders remain loadable, indexable, patchable,
   and deletable but cannot shade until upgraded to canonical `dataTexture`;
 - `three_studio_status.capabilities.imageTextures.materialControls` publishes

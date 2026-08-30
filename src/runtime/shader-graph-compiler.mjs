@@ -7,6 +7,13 @@ const TYPE_ALIASES = Object.freeze({
   FunctionNodeInputVector: 'blender.inputVector',
   FunctionNodeInputInt: 'blender.inputInt',
   ShaderNodeCameraData: 'blender.cameraData',
+  ShaderNodeUVMap: 'blender.uvMap',
+  ShaderNodeTexImage: 'blender.imageTexture',
+  ShaderNodeTangent: 'blender.tangent',
+  ShaderNodeVectorTransform: 'blender.vectorTransform',
+  ShaderNodeBlackbody: 'blender.blackbody',
+  ShaderNodeWavelength: 'blender.wavelength',
+  ShaderNodeRadialTiling: 'blender.radialTiling',
   ShaderNodeRGBToBW: 'blender.rgbToBw',
   NodeReroute: 'blender.reroute',
   ShaderNodeTexCoord: 'blender.textureCoordinate',
@@ -842,6 +849,161 @@ function rotateAxisAngle(TSL, vector, axis, angle) {
   return TSL.select(TSL.lessThan(axisLength, 1e-7), vector, rotated);
 }
 
+function transformDirectionSpace(TSL, vector, convertFrom, convertTo) {
+  const from = String(convertFrom ?? 'WORLD').toUpperCase();
+  const to = String(convertTo ?? 'OBJECT').toUpperCase();
+  const supported = new Set(['OBJECT', 'WORLD']);
+  if (!supported.has(from) || !supported.has(to)) {
+    fail(
+      'shader_node_mode_unsupported',
+      `Vector Transform ${from} to ${to} is not compiled live; camera-space conversion remains explicit.`,
+      { convertFrom: from, convertTo: to },
+    );
+  }
+  if (from === to) return vector;
+  const matrix = from === 'OBJECT' ? TSL.modelWorldMatrix : TSL.modelWorldMatrixInverse;
+  return matrix.mul(TSL.vec4(vector, 0)).xyz;
+}
+
+function blackbodyColor(TSL, temperature) {
+  // Blender uses a baked spectral table. This bounded analytic fit follows the
+  // same Kelvin socket and returns scene-linear RGB after decoding its fitted
+  // display transfer curve.
+  const scaled = TSL.clamp(temperature, 800, 12000).div(100);
+  const warm = TSL.lessThanEqual(scaled, 66);
+  const red = TSL.select(
+    warm,
+    1,
+    TSL.clamp(TSL.pow(TSL.max(scaled.sub(60), 1e-7), -0.1332047592).mul(1.2929361861), 0, 1),
+  );
+  const green = TSL.select(
+    warm,
+    TSL.clamp(TSL.log(TSL.max(scaled, 1e-7)).mul(0.3900815788).sub(0.6318414438), 0, 1),
+    TSL.clamp(TSL.pow(TSL.max(scaled.sub(60), 1e-7), -0.0755148492).mul(1.129890861), 0, 1),
+  );
+  const blue = TSL.select(
+    TSL.greaterThanEqual(scaled, 66),
+    1,
+    TSL.select(
+      TSL.lessThanEqual(scaled, 19),
+      0,
+      TSL.clamp(TSL.log(TSL.max(scaled.sub(10), 1e-7)).mul(0.5432067891).sub(1.1962540891), 0, 1),
+    ),
+  );
+  return TSL.sRGBTransferEOTF(TSL.vec3(red, green, blue));
+}
+
+function cieGaussian(TSL, wavelength, center, leftScale, rightScale) {
+  const scale = TSL.select(TSL.lessThan(wavelength, center), leftScale, rightScale);
+  const distance = wavelength.sub(center).mul(scale);
+  return TSL.exp(distance.mul(distance).mul(-0.5));
+}
+
+function wavelengthColor(TSL, wavelength) {
+  // Wyman/Sloan/Shirley analytic CIE 1931 fits, transformed from XYZ to
+  // linear sRGB and scaled like Cycles' wavelength helper.
+  const wave = TSL.clamp(wavelength, 380, 780);
+  const x = cieGaussian(TSL, wave, 442, 0.0624, 0.0374).mul(0.362)
+    .add(cieGaussian(TSL, wave, 599.8, 0.0264, 0.0323).mul(1.056))
+    .sub(cieGaussian(TSL, wave, 501.1, 0.049, 0.0382).mul(0.065));
+  const y = cieGaussian(TSL, wave, 568.8, 0.0213, 0.0247).mul(0.821)
+    .add(cieGaussian(TSL, wave, 530.9, 0.0613, 0.0322).mul(0.286));
+  const z = cieGaussian(TSL, wave, 437, 0.0845, 0.0278).mul(1.217)
+    .add(cieGaussian(TSL, wave, 459, 0.0385, 0.0725).mul(0.681));
+  return TSL.max(TSL.vec3(
+    x.mul(3.2406).sub(y.mul(1.5372)).sub(z.mul(0.4986)),
+    x.mul(-0.9689).add(y.mul(1.8758)).add(z.mul(0.0415)),
+    x.mul(0.0557).sub(y.mul(0.204)).add(z.mul(1.057)),
+  ).mul(1 / 2.52), 0);
+}
+
+function sharpRadialTiling(TSL, coordinate, sides, normalizeParameter) {
+  const sideCount = Number(sides);
+  if (!Number.isInteger(sideCount) || sideCount < 2 || sideCount > 1000) {
+    fail(
+      'shader_node_mode_unsupported',
+      'Radial Tiling currently requires a constant integer Sides value from 2 through 1000.',
+      { sides },
+    );
+  }
+  const point = coordinate.xy;
+  const radius = TSL.length(point);
+  const rawAngle = TSL.atan(point.y, point.x);
+  const angle = rawAngle.add(TSL.select(TSL.lessThan(point.y, 0), Math.PI * 2, 0));
+  const segmentAngle = Math.PI * 2 / sideCount;
+  const halfAngle = Math.PI / sideCount;
+  const segmentId = TSL.floor(angle.div(segmentAngle));
+  const delta = angle.sub(segmentId.mul(segmentAngle)).sub(halfAngle);
+  const distanceAlongBisector = radius.mul(TSL.cos(delta));
+  let segmentParameter = radius.mul(TSL.sin(delta));
+  const atOrigin = TSL.lessThan(radius, 1e-7);
+  segmentParameter = TSL.select(atOrigin, 0, segmentParameter);
+  const segmentWidth = sideCount === 2 ? 0 : Math.tan(halfAngle);
+  let radialDistance = distanceAlongBisector.sub(1);
+  if (normalizeParameter === true) {
+    if (sideCount !== 2) {
+      const denominator = distanceAlongBisector.mul(segmentWidth);
+      segmentParameter = TSL.select(
+        atOrigin,
+        0,
+        segmentParameter.div(TSL.max(TSL.abs(denominator), 1e-7)),
+      );
+    }
+    segmentParameter = segmentParameter.mul(0.5).add(0.5);
+    radialDistance = distanceAlongBisector;
+  }
+  return {
+    segmentCoordinates: TSL.vec3(segmentParameter, radialDistance, 0),
+    segmentId,
+    segmentWidth: TSL.float(segmentWidth),
+    segmentRotation: segmentId.mul(segmentAngle).add(halfAngle),
+  };
+}
+
+function assertImageTextureSampler(texture, node, params) {
+  const interpolation = String(params.interpolation ?? 'LINEAR').toUpperCase();
+  if (!['LINEAR', 'CLOSEST'].includes(interpolation)) {
+    fail(
+      'shader_node_mode_unsupported',
+      `Image Texture interpolation ${interpolation} is not compiled live.`,
+      { interpolation },
+    );
+  }
+  const extension = String(params.extension ?? 'REPEAT').toUpperCase();
+  if (extension === 'CLIP') {
+    fail('shader_node_mode_unsupported', 'Image Texture CLIP extension is not compiled live.', { extension });
+  }
+  const metadata = texture.userData ?? {};
+  const required = ['studioMinFilter', 'studioMagFilter', 'studioWrapS', 'studioWrapT'];
+  if (required.some(name => metadata[name] === undefined)) {
+    fail(
+      'graph_texture_sampler_metadata_missing',
+      `Texture ${params.textureId} does not expose canonical Studio sampler metadata.`,
+      { nodeId: node.id, textureId: params.textureId },
+    );
+  }
+  const expectedFilterPrefix = interpolation === 'LINEAR' ? 'linear' : 'nearest';
+  if (metadata.studioMagFilter !== expectedFilterPrefix
+      || !String(metadata.studioMinFilter).startsWith(expectedFilterPrefix)) {
+    fail(
+      'graph_texture_filter_mismatch',
+      `Image Texture ${node.id} requests ${interpolation}, but ${params.textureId} uses ${metadata.studioMinFilter}/${metadata.studioMagFilter}.`,
+      { nodeId: node.id, textureId: params.textureId, interpolation },
+    );
+  }
+  const expectedWrap = ({ REPEAT: 'repeat', EXTEND: 'clamp', MIRROR: 'mirror' })[extension];
+  if (!expectedWrap) {
+    fail('shader_node_mode_unsupported', `Image Texture extension ${extension} is not compiled live.`, { extension });
+  }
+  if (metadata.studioWrapS !== expectedWrap || metadata.studioWrapT !== expectedWrap) {
+    fail(
+      'graph_texture_extension_mismatch',
+      `Image Texture ${node.id} requests ${extension}, but ${params.textureId} uses ${metadata.studioWrapS}/${metadata.studioWrapT}.`,
+      { nodeId: node.id, textureId: params.textureId, extension },
+    );
+  }
+}
+
 function gradientTexture(TSL, coordinate, gradientType) {
   const x = component(coordinate, 'x', scalar(TSL, 0));
   const y = component(coordinate, 'y', scalar(TSL, 0));
@@ -1087,6 +1249,44 @@ function compileNodeFactory({ TSL, graph, parameters, textureResolver, featureTr
         viewDistance: TSL.length(viewPosition),
       };
     }
+    if (type === 'blender.uvMap') {
+      if (String(p.uvMap ?? '').length > 0) {
+        fail(
+          'shader_named_uv_map_unsupported',
+          `UV Map ${p.uvMap} cannot compile live; Studio currently lowers only the active render UV layer.`,
+          { uvMap: p.uvMap },
+        );
+      }
+      if (p.fromInstancer === true) {
+        fail(
+          'shader_node_mode_unsupported',
+          'UV Map From Instancer is not compiled live.',
+          { fromInstancer: true },
+        );
+      }
+      featureTracker.requiresGeometryUv = true;
+      const uv = TSL.uv();
+      return { uv: TSL.vec3(uv.x, uv.y, 0) };
+    }
+    if (type === 'blender.tangent') {
+      const directionType = String(p.directionType ?? 'RADIAL').toUpperCase();
+      if (directionType !== 'UV_MAP') {
+        fail(
+          'shader_node_mode_unsupported',
+          `Tangent direction ${directionType} is not compiled live; only the active UV tangent is available.`,
+          { directionType, axis: p.axis },
+        );
+      }
+      if (String(p.uvMap ?? '').length > 0) {
+        fail(
+          'shader_named_uv_map_unsupported',
+          `Tangent UV map ${p.uvMap} cannot compile live; Studio currently lowers only the active render UV layer.`,
+          { uvMap: p.uvMap },
+        );
+      }
+      featureTracker.requiresGeometryUv = true;
+      return { tangent: TSL.tangentWorld };
+    }
     if (type === 'blender.rgbToBw') {
       const color = input.get(node, 'color', [0.5, 0.5, 0.5, 1], 'color');
       return { value: TSL.dot(color.xyz, TSL.vec3(0.2126, 0.7152, 0.0722)) };
@@ -1141,6 +1341,36 @@ function compileNodeFactory({ TSL, graph, parameters, textureResolver, featureTr
         );
       }
       const sample = TSL.texture(texture, input.get(node, 'uv', [0, 0], 'vec2'));
+      return { color: sample.rgb, alpha: sample.a };
+    }
+    if (type === 'blender.imageTexture') {
+      const projection = String(p.projection ?? 'FLAT').toUpperCase();
+      if (projection !== 'FLAT') {
+        fail(
+          'shader_node_mode_unsupported',
+          `Image Texture projection ${projection} is not compiled live.`,
+          { projection },
+        );
+      }
+      const textureId = p.textureId;
+      const texture = textureResolver?.(textureId);
+      if (!texture) fail('shader_texture_unavailable', `Texture ${textureId} is not available to the live graph compiler.`, { textureId });
+      const sourceColorSpace = texture.userData?.studioColorSpace;
+      if (sourceColorSpace !== undefined && sourceColorSpace !== p.colorSpace) {
+        fail(
+          'graph_texture_color_space_mismatch',
+          `Image Texture ${node.id} expects ${p.colorSpace} data, but ${textureId} is ${sourceColorSpace}.`,
+          { nodeId: node.id, textureId, expectedColorSpace: p.colorSpace, sourceColorSpace },
+        );
+      }
+      assertImageTextureSampler(texture, node, p);
+      let coordinate;
+      if (input.connected(node, 'vector')) coordinate = input.get(node, 'vector', [0, 0, 0], 'vec3').xy;
+      else {
+        featureTracker.requiresGeometryUv = true;
+        coordinate = TSL.uv();
+      }
+      const sample = TSL.texture(texture, coordinate);
       return { color: sample.rgb, alpha: sample.a };
     }
     if (type === 'pattern.gradient' || type === 'gradient') {
@@ -1453,6 +1683,46 @@ function compileNodeFactory({ TSL, graph, parameters, textureResolver, featureTr
     if (type === 'blender.normal') {
       const normal = TSL.normalize(input.get(node, 'normal', [0, 0, 1], 'vec3'));
       return { normal, dot: TSL.dot(normal, TSL.normalWorld) };
+    }
+    if (type === 'blender.vectorTransform') {
+      const vectorType = String(p.vectorType ?? 'POINT').toUpperCase();
+      if (vectorType !== 'VECTOR') {
+        fail(
+          'shader_node_mode_unsupported',
+          `Vector Transform type ${vectorType} is not compiled live; only direction vectors are supported.`,
+          { vectorType },
+        );
+      }
+      return {
+        vector: transformDirectionSpace(
+          TSL,
+          input.get(node, 'vector', [0, 0, 0], 'vec3'),
+          p.convertFrom,
+          p.convertTo,
+        ),
+      };
+    }
+    if (type === 'blender.radialTiling') {
+      const roundness = Number(input.static(node, 'roundness', 0));
+      if (!Number.isFinite(roundness) || roundness !== 0) {
+        fail(
+          'shader_node_mode_unsupported',
+          'Radial Tiling currently compiles only a constant Roundness of 0.',
+          { roundness },
+        );
+      }
+      return sharpRadialTiling(
+        TSL,
+        input.get(node, 'vector', [0, 0, 0], 'vec3'),
+        input.static(node, 'sides', 5),
+        p.normalize === true,
+      );
+    }
+    if (type === 'blender.blackbody') {
+      return { color: blackbodyColor(TSL, input.get(node, 'temperature', 6500)) };
+    }
+    if (type === 'blender.wavelength') {
+      return { color: wavelengthColor(TSL, input.get(node, 'wavelength', 500)) };
     }
     if (type === 'blender.vectorRotate') {
       const center = input.get(node, 'center', [0, 0, 0], 'vec3');

@@ -100,6 +100,11 @@ export function createDataTexture({ THREE, resource }) {
     studioResourceId: resource?.id ?? null,
     studioSourceChannels: canonical.channels,
     studioColorSpace: canonical.colorSpace,
+    studioWrapS: canonical.wrapS,
+    studioWrapT: canonical.wrapT,
+    studioMinFilter: canonical.minFilter,
+    studioMagFilter: canonical.magFilter,
+    studioGenerateMipmaps: canonical.generateMipmaps,
     studioDecodedBytes: canonical.width * canonical.height * canonical.channels,
     studioGpuBytes: dataTextureGpuByteLength(canonical),
   };
