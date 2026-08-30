@@ -200,6 +200,45 @@ test('loft creates one continuous bounded shell across exact equal-size profiles
   }), /same number/);
 });
 
+test('closed lofts orient their shell outward for either authored profile winding', () => {
+  const sections = [
+    [[-1, -0.5, 0], [1, -0.5, 0], [1, 0.5, 0], [-1, 0.5, 0]],
+    [[-0.8, -0.4, 1], [0.8, -0.4, 1], [0.8, 0.4, 1], [-0.8, 0.4, 1]],
+  ];
+  const outwardScore = geometry => {
+    const positions = geometry.attributes.position.array;
+    const indices = geometry.index;
+    let score = 0;
+    for (let triangle = 0; triangle < 8; triangle += 1) {
+      const points = indices.slice(triangle * 3, triangle * 3 + 3).map(index => (
+        positions.slice(index * 3, index * 3 + 3)
+      ));
+      const [a, b, c] = points;
+      const ab = b.map((value, axis) => value - a[axis]);
+      const ac = c.map((value, axis) => value - a[axis]);
+      const normal = [
+        ab[1] * ac[2] - ab[2] * ac[1],
+        ab[2] * ac[0] - ab[0] * ac[2],
+        ab[0] * ac[1] - ab[1] * ac[0],
+      ];
+      const center = points.reduce(
+        (sum, point) => sum.map((value, axis) => value + point[axis] / 3),
+        [0, 0, 0],
+      );
+      score += normal[0] * center[0] + normal[1] * center[1];
+    }
+    return score;
+  };
+
+  const counterClockwise = createGeometry(FAKE_THREE, { kind: 'loft', sections });
+  const clockwise = createGeometry(FAKE_THREE, {
+    kind: 'loft',
+    sections: sections.map(section => [...section].reverse()),
+  });
+  assert.ok(outwardScore(counterClockwise) > 0);
+  assert.ok(outwardScore(clockwise) > 0);
+});
+
 test('geometry realization converts a procedural loft into canonical editable topology', () => {
   const recipe = realizeGeometryRecipe(FAKE_THREE, {
     kind: 'loft',

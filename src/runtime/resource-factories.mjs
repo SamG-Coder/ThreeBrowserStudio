@@ -560,6 +560,39 @@ function loftGeometry(THREE, recipe) {
   }
   const indices = [];
   const edges = closed ? profileSize : profileSize - 1;
+  let reverseWinding = false;
+  if (closed) {
+    let orientation = 0;
+    for (let section = 0; section < sections.length - 1; section += 1) {
+      const currentCenter = [0, 0, 0];
+      const nextCenter = [0, 0, 0];
+      for (let point = 0; point < profileSize; point += 1) {
+        for (let axis = 0; axis < 3; axis += 1) {
+          currentCenter[axis] += sections[section][point][axis] / profileSize;
+          nextCenter[axis] += sections[section + 1][point][axis] / profileSize;
+        }
+      }
+      const center = currentCenter.map((value, axis) => (value + nextCenter[axis]) * 0.5);
+      for (let point = 0; point < profileSize; point += 1) {
+        const next = (point + 1) % profileSize;
+        const a = sections[section][point];
+        const b = sections[section][next];
+        const d = sections[section + 1][point];
+        const edge = b.map((value, axis) => value - a[axis]);
+        const span = d.map((value, axis) => value - a[axis]);
+        const normal = [
+          edge[1] * span[2] - edge[2] * span[1],
+          edge[2] * span[0] - edge[0] * span[2],
+          edge[0] * span[1] - edge[1] * span[0],
+        ];
+        const faceCenter = a.map((value, axis) => (
+          value + b[axis] + sections[section + 1][next][axis] + d[axis]
+        ) * 0.25);
+        orientation += normal.reduce((sum, value, axis) => sum + value * (faceCenter[axis] - center[axis]), 0);
+      }
+    }
+    reverseWinding = orientation < 0;
+  }
   for (let section = 0; section < sections.length - 1; section += 1) {
     for (let point = 0; point < edges; point += 1) {
       const next = (point + 1) % profileSize;
@@ -567,15 +600,22 @@ function loftGeometry(THREE, recipe) {
       const b = section * profileSize + next;
       const c = (section + 1) * profileSize + next;
       const d = (section + 1) * profileSize + point;
-      indices.push(a, b, d, b, c, d);
+      if (reverseWinding) indices.push(a, d, b, b, d, c);
+      else indices.push(a, b, d, b, c, d);
     }
   }
   if (closed && recipe.capStart !== false) {
-    for (let point = 1; point < profileSize - 1; point += 1) indices.push(0, point + 1, point);
+    for (let point = 1; point < profileSize - 1; point += 1) {
+      if (reverseWinding) indices.push(0, point, point + 1);
+      else indices.push(0, point + 1, point);
+    }
   }
   if (closed && recipe.capEnd !== false) {
     const offset = (sections.length - 1) * profileSize;
-    for (let point = 1; point < profileSize - 1; point += 1) indices.push(offset, offset + point, offset + point + 1);
+    for (let point = 1; point < profileSize - 1; point += 1) {
+      if (reverseWinding) indices.push(offset, offset + point + 1, offset + point);
+      else indices.push(offset, offset + point, offset + point + 1);
+    }
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
