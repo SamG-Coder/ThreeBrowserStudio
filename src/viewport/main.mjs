@@ -19,6 +19,7 @@ import {
   projectPackFileName,
 } from "../core/project-pack.mjs";
 import { openProjectPackFile, saveProjectPackFile } from "./project-file-transfer.mjs";
+import { showStarterProjectFromLocation } from "../browser/starter-project-scene.mjs";
 
 document.title = "ThreeBrowser Studio — waiting for project";
 
@@ -107,6 +108,7 @@ async function main() {
   let preview = null;
   let bootstrapDisposed = browserHost;
   let transferBusy = false;
+  let initialBrowserProjectStatus = null;
   const liveFeed = createMcpLiveFeedWebGpuHud({
     THREE,
     scene,
@@ -409,7 +411,18 @@ async function main() {
         viewport: viewportApi,
         getAspect: () => Math.max(1, innerWidth) / Math.max(1, innerHeight),
       });
-      await preview.show(createBrowserPreviewDocument());
+      const starterResult = await showStarterProjectFromLocation({
+        preview,
+        fallbackDocument: createBrowserPreviewDocument(),
+        onRemoteError(error) {
+          console.warn("[ThreeBrowser Studio remote starter]", error);
+        },
+      });
+      initialBrowserProjectStatus = starterResult.sourceUrl
+        ? `Loaded ${starterResult.document.name} from GitHub.`
+        : starterResult.error
+          ? `Starter link failed: ${starterResult.error.message ?? String(starterResult.error)} Using bundled starter.`
+          : null;
     }
   } catch (error) {
     await dispose();
@@ -419,7 +432,7 @@ async function main() {
   globalThis.__THREE_STUDIO_LIVE_FEED__ = liveFeed;
   liveFeed.setProjectTransferStatus(application
     ? "Exports the open project as JSON."
-    : "Exports the compiled starter. Import replaces it in this tab.");
+    : initialBrowserProjectStatus ?? "Exports the compiled starter. Import replaces it in this tab.");
   syncGraphicsSettingsState();
 
   globalThis.addEventListener("resize", resize);

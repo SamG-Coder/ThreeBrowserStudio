@@ -7,6 +7,24 @@ Hard-refresh if you still see an old boot error. The native `.exe` /
 
 https://samg-coder.github.io/ThreeBrowserStudio/
 
+## Load a project from GitHub
+
+The browser preview can load a canonical `ThreeStudioProject` or
+`ThreeStudioProjectPack` from the published starter scenes in this repository.
+Pass the GitHub file link through the `starter-project-scene` query parameter.
+GitHub `blob` links are converted to `raw.githubusercontent.com` before fetching:
+
+```text
+https://samg-coder.github.io/ThreeBrowserStudio/?starter-project-scene=https%3A%2F%2Fgithub.com%2FSamG-Coder%2FThreeBrowserStudio%2Fblob%2Fmain%2Ftemplates%2Fstarter-project%2Fscenes%2Fthree-studio-crimson-orchard-apple.json
+```
+
+The fetch is browser-only, anonymous, HTTPS-only, size-bounded, and limited to
+JSON files under `SamG-Coder/ThreeBrowserStudio/templates/starter-project/scenes/`.
+The downloaded JSON goes through the same project-pack validation and
+compile-before-swap path as **Import JSON**. If the link cannot be downloaded,
+validated, or compiled, the page keeps working and opens the bundled starter
+project instead.
+
 ## What you get
 
 - The same canvas viewport, the authored starter project, Follow shot / Review, and HUD
