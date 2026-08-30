@@ -487,13 +487,15 @@ export function translateToolOperation(operation, document) {
     type: 'entity.create', sceneId: operation.sceneId, entity: item.entity,
     ...(item.alias ? { alias: item.alias } : {}), ...(item.index === undefined ? {} : { index: item.index }),
   }));
-  if (operation.op === 'entity.duplicateMany') return operation.items.map(item => ({
-    type: 'entity.duplicate', entityId: operation.entityId, newId: item.newId, deep: false,
-    ...(item.name ? { name: item.name } : {}),
-    ...(item.parentId === undefined ? {} : { parentId: item.parentId }),
-    ...(item.index === undefined ? {} : { index: item.index }),
-    ...(item.alias ? { alias: item.alias } : {}),
-  }));
+  if (operation.op === 'entity.duplicateMany') return operation.items.flatMap(item => [{
+      type: 'entity.duplicate', entityId: operation.entityId, newId: item.newId, deep: false,
+      ...(item.name ? { name: item.name } : {}),
+      ...(item.parentId === undefined ? {} : { parentId: item.parentId }),
+      ...(item.index === undefined ? {} : { index: item.index }),
+      ...(item.alias ? { alias: item.alias } : {}),
+    },
+    ...(item.transform ? [{ type: 'entity.patch', entityId: item.newId, patch: { transform: item.transform } }] : []),
+  ]);
   if (operation.op === 'material.variant.create') {
     const base = new ProjectIndex(document).getResource(operation.baseMaterialId, 'materials').resource;
     const resource = mergePatch(base, operation.patch);

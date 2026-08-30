@@ -1162,6 +1162,7 @@ const entityDuplicateBatchItem = z.object({
   parentId: reference.nullable().optional(),
   index: insertionIndex.optional(),
   alias: alias.optional(),
+  transform: transformManyPatch.optional(),
 }).strict();
 
 const optionalExactEntityReferences = z.array(reference).max(200).refine(

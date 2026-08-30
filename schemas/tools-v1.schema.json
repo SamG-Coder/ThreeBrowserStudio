@@ -1285,7 +1285,8 @@
               "name": { "type": "string", "minLength": 1, "maxLength": 240 },
               "parentId": { "oneOf": [{ "$ref": "#/$defs/reference" }, { "type": "null" }] },
               "index": { "type": "integer", "minimum": 0, "maximum": 20000 },
-              "alias": { "type": "string", "pattern": "^\\$[a-z][a-z0-9_-]{0,63}$" }
+              "alias": { "type": "string", "pattern": "^\\$[a-z][a-z0-9_-]{0,63}$" },
+              "transform": { "type": "object", "additionalProperties": false, "minProperties": 1, "properties": { "position": { "$ref": "#/$defs/vec3" }, "rotation": { "$ref": "#/$defs/vec3" }, "scale": { "$ref": "#/$defs/vec3" } } }
             }
           }
         },

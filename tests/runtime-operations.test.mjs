@@ -29,11 +29,12 @@ test('runtime lowers bounded create and linked-duplicate batches into one atomic
   assert.deepEqual(translateToolOperation({
     op: 'entity.duplicateMany', entityId: 'entity/source', items: [
       { newId: 'entity/copy-a', name: 'Copy A' },
-      { newId: 'entity/copy-b', parentId: null },
+      { newId: 'entity/copy-b', parentId: null, transform: { position: [2, 0, 0] } },
     ],
   }, project), [
     { type: 'entity.duplicate', entityId: 'entity/source', newId: 'entity/copy-a', deep: false, name: 'Copy A' },
     { type: 'entity.duplicate', entityId: 'entity/source', newId: 'entity/copy-b', deep: false, parentId: null },
+    { type: 'entity.patch', entityId: 'entity/copy-b', patch: { transform: { position: [2, 0, 0] } } },
   ]);
 });
 
