@@ -1,0 +1,2752 @@
+{
+  "kind": "ThreeStudioProjectPack",
+  "protocolVersion": "three-studio/1",
+  "formatVersion": 1,
+  "exportedAt": "2026-08-30T18:46:16.000Z",
+  "document": {
+    "kind": "ThreeStudioProject",
+    "protocolVersion": "three-studio/1",
+    "formatVersion": 1,
+    "projectId": "project/five-minute-grand-tourer",
+    "name": "Five Minute Grand Tourer",
+    "revision": 9,
+    "savedRevision": 0,
+    "activeSceneId": "scene/starter-stage",
+    "sceneOrder": [
+      "scene/starter-stage"
+    ],
+    "scenes": {
+      "scene/starter-stage": {
+        "id": "scene/starter-stage",
+        "name": "Starter Stage",
+        "rootEntityIds": [
+          "entity/starter-stage/world",
+          "entity/starter-stage/camera",
+          "entity/starter-stage/sun",
+          "entity/starter-stage/ambient-light"
+        ],
+        "entities": {
+          "entity/starter-stage/ambient-light": {
+            "id": "entity/starter-stage/ambient-light",
+            "kind": "ambientLight",
+            "name": "Sky Fill",
+            "parentId": null,
+            "children": [],
+            "visible": false,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "light": {
+                "color": [
+                  0.52,
+                  0.61,
+                  0.78
+                ],
+                "intensity": 0.42
+              }
+            },
+            "tags": [
+              "lighting",
+              "starter"
+            ],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/starter-stage/camera": {
+            "id": "entity/starter-stage/camera",
+            "kind": "perspectiveCamera",
+            "name": "Beauty Camera",
+            "parentId": null,
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                5.114232640192356,
+                1.9075936414150685,
+                6.4243191753219655
+              ],
+              "rotation": [
+                -0.16657714626159384,
+                0.6731950999823643,
+                0.1044486311651074
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "camera": {
+                "far": 20.227717188651624,
+                "fov": 43,
+                "near": 2.1900811497172095,
+                "aspect": 1.7777777777777777,
+                "presentationAspect": 1.7777777777777777,
+                "framing": {
+                  "fit": "contain",
+                  "aspect": 1.7777777777777777,
+                  "padding": 1.14,
+                  "direction": [
+                    -0.623487201650401,
+                    -0.12963414261969486,
+                    -0.7710114775056264
+                  ],
+                  "distance": 8.202626496028682,
+                  "radius": 3.006272673155736,
+                  "lockPreviewAspect": true,
+                  "bounds": {
+                    "min": [
+                      -1.0645273390730277,
+                      0.1820000004791174,
+                      -2.21999999910593
+                    ],
+                    "max": [
+                      1.0645273390730277,
+                      1.5065063762664794,
+                      2.4200000014901164
+                    ]
+                  },
+                  "targetIds": [
+                    "entity/gt/car"
+                  ]
+                }
+              }
+            },
+            "tags": [
+              "camera",
+              "starter"
+            ],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/starter-stage/ground": {
+            "id": "entity/starter-stage/ground",
+            "kind": "mesh",
+            "name": "Ground",
+            "parentId": "entity/starter-stage/world",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                -1.5707963267948966,
+                0,
+                0
+              ],
+              "scale": [
+                2.4,
+                2.4,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "castShadow": false,
+                "geometryId": "geometry/starter-stage/ground-plane",
+                "materialIds": [
+                  "material/gt/floor"
+                ],
+                "receiveShadow": true
+              }
+            },
+            "tags": [
+              "environment",
+              "starter"
+            ],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/starter-stage/sun": {
+            "id": "entity/starter-stage/sun",
+            "kind": "directionalLight",
+            "name": "Warm Key Light",
+            "parentId": null,
+            "children": [],
+            "visible": false,
+            "transform": {
+              "position": [
+                6,
+                11,
+                7
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "light": {
+                "castShadow": true,
+                "color": [
+                  1,
+                  0.73,
+                  0.46
+                ],
+                "intensity": 4.2,
+                "shadowBias": -0.0002,
+                "shadowCamera": {
+                  "bottom": -10,
+                  "far": 40,
+                  "left": -10,
+                  "near": 0.1,
+                  "right": 10,
+                  "top": 10
+                },
+                "shadowMapSize": 2048,
+                "shadowNormalBias": 0.025,
+                "targetId": "entity/starter-stage/sun-target"
+              }
+            },
+            "tags": [
+              "lighting",
+              "starter"
+            ],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/starter-stage/sun-target": {
+            "id": "entity/starter-stage/sun-target",
+            "kind": "empty",
+            "name": "Key Light Target",
+            "parentId": "entity/starter-stage/world",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                1.2,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {},
+            "tags": [
+              "lighting",
+              "starter"
+            ],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/starter-stage/world": {
+            "id": "entity/starter-stage/world",
+            "kind": "group",
+            "name": "World",
+            "parentId": null,
+            "children": [
+              "entity/starter-stage/ground",
+              "entity/starter-stage/sun-target",
+              "entity/gt/studio-rig",
+              "entity/gt/car"
+            ],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {},
+            "tags": [
+              "environment",
+              "starter"
+            ],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/studio-rig": {
+            "id": "entity/gt/studio-rig",
+            "kind": "group",
+            "name": "product lighting rig",
+            "parentId": "entity/starter-stage/world",
+            "children": [
+              "entity/gt/studio-rig/ambient",
+              "entity/gt/studio-rig/key",
+              "entity/gt/studio-rig/fill",
+              "entity/gt/studio-rig/rim",
+              "entity/gt/studio-rig/key-softbox",
+              "entity/gt/studio-rig/rim-strip"
+            ],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {},
+            "tags": [
+              "lighting",
+              "lighting-rig"
+            ],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/studio-rig/ambient": {
+            "id": "entity/gt/studio-rig/ambient",
+            "kind": "ambientLight",
+            "name": "Visibility fill",
+            "parentId": "entity/gt/studio-rig",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0.55,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "light": {
+                "color": [
+                  0.72,
+                  0.78,
+                  0.88
+                ],
+                "intensity": 0.95,
+                "castShadow": false
+              }
+            },
+            "tags": [
+              "lighting",
+              "rig-product"
+            ],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/studio-rig/key": {
+            "id": "entity/gt/studio-rig/key",
+            "kind": "pointLight",
+            "name": "Key light",
+            "parentId": "entity/gt/studio-rig",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                5.4,
+                7.3,
+                6.75
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "light": {
+                "color": [
+                  1,
+                  0.93,
+                  0.84
+                ],
+                "intensity": 150,
+                "distance": 40.5,
+                "decay": 2,
+                "castShadow": true,
+                "shadowMapSize": 2048
+              }
+            },
+            "tags": [
+              "lighting",
+              "rig-product"
+            ],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/studio-rig/fill": {
+            "id": "entity/gt/studio-rig/fill",
+            "kind": "pointLight",
+            "name": "Fill light",
+            "parentId": "entity/gt/studio-rig",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                -5.4,
+                4.6000000000000005,
+                2.7
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "light": {
+                "color": [
+                  0.48,
+                  0.68,
+                  1
+                ],
+                "intensity": 52,
+                "distance": 37.800000000000004,
+                "decay": 2,
+                "castShadow": false
+              }
+            },
+            "tags": [
+              "lighting",
+              "rig-product"
+            ],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/studio-rig/rim": {
+            "id": "entity/gt/studio-rig/rim",
+            "kind": "pointLight",
+            "name": "Rim light",
+            "parentId": "entity/gt/studio-rig",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                1.35,
+                5.95,
+                -6.75
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "light": {
+                "color": [
+                  0.65,
+                  0.82,
+                  1
+                ],
+                "intensity": 58,
+                "distance": 35.1,
+                "decay": 2,
+                "castShadow": false
+              }
+            },
+            "tags": [
+              "lighting",
+              "rig-product"
+            ],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/studio-rig/key-softbox": {
+            "id": "entity/gt/studio-rig/key-softbox",
+            "kind": "areaLight",
+            "name": "Key softbox",
+            "parentId": "entity/gt/studio-rig",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                6.075,
+                7.9750000000000005,
+                5.4
+              ],
+              "rotation": [
+                -0.9420000403794637,
+                0.584551498324019,
+                0.6490839329406919
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "light": {
+                "color": [
+                  1,
+                  0.94,
+                  0.86
+                ],
+                "intensity": 36,
+                "width": 6.075,
+                "height": 4.32,
+                "castShadow": false
+              }
+            },
+            "tags": [
+              "lighting",
+              "rig-product"
+            ],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/studio-rig/rim-strip": {
+            "id": "entity/gt/studio-rig/rim-strip",
+            "kind": "areaLight",
+            "name": "Rim strip",
+            "parentId": "entity/gt/studio-rig",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                -4.7250000000000005,
+                4.6000000000000005,
+                -6.075
+              ],
+              "rotation": [
+                -2.5535900500422257,
+                -0.5743692571486818,
+                -2.7940876843356244
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "light": {
+                "color": [
+                  0.55,
+                  0.72,
+                  1
+                ],
+                "intensity": 3.4,
+                "width": 1.62,
+                "height": 6.48,
+                "castShadow": false
+              }
+            },
+            "tags": [
+              "lighting",
+              "rig-product"
+            ],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/car": {
+            "id": "entity/gt/car",
+            "kind": "group",
+            "name": "Grand Tourer",
+            "parentId": "entity/starter-stage/world",
+            "children": [
+              "entity/gt/body",
+              "entity/gt/wheel-fl",
+              "entity/gt/wheel-fr",
+              "entity/gt/wheel-rl",
+              "entity/gt/wheel-rr",
+              "entity/gt/cabin",
+              "entity/gt/windshield",
+              "entity/gt/lamp-l",
+              "entity/gt/lamp-r",
+              "entity/gt/tail-l",
+              "entity/gt/tail-r",
+              "entity/gt/grille",
+              "entity/gt/glass-l",
+              "entity/gt/glass-r",
+              "entity/gt/glass-rear",
+              "entity/gt/mirror-l",
+              "entity/gt/mirror-r",
+              "entity/gt/splitter"
+            ],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {},
+            "tags": [
+              "car",
+              "gt"
+            ],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/body": {
+            "id": "entity/gt/body",
+            "kind": "mesh",
+            "name": "Painted Body",
+            "parentId": "entity/gt/car",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "castShadow": true,
+                "geometryId": "geometry/gt/body",
+                "materialIds": [
+                  "material/gt/paint"
+                ],
+                "receiveShadow": true
+              }
+            },
+            "tags": [
+              "body",
+              "car"
+            ],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/wheel-fl": {
+            "id": "entity/gt/wheel-fl",
+            "kind": "group",
+            "name": "Front Left Wheel",
+            "parentId": "entity/gt/car",
+            "children": [
+              "entity/gt/tire-fl",
+              "entity/gt/rim-fl"
+            ],
+            "visible": true,
+            "transform": {
+              "position": [
+                0.82,
+                0.34,
+                1.22
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {},
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/tire-fl": {
+            "id": "entity/gt/tire-fl",
+            "kind": "mesh",
+            "name": "FL Tire",
+            "parentId": "entity/gt/wheel-fl",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                1.5708
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "castShadow": true,
+                "geometryId": "geometry/gt/tire",
+                "materialIds": [
+                  "material/gt/rubber"
+                ],
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/rim-fl": {
+            "id": "entity/gt/rim-fl",
+            "kind": "mesh",
+            "name": "FL Rim",
+            "parentId": "entity/gt/wheel-fl",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                1.5708
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "castShadow": true,
+                "geometryId": "geometry/gt/rim",
+                "materialIds": [
+                  "material/gt/metal"
+                ],
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/wheel-fr": {
+            "id": "entity/gt/wheel-fr",
+            "kind": "group",
+            "name": "Front Right Wheel",
+            "parentId": "entity/gt/car",
+            "children": [
+              "entity/gt/tire-fr",
+              "entity/gt/rim-fr"
+            ],
+            "visible": true,
+            "transform": {
+              "position": [
+                -0.82,
+                0.34,
+                1.22
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {},
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/tire-fr": {
+            "id": "entity/gt/tire-fr",
+            "kind": "mesh",
+            "name": "FR Tire",
+            "parentId": "entity/gt/wheel-fr",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                1.5708
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "castShadow": true,
+                "geometryId": "geometry/gt/tire",
+                "materialIds": [
+                  "material/gt/rubber"
+                ],
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/rim-fr": {
+            "id": "entity/gt/rim-fr",
+            "kind": "mesh",
+            "name": "FR Rim",
+            "parentId": "entity/gt/wheel-fr",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                1.5708
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "castShadow": true,
+                "geometryId": "geometry/gt/rim",
+                "materialIds": [
+                  "material/gt/metal"
+                ],
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/wheel-rl": {
+            "id": "entity/gt/wheel-rl",
+            "kind": "group",
+            "name": "Rear Left Wheel",
+            "parentId": "entity/gt/car",
+            "children": [
+              "entity/gt/tire-rl",
+              "entity/gt/rim-rl"
+            ],
+            "visible": true,
+            "transform": {
+              "position": [
+                0.82,
+                0.34,
+                -1.55
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {},
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/tire-rl": {
+            "id": "entity/gt/tire-rl",
+            "kind": "mesh",
+            "name": "RL Tire",
+            "parentId": "entity/gt/wheel-rl",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                1.5708
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "castShadow": true,
+                "geometryId": "geometry/gt/tire",
+                "materialIds": [
+                  "material/gt/rubber"
+                ],
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/rim-rl": {
+            "id": "entity/gt/rim-rl",
+            "kind": "mesh",
+            "name": "RL Rim",
+            "parentId": "entity/gt/wheel-rl",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                1.5708
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "castShadow": true,
+                "geometryId": "geometry/gt/rim",
+                "materialIds": [
+                  "material/gt/metal"
+                ],
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/wheel-rr": {
+            "id": "entity/gt/wheel-rr",
+            "kind": "group",
+            "name": "Rear Right Wheel",
+            "parentId": "entity/gt/car",
+            "children": [
+              "entity/gt/tire-rr",
+              "entity/gt/rim-rr"
+            ],
+            "visible": true,
+            "transform": {
+              "position": [
+                -0.82,
+                0.34,
+                -1.55
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {},
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/tire-rr": {
+            "id": "entity/gt/tire-rr",
+            "kind": "mesh",
+            "name": "RR Tire",
+            "parentId": "entity/gt/wheel-rr",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                1.5708
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "castShadow": true,
+                "geometryId": "geometry/gt/tire",
+                "materialIds": [
+                  "material/gt/rubber"
+                ],
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/rim-rr": {
+            "id": "entity/gt/rim-rr",
+            "kind": "mesh",
+            "name": "RR Rim",
+            "parentId": "entity/gt/wheel-rr",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                1.5708
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "castShadow": true,
+                "geometryId": "geometry/gt/rim",
+                "materialIds": [
+                  "material/gt/metal"
+                ],
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/cabin": {
+            "id": "entity/gt/cabin",
+            "kind": "mesh",
+            "name": "Cabin Glass",
+            "parentId": "entity/gt/car",
+            "children": [],
+            "visible": false,
+            "transform": {
+              "position": [
+                0.81,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                -1.5708,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "castShadow": false,
+                "geometryId": "geometry/gt/cabin-glass",
+                "materialIds": [
+                  "material/gt/glass"
+                ],
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/windshield": {
+            "id": "entity/gt/windshield",
+            "kind": "mesh",
+            "name": "Windshield",
+            "parentId": "entity/gt/car",
+            "children": [],
+            "visible": false,
+            "transform": {
+              "position": [
+                0,
+                1.01,
+                0.7
+              ],
+              "rotation": [
+                0.48,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "castShadow": false,
+                "geometryId": "geometry/gt/windshield",
+                "materialIds": [
+                  "material/gt/glass"
+                ],
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/lamp-l": {
+            "id": "entity/gt/lamp-l",
+            "kind": "mesh",
+            "name": "Headlamp L",
+            "parentId": "entity/gt/car",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0.58,
+                0.48,
+                2.26
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "castShadow": false,
+                "geometryId": "geometry/gt/lamp",
+                "materialIds": [
+                  "material/gt/headlamp"
+                ],
+                "receiveShadow": false
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/lamp-r": {
+            "id": "entity/gt/lamp-r",
+            "kind": "mesh",
+            "name": "Headlamp R",
+            "parentId": "entity/gt/car",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                -0.58,
+                0.48,
+                2.26
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "castShadow": false,
+                "geometryId": "geometry/gt/lamp",
+                "materialIds": [
+                  "material/gt/headlamp"
+                ],
+                "receiveShadow": false
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/tail-l": {
+            "id": "entity/gt/tail-l",
+            "kind": "mesh",
+            "name": "Tail L",
+            "parentId": "entity/gt/car",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0.62,
+                0.58,
+                -2.28
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1.1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "castShadow": false,
+                "geometryId": "geometry/gt/lamp",
+                "materialIds": [
+                  "material/gt/lens"
+                ],
+                "receiveShadow": false
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/tail-r": {
+            "id": "entity/gt/tail-r",
+            "kind": "mesh",
+            "name": "Tail R",
+            "parentId": "entity/gt/car",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                -0.62,
+                0.58,
+                -2.28
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1.1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "castShadow": false,
+                "geometryId": "geometry/gt/lamp",
+                "materialIds": [
+                  "material/gt/lens"
+                ],
+                "receiveShadow": false
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/grille": {
+            "id": "entity/gt/grille",
+            "kind": "mesh",
+            "name": "Grille",
+            "parentId": "entity/gt/car",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0.38,
+                2.27
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "castShadow": true,
+                "geometryId": "geometry/gt/grille",
+                "materialIds": [
+                  "material/gt/metal"
+                ],
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/glass-l": {
+            "id": "entity/gt/glass-l",
+            "kind": "mesh",
+            "name": "Left Side Glass",
+            "parentId": "entity/gt/car",
+            "children": [],
+            "visible": false,
+            "transform": {
+              "position": [
+                0.905,
+                0.98,
+                -0.28
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "castShadow": false,
+                "geometryId": "geometry/gt/side-glass",
+                "materialIds": [
+                  "material/gt/glass"
+                ],
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/glass-r": {
+            "id": "entity/gt/glass-r",
+            "kind": "mesh",
+            "name": "Right Side Glass",
+            "parentId": "entity/gt/car",
+            "children": [],
+            "visible": false,
+            "transform": {
+              "position": [
+                -0.905,
+                0.98,
+                -0.28
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "castShadow": false,
+                "geometryId": "geometry/gt/side-glass",
+                "materialIds": [
+                  "material/gt/glass"
+                ],
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/glass-rear": {
+            "id": "entity/gt/glass-rear",
+            "kind": "mesh",
+            "name": "Rear Glass",
+            "parentId": "entity/gt/car",
+            "children": [],
+            "visible": false,
+            "transform": {
+              "position": [
+                0,
+                1.04,
+                -1.2
+              ],
+              "rotation": [
+                -0.38,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "castShadow": false,
+                "geometryId": "geometry/gt/rear-glass",
+                "materialIds": [
+                  "material/gt/glass"
+                ],
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/mirror-l": {
+            "id": "entity/gt/mirror-l",
+            "kind": "mesh",
+            "name": "Mirror L",
+            "parentId": "entity/gt/car",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0.96,
+                0.9,
+                0.52
+              ],
+              "rotation": [
+                0,
+                0.42,
+                0.12
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "castShadow": true,
+                "geometryId": "geometry/gt/mirror",
+                "materialIds": [
+                  "material/gt/paint"
+                ],
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/mirror-r": {
+            "id": "entity/gt/mirror-r",
+            "kind": "mesh",
+            "name": "Mirror R",
+            "parentId": "entity/gt/car",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                -0.96,
+                0.9,
+                0.52
+              ],
+              "rotation": [
+                0,
+                -0.42,
+                -0.12
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "castShadow": true,
+                "geometryId": "geometry/gt/mirror",
+                "materialIds": [
+                  "material/gt/paint"
+                ],
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/gt/splitter": {
+            "id": "entity/gt/splitter",
+            "kind": "mesh",
+            "name": "Front Splitter",
+            "parentId": "entity/gt/car",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0.16,
+                2.22
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "castShadow": true,
+                "geometryId": "geometry/gt/splitter",
+                "materialIds": [
+                  "material/gt/paint"
+                ],
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          }
+        },
+        "rootCollectionIds": [],
+        "collections": {},
+        "settings": {
+          "background": {
+            "mode": "color",
+            "color": [
+              0.012,
+              0.021,
+              0.038
+            ],
+            "colorSpace": "linear-srgb"
+          },
+          "environment": null,
+          "fog": {
+            "color": [
+              0.012,
+              0.021,
+              0.038
+            ],
+            "far": 46,
+            "mode": "linear",
+            "near": 20
+          },
+          "activeCameraId": "entity/starter-stage/camera",
+          "timeline": {
+            "frameStart": 1,
+            "frameEnd": 250,
+            "currentFrame": 1,
+            "framesPerSecond": 24
+          },
+          "rtx": {
+            "enabled": false,
+            "lighting": true,
+            "shadows": true,
+            "ambientOcclusion": true,
+            "directionalSampleCount": 1,
+            "aoSampleCount": 2,
+            "directionalAngularRadius": 0.0065,
+            "shadowStrength": 0.9,
+            "aoStrength": 0.22,
+            "aoRadius": 0.8,
+            "maxDistance": 10000,
+            "rayBias": 0.002
+          }
+        },
+        "scriptIds": [],
+        "metadata": {
+          "description": "A compact WebGPU lighting and shadow starter stage."
+        }
+      }
+    },
+    "resources": {
+      "geometries": {
+        "geometry/starter-stage/beacon-box": {
+          "id": "geometry/starter-stage/beacon-box",
+          "kind": "geometry",
+          "metadata": {},
+          "name": "Beacon Box",
+          "recipe": {
+            "depth": 1.15,
+            "depthSegments": 1,
+            "height": 2.2,
+            "heightSegments": 1,
+            "kind": "box",
+            "width": 1.15,
+            "widthSegments": 1
+          }
+        },
+        "geometry/starter-stage/ground-plane": {
+          "id": "geometry/starter-stage/ground-plane",
+          "kind": "geometry",
+          "metadata": {},
+          "name": "Ground Plane",
+          "recipe": {
+            "height": 24,
+            "heightSegments": 1,
+            "kind": "plane",
+            "width": 30,
+            "widthSegments": 1
+          }
+        },
+        "geometry/starter-stage/hero-torus-knot": {
+          "id": "geometry/starter-stage/hero-torus-knot",
+          "kind": "geometry",
+          "metadata": {},
+          "name": "Hero Torus Knot",
+          "recipe": {
+            "kind": "torusKnot",
+            "p": 2,
+            "q": 3,
+            "radialSegments": 16,
+            "radius": 1.35,
+            "tube": 0.38,
+            "tubularSegments": 128
+          }
+        },
+        "geometry/starter-stage/orb-sphere": {
+          "id": "geometry/starter-stage/orb-sphere",
+          "kind": "geometry",
+          "metadata": {},
+          "name": "Orb Sphere",
+          "recipe": {
+            "heightSegments": 24,
+            "kind": "sphere",
+            "radius": 0.7,
+            "widthSegments": 48
+          }
+        },
+        "geometry/starter-stage/plinth-cylinder": {
+          "id": "geometry/starter-stage/plinth-cylinder",
+          "kind": "geometry",
+          "metadata": {},
+          "name": "Plinth Cylinder",
+          "recipe": {
+            "height": 0.5,
+            "heightSegments": 1,
+            "kind": "cylinder",
+            "openEnded": false,
+            "radialSegments": 64,
+            "radiusBottom": 2.55,
+            "radiusTop": 2.4
+          }
+        },
+        "geometry/gt/body": {
+          "id": "geometry/gt/body",
+          "kind": "geometry",
+          "name": "GT Body Loft",
+          "recipe": {
+            "alignProfile": "closest",
+            "capEnd": true,
+            "capStart": true,
+            "closedProfile": true,
+            "kind": "loft",
+            "profileResolution": 16,
+            "sections": [
+              {
+                "id": "section/gt/rear-bumper",
+                "points": [
+                  [
+                    -0.3,
+                    0.14,
+                    0
+                  ],
+                  [
+                    -0.76,
+                    0.18,
+                    0
+                  ],
+                  [
+                    -0.76,
+                    0.48,
+                    0
+                  ],
+                  [
+                    -0.52,
+                    0.62,
+                    0
+                  ],
+                  [
+                    0,
+                    0.64,
+                    0
+                  ],
+                  [
+                    0.52,
+                    0.62,
+                    0
+                  ],
+                  [
+                    0.76,
+                    0.48,
+                    0
+                  ],
+                  [
+                    0.76,
+                    0.18,
+                    0
+                  ],
+                  [
+                    0.3,
+                    0.14,
+                    0
+                  ],
+                  [
+                    0,
+                    0.132,
+                    0
+                  ]
+                ],
+                "transform": {
+                  "translation": [
+                    0,
+                    0,
+                    -2.3
+                  ]
+                }
+              },
+              {
+                "id": "section/gt/rear-haunch",
+                "points": [
+                  [
+                    -0.36,
+                    0.13,
+                    0
+                  ],
+                  [
+                    -0.6,
+                    0.22,
+                    0
+                  ],
+                  [
+                    -0.93,
+                    0.62,
+                    0
+                  ],
+                  [
+                    -0.72,
+                    0.88,
+                    0
+                  ],
+                  [
+                    0,
+                    0.9,
+                    0
+                  ],
+                  [
+                    0.72,
+                    0.88,
+                    0
+                  ],
+                  [
+                    0.93,
+                    0.62,
+                    0
+                  ],
+                  [
+                    0.6,
+                    0.22,
+                    0
+                  ],
+                  [
+                    0.36,
+                    0.13,
+                    0
+                  ],
+                  [
+                    0,
+                    0.122,
+                    0
+                  ]
+                ],
+                "transform": {
+                  "translation": [
+                    0,
+                    0,
+                    -1.88
+                  ]
+                }
+              },
+              {
+                "id": "section/gt/cabin-rear",
+                "points": [
+                  [
+                    -0.4,
+                    0.13,
+                    0
+                  ],
+                  [
+                    -0.94,
+                    0.16,
+                    0
+                  ],
+                  [
+                    -0.94,
+                    0.72,
+                    0
+                  ],
+                  [
+                    -0.56,
+                    1.22,
+                    0
+                  ],
+                  [
+                    0,
+                    1.26,
+                    0
+                  ],
+                  [
+                    0.56,
+                    1.22,
+                    0
+                  ],
+                  [
+                    0.94,
+                    0.72,
+                    0
+                  ],
+                  [
+                    0.94,
+                    0.16,
+                    0
+                  ],
+                  [
+                    0.4,
+                    0.13,
+                    0
+                  ],
+                  [
+                    0,
+                    0.122,
+                    0
+                  ]
+                ],
+                "transform": {
+                  "translation": [
+                    0,
+                    0,
+                    -1.22
+                  ]
+                }
+              },
+              {
+                "id": "section/gt/cabin-mid",
+                "points": [
+                  [
+                    -0.4,
+                    0.13,
+                    0
+                  ],
+                  [
+                    -0.94,
+                    0.16,
+                    0
+                  ],
+                  [
+                    -0.94,
+                    0.74,
+                    0
+                  ],
+                  [
+                    -0.5,
+                    1.3,
+                    0
+                  ],
+                  [
+                    0,
+                    1.33,
+                    0
+                  ],
+                  [
+                    0.5,
+                    1.3,
+                    0
+                  ],
+                  [
+                    0.94,
+                    0.74,
+                    0
+                  ],
+                  [
+                    0.94,
+                    0.16,
+                    0
+                  ],
+                  [
+                    0.4,
+                    0.13,
+                    0
+                  ],
+                  [
+                    0,
+                    0.122,
+                    0
+                  ]
+                ],
+                "transform": {
+                  "translation": [
+                    0,
+                    0,
+                    -0.18
+                  ]
+                }
+              },
+              {
+                "id": "section/gt/a-pillar",
+                "points": [
+                  [
+                    -0.38,
+                    0.13,
+                    0
+                  ],
+                  [
+                    -0.92,
+                    0.16,
+                    0
+                  ],
+                  [
+                    -0.92,
+                    0.7,
+                    0
+                  ],
+                  [
+                    -0.48,
+                    1.18,
+                    0
+                  ],
+                  [
+                    0,
+                    1.2,
+                    0
+                  ],
+                  [
+                    0.48,
+                    1.18,
+                    0
+                  ],
+                  [
+                    0.92,
+                    0.7,
+                    0
+                  ],
+                  [
+                    0.92,
+                    0.16,
+                    0
+                  ],
+                  [
+                    0.38,
+                    0.13,
+                    0
+                  ],
+                  [
+                    0,
+                    0.122,
+                    0
+                  ]
+                ],
+                "transform": {
+                  "translation": [
+                    0,
+                    0,
+                    0.55
+                  ]
+                }
+              },
+              {
+                "id": "section/gt/cowl",
+                "points": [
+                  [
+                    -0.36,
+                    0.13,
+                    0
+                  ],
+                  [
+                    -0.9,
+                    0.16,
+                    0
+                  ],
+                  [
+                    -0.9,
+                    0.66,
+                    0
+                  ],
+                  [
+                    -0.68,
+                    0.9,
+                    0
+                  ],
+                  [
+                    0,
+                    0.92,
+                    0
+                  ],
+                  [
+                    0.68,
+                    0.9,
+                    0
+                  ],
+                  [
+                    0.9,
+                    0.66,
+                    0
+                  ],
+                  [
+                    0.9,
+                    0.16,
+                    0
+                  ],
+                  [
+                    0.36,
+                    0.13,
+                    0
+                  ],
+                  [
+                    0,
+                    0.122,
+                    0
+                  ]
+                ],
+                "transform": {
+                  "translation": [
+                    0,
+                    0,
+                    0.95
+                  ]
+                }
+              },
+              {
+                "id": "section/gt/front-arch",
+                "points": [
+                  [
+                    -0.34,
+                    0.14,
+                    0
+                  ],
+                  [
+                    -0.58,
+                    0.22,
+                    0
+                  ],
+                  [
+                    -0.88,
+                    0.54,
+                    0
+                  ],
+                  [
+                    -0.7,
+                    0.7,
+                    0
+                  ],
+                  [
+                    0,
+                    0.72,
+                    0
+                  ],
+                  [
+                    0.7,
+                    0.7,
+                    0
+                  ],
+                  [
+                    0.88,
+                    0.54,
+                    0
+                  ],
+                  [
+                    0.58,
+                    0.22,
+                    0
+                  ],
+                  [
+                    0.34,
+                    0.14,
+                    0
+                  ],
+                  [
+                    0,
+                    0.13,
+                    0
+                  ]
+                ],
+                "transform": {
+                  "translation": [
+                    0,
+                    0,
+                    1.22
+                  ]
+                }
+              },
+              {
+                "id": "section/gt/hood",
+                "points": [
+                  [
+                    -0.34,
+                    0.13,
+                    0
+                  ],
+                  [
+                    -0.88,
+                    0.16,
+                    0
+                  ],
+                  [
+                    -0.88,
+                    0.56,
+                    0
+                  ],
+                  [
+                    -0.6,
+                    0.74,
+                    0
+                  ],
+                  [
+                    0,
+                    0.76,
+                    0
+                  ],
+                  [
+                    0.6,
+                    0.74,
+                    0
+                  ],
+                  [
+                    0.88,
+                    0.56,
+                    0
+                  ],
+                  [
+                    0.88,
+                    0.16,
+                    0
+                  ],
+                  [
+                    0.34,
+                    0.13,
+                    0
+                  ],
+                  [
+                    0,
+                    0.122,
+                    0
+                  ]
+                ],
+                "transform": {
+                  "translation": [
+                    0,
+                    0,
+                    1.58
+                  ]
+                }
+              },
+              {
+                "id": "section/gt/nose",
+                "points": [
+                  [
+                    -0.28,
+                    0.14,
+                    0
+                  ],
+                  [
+                    -0.8,
+                    0.18,
+                    0
+                  ],
+                  [
+                    -0.8,
+                    0.42,
+                    0
+                  ],
+                  [
+                    -0.55,
+                    0.52,
+                    0
+                  ],
+                  [
+                    0,
+                    0.54,
+                    0
+                  ],
+                  [
+                    0.55,
+                    0.52,
+                    0
+                  ],
+                  [
+                    0.8,
+                    0.42,
+                    0
+                  ],
+                  [
+                    0.8,
+                    0.18,
+                    0
+                  ],
+                  [
+                    0.28,
+                    0.14,
+                    0
+                  ],
+                  [
+                    0,
+                    0.132,
+                    0
+                  ]
+                ],
+                "transform": {
+                  "translation": [
+                    0,
+                    0,
+                    2.28
+                  ]
+                }
+              }
+            ],
+            "subdivisions": 2
+          },
+          "metadata": {}
+        },
+        "geometry/gt/tire": {
+          "id": "geometry/gt/tire",
+          "kind": "geometry",
+          "name": "GT Tire",
+          "recipe": {
+            "kind": "lathe",
+            "points": [
+              [
+                0.155,
+                -0.115
+              ],
+              [
+                0.275,
+                -0.122
+              ],
+              [
+                0.332,
+                -0.08
+              ],
+              [
+                0.338,
+                0
+              ],
+              [
+                0.332,
+                0.08
+              ],
+              [
+                0.275,
+                0.122
+              ],
+              [
+                0.155,
+                0.115
+              ]
+            ],
+            "segments": 28
+          },
+          "metadata": {}
+        },
+        "geometry/gt/rim": {
+          "id": "geometry/gt/rim",
+          "kind": "geometry",
+          "name": "GT Rim",
+          "recipe": {
+            "kind": "lathe",
+            "points": [
+              [
+                0.04,
+                -0.07
+              ],
+              [
+                0.15,
+                -0.075
+              ],
+              [
+                0.16,
+                -0.02
+              ],
+              [
+                0.16,
+                0.02
+              ],
+              [
+                0.15,
+                0.075
+              ],
+              [
+                0.04,
+                0.07
+              ]
+            ],
+            "segments": 24
+          },
+          "metadata": {}
+        },
+        "geometry/gt/cabin-glass": {
+          "id": "geometry/gt/cabin-glass",
+          "kind": "geometry",
+          "name": "Cabin Glass",
+          "recipe": {
+            "bevelEnabled": false,
+            "curveSegments": 4,
+            "depth": 1.62,
+            "kind": "extrude",
+            "points": [
+              [
+                -1.08,
+                0.8
+              ],
+              [
+                -1.02,
+                1.16
+              ],
+              [
+                -0.2,
+                1.26
+              ],
+              [
+                0.42,
+                1.14
+              ],
+              [
+                0.52,
+                0.8
+              ]
+            ],
+            "steps": 1
+          },
+          "metadata": {}
+        },
+        "geometry/gt/windshield": {
+          "id": "geometry/gt/windshield",
+          "kind": "geometry",
+          "name": "Windshield",
+          "recipe": {
+            "depth": 0.04,
+            "height": 0.38,
+            "kind": "box",
+            "width": 1.46
+          },
+          "metadata": {}
+        },
+        "geometry/gt/lamp": {
+          "id": "geometry/gt/lamp",
+          "kind": "geometry",
+          "name": "Lamp Pod",
+          "recipe": {
+            "depth": 0.08,
+            "height": 0.1,
+            "kind": "box",
+            "width": 0.28
+          },
+          "metadata": {}
+        },
+        "geometry/gt/grille": {
+          "id": "geometry/gt/grille",
+          "kind": "geometry",
+          "name": "Grille",
+          "recipe": {
+            "depth": 0.06,
+            "height": 0.16,
+            "kind": "box",
+            "width": 0.72
+          },
+          "metadata": {}
+        },
+        "geometry/gt/side-glass": {
+          "id": "geometry/gt/side-glass",
+          "kind": "geometry",
+          "name": "Side Glass",
+          "recipe": {
+            "depth": 1.12,
+            "height": 0.3,
+            "kind": "box",
+            "width": 0.03
+          },
+          "metadata": {}
+        },
+        "geometry/gt/rear-glass": {
+          "id": "geometry/gt/rear-glass",
+          "kind": "geometry",
+          "name": "Rear Glass",
+          "recipe": {
+            "depth": 0.04,
+            "height": 0.3,
+            "kind": "box",
+            "width": 1.28
+          },
+          "metadata": {}
+        },
+        "geometry/gt/mirror": {
+          "id": "geometry/gt/mirror",
+          "kind": "geometry",
+          "name": "Mirror",
+          "recipe": {
+            "depth": 0.18,
+            "height": 0.08,
+            "kind": "box",
+            "width": 0.14
+          },
+          "metadata": {}
+        },
+        "geometry/gt/splitter": {
+          "id": "geometry/gt/splitter",
+          "kind": "geometry",
+          "name": "Front Splitter",
+          "recipe": {
+            "depth": 0.2,
+            "height": 0.05,
+            "kind": "box",
+            "width": 1.52
+          },
+          "metadata": {}
+        }
+      },
+      "materials": {
+        "material/starter-stage/beacon": {
+          "id": "material/starter-stage/beacon",
+          "kind": "material",
+          "materialKind": "physical",
+          "metadata": {},
+          "name": "Sunset Coral",
+          "parameters": {
+            "baseColor": [
+              0.62,
+              0.075,
+              0.035
+            ],
+            "clearcoat": 0.24,
+            "clearcoatRoughness": 0.42,
+            "metalness": 0.02,
+            "roughness": 0.48
+          }
+        },
+        "material/starter-stage/ground": {
+          "id": "material/starter-stage/ground",
+          "kind": "material",
+          "materialKind": "standard",
+          "metadata": {},
+          "name": "Midnight Ground",
+          "parameters": {
+            "baseColor": [
+              0.028,
+              0.043,
+              0.062
+            ],
+            "metalness": 0.02,
+            "roughness": 0.93
+          }
+        },
+        "material/starter-stage/hero": {
+          "id": "material/starter-stage/hero",
+          "kind": "material",
+          "materialKind": "physical",
+          "metadata": {},
+          "name": "Verdant Glaze",
+          "parameters": {
+            "baseColor": [
+              0.018,
+              0.34,
+              0.24
+            ],
+            "clearcoat": 0.68,
+            "clearcoatRoughness": 0.22,
+            "metalness": 0.08,
+            "roughness": 0.31
+          }
+        },
+        "material/starter-stage/orb": {
+          "id": "material/starter-stage/orb",
+          "kind": "material",
+          "materialKind": "physical",
+          "metadata": {},
+          "name": "Warm Gold",
+          "parameters": {
+            "baseColor": [
+              0.58,
+              0.29,
+              0.045
+            ],
+            "clearcoat": 0.35,
+            "clearcoatRoughness": 0.3,
+            "metalness": 0.52,
+            "roughness": 0.29
+          }
+        },
+        "material/starter-stage/plinth": {
+          "id": "material/starter-stage/plinth",
+          "kind": "material",
+          "materialKind": "standard",
+          "metadata": {},
+          "name": "Warm Stone",
+          "parameters": {
+            "baseColor": [
+              0.19,
+              0.145,
+              0.1
+            ],
+            "metalness": 0.01,
+            "roughness": 0.76
+          }
+        },
+        "material/gt/paint": {
+          "id": "material/gt/paint",
+          "name": "Automotive Paint",
+          "recipe": {
+            "kind": "physical",
+            "color": "#e02430",
+            "roughness": 0.12,
+            "metalness": 0.18,
+            "clearcoat": 1,
+            "clearcoatRoughness": 0.04
+          },
+          "metadata": {
+            "studioLook": "automotivePaint"
+          },
+          "kind": "material"
+        },
+        "material/gt/rubber": {
+          "id": "material/gt/rubber",
+          "name": "Rubber",
+          "recipe": {
+            "kind": "physical",
+            "color": "#0d0e10",
+            "roughness": 0.78,
+            "metalness": 0,
+            "clearcoat": 0.04,
+            "clearcoatRoughness": 0.7
+          },
+          "metadata": {
+            "studioLook": "rubber"
+          },
+          "kind": "material"
+        },
+        "material/gt/metal": {
+          "id": "material/gt/metal",
+          "name": "Brushed Metal",
+          "recipe": {
+            "kind": "physical",
+            "color": "#9aa4ad",
+            "roughness": 0.3,
+            "metalness": 1,
+            "anisotropy": 0.72
+          },
+          "metadata": {
+            "studioLook": "brushedMetal"
+          },
+          "kind": "material"
+        },
+        "material/gt/glass": {
+          "id": "material/gt/glass",
+          "name": "Glass",
+          "recipe": {
+            "kind": "physical",
+            "color": "#3d5f78",
+            "roughness": 0.04,
+            "metalness": 0,
+            "transmission": 0,
+            "opacity": 0.42,
+            "ior": 1.5,
+            "thickness": 0.08
+          },
+          "metadata": {
+            "studioLook": "glass"
+          },
+          "kind": "material",
+          "opacity": 0.42,
+          "roughness": 0.04,
+          "transmission": 0,
+          "transparent": true
+        },
+        "material/gt/lens": {
+          "id": "material/gt/lens",
+          "name": "Emissive Lens",
+          "recipe": {
+            "kind": "physical",
+            "color": "#4a0802",
+            "roughness": 0.2,
+            "metalness": 0,
+            "clearcoat": 0.65,
+            "clearcoatRoughness": 0.08,
+            "emissive": "#ff3b08",
+            "emissiveIntensity": 4
+          },
+          "metadata": {
+            "studioLook": "emissiveLens"
+          },
+          "kind": "material"
+        },
+        "material/gt/floor": {
+          "id": "material/gt/floor",
+          "kind": "physical",
+          "name": "Studio Floor",
+          "recipe": {
+            "baseColor": [
+              0.08,
+              0.082,
+              0.09
+            ],
+            "kind": "physical",
+            "metalness": 0.12,
+            "roughness": 0.42
+          },
+          "metadata": {}
+        },
+        "material/gt/headlamp": {
+          "id": "material/gt/headlamp",
+          "kind": "physical",
+          "name": "Headlamp",
+          "recipe": {
+            "baseColor": [
+              0.86,
+              0.9,
+              0.96
+            ],
+            "emissive": [
+              0.85,
+              0.9,
+              1
+            ],
+            "emissiveIntensity": 5.5,
+            "kind": "physical",
+            "metalness": 0.05,
+            "roughness": 0.12
+          },
+          "metadata": {}
+        }
+      },
+      "textures": {},
+      "graphs": {},
+      "animations": {},
+      "prefabs": {},
+      "audio": {},
+      "assets": {}
+    },
+    "scripts": {},
+    "scriptTrustPolicy": "agent-safe",
+    "settings": {
+      "lengthUnit": "metre",
+      "angleUnit": "radian",
+      "timeUnit": "second",
+      "workingColorSpace": "linear-srgb"
+    },
+    "exportSettings": {},
+    "metadata": {
+      "createdAt": "2026-08-28T00:00:00.000Z",
+      "updatedAt": "2026-08-30T18:45:06.000Z",
+      "description": "Lean WebGPU starter stage with a lit primitive composition and soft shadows."
+    }
+  }
+}
