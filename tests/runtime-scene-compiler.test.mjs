@@ -1137,3 +1137,20 @@ test('authored linear color backgrounds become an opaque WebGPU background node'
   compiled.dispose();
   compiled.dispose();
 });
+
+test('area lights compile to a safe native approximation instead of blacking out WebGPU', () => {
+  const project = createProjectDocument({
+    projectId: 'project/area-light-safe',
+    scenes: [{
+      id: 'scene/main',
+      entities: [entity('light/softbox', 'areaLight', { components: {
+        light: { color: [1, 0.8, 0.6], intensity: 8, width: 4, height: 2 },
+      } })],
+    }],
+  });
+  const compiled = compileSceneDocument({ THREE: fakeThree(), TSL: fakeTsl(), project });
+  assert.deepEqual(compiled.objects.get('light/softbox').userData.studioAreaLightApproximation, { width: 4, height: 2 });
+  assert.equal(compiled.diagnostics.some(item => (
+    item.code === 'runtime_area_light_approximated' && item.id === 'light/softbox'
+  )), true);
+});

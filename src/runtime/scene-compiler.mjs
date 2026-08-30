@@ -88,9 +88,22 @@ function lightFor(THREE, entity) {
     case 'directionalLight': return new THREE.DirectionalLight(color, values.intensity ?? 3);
     case 'pointLight': return new THREE.PointLight(color, values.intensity ?? 10, values.distance ?? 0, values.decay ?? 2);
     case 'spotLight': return new THREE.SpotLight(color, values.intensity ?? 10, values.distance ?? 0, values.angle ?? Math.PI / 3, values.penumbra ?? 0, values.decay ?? 2);
-    case 'areaLight': return THREE.RectAreaLight
-      ? new THREE.RectAreaLight(color, values.intensity ?? 10, values.width ?? 1, values.height ?? 1)
-      : null;
+    case 'areaLight': {
+      // RectAreaLight currently poisons the native WebGPU lighting pipeline and
+      // presents every material as black. Preserve the authored area-light
+      // entity, but compile a bounded point-light approximation until the
+      // native renderer can support the rectangular emitter safely.
+      const width = values.width ?? 1;
+      const height = values.height ?? 1;
+      const light = new THREE.PointLight(
+        color,
+        values.intensity ?? 10,
+        values.distance ?? Math.max(width, height) * 8,
+        values.decay ?? 2,
+      );
+      light.userData = { studioAreaLightApproximation: { width, height } };
+      return light;
+    }
     default: return null;
   }
 }
@@ -293,6 +306,14 @@ function instantiateEntity(THREE, entity, context) {
     if (!object) throw new Error(`Entity kind ${entity.kind} is not compiled by the lean runtime yet.`);
     if (object.isLight) {
       const lightValues = entity.components?.light ?? {};
+      if (object.userData?.studioAreaLightApproximation) {
+        context.diagnostics.push({
+          severity: 'warning',
+          code: 'runtime_area_light_approximated',
+          id: entity.id,
+          message: 'Native WebGPU compiles area lights as safe point-light approximations.',
+        });
+      }
       if (object.shadow && lightValues.castShadow !== false) {
         if (context.shadowLights.count >= context.shadowLights.limit) {
           throw compileError(
