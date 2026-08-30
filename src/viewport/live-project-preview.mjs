@@ -44,18 +44,20 @@ export function createLiveProjectPreview({ THREE, TSL, viewport, getAspect } = {
 
   async function show(project, { onBeforeSwap } = {}) {
     const next = await compile(project);
+    const previous = compiled;
     try {
       onBeforeSwap?.();
+      viewport.scene.add(next.root);
+      viewport.setAppearance?.(next);
+      viewport.setAuthoredCamera?.(next.activeCamera ?? viewport.camera);
+      viewport.followShot?.();
     } catch (error) {
       next.dispose();
       throw error;
     }
-    viewport.scene.add(next.root);
-    viewport.setAppearance?.(next);
-    viewport.setAuthoredCamera?.(next.activeCamera ?? viewport.camera);
-    compiled?.dispose();
     compiled = next;
     document = project;
+    previous?.dispose();
     const scene = project.scenes[project.activeSceneId];
     if (typeof viewport.configureRtx === 'function') {
       next.root.updateWorldMatrix?.(true, true);

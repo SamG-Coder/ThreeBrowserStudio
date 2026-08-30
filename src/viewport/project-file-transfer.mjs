@@ -59,20 +59,9 @@ export function pickJsonFile({
     const finish = (value, error) => {
       if (settled) return;
       settled = true;
-      globalThis.removeEventListener?.('focus', onFocus);
-      globalThis.removeEventListener?.('blur', onBlur);
       input.remove();
       if (error) reject(error);
       else resolve(value);
-    };
-
-    const onFocus = () => {
-      globalThis.setTimeout(() => {
-        if (!settled && !input.files?.length) finish(null);
-      }, 400);
-    };
-    const onBlur = () => {
-      globalThis.addEventListener?.('focus', onFocus, { once: true });
     };
 
     input.addEventListener('change', async () => {
@@ -88,7 +77,6 @@ export function pickJsonFile({
       }
     }, { once: true });
     input.addEventListener('cancel', () => finish(null), { once: true });
-    globalThis.addEventListener?.('blur', onBlur, { once: true });
     document.body?.appendChild(input);
     input.click();
   });
