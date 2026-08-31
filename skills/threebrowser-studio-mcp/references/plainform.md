@@ -292,6 +292,41 @@ non-zero owner span fails conservatively with
 millimetres, leaving $opening open` is not accepted while `$opening` is only an
 interior semantic curve: split it into a genuine topology boundary first.
 
+### Evaluated surface measurements and persistent constraints
+
+Surface measurements are typed values and can be reused by later expressions
+in the same Design Plainform program:
+
+```text
+Let overall width be the width of Body Shell.
+Let belt width be the width of Body Shell at height 80 centimetres.
+Let panel clearance be the minimum distance between Body Shell and Door Skin.
+Let rail angle be the angle between $shoulder-line and $sill-line.
+```
+
+Width, height, depth, and the height-specific width are evaluated in world
+space. The minimum distance is a deterministic bidirectional
+vertex-to-triangle distance between the evaluated surfaces. The angle uses the
+end-to-end directions of the two resolved surface references and is a typed
+angle in radians internally. Only width-at-height is supported for a
+height-specific cross-section; asking for depth-at-height or height-at-height
+fails with `plainform_surface_measurement_unsupported`.
+
+Use compile-time constraints when a later semantic deformation must fail
+rather than silently violate design intent:
+
+```text
+Keep Body Shell symmetric across its x centre plane.
+Maintain at least 8 millimetres clearance between Body Shell and Door Skin.
+```
+
+The compiler validates new constraints before committing and stores them on
+the design root. A later Design Plainform program revalidates an inherited
+constraint when that program modifies one of its participating owners. Any
+failure aborts the whole atomic apply with
+`plainform_constraint_unsatisfied`. This is deliberately not a hidden live
+solver and does not claim enforcement for unrelated direct MCP mutations.
+
 Arbitrary profiles can also become bevelled watertight extrusions:
 
 ```text

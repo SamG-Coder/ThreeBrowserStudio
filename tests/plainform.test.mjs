@@ -491,6 +491,63 @@ Shell Housing inward by 5 centimetres, leaving the bottom boundary open.
 `, { project: projectFixture() }), error => error.code === 'plainform_shell_open_boundary_requires_split');
 });
 
+test('Design Plainform measures surface bounds, cross-section width, clearance, and curve angle with units', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a measured assembly called Surface Measurements with id entity/surface-measurements.
+Create a box called First Shell with id entity/first-shell, with width 4 metres, height 2 metres, and depth 2 metres.
+Create a box called Second Shell with id entity/second-shell, with width 1 metre, height 1 metre, and depth 1 metre, centred at [3 metres, 0 metres, 0 metres].
+Create a surface curve called horizontal rail on First Shell through surface points nearest to design points [-1 metre, 0 metres, 2 metres], [0 metres, 0 metres, 2 metres], [1 metre, 0 metres, 2 metres].
+Create a surface curve called vertical rail on First Shell through surface points nearest to design points [0 metres, -50 centimetres, 2 metres], [0 metres, 0 metres, 2 metres], [0 metres, 50 centimetres, 2 metres].
+Let overall width be the width of First Shell.
+Let middle width be the width of First Shell at height 0 metres.
+Let shell clearance be the minimum distance between First Shell and Second Shell.
+Let rail angle be the angle between $horizontal-rail and $vertical-rail.
+Create a box called Gauge with id entity/gauge, with width shell clearance, height middle width divided by 4, and depth overall width divided by 8.
+`, { project: projectFixture() });
+  const variables = compiled.operations.find(operation => operation.op === 'entity.create').entity.metadata.plainformDesign.variables;
+  assert.equal(variables['overall width'].value, 4);
+  assert.equal(variables['middle width'].value, 4);
+  assert.ok(Math.abs(variables['shell clearance'].value - 0.5) < 1e-9);
+  assert.ok(Math.abs(variables['rail angle'].value - Math.PI / 2) < 1e-9);
+  assert.equal(variables['rail angle'].dimension, 'angle');
+  const gauge = compiled.operations.find(operation => operation.op === 'entity.createMany').items
+    .map(item => item.entity).find(entity => entity.id === 'entity/gauge');
+  assert.deepEqual(gauge.transform.scale, [0.5, 1, 0.5]);
+});
+
+test('Design Plainform stores and validates persistent symmetry and minimum-clearance intent', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a constrained assembly called Persistent Intent with id entity/persistent-intent.
+Create a cylinder called Symmetric Housing with id entity/symmetric-housing, with radius 1 metre and height 2 metres.
+Create a box called Left Stop with id entity/left-stop, with width 20 centimetres, height 20 centimetres, and depth 20 centimetres, centred at [-1.5 metres, 0 metres, 0 metres].
+Create a box called Right Stop with id entity/right-stop, with width 20 centimetres, height 20 centimetres, and depth 20 centimetres, centred at [1.5 metres, 0 metres, 0 metres].
+Keep Symmetric Housing symmetric across its x centre plane.
+Maintain at least 2.5 metres clearance between Left Stop and Right Stop.
+`, { project: projectFixture() });
+  const constraints = compiled.operations.find(operation => operation.op === 'entity.create').entity.metadata.plainformDesign.constraints;
+  assert.deepEqual(constraints, [
+    { kind: 'symmetry', entityId: 'entity/symmetric-housing', axis: 'x' },
+    { kind: 'minimumClearance', firstEntityId: 'entity/left-stop', secondEntityId: 'entity/right-stop', minimum: 2.5 },
+  ]);
+});
+
+test('Design Plainform fails instead of silently violating symmetry or clearance constraints', () => {
+  assert.throws(() => new PlainformCompiler().compile(`
+Design a constrained shell called Broken Symmetry with id entity/broken-symmetry.
+Create a cylinder called Housing with id entity/housing, with radius 1 metre and height 2 metres.
+Keep Housing symmetric across its x centre plane.
+Create a surface curve called one sided rail on Housing through surface points nearest to design points [60 centimetres, -50 centimetres, 1.5 metres], [70 centimetres, 0 metres, 1.5 metres], [60 centimetres, 50 centimetres, 1.5 metres].
+Raise the surface along one sided rail by 10 centimetres with a smooth falloff of 60 centimetres.
+`, { project: projectFixture() }), error => error.code === 'plainform_constraint_unsatisfied' && error.details?.constraint === 'symmetry');
+
+  assert.throws(() => new PlainformCompiler().compile(`
+Design a constrained assembly called Broken Clearance with id entity/broken-clearance.
+Create a box called First with id entity/first, with width 1 metre, height 1 metre, and depth 1 metre.
+Create a box called Second with id entity/second, with width 1 metre, height 1 metre, and depth 1 metre, centred at [1.2 metres, 0 metres, 0 metres].
+Maintain at least 50 centimetres clearance between First and Second.
+`, { project: projectFixture() }), error => error.code === 'plainform_constraint_unsatisfied' && error.details?.kind === 'minimumClearance');
+});
+
 test('Design Plainform projects anchors against a generated curved loft owner', () => {
   const compiled = new PlainformCompiler().compile(`
 Design a head study called Loft Surface Owner with id entity/loft-surface-owner.

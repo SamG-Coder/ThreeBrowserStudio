@@ -10,6 +10,13 @@ import {
 import { SemanticSurfaceRegistry } from './semantic-surface.mjs';
 import { deformAlongSurfaceCurve, deformSurfaceRegion } from './semantic-surface-deformation.mjs';
 import { shellSurface } from './semantic-surface-shell.mjs';
+import {
+  angleBetweenSurfaceReferences,
+  assertSurfaceSymmetry,
+  minimumSurfaceDistance,
+  surfaceBounds,
+  surfaceWidthAtHeight,
+} from './semantic-surface-query.mjs';
 
 const MAX_DESIGN_ENTITIES = 128;
 const MAX_LOOP_ITERATIONS = 128;
@@ -244,6 +251,7 @@ export class DesignPlainformCompiler {
     const generatedResources = [];
     const booleanCommands = [];
     const semanticDeformationStates = new Map();
+    const constraints = [];
     const ids = new Set([rootId]);
     let requestedPreview = false;
     let autoNumber = 0;
@@ -334,6 +342,10 @@ export class DesignPlainformCompiler {
       semanticDeformationStates.set(owner.entityId, state);
       return state;
     };
+    const semanticSurfaceOwner = phrase => {
+      const owner = boundaryOwner(phrase);
+      return semanticDeformationStates.get(owner.entityId) ?? owner;
+    };
     const addEntity = ({ id, name, kind: primitiveKind, dimensions, position, rotation = [0, 0, 0], materialId }) => {
       if (entities.length >= MAX_DESIGN_ENTITIES) {
         const error = new Error(`Design Plainform creates at most ${MAX_DESIGN_ENTITIES} entities per program.`);
@@ -393,6 +405,45 @@ export class DesignPlainformCompiler {
         if (/^(?:preview these changes|show me a preview)$/iu.test(statement)) {
           requestedPreview = true;
           interpretations.push('Will request a guarded dry-run preview.');
+          continue;
+        }
+        const minimumDistanceStatement = statement.match(/^let (.+?) be (?:the )?minimum distance between (.+?) and (.+)$/iu);
+        if (minimumDistanceStatement) {
+          const first = semanticSurfaceOwner(minimumDistanceStatement[2]);
+          const second = semanticSurfaceOwner(minimumDistanceStatement[3]);
+          const value = minimumSurfaceDistance(first, second);
+          const name = key(minimumDistanceStatement[1]);
+          scope.set(name, Object.freeze({ value, dimension: 'length' }));
+          if (scope === variables) interpretations.push(`Measured ${name} as ${value} metres between evaluated surfaces.`);
+          continue;
+        }
+        const surfaceDimensionStatement = statement.match(/^let (.+?) be (?:the )?(width|height|depth) of (.+?)(?: at height (.+))?$/iu);
+        if (surfaceDimensionStatement) {
+          const owner = semanticSurfaceOwner(surfaceDimensionStatement[3]);
+          const dimension = surfaceDimensionStatement[2].toLowerCase();
+          let value;
+          if (surfaceDimensionStatement[4]) {
+            if (dimension !== 'width') {
+              const error = new Error('A height-specific surface cross-section currently measures width only.');
+              error.code = 'plainform_surface_measurement_unsupported'; throw error;
+            }
+            value = surfaceWidthAtHeight(owner, length(surfaceDimensionStatement[4], scope, 'Surface measurement height'));
+          } else {
+            value = surfaceBounds(owner).dimensions[{ width: 0, height: 1, depth: 2 }[dimension]];
+          }
+          const name = key(surfaceDimensionStatement[1]);
+          scope.set(name, Object.freeze({ value, dimension: 'length' }));
+          if (scope === variables) interpretations.push(`Measured ${name} as ${value} metres from ${owner.entityId}.`);
+          continue;
+        }
+        const surfaceAngleStatement = statement.match(/^let (.+?) be (?:the )?angle between (\$[a-z0-9][a-z0-9._/-]*) and (\$[a-z0-9][a-z0-9._/-]*)$/iu);
+        if (surfaceAngleStatement) {
+          const first = semanticSurfaces.resolveReference(surfaceAngleStatement[2]);
+          const second = semanticSurfaces.resolveReference(surfaceAngleStatement[3]);
+          const value = angleBetweenSurfaceReferences(first, second);
+          const name = key(surfaceAngleStatement[1]);
+          scope.set(name, Object.freeze({ value, dimension: 'angle' }));
+          if (scope === variables) interpretations.push(`Measured ${name} as ${value} radians between two surface references.`);
           continue;
         }
         const distanceStatement = statement.match(/^let (.+?) be (?:the )?distance between (.+?) and (.+)$/iu);
@@ -1065,6 +1116,25 @@ export class DesignPlainformCompiler {
           continue;
         }
 
+        const symmetryConstraintStatement = statement.match(/^keep (.+?) symmetric across (?:its |the )?(x|y|z) centre plane$/iu);
+        if (symmetryConstraintStatement) {
+          const owner = semanticSurfaceOwner(symmetryConstraintStatement[1]);
+          const axis = symmetryConstraintStatement[2].toLowerCase();
+          constraints.push({ kind: 'symmetry', entityId: owner.entityId, axis });
+          interpretations.push(`Will keep ${owner.entityId} symmetric across its ${axis} centre plane or fail validation.`);
+          continue;
+        }
+
+        const clearanceConstraintStatement = statement.match(/^maintain at least (.+?) clearance between (.+?) and (.+)$/iu);
+        if (clearanceConstraintStatement) {
+          const minimum = finitePositive(length(clearanceConstraintStatement[1], scope, 'Minimum clearance'), 'Minimum clearance');
+          const first = semanticSurfaceOwner(clearanceConstraintStatement[2]);
+          const second = semanticSurfaceOwner(clearanceConstraintStatement[3]);
+          constraints.push({ kind: 'minimumClearance', firstEntityId: first.entityId, secondEntityId: second.entityId, minimum });
+          interpretations.push(`Will maintain at least ${minimum} metres clearance between ${first.entityId} and ${second.entityId} or fail validation.`);
+          continue;
+        }
+
         const ambiguousDeformationStatement = statement.match(/^(?:raise|lower|inset|bulge|pinch) (?:the surface along )?(.+?) by (.+)$/iu);
         if (ambiguousDeformationStatement) {
           const error = new Error('Semantic surface deformation requires an explicit smooth falloff. Use “with a smooth falloff of <distance>” for a curve or “falling off smoothly over <distance>” for a region.');
@@ -1112,8 +1182,33 @@ export class DesignPlainformCompiler {
     };
 
     execute(1, lines.length, variables);
-    if (entities.length + lofts.length + surfacePatches.length + semanticSurfaces.curves.size + semanticSurfaces.regions.size === 0) {
-      const error = new Error('A design must create at least one solid, primitive, surface curve, or surface region.'); error.code = 'plainform_empty_design'; throw error;
+    const inheritedConstraints = Object.values(scene.entities ?? {}).flatMap(entity => (
+      Array.isArray(entity.metadata?.plainformDesign?.constraints) ? entity.metadata.plainformDesign.constraints : []
+    ));
+    const modifiedEntityIds = new Set(semanticDeformationStates.keys());
+    const constraintsToValidate = [
+      ...constraints,
+      ...inheritedConstraints.filter(constraint => (
+        modifiedEntityIds.has(constraint.entityId)
+        || modifiedEntityIds.has(constraint.firstEntityId)
+        || modifiedEntityIds.has(constraint.secondEntityId)
+      )),
+    ];
+    const constraintOwner = entityId => semanticSurfaceOwner(entityId);
+    for (const constraint of constraintsToValidate) {
+      if (constraint.kind === 'symmetry') assertSurfaceSymmetry(constraintOwner(constraint.entityId), constraint.axis);
+      else if (constraint.kind === 'minimumClearance') {
+        const actual = minimumSurfaceDistance(constraintOwner(constraint.firstEntityId), constraintOwner(constraint.secondEntityId));
+        if (actual + 1e-9 < constraint.minimum) {
+          const error = new Error(`Minimum clearance constraint failed: ${actual} metres is less than ${constraint.minimum} metres between ${constraint.firstEntityId} and ${constraint.secondEntityId}.`);
+          error.code = 'plainform_constraint_unsatisfied';
+          error.details = { ...constraint, actual };
+          throw error;
+        }
+      }
+    }
+    if (entities.length + lofts.length + surfacePatches.length + semanticSurfaces.curves.size + semanticSurfaces.regions.size + constraints.length === 0) {
+      const error = new Error('A design must create at least one solid, primitive, surface intent, or persistent constraint.'); error.code = 'plainform_empty_design'; throw error;
     }
 
     const resources = [...geometryKinds].map(kind => ({
@@ -1286,6 +1381,7 @@ export class DesignPlainformCompiler {
             } : {}),
           })),
           ...semanticSurfaceMetadata,
+          constraints: constraints.map(constraint => structuredClone(constraint)),
         } },
       } },
       ...(allEntities.length > 0 ? [{ op: 'entity.createMany', sceneId: scene.id, items: allEntities.map(entity => ({ entity })) }] : []),

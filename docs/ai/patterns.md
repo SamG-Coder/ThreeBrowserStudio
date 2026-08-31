@@ -211,6 +211,24 @@ half the smallest non-zero owner span is rejected conservatively. A requested
 open interior boundary is rejected until that curve has become real split
 topology.
 
+Design Plainform can feed evaluated surface measurements back into the same
+typed expression scope. Use `Let <name> be the width|height|depth of <owner>`,
+`Let <name> be the width of <owner> at height <length>`, `Let <name> be the
+minimum distance between <owner> and <owner>`, or `Let <name> be the angle
+between $curve-a and $curve-b`. Dimensions and cross-sections are measured in
+world space; minimum distance is the deterministic bidirectional
+vertex-to-triangle distance between the two evaluated surfaces. Height-specific
+cross-sections currently support width only and reject unsupported variants.
+
+`Keep <owner> symmetric across its x|y|z centre plane` and `Maintain at least
+<length> clearance between <owner> and <owner>` persist constraint intent on
+the design root and validate before the atomic commit. A later Design
+Plainform program revalidates an inherited constraint when it modifies one of
+that constraint's participating owners. A violation rejects the whole program
+with `plainform_constraint_unsatisfied`. This is compile-time Design Plainform
+enforcement, not a claim that unrelated direct MCP operations participate in a
+background global constraint solver.
+
 When a complex result is weak, revise the authored profiles, section spacing,
 guide binding, dimensions, material, camera, and light before extending the
 language. Add a new Plainform/runtime capability only after a required form

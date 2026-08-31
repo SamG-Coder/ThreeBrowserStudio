@@ -1459,6 +1459,42 @@ test('three_studio_apply commits projected surface intent and actual shell thick
   assert.equal(document.resources.geometries[housing.components.mesh.geometryId].recipe.kind, 'indexedMesh');
 });
 
+test('three_studio_apply persists constraints and rejects a later Plainform violation', async (t) => {
+  const { application } = await applicationFixture(t);
+  const first = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1', sessionId: application.sessionId,
+    projectId: 'project/active', baseRevision: 0,
+    idempotencyKey: 'plainform-persistent-constraint-0001', label: 'Create constrained housing',
+    operations: null,
+    program: {
+      language: 'plainform-v1',
+      source: [
+        'Design a constrained shell called Runtime Constraint with id entity/runtime-constraint.',
+        'Create a box called Housing with id entity/housing, with width 2 metres, height 2 metres, and depth 2 metres.',
+        'Keep Housing symmetric across its x centre plane.',
+      ].join('\n'),
+    },
+  }).catch(error => assert.fail(`Persistent constraint setup failed: ${JSON.stringify(error.details ?? error.message)}`));
+  assert.equal(first.success, true);
+  const failed = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1', sessionId: application.sessionId,
+    projectId: 'project/active', baseRevision: 1,
+    idempotencyKey: 'plainform-persistent-constraint-0002', label: 'Attempt asymmetric refinement',
+    operations: null,
+    program: {
+      language: 'plainform-v1',
+      source: [
+        'Design a refinement called Violating Refinement with id entity/violating-refinement.',
+        'Create a surface curve called one sided rail on entity/housing through surface points nearest to design points [1 metre, -50 centimetres, -50 centimetres], [1 metre, 0 metres, 0 metres], [1 metre, 50 centimetres, 50 centimetres].',
+        'Raise the surface along one sided rail by 10 centimetres with a smooth falloff of 1 metre.',
+      ].join('\n'),
+    },
+  }).catch(error => error);
+  assert.equal(failed.code, 'plainform_constraint_unsatisfied');
+  assert.equal(application.kernel.revision, 1);
+  assert.equal(application.kernel.document.scenes['scene/main'].entities['entity/violating-refinement'], undefined);
+});
+
 test('three_studio_apply compiles Shader Plainform into a validated graph and material assignment', async (t) => {
   const { application } = await applicationFixture(t);
   const setup = await application.dispatch('three_studio_apply', {
