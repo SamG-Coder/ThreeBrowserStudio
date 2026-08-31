@@ -2763,7 +2763,11 @@ export class StudioApplication {
     // shape while Studio refreshes its tool contract. Combining both inputs
     // keeps every supplied mutation explicit and preserves Plainform telemetry.
     const authoredOperations = [...(params.operations ?? []), ...plainformOperations];
-    const dryRun = params.dryRun === true || plainform?.requestedPreview === true;
+    // A candidate token is an explicit request to promote the identical compiled
+    // candidate. Natural-language preview intent must not force that promotion
+    // back into another dry run.
+    const dryRun = params.candidateToken === undefined
+      && (params.dryRun === true || plainform?.requestedPreview === true);
     const translationDocument = structuredClone(document);
     const operations = [];
     for (const operation of authoredOperations) {
@@ -2894,6 +2898,7 @@ export class StudioApplication {
         aliases: plainform.aliases,
         requestedPreview: plainform.requestedPreview,
         ...(plainform.shader ? { shader: plainform.shader } : {}),
+        ...(plainform.design ? { design: plainform.design } : {}),
       } } : {}),
       authoring: {
         authoredOperationCount: authoredOperations.length,

@@ -1,11 +1,13 @@
 import { ProjectIndex } from '../core/indexes.mjs';
 import { hashExactEntitySet } from '../core/entity-selection.mjs';
+import { composeTransformMatrix, relativeEntityTransform } from '../core/transform-math.mjs';
 import { PlainformReferenceContext } from './reference-context.mjs';
 import { PlainformSpatialResolver } from './spatial-relations.mjs';
 import { PlainformAnchorResolver } from './anchor-resolver.mjs';
 import { PlainformGrowthPlanner } from './growth-planner.mjs';
 import { PlainformPrefabContext } from './prefab-context.mjs';
 import { ShaderPlainformCompiler } from './shader-plainform-compiler.mjs';
+import { DesignPlainformCompiler } from './design-plainform-compiler.mjs';
 
 const TAU = Math.PI * 2;
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
@@ -303,11 +305,59 @@ function cardinalAxis(sign, name) {
   return axis;
 }
 
+function transformSelection(context, project, phrase) {
+  try {
+    return context.selection(phrase);
+  } catch (error) {
+    if (!(error instanceof PlainformError) || error.code !== 'plainform_unknown_alias') throw error;
+    return selectionRecord(project, context.records(phrase));
+  }
+}
+
+function faceGridOrientation(statement) {
+  const rules = [
+    {
+      pattern: /,?\s+(?:and\s+)?(?:keep|keeping) each copy upright$/iu,
+      orientation: { mode: 'upright' },
+    },
+    {
+      pattern: /,?\s+(?:and\s+)?(?:preserve|preserving) the prefab orientation$/iu,
+      orientation: { mode: 'preserve' },
+    },
+    {
+      pattern: /,?\s+(?:and\s+)?(?:align|aligning) (?:each copy's|its) local ([xyz]) axis with (?:the )?face normal$/iu,
+      orientation: match => ({ mode: 'face', axis: match[1].toLowerCase() }),
+    },
+  ];
+  for (const rule of rules) {
+    const match = statement.match(rule.pattern);
+    if (!match) continue;
+    return {
+      statement: statement.slice(0, match.index).trim(),
+      orientation: typeof rule.orientation === 'function' ? rule.orientation(match) : rule.orientation,
+    };
+  }
+  return { statement, orientation: { mode: 'face', axis: 'z' } };
+}
+
+function relativePatternRotation(faceTransform, desiredRotation) {
+  const parent = composeTransformMatrix({ position: [0, 0, 0], rotation: faceTransform.rotation, scale: [1, 1, 1] });
+  const desired = composeTransformMatrix({ position: [0, 0, 0], rotation: desiredRotation, scale: [1, 1, 1] });
+  return relativeEntityTransform(parent, desired).rotation;
+}
+
+function faceAxisRotation(axis) {
+  if (axis === 'x') return [0, -Math.PI / 2, 0];
+  if (axis === 'y') return [Math.PI / 2, 0, 0];
+  return [0, 0, 0];
+}
+
 /** Compiles controlled natural English into guarded, canonical Studio operations. */
 export class PlainformCompiler {
   compile(source, { project }) {
     if (typeof source !== 'string' || source.trim().length === 0) fail('plainform_empty', 'Plainform source is empty.');
     if (ShaderPlainformCompiler.canCompile(source)) return new ShaderPlainformCompiler().compile(source);
+    if (DesignPlainformCompiler.canCompile(source)) return new DesignPlainformCompiler().compile(source, { project });
     if (!project) fail('plainform_project_required', 'Plainform compilation requires the canonical project document.');
     const statements = source.split(/\r?\n/u).map(cleanStatement).filter(Boolean);
     if (statements.length > MAX_STATEMENTS) fail('plainform_statement_limit', `Plainform accepts at most ${MAX_STATEMENTS} statements.`);
@@ -371,7 +421,8 @@ export class PlainformCompiler {
           interpretation.push(`Converted ${record.entity.id} into ${defined.prefabId} and named it ${defined.name}.`);
           continue;
         }
-        const grid = statement.match(/^lay out (?:a )?(.+?) by (.+?) grid of (?:copies of )?(.+?) over the (front|back|rear|left|right|top|bottom) face of (.+?),? spaced (.+?) horizontally and (.+?) vertically(?:,? (?:offset|set) (.+?) outward)?$/iu);
+        const orientedGrid = faceGridOrientation(statement);
+        const grid = orientedGrid.statement.match(/^lay out (?:a )?(.+?) by (.+?) grid of (?:copies of )?(.+?) over the (front|back|rear|left|right|top|bottom) face of (.+?),? spaced (.+?) horizontally and (.+?) vertically(?:,? (?:offset|set) (.+?) outward)?$/iu);
         if (grid) {
           const columns = /^\d+$/u.test(grid[1]) ? Number(grid[1]) : wordsNumber(grid[1]);
           const rows = /^\d+$/u.test(grid[2]) ? Number(grid[2]) : wordsNumber(grid[2]);
@@ -394,6 +445,7 @@ export class PlainformCompiler {
             fail('plainform_grid_offset', 'A face-grid outward offset must be a non-negative length.');
           }
           const transform = cloneTransform(template.entity);
+          const originalRotation = [...transform.rotation];
           const faceRotation = {
             front: [0, 0, 0], back: [0, Math.PI, 0], left: [0, -Math.PI / 2, 0], right: [0, Math.PI / 2, 0],
             top: [-Math.PI / 2, 0, 0], bottom: [Math.PI / 2, 0, 0],
@@ -416,12 +468,32 @@ export class PlainformCompiler {
           // horizontal/vertical axes into the requested world-space plane.
           const counts = [columns, rows, 1];
           const spacing = [horizontal.value, vertical.value, 0];
+          let instanceRotation;
+          if (orientedGrid.orientation.mode === 'preserve') {
+            instanceRotation = relativePatternRotation(transform, originalRotation);
+          } else if (orientedGrid.orientation.mode === 'upright') {
+            instanceRotation = relativePatternRotation(transform, [0, 0, 0]);
+          } else {
+            instanceRotation = faceAxisRotation(orientedGrid.orientation.axis);
+          }
+          const pattern = {
+            id: `modifier/plainform-grid-${slug(template.entity.id)}-${face}`,
+            mode: 'grid', counts, spacing,
+          };
+          if (instanceRotation.some(value => Math.abs(value) > 1e-12)) pattern.instanceRotation = instanceRotation;
           push({ op: 'entity.patch', entityId: template.entity.id, patch: { transform } });
           push({
             op: 'layout.pattern', entityId: template.entity.id,
-            pattern: { id: `modifier/plainform-grid-${slug(template.entity.id)}-${face}`, mode: 'grid', counts, spacing },
+            pattern,
           });
-          interpretation.push(`Laid out a centered ${columns} by ${rows} grid of ${template.entity.id} over the ${face} face of ${reference.entity.id}${outward.value > 0 ? `, offset ${outward.value} metres outward` : ''}.`);
+          const orientationText = orientedGrid.orientation.mode === 'upright'
+            ? ', keeping copies upright'
+            : orientedGrid.orientation.mode === 'preserve'
+              ? ', preserving the prefab orientation'
+              : orientedGrid.orientation.axis !== 'z'
+                ? `, aligning local ${orientedGrid.orientation.axis} with the face normal`
+                : '';
+          interpretation.push(`Laid out a centered ${columns} by ${rows} grid of ${template.entity.id} over the ${face} face of ${reference.entity.id}${outward.value > 0 ? `, offset ${outward.value} metres outward` : ''}${orientationText}.`);
           continue;
         }
         const group = statement.match(/^put (?:the\s+)?(.+?) (?:into|inside) a group called (?:(?:"([^"]+)")|(.+?)) with id ([a-z0-9][a-z0-9._/-]*)$/iu);
@@ -469,17 +541,17 @@ export class PlainformCompiler {
           interpretation.push(`Excluded ${target.records.length - records.length} entities from “${aliasKey(exclude[2])}”.`);
           continue;
         }
-        const moveEach = statement.match(/^move each (.+?) by (\[.+\])$/iu);
+        const moveEach = statement.match(/^move (?:each|the) (.+?) by (\[.+\])$/iu);
         if (moveEach) {
-          const selection = context.selection(moveEach[1]);
+          const selection = transformSelection(context, project, moveEach[1]);
           const offset = vectorExpression(moveEach[2], new Map(), 'length');
           push({ op: 'entity.transformMany', entityIds: selection.ids, expectedEntitySetHash: selection.hash, mode: 'delta', transform: { position: offset } });
           interpretation.push(`Will move ${selection.ids.length} entities by [${offset.join(', ')}] metres.`);
           continue;
         }
-        const rotateEach = statement.match(/^rotate each (.+?) around ([xyz]) by (.+)$/iu);
+        const rotateEach = statement.match(/^rotate (?:each|the) (.+?) around ([xyz]) by (.+)$/iu);
         if (rotateEach) {
-          const selection = context.selection(rotateEach[1]);
+          const selection = transformSelection(context, project, rotateEach[1]);
           const angle = evaluatePlainformMath(rotateEach[3]);
           if (!['angle', 'scalar'].includes(angle.dimension)) fail('plainform_dimension_mismatch', 'Rotation requires an angle.');
           const rotation = [0, 0, 0]; rotation['xyz'.indexOf(rotateEach[2].toLowerCase())] = angle.value;
@@ -487,9 +559,9 @@ export class PlainformCompiler {
           interpretation.push(`Will rotate ${selection.ids.length} entities by ${angle.value} radians.`);
           continue;
         }
-        const scaleEach = statement.match(/^set the scale of each (.+?) to (.+)$/iu);
+        const scaleEach = statement.match(/^set the scale of (?:each|the) (.+?) to (.+)$/iu);
         if (scaleEach) {
-          const selection = context.selection(scaleEach[1]);
+          const selection = transformSelection(context, project, scaleEach[1]);
           const scale = evaluatePlainformMath(scaleEach[2]);
           if (scale.dimension !== 'scalar') fail('plainform_dimension_mismatch', 'Scale must be dimensionless.');
           push({ op: 'entity.transformMany', entityIds: selection.ids, expectedEntitySetHash: selection.hash, mode: 'set', transform: { scale: [scale.value, scale.value, scale.value] } });

@@ -25,7 +25,9 @@ authority. In the current lean slice:
   `geometry.edit` with direct per-corner UV/color, face-material, sharp-edge,
   and crease edits, bounded inline raster texture resources, canonical
   `scene.rtx.patch`, and reusable `stroke.apply` paths for sculpting,
-  color/texture painting, tube curves, and deterministic scatter;
+  color/texture painting, tube curves, and deterministic scatter; apply also
+  accepts a `plainform-v1` controlled-English program that lowers object,
+  layout, prefab, and shader intents into these same guarded operations;
 - validation is whole-project, interactive document/reference/hierarchy/graph
   validation with budgets;
 - rendering is WebGPU beauty capture through the authored shot and its
@@ -56,6 +58,9 @@ Use it only after both status and the current tool schema expose it.
 2. Inspect only the bounded slices needed for the next decision.
 3. Use exact stable IDs returned by inspect for every mutation.
 4. Group one coherent intent into one labelled atomic apply.
+   When Plainform expresses that intent more clearly, use its `program`
+   envelope and follow `docs/ai/patterns.md`; treat the returned interpretation
+   as authoritative and never invent unsupported English.
 5. Dry-run destructive, large, graph-resource, or high-budget work.
 6. Run current whole-project validation after graph or topology changes.
 7. Render WebGPU beauty and inspect the actual evidence before claiming visual

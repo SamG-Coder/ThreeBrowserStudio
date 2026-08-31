@@ -1,9 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createProjectDocument } from '../src/core/documents.mjs';
-import { composeTransformMatrix, transformPointByMatrix } from '../src/core/transform-math.mjs';
+import {
+  composeTransformMatrix, multiplyTransformMatrices, transformPointByMatrix,
+} from '../src/core/transform-math.mjs';
 import { operationSchema } from '../src/mcp/tool-schemas.mjs';
-import { PlainformCompiler, PlainformError, evaluatePlainformMath } from '../src/plainform/index.mjs';
+import {
+  DesignExpressionError, PlainformCompiler, PlainformError,
+  evaluateDesignExpression, evaluatePlainformMath,
+} from '../src/plainform/index.mjs';
 
 function projectFixture() {
   return createProjectDocument({
@@ -73,6 +78,108 @@ test('Plainform mathematical English preserves units, constants, variables, and 
   );
 });
 
+test('Design Plainform mathematics supports dimensional algebra, functions, and natural operator chains', () => {
+  const variables = new Map([
+    ['tower height', { value: 240, dimension: 'length' }],
+    ['floor height', { value: 3.75, dimension: 'length' }],
+  ]);
+  assert.deepEqual(evaluateDesignExpression('floor(tower height / floor height)', variables), {
+    value: 64, dimension: 'scalar',
+  });
+  assert.deepEqual(evaluateDesignExpression('12 metres * 8 metres'), { value: 96, dimension: 'area' });
+  assert.deepEqual(evaluateDesignExpression('sqrt(144 square metres)'), {
+    value: 12, dimension: 'length',
+  });
+  assert.deepEqual(evaluateDesignExpression('lerp(38 metres, 32 metres, smoothstep(0, 1, 0.5))'), {
+    value: 35, dimension: 'length',
+  });
+  assert.ok(Math.abs(evaluateDesignExpression('atan2(1 metre, 1 metre)').value - Math.PI / 4) < 1e-12);
+  assert.throws(
+    () => evaluateDesignExpression('2 metres + 20 degrees'),
+    error => error instanceof DesignExpressionError && error.code === 'plainform_dimension_mismatch',
+  );
+});
+
+test('Design Plainform lowers a bounded mathematical tower to shared geometry and batched entities', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a tower called Parametric Tower with id entity/parametric-tower.
+Let tower height be 24 metres.
+Let floor height be 3 metres.
+Let floor count be floor(tower height / floor height).
+Let tower width be 12 metres.
+Let tower depth be 10 metres.
+Create a rectangular profile called floor profile with width tower width and depth tower depth, rounded by 50 centimetres.
+For every floor i from 0 through floor count minus 1:
+  Let progress be i / (floor count - 1).
+  Let height be i * floor height.
+  Let plate height be height + 10 centimetres.
+  Let twist be 4 degrees * sin(progress * pi * 3).
+  Let taper be lerp(1, 0.84, smoothstep(0.15, 1, progress)).
+  Add a section of the floor profile at height height, rotated around y by twist, and scaled horizontally by taper.
+  Create a floor plate from the floor profile at height plate height, with thickness 20 centimetres, rotated around y by twist, and scaled horizontally by taper.
+End.
+Add a section of the floor profile at height tower height, rotated around y by 0 degrees, and scaled horizontally by 0.84.
+Loft a watertight solid called Tower Envelope with id entity/tower-envelope through all sections of the floor profile.
+Ensure the design is exactly tower height high.
+Preview these changes.
+`, { project: projectFixture() });
+  assert.equal(compiled.dialect, 'design');
+  assert.equal(compiled.requestedPreview, true);
+  assert.deepEqual(compiled.operations.map(operation => operation.op), [
+    'resource.createMany', 'entity.create', 'entity.createMany',
+  ]);
+  assert.ok(compiled.operations.every(operation => operationSchema.safeParse(operation).success));
+  assert.deepEqual(compiled.design, {
+    rootId: 'entity/parametric-tower', entityCount: 9, resourceCount: 2, variableCount: 5,
+  });
+  const resources = compiled.operations[0].items;
+  assert.equal(resources.find(item => item.resource.recipe.kind === 'loft').resource.recipe.sections.length, 9);
+  const entities = compiled.operations[2].items.map(item => item.entity);
+  assert.equal(entities.filter(entity => entity.metadata.plainformDesign.primitive === 'box').length, 8);
+  assert.equal(entities.at(-1).id, 'entity/tower-envelope');
+  assert.equal(new Set(entities.slice(0, 8).map(entity => entity.components.mesh.geometryId)).size, 1);
+  assert.notDeepEqual(entities[1].transform.rotation, entities[2].transform.rotation);
+});
+
+test('Design Plainform creates exact primitive IDs and rejects unsafe bounds or dimensions', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a pavilion called Small Pavilion with id entity/small-pavilion.
+Create a box called Podium with id entity/podium, with width 10 metres, height 2 metres, and depth 8 metres, centred at [0, 1 metre, 0].
+Create a cylinder called Column with id entity/column, with radius 30 centimetres and height 4 metres, centred at [0, 4 metres, 0].
+Ensure every generated object has positive dimensions.
+`, { project: projectFixture() });
+  assert.deepEqual(compiled.operations[2].items.map(item => item.entity.id), ['entity/podium', 'entity/column']);
+  assert.deepEqual(compiled.operations[2].items[1].entity.transform.scale, [0.3, 4, 0.3]);
+  assert.throws(
+    () => new PlainformCompiler().compile(`
+Design a model called Broken with id entity/broken.
+Create a box called Invalid, with width 1 metre, height 0 metres, and depth 1 metre.
+`, { project: projectFixture() }),
+    error => error.code === 'plainform_design_dimension',
+  );
+  assert.throws(
+    () => new PlainformCompiler().compile(`
+Design a model called Unbounded with id entity/unbounded.
+For every item i from 0 through 500:
+  Create a box called Item {i}, with width 1 metre, height 1 metre, and depth 1 metre.
+End.
+`, { project: projectFixture() }),
+    error => error.code === 'plainform_loop_bounds',
+  );
+});
+
+test('Design Plainform binds exact scene distance measurements into parametric dimensions', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a bridge called Measured Bridge with id entity/measured-bridge.
+Let measured span be the distance between entity/leaf-a and entity/leaf-b.
+Create a box called Exact Span with id entity/exact-span, with width measured span, height 20 centimetres, and depth 30 centimetres, centred at [50 centimetres, 2 metres, 0].
+`, { project: projectFixture() });
+  const bridge = compiled.operations[2].items[0].entity;
+  assert.equal(bridge.transform.scale[0], 1);
+  assert.deepEqual(bridge.metadata.plainformDesign.dimensions, { width: 1, height: 0.2, depth: 0.3 });
+  assert.match(compiled.interpretation.join('\n'), /Measured measured span as 1 metres/u);
+});
+
 test('Plainform compiles natural selection, grouping, iteration, and mathematical transforms', () => {
   const compiled = new PlainformCompiler().compile(`
 Find every visible mesh beneath entity/tree that is tagged "leaf".
@@ -136,6 +243,23 @@ Move each nearby form by [0, 1 centimetre, 0].
   assert.deepEqual(compiled.operations[0].transform.position, [0, 0.01, 0]);
   assert.match(compiled.interpretation.join('\n'), /use entity\/leaf-a as “anchor”/u);
   assert.equal(operationSchema.safeParse(compiled.operations[0]).success, true);
+});
+
+test('Plainform transforms a singular named reference with natural singular or collective wording', () => {
+  const compiled = new PlainformCompiler().compile(`
+Use entity/leaf-a as the solar module.
+Move the solar module by [1 metre, 2 metres, 3 metres].
+Rotate each solar module around y by 90 degrees.
+Set the scale of the solar module to 1.5.
+`, { project: projectFixture() });
+  assert.deepEqual(compiled.operations.map(operation => operation.op), [
+    'entity.transformMany', 'entity.transformMany', 'entity.transformMany',
+  ]);
+  assert.ok(compiled.operations.every(operation => operation.entityIds[0] === 'entity/leaf-a'));
+  assert.deepEqual(compiled.operations[0].transform.position, [1, 2, 3]);
+  assert.ok(Math.abs(compiled.operations[1].transform.rotation[1] - Math.PI / 2) < 1e-12);
+  assert.deepEqual(compiled.operations[2].transform.scale, [1.5, 1.5, 1.5]);
+  assert.ok(compiled.operations.every(operation => operationSchema.safeParse(operation).success));
 });
 
 test('Plainform extends and subtracts named selections without domain-specific nouns', () => {
@@ -225,6 +349,49 @@ Lay out a 3 by 4 grid of copies of the panel over the ${face} face of the volume
     gridCentre.forEach((value, axis) => {
       assert.ok(Math.abs(value - expectedCentre[axis]) < 1e-9, `${face} centre axis ${axis}: ${value}`);
     });
+  }
+});
+
+test('Plainform decouples face-grid placement from per-copy orientation', () => {
+  const cases = [{
+    wording: 'keeping each copy upright',
+    expectedRotation: [0, 0, 0],
+  }, {
+    wording: 'preserving the prefab orientation',
+    expectedRotation: [0.2, 0.35, -0.1],
+  }, {
+    wording: "aligning each copy's local y axis with the face normal",
+    expectedAxis: [0, 1, 0],
+  }];
+  for (const subject of cases) {
+    const project = projectFixture();
+    project.scenes['scene/main'].entities['entity/leaf-a'].transform.rotation = [0.2, 0.35, -0.1];
+    const compiled = new PlainformCompiler().compile(`
+Use entity/leaf-a as the module.
+Use entity/trunk as the volume.
+Lay out a 2 by 2 grid of copies of the module over the top face of the volume, spaced 1 metre horizontally and 1 metre vertically, ${subject.wording}.
+`, { project });
+    const transform = compiled.operations.find(operation => operation.op === 'entity.patch').patch.transform;
+    const pattern = compiled.operations.find(operation => operation.op === 'layout.pattern').pattern;
+    assert.ok(Array.isArray(pattern.instanceRotation), subject.wording);
+    const effective = multiplyTransformMatrices(
+      composeTransformMatrix({ position: [0, 0, 0], rotation: transform.rotation, scale: [1, 1, 1] }),
+      composeTransformMatrix({ position: [0, 0, 0], rotation: pattern.instanceRotation, scale: [1, 1, 1] }),
+    );
+    if (subject.expectedRotation) {
+      const expected = composeTransformMatrix({
+        position: [0, 0, 0], rotation: subject.expectedRotation, scale: [1, 1, 1],
+      });
+      effective.forEach((value, index) => assert.ok(
+        Math.abs(value - expected[index]) < 1e-9,
+        `${subject.wording} matrix ${index}: ${value} != ${expected[index]}`,
+      ));
+    } else {
+      const origin = transformPointByMatrix(effective, [0, 0, 0]);
+      const axis = transformPointByMatrix(effective, [0, 1, 0])
+        .map((value, index) => value - origin[index]);
+      axis.forEach((value, index) => assert.ok(Math.abs(value - subject.expectedAxis[index]) < 1e-9));
+    }
   }
 });
 
@@ -426,6 +593,17 @@ test('Shader Plainform preserves open-ended aesthetic language while known terms
   assert.ok(surface.inputs.sheenWeight > 0);
   assert.ok(resource.metadata.plainform.openDescriptors.includes('moon-kissed'));
   assert.ok(resource.metadata.plainform.descriptors.includes('hand-painted'));
+});
+
+test('Shader Plainform accepts the same natural preview request as object Plainform', () => {
+  const compiled = new PlainformCompiler().compile([
+    'Create a shader graph called Preview Glass.',
+    'Set roughness to 0.2.',
+    'Preview these changes.',
+  ].join('\n'), { project: projectFixture() });
+  assert.equal(compiled.dialect, 'shader');
+  assert.equal(compiled.requestedPreview, true);
+  assert.match(compiled.interpretation.at(-1), /dry-run preview/u);
 });
 
 test('Shader Plainform rejects unknown functions and incompatible colour assignments', () => {

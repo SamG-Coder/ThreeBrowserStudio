@@ -287,6 +287,7 @@ const layoutPatternUnion = z.discriminatedUnion('mode', [
     mode: z.literal('grid'),
     counts: layoutGridCounts,
     spacing: vec3,
+    instanceRotation: vec3.optional(),
   }).strict(),
   z.object({
     id: identifier,
@@ -1405,17 +1406,19 @@ export const applySchema = z.object({
       x1: z.number().int().min(0).max(4095), y1: z.number().int().min(0).max(4095),
     }).strict().optional(),
   }).strict().optional(),
-  operations: z.array(operationSchema).min(1).max(128).optional(),
+  operations: z.array(operationSchema).max(128).nullish(),
   program: z.object({
     language: z.literal('plainform-v1'),
     source: z.string().min(1).max(65_536),
   }).strict().optional(),
 }).strict().superRefine((value, context) => {
-  if (value.operations === undefined && value.program === undefined) {
+  if ((value.operations?.length ?? 0) === 0 && value.program === undefined) {
     context.addIssue({ code: 'custom', path: ['operations'], message: 'Provide operations, a program, or both.' });
   }
-}).refine(value => value.previewEvidence === undefined || value.dryRun === true, {
-  message: 'previewEvidence requires dryRun true.',
+}).refine(value => value.previewEvidence === undefined
+  || value.dryRun === true
+  || /(?:^|\n)\s*(?:show me a preview|preview these changes)[.:;]?\s*$/iu.test(value.program?.source ?? ''), {
+  message: 'previewEvidence requires dryRun true or a Plainform preview request.',
   path: ['previewEvidence'],
 }).refine(value => value.candidateToken === undefined || value.dryRun !== true, {
   message: 'candidateToken promotes a prior dry run and cannot be supplied on another dry run.',

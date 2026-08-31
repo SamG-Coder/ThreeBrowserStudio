@@ -14,7 +14,7 @@ const COMMON_KEYS = new Set(['id', 'mode']);
 const MODIFIER_KEYS = new Set(['type', 'enabled', 'enabledViewport', 'enabledRender']);
 const MODE_KEYS = Object.freeze({
   linear: new Set(['count', 'offset']),
-  grid: new Set(['counts', 'spacing']),
+  grid: new Set(['counts', 'spacing', 'instanceRotation']),
   radial: new Set(['count', 'axis', 'center', 'radius', 'startAngle', 'arc', 'closed', 'orientation']),
   scatter: new Set(['count', 'seed', 'bounds', 'rotationMin', 'rotationMax', 'scaleMin', 'scaleMax']),
   surface: new Set([
@@ -146,6 +146,9 @@ export function normalizeLayoutPattern(input, { modifier = false } = {}) {
     }
     output.counts = counts;
     output.spacing = finiteVector3(input.spacing, 'spacing');
+    if (input.instanceRotation !== undefined) {
+      output.instanceRotation = finiteVector3(input.instanceRotation, 'instanceRotation');
+    }
   } else if (mode === 'radial') {
     output.count = instanceCount(input.count);
     if (!['x', 'y', 'z'].includes(input.axis)) invalid('axis must be x, y, or z.', { axis: input.axis });

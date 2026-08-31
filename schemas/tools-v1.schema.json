@@ -638,1989 +638,812 @@
             "additionalProperties": false
           },
           "operations": {
-            "minItems": 1,
-            "maxItems": 128,
-            "type": "array",
-            "items": {
-              "oneOf": [
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "scene.create"
-                    },
-                    "scene": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema1"
-                    },
-                    "alias": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
-                    },
-                    "index": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema5"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "scene"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "scene.patch"
-                    },
-                    "sceneId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "patch": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema1"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "sceneId",
-                    "patch"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "scene.delete"
-                    },
-                    "sceneId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "expectedSceneHash": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "sceneId"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "scene.clear"
-                    },
-                    "sceneId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "expectedSceneHash": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "sceneId"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "scene.setActive"
-                    },
-                    "sceneId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "sceneId"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "scene.settings.patch"
-                    },
-                    "sceneId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "patch": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema1"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "sceneId",
-                    "patch"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "scene.rtx.patch"
-                    },
-                    "sceneId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "patch": {
+            "anyOf": [
+              {
+                "maxItems": 128,
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
                       "type": "object",
                       "properties": {
-                        "enabled": {
-                          "type": "boolean"
+                        "op": {
+                          "type": "string",
+                          "const": "scene.create"
                         },
-                        "lighting": {
-                          "type": "boolean"
+                        "scene": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema1"
                         },
-                        "shadows": {
-                          "type": "boolean"
+                        "alias": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
                         },
-                        "ambientOcclusion": {
-                          "type": "boolean"
-                        },
-                        "directionalSampleCount": {
-                          "type": "integer",
-                          "minimum": 1,
-                          "maximum": 64
-                        },
-                        "aoSampleCount": {
-                          "type": "integer",
-                          "minimum": 1,
-                          "maximum": 64
-                        },
-                        "directionalAngularRadius": {
-                          "type": "number",
-                          "minimum": 0,
-                          "exclusiveMaximum": 1.5707963267948966
-                        },
-                        "shadowStrength": {
-                          "type": "number",
-                          "minimum": 0,
-                          "maximum": 1
-                        },
-                        "aoStrength": {
-                          "type": "number",
-                          "minimum": 0,
-                          "maximum": 1
-                        },
-                        "aoRadius": {
-                          "type": "number",
-                          "exclusiveMinimum": 0,
-                          "maximum": 10000
-                        },
-                        "maxDistance": {
-                          "type": "number",
-                          "exclusiveMinimum": 0,
-                          "maximum": 1000000
-                        },
-                        "rayBias": {
-                          "type": "number",
-                          "exclusiveMinimum": 0,
-                          "maximum": 10000
+                        "index": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema5"
                         }
                       },
+                      "required": [
+                        "op",
+                        "scene"
+                      ],
                       "additionalProperties": false
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "sceneId",
-                    "patch"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "scene.setActiveCamera"
                     },
-                    "sceneId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "cameraId": {
-                      "anyOf": [
-                        {
-                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "sceneId",
-                    "cameraId"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "entity.create"
-                    },
-                    "sceneId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "entity": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema1"
-                    },
-                    "alias": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
-                    },
-                    "index": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema5"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "sceneId",
-                    "entity"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "entity.createMany"
-                    },
-                    "sceneId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "items": {
-                      "minItems": 1,
-                      "maxItems": 128,
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "entity": {
-                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema1"
-                          },
-                          "alias": {
-                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
-                          },
-                          "index": {
-                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema5"
-                          }
-                        },
-                        "required": [
-                          "entity"
-                        ],
-                        "additionalProperties": false
-                      }
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "sceneId",
-                    "items"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "entity.patch"
-                    },
-                    "entityId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "patch": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema1"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "entityId",
-                    "patch"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "entity.patchMany"
-                    },
-                    "entityIds": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema8"
-                    },
-                    "patch": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema1"
-                    },
-                    "expectedEntitySetHash": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "entityIds",
-                    "patch",
-                    "expectedEntitySetHash"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "entity.transformMany"
-                    },
-                    "entityIds": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema8"
-                    },
-                    "mode": {
-                      "type": "string",
-                      "enum": [
-                        "set",
-                        "delta"
-                      ]
-                    },
-                    "transform": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema9"
-                    },
-                    "expectedEntitySetHash": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "entityIds",
-                    "mode",
-                    "transform",
-                    "expectedEntitySetHash"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "entity.group"
-                    },
-                    "sceneId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "entityIds": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema8"
-                    },
-                    "group": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema1"
-                    },
-                    "expectedEntitySetHash": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
-                    },
-                    "alias": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
-                    },
-                    "index": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema5"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "sceneId",
-                    "entityIds",
-                    "group",
-                    "expectedEntitySetHash"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "entity.ungroup"
-                    },
-                    "entityId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "expectedSubtreeHash": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "entityId",
-                    "expectedSubtreeHash"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "entity.duplicate"
-                    },
-                    "entityId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "newId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "name": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 240
-                    },
-                    "parentId": {
-                      "anyOf": [
-                        {
-                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "index": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema5"
-                    },
-                    "deep": {
-                      "default": false,
-                      "type": "boolean"
-                    },
-                    "idMap": {
+                    {
                       "type": "object",
-                      "propertyNames": {
-                        "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "scene.patch"
+                        },
+                        "sceneId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "patch": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema1"
+                        }
                       },
-                      "additionalProperties": {
-                        "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                      }
+                      "required": [
+                        "op",
+                        "sceneId",
+                        "patch"
+                      ],
+                      "additionalProperties": false
                     },
-                    "alias": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "entityId"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "entity.duplicateMany"
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "scene.delete"
+                        },
+                        "sceneId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "expectedSceneHash": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "sceneId"
+                      ],
+                      "additionalProperties": false
                     },
-                    "entityId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "scene.clear"
+                        },
+                        "sceneId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "expectedSceneHash": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "sceneId"
+                      ],
+                      "additionalProperties": false
                     },
-                    "deep": {
-                      "default": false,
-                      "type": "boolean"
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "scene.setActive"
+                        },
+                        "sceneId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "sceneId"
+                      ],
+                      "additionalProperties": false
                     },
-                    "items": {
-                      "minItems": 1,
-                      "maxItems": 128,
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "newId": {
-                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                          },
-                          "idMap": {
-                            "type": "object",
-                            "propertyNames": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "scene.settings.patch"
+                        },
+                        "sceneId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "patch": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema1"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "sceneId",
+                        "patch"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "scene.rtx.patch"
+                        },
+                        "sceneId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "patch": {
+                          "type": "object",
+                          "properties": {
+                            "enabled": {
+                              "type": "boolean"
                             },
-                            "additionalProperties": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                            "lighting": {
+                              "type": "boolean"
+                            },
+                            "shadows": {
+                              "type": "boolean"
+                            },
+                            "ambientOcclusion": {
+                              "type": "boolean"
+                            },
+                            "directionalSampleCount": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 64
+                            },
+                            "aoSampleCount": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 64
+                            },
+                            "directionalAngularRadius": {
+                              "type": "number",
+                              "minimum": 0,
+                              "exclusiveMaximum": 1.5707963267948966
+                            },
+                            "shadowStrength": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1
+                            },
+                            "aoStrength": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1
+                            },
+                            "aoRadius": {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 10000
+                            },
+                            "maxDistance": {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 1000000
+                            },
+                            "rayBias": {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 10000
                             }
                           },
-                          "name": {
-                            "type": "string",
-                            "minLength": 1,
-                            "maxLength": 240
+                          "additionalProperties": false
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "sceneId",
+                        "patch"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "scene.setActiveCamera"
+                        },
+                        "sceneId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "cameraId": {
+                          "anyOf": [
+                            {
+                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "sceneId",
+                        "cameraId"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "entity.create"
+                        },
+                        "sceneId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "entity": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema1"
+                        },
+                        "alias": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
+                        },
+                        "index": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema5"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "sceneId",
+                        "entity"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "entity.createMany"
+                        },
+                        "sceneId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "items": {
+                          "minItems": 1,
+                          "maxItems": 128,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "entity": {
+                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema1"
+                              },
+                              "alias": {
+                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
+                              },
+                              "index": {
+                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema5"
+                              }
+                            },
+                            "required": [
+                              "entity"
+                            ],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "sceneId",
+                        "items"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "entity.patch"
+                        },
+                        "entityId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "patch": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema1"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "entityId",
+                        "patch"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "entity.patchMany"
+                        },
+                        "entityIds": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema8"
+                        },
+                        "patch": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema1"
+                        },
+                        "expectedEntitySetHash": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "entityIds",
+                        "patch",
+                        "expectedEntitySetHash"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "entity.transformMany"
+                        },
+                        "entityIds": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema8"
+                        },
+                        "mode": {
+                          "type": "string",
+                          "enum": [
+                            "set",
+                            "delta"
+                          ]
+                        },
+                        "transform": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema9"
+                        },
+                        "expectedEntitySetHash": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "entityIds",
+                        "mode",
+                        "transform",
+                        "expectedEntitySetHash"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "entity.group"
+                        },
+                        "sceneId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "entityIds": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema8"
+                        },
+                        "group": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema1"
+                        },
+                        "expectedEntitySetHash": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
+                        },
+                        "alias": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
+                        },
+                        "index": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema5"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "sceneId",
+                        "entityIds",
+                        "group",
+                        "expectedEntitySetHash"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "entity.ungroup"
+                        },
+                        "entityId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "expectedSubtreeHash": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "entityId",
+                        "expectedSubtreeHash"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "entity.duplicate"
+                        },
+                        "entityId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "newId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 240
+                        },
+                        "parentId": {
+                          "anyOf": [
+                            {
+                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "index": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema5"
+                        },
+                        "deep": {
+                          "default": false,
+                          "type": "boolean"
+                        },
+                        "idMap": {
+                          "type": "object",
+                          "propertyNames": {
+                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
                           },
-                          "parentId": {
-                            "anyOf": [
-                              {
+                          "additionalProperties": {
+                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                          }
+                        },
+                        "alias": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "entityId"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "entity.duplicateMany"
+                        },
+                        "entityId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "deep": {
+                          "default": false,
+                          "type": "boolean"
+                        },
+                        "items": {
+                          "minItems": 1,
+                          "maxItems": 128,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "newId": {
                                 "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
                               },
-                              {
-                                "type": "null"
+                              "idMap": {
+                                "type": "object",
+                                "propertyNames": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                                },
+                                "additionalProperties": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                                }
+                              },
+                              "name": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 240
+                              },
+                              "parentId": {
+                                "anyOf": [
+                                  {
+                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "index": {
+                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema5"
+                              },
+                              "alias": {
+                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
+                              },
+                              "transform": {
+                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema9"
                               }
-                            ]
-                          },
-                          "index": {
-                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema5"
-                          },
-                          "alias": {
-                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
-                          },
-                          "transform": {
-                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema9"
+                            },
+                            "required": [
+                              "newId"
+                            ],
+                            "additionalProperties": false
                           }
-                        },
-                        "required": [
-                          "newId"
-                        ],
-                        "additionalProperties": false
-                      }
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "entityId",
-                    "items"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "entity.reparent"
-                    },
-                    "entityId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "parentId": {
-                      "anyOf": [
-                        {
-                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                        },
-                        {
-                          "type": "null"
                         }
-                      ]
-                    },
-                    "index": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema5"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "entityId",
-                    "parentId"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "entity.delete"
-                    },
-                    "entityId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "recursive": {
-                      "default": false,
-                      "type": "boolean"
-                    },
-                    "expectedSubtreeHash": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "entityId"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "collection.create"
-                    },
-                    "sceneId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "collection": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema1"
-                    },
-                    "alias": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
-                    },
-                    "index": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema5"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "sceneId",
-                    "collection"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "collection.patch"
-                    },
-                    "collectionId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "patch": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema1"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "collectionId",
-                    "patch"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "collection.membership.patch"
-                    },
-                    "collectionId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "addEntityIds": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema11"
-                    },
-                    "removeEntityIds": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema11"
-                    },
-                    "expectedMembershipHash": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "collectionId",
-                    "expectedMembershipHash"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "collection.reparent"
-                    },
-                    "collectionId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "parentId": {
-                      "anyOf": [
-                        {
-                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "index": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema5"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "collectionId",
-                    "parentId"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "collection.delete"
-                    },
-                    "collectionId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "recursive": {
-                      "default": false,
-                      "type": "boolean"
-                    },
-                    "expectedSubtreeHash": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "collectionId"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "camera.frame"
-                    },
-                    "cameraId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "target": {
-                      "anyOf": [
-                        {
-                          "type": "object",
-                          "properties": {
-                            "targetIds": {
-                              "minItems": 1,
-                              "maxItems": 100,
-                              "type": "array",
-                              "items": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
-                              }
-                            }
-                          },
-                          "required": [
-                            "targetIds"
-                          ],
-                          "additionalProperties": false
-                        },
-                        {
-                          "type": "object",
-                          "properties": {
-                            "bounds": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema12"
-                            }
-                          },
-                          "required": [
-                            "bounds"
-                          ],
-                          "additionalProperties": false
-                        }
-                      ]
-                    },
-                    "aspect": {
-                      "type": "number",
-                      "minimum": 0.1,
-                      "maximum": 10
-                    },
-                    "padding": {
-                      "default": 1.15,
-                      "type": "number",
-                      "minimum": 1,
-                      "maximum": 10
-                    },
-                    "direction": {
-                      "default": [
-                        0,
-                        -0.2,
-                        -1
+                      },
+                      "required": [
+                        "op",
+                        "entityId",
+                        "items"
                       ],
-                      "minItems": 3,
-                      "maxItems": 3,
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema3"
-                      }
+                      "additionalProperties": false
                     },
-                    "view": {
+                    {
                       "type": "object",
                       "properties": {
-                        "azimuth": {
-                          "default": 0,
-                          "type": "number",
-                          "minimum": -25.132741228718345,
-                          "maximum": 25.132741228718345
+                        "op": {
+                          "type": "string",
+                          "const": "entity.reparent"
                         },
-                        "elevation": {
-                          "default": 0.2,
-                          "type": "number",
-                          "minimum": -1.5393804002589986,
-                          "maximum": 1.5393804002589986
+                        "entityId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
                         },
-                        "distanceScale": {
-                          "default": 1,
+                        "parentId": {
+                          "anyOf": [
+                            {
+                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "index": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema5"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "entityId",
+                        "parentId"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "entity.delete"
+                        },
+                        "entityId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "recursive": {
+                          "default": false,
+                          "type": "boolean"
+                        },
+                        "expectedSubtreeHash": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "entityId"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "collection.create"
+                        },
+                        "sceneId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "collection": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema1"
+                        },
+                        "alias": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
+                        },
+                        "index": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema5"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "sceneId",
+                        "collection"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "collection.patch"
+                        },
+                        "collectionId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "patch": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema1"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "collectionId",
+                        "patch"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "collection.membership.patch"
+                        },
+                        "collectionId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "addEntityIds": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema11"
+                        },
+                        "removeEntityIds": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema11"
+                        },
+                        "expectedMembershipHash": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "collectionId",
+                        "expectedMembershipHash"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "collection.reparent"
+                        },
+                        "collectionId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "parentId": {
+                          "anyOf": [
+                            {
+                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "index": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema5"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "collectionId",
+                        "parentId"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "collection.delete"
+                        },
+                        "collectionId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "recursive": {
+                          "default": false,
+                          "type": "boolean"
+                        },
+                        "expectedSubtreeHash": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "collectionId"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "camera.frame"
+                        },
+                        "cameraId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "target": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "targetIds": {
+                                  "minItems": 1,
+                                  "maxItems": 100,
+                                  "type": "array",
+                                  "items": {
+                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                                  }
+                                }
+                              },
+                              "required": [
+                                "targetIds"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "bounds": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema12"
+                                }
+                              },
+                              "required": [
+                                "bounds"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        "aspect": {
                           "type": "number",
                           "minimum": 0.1,
                           "maximum": 10
                         },
-                        "targetOffset": {
+                        "padding": {
+                          "default": 1.15,
+                          "type": "number",
+                          "minimum": 1,
+                          "maximum": 10
+                        },
+                        "direction": {
                           "default": [
                             0,
-                            0,
-                            0
+                            -0.2,
+                            -1
                           ],
-                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema10"
-                        },
-                        "minHeight": {
-                          "type": "number",
-                          "minimum": -1000000,
-                          "maximum": 1000000
-                        }
-                      },
-                      "additionalProperties": false
-                    },
-                    "lockPreviewAspect": {
-                      "default": true,
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "cameraId",
-                    "target",
-                    "aspect"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "lighting.rig.create"
-                    },
-                    "sceneId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "rigId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
-                    },
-                    "preset": {
-                      "type": "string",
-                      "enum": [
-                        "product",
-                        "outdoor",
-                        "cinematic",
-                        "studio"
-                      ]
-                    },
-                    "center": {
-                      "default": [
-                        0,
-                        0,
-                        0
-                      ],
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema10"
-                    },
-                    "scale": {
-                      "default": 1,
-                      "type": "number",
-                      "exclusiveMinimum": 0,
-                      "maximum": 1000000
-                    },
-                    "intensity": {
-                      "default": 1,
-                      "type": "number",
-                      "exclusiveMinimum": 0,
-                      "maximum": 1000000
-                    },
-                    "parentId": {
-                      "anyOf": [
-                        {
-                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "rtx": {
-                      "default": "auto",
-                      "type": "string",
-                      "enum": [
-                        "auto",
-                        "on",
-                        "off"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "sceneId",
-                    "rigId",
-                    "preset"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "layout.pattern"
-                    },
-                    "entityId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "pattern": {
-                      "oneOf": [
-                        {
-                          "type": "object",
-                          "properties": {
-                            "id": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
-                            },
-                            "mode": {
-                              "type": "string",
-                              "const": "linear"
-                            },
-                            "count": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema13"
-                            },
-                            "offset": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema10"
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "mode",
-                            "count",
-                            "offset"
-                          ],
-                          "additionalProperties": false
-                        },
-                        {
-                          "type": "object",
-                          "properties": {
-                            "id": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
-                            },
-                            "mode": {
-                              "type": "string",
-                              "const": "grid"
-                            },
-                            "counts": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema14"
-                            },
-                            "spacing": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema10"
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "mode",
-                            "counts",
-                            "spacing"
-                          ],
-                          "additionalProperties": false
-                        },
-                        {
-                          "type": "object",
-                          "properties": {
-                            "id": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
-                            },
-                            "mode": {
-                              "type": "string",
-                              "const": "radial"
-                            },
-                            "count": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema13"
-                            },
-                            "axis": {
-                              "type": "string",
-                              "enum": [
-                                "x",
-                                "y",
-                                "z"
-                              ]
-                            },
-                            "center": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema10"
-                            },
-                            "radius": {
-                              "type": "number",
-                              "minimum": 0,
-                              "maximum": 1000000000
-                            },
-                            "startAngle": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema3"
-                            },
-                            "arc": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema3"
-                            },
-                            "closed": {
-                              "type": "boolean"
-                            },
-                            "orientation": {
-                              "type": "string",
-                              "enum": [
-                                "keep",
-                                "radial",
-                                "tangent"
-                              ]
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "mode",
-                            "count",
-                            "axis",
-                            "center",
-                            "radius",
-                            "startAngle",
-                            "arc",
-                            "closed",
-                            "orientation"
-                          ],
-                          "additionalProperties": false
-                        },
-                        {
-                          "type": "object",
-                          "properties": {
-                            "id": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
-                            },
-                            "mode": {
-                              "type": "string",
-                              "const": "scatter"
-                            },
-                            "count": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema13"
-                            },
-                            "seed": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema15"
-                            },
-                            "bounds": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema12"
-                            },
-                            "rotationMin": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema10"
-                            },
-                            "rotationMax": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema10"
-                            },
-                            "scaleMin": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema16"
-                            },
-                            "scaleMax": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema16"
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "mode",
-                            "count",
-                            "seed",
-                            "bounds"
-                          ],
-                          "additionalProperties": false
-                        },
-                        {
-                          "type": "object",
-                          "properties": {
-                            "id": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
-                            },
-                            "mode": {
-                              "type": "string",
-                              "const": "surface"
-                            },
-                            "count": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema13"
-                            },
-                            "seed": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema15"
-                            },
-                            "targetEntityId": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                            },
-                            "orientation": {
-                              "type": "string",
-                              "enum": [
-                                "keep",
-                                "normal",
-                                "gravity"
-                              ]
-                            },
-                            "normalAxis": {
-                              "type": "string",
-                              "enum": [
-                                "x",
-                                "y",
-                                "z"
-                              ]
-                            },
-                            "gravity": {
-                              "minItems": 3,
-                              "maxItems": 3,
-                              "type": "array",
-                              "items": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema3"
-                              }
-                            },
-                            "offset": {
-                              "type": "number",
-                              "minimum": -1000000000,
-                              "maximum": 1000000000
-                            },
-                            "minDistance": {
-                              "type": "number",
-                              "minimum": 0,
-                              "maximum": 1000000000
-                            },
-                            "rotationMin": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema3"
-                            },
-                            "rotationMax": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema3"
-                            },
-                            "scaleMin": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema16"
-                            },
-                            "scaleMax": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema16"
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "mode",
-                            "count",
-                            "seed",
-                            "targetEntityId"
-                          ],
-                          "additionalProperties": false
-                        }
-                      ]
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "entityId",
-                    "pattern"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "stroke.apply"
-                    },
-                    "stroke": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema17"
-                    },
-                    "strokeId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "storeAsAssetId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
-                    },
-                    "target": {
-                      "oneOf": [
-                        {
-                          "type": "object",
-                          "properties": {
-                            "kind": {
-                              "type": "string",
-                              "const": "sculpt"
-                            },
-                            "entityId": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                            },
-                            "expectedTopologyHash": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
-                            },
-                            "brush": {
-                              "default": "draw",
-                              "type": "string",
-                              "enum": [
-                                "draw",
-                                "inflate",
-                                "crease",
-                                "flatten",
-                                "smooth",
-                                "grab"
-                              ]
-                            },
-                            "amount": {
-                              "default": 0.1,
-                              "type": "number",
-                              "minimum": -10000,
-                              "maximum": 10000
-                            },
-                            "direction": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema20"
-                            },
-                            "falloff": {
-                              "type": "string",
-                              "enum": [
-                                "constant",
-                                "linear",
-                                "smooth",
-                                "sharp",
-                                "sphere"
-                              ]
-                            },
-                            "vertexIndices": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema22"
-                            },
-                            "selection": {
-                              "type": "string",
-                              "const": "all"
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "entityId"
-                          ],
-                          "additionalProperties": false
-                        },
-                        {
-                          "type": "object",
-                          "properties": {
-                            "kind": {
-                              "type": "string",
-                              "const": "attribute"
-                            },
-                            "entityId": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                            },
-                            "expectedTopologyHash": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
-                            },
-                            "layer": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
-                            },
-                            "color": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema21"
-                            },
-                            "opacity": {
-                              "type": "number",
-                              "minimum": 0,
-                              "maximum": 1
-                            },
-                            "blend": {
-                              "type": "string",
-                              "enum": [
-                                "mix",
-                                "add",
-                                "subtract",
-                                "multiply",
-                                "lighten",
-                                "darken"
-                              ]
-                            },
-                            "falloff": {
-                              "type": "string",
-                              "enum": [
-                                "constant",
-                                "linear",
-                                "smooth",
-                                "sharp",
-                                "sphere"
-                              ]
-                            },
-                            "setActive": {
-                              "type": "boolean"
-                            },
-                            "createIfMissing": {
-                              "default": true,
-                              "type": "boolean"
-                            },
-                            "fill": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema21"
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "entityId",
-                            "expectedTopologyHash",
-                            "layer"
-                          ],
-                          "additionalProperties": false
-                        },
-                        {
-                          "type": "object",
-                          "properties": {
-                            "kind": {
-                              "type": "string",
-                              "const": "texture"
-                            },
-                            "textureId": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                            },
-                            "channel": {
-                              "type": "string",
-                              "enum": [
-                                "r",
-                                "g",
-                                "b",
-                                "a",
-                                "rgba"
-                              ]
-                            },
-                            "color": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema21"
-                            },
-                            "opacity": {
-                              "type": "number",
-                              "minimum": 0,
-                              "maximum": 1
-                            },
-                            "blend": {
-                              "type": "string",
-                              "enum": [
-                                "mix",
-                                "add",
-                                "subtract",
-                                "multiply",
-                                "lighten",
-                                "darken"
-                              ]
-                            },
-                            "falloff": {
-                              "type": "string",
-                              "enum": [
-                                "constant",
-                                "linear",
-                                "smooth",
-                                "sharp",
-                                "sphere"
-                              ]
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "textureId"
-                          ],
-                          "additionalProperties": false
-                        },
-                        {
-                          "type": "object",
-                          "properties": {
-                            "kind": {
-                              "type": "string",
-                              "const": "curve"
-                            },
-                            "sceneId": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                            },
-                            "geometryId": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
-                            },
-                            "entityId": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
-                            },
-                            "materialId": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                            },
-                            "parentId": {
-                              "anyOf": [
-                                {
-                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "name": {
-                              "type": "string",
-                              "minLength": 1,
-                              "maxLength": 240
-                            },
-                            "radius": {
-                              "default": 0.025,
-                              "type": "number",
-                              "exclusiveMinimum": 0,
-                              "maximum": 10000
-                            },
-                            "tubularSegments": {
-                              "type": "integer",
-                              "minimum": 1,
-                              "maximum": 512
-                            },
-                            "radialSegments": {
-                              "default": 8,
-                              "type": "integer",
-                              "minimum": 3,
-                              "maximum": 64
-                            },
-                            "closed": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "sceneId",
-                            "geometryId",
-                            "entityId",
-                            "materialId"
-                          ],
-                          "additionalProperties": false
-                        },
-                        {
-                          "type": "object",
-                          "properties": {
-                            "kind": {
-                              "type": "string",
-                              "const": "scatter"
-                            },
-                            "entityId": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                            },
-                            "spacing": {
-                              "type": "number",
-                              "exclusiveMinimum": 0,
-                              "maximum": 1000000
-                            },
-                            "count": {
-                              "type": "integer",
-                              "minimum": 1,
-                              "maximum": 8192
-                            },
-                            "seed": {
-                              "type": "integer",
-                              "minimum": -2147483648,
-                              "maximum": 2147483647
-                            },
-                            "jitter": {
-                              "type": "number",
-                              "minimum": 0,
-                              "maximum": 1000000
-                            },
-                            "orientation": {
-                              "type": "string",
-                              "enum": [
-                                "keep",
-                                "tangent",
-                                "normal",
-                                "gravity"
-                              ]
-                            },
-                            "gravity": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema20"
-                            },
-                            "rotationJitter": {
-                              "type": "number",
-                              "minimum": 0,
-                              "maximum": 6.283185307179586
-                            },
-                            "scaleMin": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema16"
-                            },
-                            "scaleMax": {
-                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema16"
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "entityId"
-                          ],
-                          "additionalProperties": false
-                        }
-                      ]
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "target"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "modifier.create"
-                    },
-                    "entityId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "modifier": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema24"
-                    },
-                    "expectedStackHash": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
-                    },
-                    "index": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema32"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "entityId",
-                    "modifier",
-                    "expectedStackHash"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "modifier.patch"
-                    },
-                    "entityId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "modifierId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
-                    },
-                    "patch": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema33"
-                    },
-                    "expectedStackHash": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "entityId",
-                    "modifierId",
-                    "patch",
-                    "expectedStackHash"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "modifier.move"
-                    },
-                    "entityId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "modifierId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
-                    },
-                    "index": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema32"
-                    },
-                    "expectedStackHash": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "entityId",
-                    "modifierId",
-                    "index",
-                    "expectedStackHash"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "modifier.delete"
-                    },
-                    "entityId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "modifierId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
-                    },
-                    "expectedStackHash": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "entityId",
-                    "modifierId",
-                    "expectedStackHash"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "modifier.stack.edit"
-                    },
-                    "entityId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "changes": {
-                      "minItems": 1,
-                      "maxItems": 128,
-                      "type": "array",
-                      "items": {
-                        "oneOf": [
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "create"
-                              },
-                              "modifier": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema24"
-                              },
-                              "index": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema32"
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "modifier"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "patch"
-                              },
-                              "modifierId": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
-                              },
-                              "patch": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema33"
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "modifierId",
-                              "patch"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "move"
-                              },
-                              "modifierId": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
-                              },
-                              "index": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema32"
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "modifierId",
-                              "index"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "delete"
-                              },
-                              "modifierId": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "modifierId"
-                            ],
-                            "additionalProperties": false
-                          }
-                        ]
-                      }
-                    },
-                    "expectedStackHash": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "entityId",
-                    "changes",
-                    "expectedStackHash"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "geometry.edit"
-                    },
-                    "resourceId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "edits": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema37"
-                    },
-                    "expectedTopologyHash": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "resourceId",
-                    "edits"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "geometry.realize"
-                    },
-                    "resourceId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
-                    },
-                    "expectedResourceHash": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "resourceId"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "geometry.loft.edit"
-                    },
-                    "resourceId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
-                    },
-                    "changes": {
-                      "minItems": 1,
-                      "maxItems": 64,
-                      "type": "array",
-                      "items": {
-                        "oneOf": [
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "create"
-                              },
-                              "section": {
-                                "type": "object",
-                                "properties": {
-                                  "id": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
-                                  },
-                                  "points": {
-                                    "minItems": 3,
-                                    "maxItems": 256,
-                                    "type": "array",
-                                    "items": {
-                                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
-                                    }
-                                  },
-                                  "transform": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema62"
-                                  }
-                                },
-                                "required": [
-                                  "id",
-                                  "points"
-                                ],
-                                "additionalProperties": false
-                              },
-                              "index": {
-                                "type": "integer",
-                                "minimum": 0,
-                                "maximum": 255
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "section"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "patch"
-                              },
-                              "sectionId": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
-                              },
-                              "patch": {
-                                "type": "object",
-                                "properties": {
-                                  "points": {
-                                    "minItems": 3,
-                                    "maxItems": 256,
-                                    "type": "array",
-                                    "items": {
-                                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
-                                    }
-                                  },
-                                  "transform": {
-                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema62"
-                                  }
-                                },
-                                "additionalProperties": false
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "sectionId",
-                              "patch"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "move"
-                              },
-                              "sectionId": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
-                              },
-                              "index": {
-                                "type": "integer",
-                                "minimum": 0,
-                                "maximum": 255
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "sectionId",
-                              "index"
-                            ],
-                            "additionalProperties": false
-                          },
-                          {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "type": "string",
-                                "const": "delete"
-                              },
-                              "sectionId": {
-                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "sectionId"
-                            ],
-                            "additionalProperties": false
-                          }
-                        ]
-                      }
-                    },
-                    "expectedResourceHash": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "resourceId",
-                    "changes"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "geometry.selection.edit"
-                    },
-                    "resourceId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
-                    },
-                    "element": {
-                      "type": "string",
-                      "enum": [
-                        "vertices",
-                        "faces"
-                      ]
-                    },
-                    "meshFilter": {
-                      "type": "object",
-                      "properties": {
-                        "min": {
-                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema10"
-                        },
-                        "max": {
-                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema10"
-                        },
-                        "yMin": {
-                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema3"
-                        },
-                        "yMax": {
-                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema3"
-                        },
-                        "boundary": {
-                          "type": "boolean"
-                        },
-                        "nonManifold": {
-                          "type": "boolean"
-                        },
-                        "sharp": {
-                          "type": "boolean"
-                        },
-                        "minCrease": {
-                          "type": "number",
-                          "minimum": 0,
-                          "maximum": 1
-                        },
-                        "materialIndex": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 31
-                        },
-                        "center": {
-                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema10"
-                        },
-                        "radius": {
-                          "type": "number",
-                          "exclusiveMinimum": 0,
-                          "maximum": 1000000
-                        },
-                        "normal": {
                           "minItems": 3,
                           "maxItems": 3,
                           "type": "array",
@@ -2628,279 +1451,1465 @@
                             "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema3"
                           }
                         },
-                        "minNormalDot": {
-                          "type": "number",
-                          "minimum": -1,
-                          "maximum": 1
+                        "view": {
+                          "type": "object",
+                          "properties": {
+                            "azimuth": {
+                              "default": 0,
+                              "type": "number",
+                              "minimum": -25.132741228718345,
+                              "maximum": 25.132741228718345
+                            },
+                            "elevation": {
+                              "default": 0.2,
+                              "type": "number",
+                              "minimum": -1.5393804002589986,
+                              "maximum": 1.5393804002589986
+                            },
+                            "distanceScale": {
+                              "default": 1,
+                              "type": "number",
+                              "minimum": 0.1,
+                              "maximum": 10
+                            },
+                            "targetOffset": {
+                              "default": [
+                                0,
+                                0,
+                                0
+                              ],
+                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema10"
+                            },
+                            "minHeight": {
+                              "type": "number",
+                              "minimum": -1000000,
+                              "maximum": 1000000
+                            }
+                          },
+                          "additionalProperties": false
                         },
-                        "notAdjacentTo": {
+                        "lockPreviewAspect": {
+                          "default": true,
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "cameraId",
+                        "target",
+                        "aspect"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "lighting.rig.create"
+                        },
+                        "sceneId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "rigId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                        },
+                        "preset": {
+                          "type": "string",
+                          "enum": [
+                            "product",
+                            "outdoor",
+                            "cinematic",
+                            "studio"
+                          ]
+                        },
+                        "center": {
+                          "default": [
+                            0,
+                            0,
+                            0
+                          ],
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema10"
+                        },
+                        "scale": {
+                          "default": 1,
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 1000000
+                        },
+                        "intensity": {
+                          "default": 1,
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 1000000
+                        },
+                        "parentId": {
+                          "anyOf": [
+                            {
+                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "rtx": {
+                          "default": "auto",
+                          "type": "string",
+                          "enum": [
+                            "auto",
+                            "on",
+                            "off"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "sceneId",
+                        "rigId",
+                        "preset"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "layout.pattern"
+                        },
+                        "entityId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "pattern": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                                },
+                                "mode": {
+                                  "type": "string",
+                                  "const": "linear"
+                                },
+                                "count": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema13"
+                                },
+                                "offset": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema10"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "mode",
+                                "count",
+                                "offset"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                                },
+                                "mode": {
+                                  "type": "string",
+                                  "const": "grid"
+                                },
+                                "counts": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema14"
+                                },
+                                "spacing": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema10"
+                                },
+                                "instanceRotation": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema10"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "mode",
+                                "counts",
+                                "spacing"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                                },
+                                "mode": {
+                                  "type": "string",
+                                  "const": "radial"
+                                },
+                                "count": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema13"
+                                },
+                                "axis": {
+                                  "type": "string",
+                                  "enum": [
+                                    "x",
+                                    "y",
+                                    "z"
+                                  ]
+                                },
+                                "center": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema10"
+                                },
+                                "radius": {
+                                  "type": "number",
+                                  "minimum": 0,
+                                  "maximum": 1000000000
+                                },
+                                "startAngle": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema3"
+                                },
+                                "arc": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema3"
+                                },
+                                "closed": {
+                                  "type": "boolean"
+                                },
+                                "orientation": {
+                                  "type": "string",
+                                  "enum": [
+                                    "keep",
+                                    "radial",
+                                    "tangent"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "mode",
+                                "count",
+                                "axis",
+                                "center",
+                                "radius",
+                                "startAngle",
+                                "arc",
+                                "closed",
+                                "orientation"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                                },
+                                "mode": {
+                                  "type": "string",
+                                  "const": "scatter"
+                                },
+                                "count": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema13"
+                                },
+                                "seed": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema15"
+                                },
+                                "bounds": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema12"
+                                },
+                                "rotationMin": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema10"
+                                },
+                                "rotationMax": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema10"
+                                },
+                                "scaleMin": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema16"
+                                },
+                                "scaleMax": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema16"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "mode",
+                                "count",
+                                "seed",
+                                "bounds"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                                },
+                                "mode": {
+                                  "type": "string",
+                                  "const": "surface"
+                                },
+                                "count": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema13"
+                                },
+                                "seed": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema15"
+                                },
+                                "targetEntityId": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                                },
+                                "orientation": {
+                                  "type": "string",
+                                  "enum": [
+                                    "keep",
+                                    "normal",
+                                    "gravity"
+                                  ]
+                                },
+                                "normalAxis": {
+                                  "type": "string",
+                                  "enum": [
+                                    "x",
+                                    "y",
+                                    "z"
+                                  ]
+                                },
+                                "gravity": {
+                                  "minItems": 3,
+                                  "maxItems": 3,
+                                  "type": "array",
+                                  "items": {
+                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema3"
+                                  }
+                                },
+                                "offset": {
+                                  "type": "number",
+                                  "minimum": -1000000000,
+                                  "maximum": 1000000000
+                                },
+                                "minDistance": {
+                                  "type": "number",
+                                  "minimum": 0,
+                                  "maximum": 1000000000
+                                },
+                                "rotationMin": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema3"
+                                },
+                                "rotationMax": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema3"
+                                },
+                                "scaleMin": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema16"
+                                },
+                                "scaleMax": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema16"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "mode",
+                                "count",
+                                "seed",
+                                "targetEntityId"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "entityId",
+                        "pattern"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "stroke.apply"
+                        },
+                        "stroke": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema17"
+                        },
+                        "strokeId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "storeAsAssetId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                        },
+                        "target": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "const": "sculpt"
+                                },
+                                "entityId": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                                },
+                                "expectedTopologyHash": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
+                                },
+                                "brush": {
+                                  "default": "draw",
+                                  "type": "string",
+                                  "enum": [
+                                    "draw",
+                                    "inflate",
+                                    "crease",
+                                    "flatten",
+                                    "smooth",
+                                    "grab"
+                                  ]
+                                },
+                                "amount": {
+                                  "default": 0.1,
+                                  "type": "number",
+                                  "minimum": -10000,
+                                  "maximum": 10000
+                                },
+                                "direction": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema20"
+                                },
+                                "falloff": {
+                                  "type": "string",
+                                  "enum": [
+                                    "constant",
+                                    "linear",
+                                    "smooth",
+                                    "sharp",
+                                    "sphere"
+                                  ]
+                                },
+                                "vertexIndices": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema22"
+                                },
+                                "selection": {
+                                  "type": "string",
+                                  "const": "all"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "entityId"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "const": "attribute"
+                                },
+                                "entityId": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                                },
+                                "expectedTopologyHash": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
+                                },
+                                "layer": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema23"
+                                },
+                                "color": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema21"
+                                },
+                                "opacity": {
+                                  "type": "number",
+                                  "minimum": 0,
+                                  "maximum": 1
+                                },
+                                "blend": {
+                                  "type": "string",
+                                  "enum": [
+                                    "mix",
+                                    "add",
+                                    "subtract",
+                                    "multiply",
+                                    "lighten",
+                                    "darken"
+                                  ]
+                                },
+                                "falloff": {
+                                  "type": "string",
+                                  "enum": [
+                                    "constant",
+                                    "linear",
+                                    "smooth",
+                                    "sharp",
+                                    "sphere"
+                                  ]
+                                },
+                                "setActive": {
+                                  "type": "boolean"
+                                },
+                                "createIfMissing": {
+                                  "default": true,
+                                  "type": "boolean"
+                                },
+                                "fill": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema21"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "entityId",
+                                "expectedTopologyHash",
+                                "layer"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "const": "texture"
+                                },
+                                "textureId": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                                },
+                                "channel": {
+                                  "type": "string",
+                                  "enum": [
+                                    "r",
+                                    "g",
+                                    "b",
+                                    "a",
+                                    "rgba"
+                                  ]
+                                },
+                                "color": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema21"
+                                },
+                                "opacity": {
+                                  "type": "number",
+                                  "minimum": 0,
+                                  "maximum": 1
+                                },
+                                "blend": {
+                                  "type": "string",
+                                  "enum": [
+                                    "mix",
+                                    "add",
+                                    "subtract",
+                                    "multiply",
+                                    "lighten",
+                                    "darken"
+                                  ]
+                                },
+                                "falloff": {
+                                  "type": "string",
+                                  "enum": [
+                                    "constant",
+                                    "linear",
+                                    "smooth",
+                                    "sharp",
+                                    "sphere"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "textureId"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "const": "curve"
+                                },
+                                "sceneId": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                                },
+                                "geometryId": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                                },
+                                "entityId": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                                },
+                                "materialId": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                                },
+                                "parentId": {
+                                  "anyOf": [
+                                    {
+                                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "name": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 240
+                                },
+                                "radius": {
+                                  "default": 0.025,
+                                  "type": "number",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 10000
+                                },
+                                "tubularSegments": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 512
+                                },
+                                "radialSegments": {
+                                  "default": 8,
+                                  "type": "integer",
+                                  "minimum": 3,
+                                  "maximum": 64
+                                },
+                                "closed": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "sceneId",
+                                "geometryId",
+                                "entityId",
+                                "materialId"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "const": "scatter"
+                                },
+                                "entityId": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                                },
+                                "spacing": {
+                                  "type": "number",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 1000000
+                                },
+                                "count": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 8192
+                                },
+                                "seed": {
+                                  "type": "integer",
+                                  "minimum": -2147483648,
+                                  "maximum": 2147483647
+                                },
+                                "jitter": {
+                                  "type": "number",
+                                  "minimum": 0,
+                                  "maximum": 1000000
+                                },
+                                "orientation": {
+                                  "type": "string",
+                                  "enum": [
+                                    "keep",
+                                    "tangent",
+                                    "normal",
+                                    "gravity"
+                                  ]
+                                },
+                                "gravity": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema20"
+                                },
+                                "rotationJitter": {
+                                  "type": "number",
+                                  "minimum": 0,
+                                  "maximum": 6.283185307179586
+                                },
+                                "scaleMin": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema16"
+                                },
+                                "scaleMax": {
+                                  "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema16"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "entityId"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "target"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "modifier.create"
+                        },
+                        "entityId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "modifier": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema24"
+                        },
+                        "expectedStackHash": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
+                        },
+                        "index": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema32"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "entityId",
+                        "modifier",
+                        "expectedStackHash"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "modifier.patch"
+                        },
+                        "entityId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "modifierId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                        },
+                        "patch": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema33"
+                        },
+                        "expectedStackHash": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "entityId",
+                        "modifierId",
+                        "patch",
+                        "expectedStackHash"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "modifier.move"
+                        },
+                        "entityId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "modifierId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                        },
+                        "index": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema32"
+                        },
+                        "expectedStackHash": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "entityId",
+                        "modifierId",
+                        "index",
+                        "expectedStackHash"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "modifier.delete"
+                        },
+                        "entityId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "modifierId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                        },
+                        "expectedStackHash": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "entityId",
+                        "modifierId",
+                        "expectedStackHash"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "modifier.stack.edit"
+                        },
+                        "entityId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "changes": {
+                          "minItems": 1,
+                          "maxItems": 128,
+                          "type": "array",
+                          "items": {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "create"
+                                  },
+                                  "modifier": {
+                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema24"
+                                  },
+                                  "index": {
+                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema32"
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "modifier"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "patch"
+                                  },
+                                  "modifierId": {
+                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                                  },
+                                  "patch": {
+                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema33"
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "modifierId",
+                                  "patch"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "move"
+                                  },
+                                  "modifierId": {
+                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                                  },
+                                  "index": {
+                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema32"
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "modifierId",
+                                  "index"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "delete"
+                                  },
+                                  "modifierId": {
+                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "modifierId"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
+                          }
+                        },
+                        "expectedStackHash": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "entityId",
+                        "changes",
+                        "expectedStackHash"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "geometry.edit"
+                        },
+                        "resourceId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "edits": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema37"
+                        },
+                        "expectedTopologyHash": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "resourceId",
+                        "edits"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "geometry.realize"
+                        },
+                        "resourceId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                        },
+                        "expectedResourceHash": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "resourceId"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "geometry.loft.edit"
+                        },
+                        "resourceId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                        },
+                        "changes": {
+                          "minItems": 1,
                           "maxItems": 64,
                           "type": "array",
                           "items": {
-                            "type": "integer",
-                            "minimum": 0,
-                            "maximum": 1000000
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "create"
+                                  },
+                                  "section": {
+                                    "type": "object",
+                                    "properties": {
+                                      "id": {
+                                        "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                                      },
+                                      "points": {
+                                        "minItems": 3,
+                                        "maxItems": 256,
+                                        "type": "array",
+                                        "items": {
+                                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
+                                        }
+                                      },
+                                      "transform": {
+                                        "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema62"
+                                      }
+                                    },
+                                    "required": [
+                                      "id",
+                                      "points"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "index": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 255
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "section"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "patch"
+                                  },
+                                  "sectionId": {
+                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                                  },
+                                  "patch": {
+                                    "type": "object",
+                                    "properties": {
+                                      "points": {
+                                        "minItems": 3,
+                                        "maxItems": 256,
+                                        "type": "array",
+                                        "items": {
+                                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema18"
+                                        }
+                                      },
+                                      "transform": {
+                                        "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema62"
+                                      }
+                                    },
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "sectionId",
+                                  "patch"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "move"
+                                  },
+                                  "sectionId": {
+                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                                  },
+                                  "index": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 255
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "sectionId",
+                                  "index"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "delete"
+                                  },
+                                  "sectionId": {
+                                    "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "sectionId"
+                                ],
+                                "additionalProperties": false
+                              }
+                            ]
+                          }
+                        },
+                        "expectedResourceHash": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "resourceId",
+                        "changes"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "geometry.selection.edit"
+                        },
+                        "resourceId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                        },
+                        "element": {
+                          "type": "string",
+                          "enum": [
+                            "vertices",
+                            "faces"
+                          ]
+                        },
+                        "meshFilter": {
+                          "type": "object",
+                          "properties": {
+                            "min": {
+                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema10"
+                            },
+                            "max": {
+                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema10"
+                            },
+                            "yMin": {
+                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema3"
+                            },
+                            "yMax": {
+                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema3"
+                            },
+                            "boundary": {
+                              "type": "boolean"
+                            },
+                            "nonManifold": {
+                              "type": "boolean"
+                            },
+                            "sharp": {
+                              "type": "boolean"
+                            },
+                            "minCrease": {
+                              "type": "number",
+                              "minimum": 0,
+                              "maximum": 1
+                            },
+                            "materialIndex": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 31
+                            },
+                            "center": {
+                              "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema10"
+                            },
+                            "radius": {
+                              "type": "number",
+                              "exclusiveMinimum": 0,
+                              "maximum": 1000000
+                            },
+                            "normal": {
+                              "minItems": 3,
+                              "maxItems": 3,
+                              "type": "array",
+                              "items": {
+                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema3"
+                              }
+                            },
+                            "minNormalDot": {
+                              "type": "number",
+                              "minimum": -1,
+                              "maximum": 1
+                            },
+                            "notAdjacentTo": {
+                              "maxItems": 64,
+                              "type": "array",
+                              "items": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 1000000
+                              }
+                            }
+                          },
+                          "additionalProperties": false
+                        },
+                        "expectedSelectionHash": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
+                        },
+                        "edits": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema37"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "resourceId",
+                        "element",
+                        "meshFilter",
+                        "expectedSelectionHash",
+                        "edits"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "material.variant.create"
+                        },
+                        "baseMaterialId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "materialId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                        },
+                        "patch": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema63"
+                        },
+                        "alias": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "baseMaterialId",
+                        "materialId",
+                        "patch"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "material.look.create"
+                        },
+                        "materialId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                        },
+                        "look": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema65"
+                        },
+                        "color": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema66"
+                        },
+                        "roughness": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema68"
+                        },
+                        "metalness": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema69"
+                        },
+                        "clearcoat": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema70"
+                        },
+                        "clearcoatRoughness": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema71"
+                        },
+                        "transmission": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema72"
+                        },
+                        "opacity": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema73"
+                        },
+                        "emissiveIntensity": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema74"
+                        },
+                        "anisotropy": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema75"
+                        },
+                        "emissive": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema76"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "materialId",
+                        "look"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "material.look.patch"
+                        },
+                        "materialId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                        },
+                        "look": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema65"
+                        },
+                        "color": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema66"
+                        },
+                        "roughness": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema68"
+                        },
+                        "metalness": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema69"
+                        },
+                        "clearcoat": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema70"
+                        },
+                        "clearcoatRoughness": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema71"
+                        },
+                        "transmission": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema72"
+                        },
+                        "opacity": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema73"
+                        },
+                        "emissiveIntensity": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema74"
+                        },
+                        "anisotropy": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema75"
+                        },
+                        "emissive": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema76"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "materialId"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "resource.create"
+                        },
+                        "resourceType": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema77"
+                        },
+                        "resource": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema63"
+                        },
+                        "alias": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "resourceType",
+                        "resource"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "resource.createMany"
+                        },
+                        "items": {
+                          "minItems": 1,
+                          "maxItems": 128,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "resourceType": {
+                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema77"
+                              },
+                              "resource": {
+                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema63"
+                              },
+                              "alias": {
+                                "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
+                              }
+                            },
+                            "required": [
+                              "resourceType",
+                              "resource"
+                            ],
+                            "additionalProperties": false
                           }
                         }
                       },
+                      "required": [
+                        "op",
+                        "items"
+                      ],
                       "additionalProperties": false
                     },
-                    "expectedSelectionHash": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
-                    },
-                    "edits": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema37"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "resourceId",
-                    "element",
-                    "meshFilter",
-                    "expectedSelectionHash",
-                    "edits"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "material.variant.create"
-                    },
-                    "baseMaterialId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "materialId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
-                    },
-                    "patch": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema63"
-                    },
-                    "alias": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "baseMaterialId",
-                    "materialId",
-                    "patch"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "material.look.create"
-                    },
-                    "materialId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
-                    },
-                    "look": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema65"
-                    },
-                    "color": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema66"
-                    },
-                    "roughness": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema68"
-                    },
-                    "metalness": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema69"
-                    },
-                    "clearcoat": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema70"
-                    },
-                    "clearcoatRoughness": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema71"
-                    },
-                    "transmission": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema72"
-                    },
-                    "opacity": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema73"
-                    },
-                    "emissiveIntensity": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema74"
-                    },
-                    "anisotropy": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema75"
-                    },
-                    "emissive": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema76"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "materialId",
-                    "look"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "material.look.patch"
-                    },
-                    "materialId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
-                    },
-                    "look": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema65"
-                    },
-                    "color": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema66"
-                    },
-                    "roughness": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema68"
-                    },
-                    "metalness": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema69"
-                    },
-                    "clearcoat": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema70"
-                    },
-                    "clearcoatRoughness": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema71"
-                    },
-                    "transmission": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema72"
-                    },
-                    "opacity": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema73"
-                    },
-                    "emissiveIntensity": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema74"
-                    },
-                    "anisotropy": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema75"
-                    },
-                    "emissive": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema76"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "materialId"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "resource.create"
-                    },
-                    "resourceType": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema77"
-                    },
-                    "resource": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema63"
-                    },
-                    "alias": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "resourceType",
-                    "resource"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "resource.createMany"
-                    },
-                    "items": {
-                      "minItems": 1,
-                      "maxItems": 128,
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "resourceType": {
-                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema77"
-                          },
-                          "resource": {
-                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema63"
-                          },
-                          "alias": {
-                            "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema4"
-                          }
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "resource.patch"
                         },
-                        "required": [
-                          "resourceType",
-                          "resource"
-                        ],
-                        "additionalProperties": false
-                      }
+                        "resourceType": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema77"
+                        },
+                        "resourceId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "patch": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema63"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "resourceType",
+                        "resourceId",
+                        "patch"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "resource.delete"
+                        },
+                        "resourceType": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema77"
+                        },
+                        "resourceId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "resourceType",
+                        "resourceId"
+                      ],
+                      "additionalProperties": false
                     }
-                  },
-                  "required": [
-                    "op",
-                    "items"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "resource.patch"
-                    },
-                    "resourceType": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema77"
-                    },
-                    "resourceId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    },
-                    "patch": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema63"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "resourceType",
-                    "resourceId",
-                    "patch"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "op": {
-                      "type": "string",
-                      "const": "resource.delete"
-                    },
-                    "resourceType": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema77"
-                    },
-                    "resourceId": {
-                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
-                    }
-                  },
-                  "required": [
-                    "op",
-                    "resourceType",
-                    "resourceId"
-                  ],
-                  "additionalProperties": false
+                  ]
                 }
-              ]
-            }
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "program": {
             "type": "object",

@@ -7,8 +7,17 @@ description: Author, inspect, render, validate, animate, and save Three.js WebGP
 
 Use the native Studio viewport as the shared canvas and the nine
 `three_studio_*` MCP tools as the sole project-authoring interface.
-Read `docs/ai/patterns.md` for categorized MCP patterns. `AGENT_RULES.md`
-and live `three_studio_status` stay authoritative.
+When operating inside the Studio repository, read `docs/ai/patterns.md` for
+categorized MCP patterns. `AGENT_RULES.md` and live `three_studio_status` stay
+authoritative.
+
+## Plainform routing
+
+Read [references/plainform.md](references/plainform.md) before using
+`plainform-v1` for controlled-English object layouts, references, prefabs,
+face grids, iteration, transforms, or shader math. Use Plainform only through
+`three_studio_apply`; it is another typed input mode, not a scripting escape
+hatch.
 
 ## Non-negotiable authoring boundary
 

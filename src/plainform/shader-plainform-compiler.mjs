@@ -298,6 +298,7 @@ export class ShaderPlainformCompiler {
     const assignments = [];
     const materialIds = [];
     const interpretation = [`Create shader graph ${graphId}.`];
+    let requestedPreview = false;
 
     for (const statement of statements) {
       const feel = statement.match(/^(?:make it feel|describe it as|make the surface|the surface should feel) (.+)$/iu);
@@ -316,6 +317,10 @@ export class ShaderPlainformCompiler {
       if (use) { assignments.push({ name: clean(use[2]).toLowerCase(), value: use[1] }); continue; }
       const apply = statement.match(/^apply (?:it|the shader) to (?:material )?([a-z0-9][a-z0-9._/-]*)$/iu);
       if (apply) { materialIds.push(apply[1]); continue; }
+      if (/^(?:show me a preview|preview these changes)$/iu.test(statement)) {
+        requestedPreview = true;
+        continue;
+      }
       fail('plainform_shader_unsupported_statement', `Shader Plainform does not understand “${statement}”.`);
     }
 
@@ -340,6 +345,7 @@ export class ShaderPlainformCompiler {
       delete principledInputs[socket];
       interpretation.push(`Drive ${socket} with ${assignment.value}.`);
     }
+    if (requestedPreview) interpretation.push('Requested a dry-run preview.');
 
     const validation = validateGraph(builder.graph);
     if (!validation.valid) fail('plainform_shader_graph_invalid', 'The generated shader graph did not pass typed graph validation.', { errors: validation.errors });
@@ -364,7 +370,7 @@ export class ShaderPlainformCompiler {
       operations: Object.freeze(operations),
       interpretation: Object.freeze(interpretation),
       aliases: Object.freeze({}),
-      requestedPreview: false,
+      requestedPreview,
       shader: Object.freeze({ graphId, descriptors: feel.descriptors, openDescriptors: feel.openDescriptors, metrics: validation.metrics }),
     });
   }

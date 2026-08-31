@@ -297,6 +297,20 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
     idempotencyKey: 'look-0001', label: 'Create paint',
     operations: [{ op: 'material.look.create', materialId: 'material/paint', look: 'automotivePaint', color: '#cc1122' }],
   }).success, true);
+  const plainformProgram = { language: 'plainform-v1', source: 'Preview these changes.' };
+  for (const operations of [undefined, null, []]) {
+    assert.equal(applySchema.safeParse({
+      protocolVersion: 'three-studio/1', sessionId: 'live-session', projectId: 'project/demo', baseRevision: 0,
+      idempotencyKey: `plainform-empty-${String(operations)}`, label: 'Accept an empty typed operation channel',
+      operations, program: plainformProgram,
+    }).success, true);
+  }
+  for (const operations of [undefined, null, []]) {
+    assert.equal(applySchema.safeParse({
+      protocolVersion: 'three-studio/1', sessionId: 'live-session', projectId: 'project/demo', baseRevision: 0,
+      idempotencyKey: `empty-apply-${String(operations)}`, label: 'Reject an empty apply', operations,
+    }).success, false);
+  }
   assert.equal(applySchema.safeParse({
     protocolVersion: 'three-studio/1', sessionId: 'live-session', projectId: 'project/demo', baseRevision: 0,
     idempotencyKey: 'look-0002', label: 'Retune glass',

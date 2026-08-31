@@ -1189,6 +1189,7 @@ test('three_studio_apply compiles a Plainform English program through the ordina
     protocolVersion: 'three-studio/1', sessionId: application.sessionId,
     projectId: 'project/active', baseRevision: 1,
     idempotencyKey: 'plainform-apply-0001', label: 'Move the leaves using natural English',
+    operations: [],
     program: {
       language: 'plainform-v1',
       source: [
@@ -1206,6 +1207,69 @@ test('three_studio_apply compiles a Plainform English program through the ordina
     application.kernel.document.scenes['scene/main'].entities['entity/plainform-leaf-a'].transform.position,
     [0.1, 0, 0],
   );
+
+  const nullOperations = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1', sessionId: application.sessionId,
+    projectId: 'project/active', baseRevision: 2,
+    idempotencyKey: 'plainform-apply-0002', label: 'Accept a null typed operation channel',
+    operations: null,
+    program: {
+      language: 'plainform-v1',
+      source: [
+        'Use entity/plainform-leaf-a as the first leaf.',
+        'Move the first leaf by [5 centimetres, 0, 0].',
+      ].join('\n'),
+    },
+  });
+  assert.equal(nullOperations.success, true);
+  assert.equal(nullOperations.revision, 3);
+  assert.deepEqual(
+    application.kernel.document.scenes['scene/main'].entities['entity/plainform-leaf-a'].transform.position,
+    [0.15000000000000002, 0, 0],
+  );
+});
+
+test('three_studio_apply commits a Design Plainform model through batched canonical operations', async (t) => {
+  const { application } = await applicationFixture(t);
+  const result = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1', sessionId: application.sessionId,
+    projectId: 'project/active', baseRevision: 0,
+    idempotencyKey: 'plainform-design-apply-0001', label: 'Build a parametric test tower',
+    operations: null,
+    program: {
+      language: 'plainform-v1',
+      source: [
+        'Design a tower called Runtime Tower with id entity/runtime-tower.',
+        'Let tower height be 12 metres.',
+        'Let floor height be 3 metres.',
+        'Let floor count be floor(tower height / floor height).',
+        'Create a rectangular profile called tower profile with width 8 metres and depth 6 metres, rounded by 30 centimetres.',
+        'For every floor i from 0 through floor count minus 1:',
+        '  Let height be i * floor height.',
+        '  Let plate height be height + 10 centimetres.',
+        '  Let progress be i / (floor count - 1).',
+        '  Let twist be sin(progress * pi) * 3 degrees.',
+        '  Add a section of the tower profile at height height, rotated around y by twist, and scaled horizontally by 1.',
+        '  Create a floor plate from the tower profile at height plate height, with thickness 20 centimetres, rotated around y by twist, and scaled horizontally by 1.',
+        'End.',
+        'Add a section of the tower profile at height tower height, rotated around y by 0 degrees, and scaled horizontally by 1.',
+        'Loft a watertight solid called Runtime Envelope with id entity/runtime-envelope through all sections of the tower profile.',
+        'Ensure the design is exactly tower height high.',
+      ].join('\n'),
+    },
+  });
+  assert.equal(result.success, true);
+  assert.equal(result.revision, 1);
+  assert.equal(result.plainform.dialect, 'design');
+  assert.deepEqual(result.plainform.design, {
+    rootId: 'entity/runtime-tower', entityCount: 5, resourceCount: 2, variableCount: 3,
+  });
+  const document = application.kernel.document;
+  assert.equal(document.scenes['scene/main'].entities['entity/runtime-tower'].kind, 'group');
+  assert.equal(document.scenes['scene/main'].entities['entity/runtime-envelope'].parentId, 'entity/runtime-tower');
+  assert.equal(document.resources.geometries['geometry/plainform-design/runtime-tower/runtime-envelope'].recipe.sections.length, 5);
+  assert.equal(Object.keys(document.scenes['scene/main'].entities)
+    .filter(id => id.startsWith('entity/runtime-tower/floor-')).length, 4);
 });
 
 test('three_studio_apply compiles Shader Plainform into a validated graph and material assignment', async (t) => {
@@ -1427,6 +1491,40 @@ test('dry-run apply retains one guarded candidate and promotes it without a seco
     candidateToken: result.candidateToken,
     operations: [{ op: 'entity.patch', entityId: 'entity/preview', patch: { name: 'Changed' } }],
   }), rejectsWithCode('candidate_token_mismatch'));
+});
+
+test('a Plainform preview sentence promotes the identical candidate instead of forcing another dry run', async (t) => {
+  const { application } = await applicationFixture(t);
+  const source = [
+    'Create a shader graph called Candidate Rain.',
+    'Set roughness to 0.42.',
+    'Preview these changes.',
+  ].join('\n');
+  const preview = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1', sessionId: application.sessionId,
+    projectId: 'project/active', baseRevision: 0,
+    idempotencyKey: 'plainform-preview-candidate-0001', label: 'Preview candidate rain',
+    program: { language: 'plainform-v1', source },
+  });
+  assert.equal(preview.success, true);
+  assert.equal(preview.dryRun, true);
+  assert.equal(preview.revision, 0);
+  assert.equal(preview.plainform.requestedPreview, true);
+  assert.match(preview.candidateToken, /^[a-f0-9]{64}$/u);
+
+  const promoted = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1', sessionId: application.sessionId,
+    projectId: 'project/active', baseRevision: 0,
+    idempotencyKey: 'plainform-preview-promote-0002', label: 'Promote candidate rain',
+    candidateToken: preview.candidateToken,
+    program: { language: 'plainform-v1', source },
+  });
+  assert.equal(promoted.success, true);
+  assert.equal(promoted.dryRun, false);
+  assert.equal(promoted.revision, 1);
+  assert.equal(promoted.authoring.compileCount, 0);
+  assert.equal(promoted.authoring.promotedCandidate, true);
+  assert.ok(application.kernel.document.resources.graphs['graph/candidate-rain']);
 });
 
 test('scene swaps retain the authored linear background for the viewport presentation layer', async (t) => {

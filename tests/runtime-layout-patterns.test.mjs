@@ -135,6 +135,19 @@ test('grid pattern orders x fastest, then y, then z', () => {
   ]);
 });
 
+test('grid pattern applies one per-copy rotation without rotating its placement offsets', () => {
+  const rotation = [Math.PI / 2, 0, 0];
+  const matrices = evaluateInstanceStack(THREE, subject({
+    id: 'modifier/oriented-grid', mode: 'grid', counts: [2, 2, 1], spacing: [3, 5, 0],
+    instanceRotation: rotation,
+  }));
+  assert.deepEqual(matrices.map(matrixTranslation), [
+    [0, 0, 0], [3, 0, 0], [0, 5, 0], [3, 5, 0],
+  ]);
+  const expectedRotation = new Matrix4().makeRotationX(Math.PI / 2).elements.slice(0, 12);
+  for (const matrix of matrices) assert.deepEqual(matrix.elements.slice(0, 12), expectedRotation);
+});
+
 test('closed radial pattern emits exact y-axis positions and radial orientations', () => {
   const matrices = evaluateInstanceStack(THREE, subject({
     id: 'modifier/radial',

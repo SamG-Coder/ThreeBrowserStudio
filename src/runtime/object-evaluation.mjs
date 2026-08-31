@@ -184,11 +184,14 @@ function patternMatrices(THREE, authoredPattern, context) {
     for (let z = 0; z < pattern.counts[2]; z += 1) {
       for (let y = 0; y < pattern.counts[1]; y += 1) {
         for (let x = 0; x < pattern.counts[0]; x += 1) {
-          matrices.push(patternTransformMatrix(THREE, [
+          const position = [
             x * pattern.spacing[0],
             y * pattern.spacing[1],
             z * pattern.spacing[2],
-          ], 'x', null));
+          ];
+          matrices.push(pattern.instanceRotation
+            ? scatterTransformMatrix(THREE, position, pattern.instanceRotation, [1, 1, 1])
+            : patternTransformMatrix(THREE, position, 'x', null));
         }
       }
     }

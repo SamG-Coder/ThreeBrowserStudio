@@ -131,7 +131,71 @@ On revision conflict, inspect `changedSinceRevision` before retrying.
 
 ---
 
-## 4. Visible stages
+## 4. Plainform controlled English
+
+**When:** a coherent object-layout or shader intent is clearer as bounded
+English than as a hand-written operation list.
+
+Send Plainform through the ordinary guarded apply envelope:
+
+```json
+{
+  "program": {
+    "language": "plainform-v1",
+    "source": "Use entity/window-module as the module.\nLay out a 12 by 30 grid of copies of the module over the front face of entity/tower, spaced 1.5 metres horizontally and 1.2 metres vertically, preserving the prefab orientation."
+  }
+}
+```
+
+Plainform is controlled natural English, not unrestricted code. It lowers to
+the same typed operations, guards, validation, limits, inverse history, and
+candidate compilation as a direct apply. A program accepts at most 256
+statements and may generate at most 128 operations. Read the returned
+`interpretation`, lowered operation families, diagnostics, and revision; never
+assume an unsupported sentence was approximated.
+
+Object Plainform supports exact named entity references, named selections,
+spatial relations, transforms, bounded iteration, grouping, prefab creation
+and `$prefab-name` reuse, and face grids. Singular references and selections
+can both be transformed, for example `Move the tower up by 2 metres` and
+`Rotate each facade panel around y by 0.1 radians`.
+
+Design Plainform begins with `Design a <kind> called <name> with id <stable-id>`.
+Use it for unit-checked parametric solids: named dimensions, bounded integer
+loops, trigonometric/easing expressions, exact box and cylinder primitives,
+rectangular profiles, transformed floor plates, and watertight lofts. It emits
+shared primitive geometry and `entity.createMany`, so repeated mathematical
+elements do not consume one operation per mesh. The design root retains the
+source and evaluated top-level parameters in metadata. Use the full grammar and
+limits in `skills/threebrowser-studio-mcp/references/plainform.md`; do not infer
+unsupported CAD verbs from open-ended prose.
+
+Face-grid orientation is explicit and independent from placement. Append one
+of these phrases when the default local-Z-to-face-normal behavior is not the
+intent:
+
+- `keeping each copy upright`
+- `preserving the prefab orientation`
+- `aligning each copy's local x axis with the face normal`
+- `aligning each copy's local y axis with the face normal`
+- `aligning each copy's local z axis with the face normal`
+
+Shader Plainform begins with `Create a shader graph called ...`. It supports
+descriptive feel phrases, typed Principled properties, named math bindings,
+and bounded expression chains such as
+`sin(time * 2 + cos(time * 0.5))`, `smoothstep`, `clamp`, and `saturate`.
+The compiler validates the generated graph before it can be committed. Follow
+the normal graph workflow: inspect `graphCatalog`, dry-run, validate, then
+assign or continue only from the validated result.
+
+`Preview these changes` and `Show me a preview` request a dry run in either
+dialect. To accept it, resend the identical Plainform source at the same base
+revision with the returned `candidateToken`; the token explicitly promotes the
+already compiled candidate and does not trigger another preview compilation.
+
+---
+
+## 5. Visible stages
 
 **When:** any build the human should follow.
 
@@ -158,7 +222,7 @@ name **whitelisted** op types only. Neither is visual proof.
 
 ---
 
-## 5. Dry-run and pixel forecast
+## 6. Dry-run and pixel forecast
 
 **When:** deletes, graph resources, large batches, unclear sockets.
 
@@ -185,7 +249,7 @@ transaction.
 
 ---
 
-## 6. IDs, groups, and collections
+## 7. IDs, groups, and collections
 
 **When:** placing, parenting, or organising.
 
@@ -209,7 +273,7 @@ transaction.
 
 ---
 
-## 7. Graphs and materials
+## 8. Graphs and materials
 
 **When:** shaders, texture graphs, Principled, mapped PBR.
 
@@ -242,7 +306,7 @@ No raw WGSL, GLSL, TSL, or `eval` through ordinary apply.
 
 ---
 
-## 8. Cameras and evidence
+## 9. Cameras and evidence
 
 **When:** looking, framing, claiming a visual result.
 
@@ -266,7 +330,7 @@ Never claim a visual result without a capture from the committed revision.
 
 ---
 
-## 9. Play and animation
+## 10. Play and animation
 
 **When:** keyframes, Actions, timeline.
 
@@ -303,7 +367,7 @@ through apply or claim capabilities beyond the live controller contract.
 
 ---
 
-## 10. History, validation, and save
+## 11. History, validation, and save
 
 **When:** closing a stage or a session.
 
@@ -322,7 +386,7 @@ supports the claim. A successful tool payload is not completion.
 
 ---
 
-## 11. Anti-patterns
+## 12. Anti-patterns
 
 These fail in this product even when they work in a Three.js snippet.
 
