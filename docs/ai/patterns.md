@@ -244,6 +244,9 @@ CSG also enforces hard budgets on intermediate BSP polygon tests, generated
 split vertices, and live polygons. A low-triangle curved input can still be
 pathological; it now fails with a `CSG BSP work` or `CSG intermediate`
 diagnostic instead of exhausting the Studio process.
+The BSP builder evaluates a bounded set of candidate split planes and prefers
+low-split, balanced partitions, allowing small curved attachments to remain
+tractable without raising any safety budget.
 
 An existing owner can be divided after authoring with `Split <owner> along
 $closed-curve` immediately followed by `Call the enclosed surface <name> [with

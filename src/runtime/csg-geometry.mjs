@@ -128,6 +128,40 @@ function polygon(vertices) {
   };
 }
 
+function classifyPolygon(planeValue, polygonValue) {
+  let hasFront = false;
+  let hasBack = false;
+  for (const entry of polygonValue.vertices) {
+    const distance = planeValue.normal.dot(entry.pos) - planeValue.w;
+    if (distance < -EPSILON) hasBack = true;
+    else if (distance > EPSILON) hasFront = true;
+    if (hasFront && hasBack) return 3;
+  }
+  return hasFront ? 1 : hasBack ? 2 : 0;
+}
+
+function chooseSplitPlane(polygons) {
+  if (polygons.length <= 2) return polygons[0].plane;
+  const candidateCount = Math.min(32, polygons.length);
+  let best = null;
+  for (let candidateIndex = 0; candidateIndex < candidateCount; candidateIndex += 1) {
+    const polygonIndex = Math.floor(candidateIndex * polygons.length / candidateCount);
+    const candidate = polygons[polygonIndex].plane;
+    let front = 0;
+    let back = 0;
+    let spanning = 0;
+    for (const item of polygons) {
+      const type = classifyPolygon(candidate, item);
+      if (type === 1) front += 1;
+      else if (type === 2) back += 1;
+      else if (type === 3) spanning += 1;
+    }
+    const score = spanning * 8 + Math.abs(front - back);
+    if (!best || score < best.score) best = { plane: candidate, score, spanning, balance: Math.abs(front - back), polygonIndex };
+  }
+  return best.plane;
+}
+
 class BspNode {
   constructor(polygons = [], budget = new CsgBudget()) {
     this.budget = budget;
@@ -221,7 +255,7 @@ class BspNode {
     while (pending.length > 0) {
       const { node, polygons: current } = pending.pop();
       if (current.length === 0) continue;
-      node.plane ??= current[0].plane.clone();
+      node.plane ??= chooseSplitPlane(current).clone();
       const front = [];
       const back = [];
       current.forEach(item => node.plane.splitPolygon(item, node.polygons, node.polygons, front, back, this.budget));

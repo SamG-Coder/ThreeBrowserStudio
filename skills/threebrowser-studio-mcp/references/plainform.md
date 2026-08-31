@@ -357,6 +357,10 @@ intermediate BSP polygon tests, split vertices, and live polygons because a
 small curved input can split combinatorially. A `CSG BSP work` or `CSG
 intermediate` diagnostic means revise the authored attachment topology; the
 runtime deliberately aborts before memory growth can threaten Studio.
+Within those fixed budgets, the runtime chooses from a bounded set of BSP
+splitter candidates to minimize polygon splitting and tree imbalance. Retry a
+small curved attachment after reducing operand topology; never raise the guard
+or assume triangle count alone predicts boolean cost.
 
 Split one coherent surface along an existing semantic loop with two immediate
 statements:

@@ -360,13 +360,14 @@ test('CSG bounds pathological intermediate BSP splitting below the input triangl
     indices: [0,2,1,0,3,2,4,5,6,4,6,7,0,1,5,0,5,4,1,2,6,1,6,5,2,3,7,2,7,6,3,0,4,3,4,7],
   };
   const started = performance.now();
-  assert.throws(() => createGeometry(FAKE_THREE, {
+  const geometry = createGeometry(FAKE_THREE, {
     kind: 'csg', operation: 'union', operands: [
       { recipe: head },
       { recipe: nose, transform: { position: [0, -0.05, 0.48] } },
     ],
-  }), /CSG (?:BSP work|intermediate)/u);
-  assert.ok(performance.now() - started < 2_000, 'pathological CSG must fail before it can threaten process memory');
+  });
+  assert.ok(geometry.attributes.position.count >= 3);
+  assert.ok(performance.now() - started < 2_000, 'bounded splitter selection must prevent pathological CSG work');
 });
 
 test('shape and extrude recipes build contours and holes with bounded options', () => {
