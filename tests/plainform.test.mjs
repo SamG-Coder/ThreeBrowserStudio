@@ -195,6 +195,68 @@ Preview these changes.
   assert.ok(compiled.operations.every(operation => operationSchema.safeParse(operation).success));
 });
 
+test('Design Plainform maps natural right-up-forward authoring into canonical Y-up world space', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a vehicle called Semantic Vehicle with id entity/semantic-vehicle using the right-up-forward design frame.
+Create a symmetric smooth profile called body section through [0 metres right, 48 centimetres up], [70 centimetres right, 34 centimetres up], [94 centimetres right, 18 centimetres down], [0 metres right, 38 centimetres down].
+Add a controlled section of body section at 2 metres backward, width 1.6 metres, height 70 centimetres.
+Add a controlled section of body section at 50 centimetres forward, width 1.9 metres, height 1.1 metres.
+Create a guide curve called shoulder through [70 centimetres right, 12 centimetres up, 2 metres backward], [90 centimetres right, 30 centimetres up, 50 centimetres forward].
+Loft a watertight solid called Body with id entity/semantic-body through all sections of body section, following shoulder, with curvature continuity.
+Create a box called Marker with id entity/semantic-marker, with width 20 centimetres, height 40 centimetres, and depth 60 centimetres, centred at [1 metre right, 50 centimetres up, 2 metres forward].
+Create a cylinder called Axle with id entity/semantic-cylinder, with radius 10 centimetres and height 1 metre, centred at [50 centimetres left, 50 centimetres up, 1 metre backward], aligned along the right axis.
+`, { project: projectFixture() });
+  assert.ok(compiled.operations.every(operation => operationSchema.safeParse(operation).success));
+  const root = compiled.operations.find(operation => operation.op === 'entity.create').entity;
+  assert.deepEqual(root.transform.position, [0, 0, 0]);
+  assert.ok(Math.abs(root.transform.rotation[0] + Math.PI / 2) < 1e-12);
+  assert.equal(root.metadata.plainformDesign.designFrame.name, 'right-up-forward');
+  assert.deepEqual(root.metadata.plainformDesign.designFrame.worldAxes, { right: '+X', up: '+Y', forward: '+Z' });
+
+  const loft = compiled.operations[0].items.find(item => item.resource.recipe.kind === 'loft').resource.recipe;
+  assert.deepEqual(loft.sections.map(section => section.transform.translation[1]), [2, -0.5]);
+  assert.deepEqual(loft.guideCurves[0].points[0].map(value => Math.round(value * 1e9) / 1e9), [0.7, 2, 0.12]);
+  assert.ok(Math.abs(loft.sections[0].points[0][0] + loft.sections[0].points.at(-1)[0]) < 0.2);
+
+  const entities = compiled.operations.find(operation => operation.op === 'entity.createMany').items.map(item => item.entity);
+  const marker = entities.find(entity => entity.id === 'entity/semantic-marker');
+  const cylinder = entities.find(entity => entity.id === 'entity/semantic-cylinder');
+  const rootMatrix = composeTransformMatrix(root.transform);
+  const markerWorld = multiplyTransformMatrices(rootMatrix, composeTransformMatrix(marker.transform));
+  const cylinderWorld = multiplyTransformMatrices(rootMatrix, composeTransformMatrix(cylinder.transform));
+  assert.deepEqual(transformPointByMatrix(markerWorld, [0, 0, 0]).map(value => Math.round(value * 1e9) / 1e9), [1, 0.5, 2]);
+  assert.deepEqual(transformPointByMatrix(cylinderWorld, [0, 0, 0]).map(value => Math.round(value * 1e9) / 1e9), [-0.5, 0.5, -1]);
+  const cylinderEnd = transformPointByMatrix(cylinderWorld, [0, 0.5, 0]);
+  assert.deepEqual(cylinderEnd.map(value => Math.round(value * 1e9) / 1e9), [0, 0.5, -1]);
+});
+
+test('semantic design coordinates reject direction words on the wrong axis while legacy programs remain unchanged', () => {
+  assert.throws(
+    () => new PlainformCompiler().compile(`
+Design a vehicle called Broken Frame with id entity/broken-frame using the right-up-forward design frame.
+Create a box called Marker with id entity/broken-marker, with width 1 metre, height 1 metre, and depth 1 metre, centred at [1 metre up, 0 metres up, 0 metres forward].
+`, { project: projectFixture() }),
+    error => error.code === 'plainform_design_frame_axis',
+  );
+  assert.throws(
+    () => new PlainformCompiler().compile(`
+Design a vehicle called Ambiguous Station with id entity/ambiguous-station using the right-up-forward design frame.
+Create a profile called section through [0 metres, 1 metre], [1 metre, 0 metres], [0 metres, -1 metre], [-1 metre, 0 metres].
+Add a controlled section of section at height 2 metres, width 2 metres, height 1 metre.
+Loft a watertight solid called Body with id entity/ambiguous-body through all sections of section.
+`, { project: projectFixture() }),
+    error => error.code === 'plainform_design_frame_ambiguous_station',
+  );
+  const legacy = new PlainformCompiler().compile(`
+Design a box study called Legacy Frame with id entity/legacy-frame.
+Create a box called Marker with id entity/legacy-marker, with width 1 metre, height 2 metres, and depth 3 metres, centred at [1 metre, 2 metres, 3 metres].
+`, { project: projectFixture() });
+  const root = legacy.operations.find(operation => operation.op === 'entity.create').entity;
+  const marker = legacy.operations.find(operation => operation.op === 'entity.createMany').items[0].entity;
+  assert.deepEqual(root.transform, { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] });
+  assert.deepEqual(marker.transform, { position: [1, 2, 3], rotation: [0, 0, 0], scale: [1, 2, 3] });
+});
+
 test('Design Plainform spans generic named boundaries with a constrained open surface patch', () => {
   const compiled = new PlainformCompiler().compile(`
 Design a vehicle connector called Boundary Patch with id entity/boundary-patch.

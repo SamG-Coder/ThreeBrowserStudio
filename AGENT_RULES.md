@@ -331,6 +331,11 @@ operations.
   subject-specific nouns. Diagnose weak authored
   documentation first; extend the compiler/runtime only when the intended form
   cannot reasonably be expressed with those general capabilities.
+- For every new spatial or manufactured Design Plainform program, append
+  `using the right-up-forward design frame`. Treat right as world +X, up as
+  world +Y, and forward as world +Z. Let the compiler map profiles and lofts
+  internally; never manually rotate the generated design root. Omit the suffix
+  only when intentionally maintaining a legacy XZ-profile/Y-loft program.
 - Use graph parameters or material instances for shader variants.
 - Avoid per-object lights when an emissive material or shared light suffices.
 - Keep interactive texture graphs at or below 2048 unless a bake job is

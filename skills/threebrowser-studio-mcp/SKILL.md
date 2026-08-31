@@ -19,7 +19,9 @@ face grids, iteration, transforms, Design solids, surface-anchored and
 four-boundary constrained patches, source-surface tangency, actionable semantic
 regions, surface offsets, topology imprint/opening, transported sweeps,
 reference-derived frames, centre-plane mirroring, uniform boundary clearance,
-or shader math.
+or shader math. For a new manufactured Design, use the explicit
+`right-up-forward` design frame documented there: right is world +X, up is
+world +Y, and forward is world +Z. Do not manually rotate the generated root.
 Use Plainform only through `three_studio_apply`; it is another
 typed input mode, not a scripting escape hatch.
 

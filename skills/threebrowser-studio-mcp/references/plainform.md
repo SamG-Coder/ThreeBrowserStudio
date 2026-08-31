@@ -44,6 +44,27 @@ Design Plainform begins with an exact design header:
 Design a tower called Parametric Tower with id entity/parametric-tower.
 ```
 
+For new spatial or manufactured designs, prefer the AI-oriented semantic
+header:
+
+```text
+Design a vehicle called Road Car with id entity/road-car using the right-up-forward design frame.
+```
+
+That explicit frame has one canonical meaning everywhere in the authored
+program:
+
+| Plainform direction | World axis |
+| --- | --- |
+| right / left | +X / -X |
+| up / down | +Y / -Y |
+| forward / backward | +Z / -Z |
+
+The compiler maps this semantic frame into the internal loft basis and applies
+the exact design-root transform. Do not compensate by rotating the root. The
+short header without a frame remains the legacy XZ-profile/Y-loft dialect so
+saved programs continue to compile identically.
+
 It creates a persistent design group and lowers mathematical solids to shared
 geometry resources plus batched entities. Parameters are unit checked. Natural
 operator words and symbols may be mixed, and named parameters may contain
@@ -74,29 +95,36 @@ Create a cylinder called Column with id entity/column, with radius 40 centimetre
 ```
 
 Boxes and cylinders may append `rotated by [x, y, z]` and `using material
-material/id`. Cylinder height follows local Y before rotation.
+material/id`. In the semantic frame, positions can name their signs directly,
+for example `[80 centimetres right, 42 centimetres up, 1.2 metres forward]`,
+and a cylinder may say `aligned along the right axis`, `up axis`, or `forward
+axis` (including their opposite directions). Width, height, and depth always
+mean world right, up, and forward size. In the legacy frame, cylinder height
+follows local Y before rotation.
 
 ### Curved manufactured forms
 
-Profiles lie in local XZ and loft along local Y. Define arbitrary control
-points explicitly; `smooth` performs bounded closed Catmull-Rom resampling.
-`symmetric` mirrors the supplied half profile across Z unless another
-centreline is named:
+In the right-up-forward frame, profiles are written as `[right, up]` pairs and
+sections advance `forward` or `backward`. Define arbitrary control points
+explicitly; `smooth` performs bounded closed Catmull-Rom resampling.
+`symmetric` mirrors the supplied half profile across the up centreline unless
+another centreline is named:
 
 ```text
-Create a symmetric smooth profile called body section through [0 metres, 42 centimetres], [50 centimetres, 30 centimetres], [62 centimetres, -18 centimetres], [0 metres, -38 centimetres], mirrored across the z centreline.
+Create a symmetric smooth profile called body section through [0 metres right, 42 centimetres up], [50 centimetres right, 30 centimetres up], [62 centimetres right, 18 centimetres down], [0 metres right, 38 centimetres down], mirrored across the up centreline.
 Smooth profile body section with 48 samples.
-Move profile point 12 of body section by [2 centimetres, 0 metres, -1 centimetre].
+Move profile point 12 of body section by [2 centimetres right, 1 centimetre down, 0 metres forward].
 ```
 
 Use controlled sections when width, profile depth, local scale, position, and
-rotation must vary independently. `height` after `at` is the loft-path Y
-coordinate; `width` controls local X; `depth` controls local Z. Vertical offset
-adds local Y and lateral offset adds local Z:
+rotation must vary independently. In the semantic frame, the path station must
+be stated as `at <length> forward` or `at <length> backward`; ambiguous legacy
+`at height` wording is rejected. Width controls right/left extent and height
+controls up/down extent:
 
 ```text
-Add a controlled section of body section at height 0 metres, width 1.72 metres, depth 78 centimetres.
-Add a controlled section of body section at height 1.4 metres, width 1.90 metres, depth 1.08 metres, offset vertically by 6 centimetres, offset laterally by 2 centimetres, rotated by [0 degrees, 1 degree, 0 degrees], and scaled locally by [1, 1, 0.96].
+Add a controlled section of body section at 2.2 metres backward, width 1.72 metres, height 78 centimetres.
+Add a controlled section of body section at 1.4 metres forward, width 1.90 metres, height 1.08 metres, offset vertically by 6 centimetres, offset laterally by 2 centimetres, rotated by [0 degrees, 1 degree, 0 degrees], and scaled locally by [1, 1, 0.96].
 ```
 
 Every section keeps the same profile topology. More sections improve the
@@ -106,8 +134,9 @@ spatially distinct guides to control them. Local modifiers are not mirrored
 implicitly: author matching positive- and negative-Z bulges or pinches when the
 form must remain bilateral.
 
-Guide curves are open curves in loft-local XYZ. A guide binds to the closest
-point on the first section and pulls the corresponding point across the loft.
+Guide curves in the semantic frame use `[right, up, forward]` coordinates. A
+guide binds to the closest point on the first section and pulls the
+corresponding point across the loft.
 Use spatially distinct first points for multiple rails:
 
 ```text
@@ -553,8 +582,8 @@ Extend Plainform/runtime only when the required shape cannot reasonably be
 expressed with arbitrary profiles, controlled sections, guide curves, local
 modifiers, extrusions, primitives, and bounded booleans.
 
-Design profiles loft along local Y. When a complete manufactured assembly must
-lie along another world axis, keep the modelling program internally consistent,
-then use Object Plainform to name and orient the generated root group. This is
-composition, not a reason to duplicate the Design grammar with world-axis
-variants.
+New manufactured designs should declare `using the right-up-forward design
+frame`. Author the whole assembly with world-natural right/up/forward language;
+the compiler owns the internal loft conversion and root transform. Legacy
+programs without the suffix still profile in local XZ and loft along local Y.
+Do not mix the two conventions or add a manual corrective root rotation.

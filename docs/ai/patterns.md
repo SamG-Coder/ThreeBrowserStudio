@@ -165,6 +165,13 @@ can both be transformed, for example `Move the tower up by 2 metres` and
 `Rotate each facade panel around y by 0.1 radians`.
 
 Design Plainform begins with `Design a <kind> called <name> with id <stable-id>`.
+For new spatial or manufactured designs, append `using the right-up-forward
+design frame`. That frame is canonical for AI authoring: right is world +X, up
+is world +Y, and forward is world +Z. Profiles use `[right, up]`; loft stations
+advance forward/backward; primitive width/height/depth mean right/up/forward.
+The compiler owns the internal loft mapping and root transform, so never add a
+manual corrective rotation. Headers without the suffix retain the legacy
+XZ-profile/Y-loft behavior for compatibility.
 Use it for unit-checked parametric solids: named dimensions, bounded integer
 loops, trigonometric/easing expressions, exact box and rotatable cylinder
 primitives, arbitrary or symmetric smooth profiles, independently controlled

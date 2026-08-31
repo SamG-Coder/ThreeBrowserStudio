@@ -1,7 +1,7 @@
 import { evaluateDesignExpression, evaluateDesignVector } from './design-expression.mjs';
 import { ProjectIndex } from '../core/indexes.mjs';
 import { PlainformSpatialResolver } from './spatial-relations.mjs';
-import { composeTransformMatrix, transformPointByMatrix } from '../core/transform-math.mjs';
+import { composeTransformMatrix, relativeEntityTransform, transformPointByMatrix } from '../core/transform-math.mjs';
 import {
   buildConstrainedPatchSections,
   matchBoundaryDirection,
@@ -32,6 +32,18 @@ const MAX_DESIGN_ENTITIES = 128;
 const MAX_LOOP_ITERATIONS = 128;
 const MAX_BOUNDARIES = 128;
 const MAX_BOUNDARY_POINTS = 256;
+const LEGACY_DESIGN_FRAME = 'legacy-xz-y';
+const SEMANTIC_DESIGN_FRAME = 'right-up-forward';
+
+function identityTransform() {
+  return { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] };
+}
+
+function designRootTransform(frame) {
+  return frame === SEMANTIC_DESIGN_FRAME
+    ? { position: [0, 0, 0], rotation: [-Math.PI / 2, 0, 0], scale: [1, 1, 1] }
+    : identityTransform();
+}
 
 function clean(value) {
   return value.trim().replace(/[.:;]+$/u, '').trim();
@@ -120,7 +132,78 @@ function parseVectorGroups(source, variables, { dimensions = 3, dimension = 'len
   });
 }
 
-function profilePoints(source, variables, phrase = 'Profile') {
+function directionalCoordinate(source, variables, { axis, phrase }) {
+  const match = source.trim().match(/^(.+?)\s+(right|left|up|down|forward|backward)$/iu);
+  const directions = axis === 'right'
+    ? new Map([['right', 1], ['left', -1]])
+    : axis === 'up'
+      ? new Map([['up', 1], ['down', -1]])
+      : new Map([['forward', 1], ['backward', -1]]);
+  if (!match) return expectDimension(evaluateDesignExpression(source, variables), 'length', phrase);
+  const direction = match[2].toLowerCase();
+  if (!directions.has(direction)) {
+    const error = new Error(`${phrase} uses ${direction} in the ${axis} coordinate; expected ${[...directions.keys()].join(' or ')}.`);
+    error.code = 'plainform_design_frame_axis';
+    throw error;
+  }
+  return directions.get(direction) * expectDimension(evaluateDesignExpression(match[1], variables), 'length', phrase);
+}
+
+function semanticVector(source, variables, { dimensions = 3, phrase = 'Semantic vector' } = {}) {
+  const match = source.trim().match(/^\[([^\[\]]+)\]$/u);
+  if (!match) {
+    const error = new Error(`${phrase} requires one bracketed ${dimensions}-coordinate vector.`);
+    error.code = 'plainform_profile_points';
+    throw error;
+  }
+  const parts = match[1].split(',').map(value => value.trim()).filter(Boolean);
+  if (parts.length !== dimensions) {
+    const error = new Error(`${phrase} requires ${dimensions} coordinates.`);
+    error.code = 'plainform_profile_points';
+    throw error;
+  }
+  if (dimensions === 2) return [
+    directionalCoordinate(parts[0], variables, { axis: 'right', phrase }),
+    directionalCoordinate(parts[1], variables, { axis: 'up', phrase }),
+  ];
+  return [
+    directionalCoordinate(parts[0], variables, { axis: 'right', phrase }),
+    directionalCoordinate(parts[1], variables, { axis: 'up', phrase }),
+    directionalCoordinate(parts[2], variables, { axis: 'forward', phrase }),
+  ];
+}
+
+function semanticVectorGroups(source, variables, { dimensions = 3, phrase = 'Semantic point list' } = {}) {
+  const groups = [...source.matchAll(/\[([^\[\]]+)\]/gu)];
+  if (groups.length === 0) {
+    const error = new Error(`${phrase} requires bracketed coordinate vectors.`);
+    error.code = 'plainform_profile_points';
+    throw error;
+  }
+  return groups.map(match => semanticVector(`[${match[1]}]`, variables, { dimensions, phrase }));
+}
+
+function semanticWorldToLoft(point) {
+  return [point[0], -point[2], point[1]];
+}
+
+function semanticAxisRotation(direction) {
+  switch (direction) {
+    case 'right': return [0, 0, -Math.PI / 2];
+    case 'left': return [0, 0, Math.PI / 2];
+    case 'up': return [0, 0, 0];
+    case 'down': return [Math.PI, 0, 0];
+    case 'forward': return [Math.PI / 2, 0, 0];
+    case 'backward': return [-Math.PI / 2, 0, 0];
+    default: return [0, 0, 0];
+  }
+}
+
+function profilePoints(source, variables, phrase = 'Profile', frame = LEGACY_DESIGN_FRAME) {
+  if (frame === SEMANTIC_DESIGN_FRAME) {
+    return semanticVectorGroups(source, variables, { dimensions: 2, phrase })
+      .map(([right, up]) => [right, 0, up]);
+  }
   return parseVectorGroups(source, variables, { dimensions: 2, dimension: 'length', phrase })
     .map(([x, z]) => [x, 0, z]);
 }
@@ -169,7 +252,9 @@ function smoothOpenPoints(points, samples = Math.min(128, Math.max(8, points.len
 }
 
 function mirroredProfile(points, axis = 'z') {
-  const coordinate = axis === 'x' ? 0 : 2;
+  // The named centreline is the axis retained by the reflection: a Z/up
+  // centreline mirrors X/right, while an X/right centreline mirrors Z/up.
+  const coordinate = axis === 'z' ? 0 : 2;
   const mirrored = [...points].reverse().map(point => point.map((value, index) => index === coordinate ? -value : value));
   const result = points.map(point => [...point]);
   for (const point of mirrored) {
@@ -223,9 +308,9 @@ export class DesignPlainformCompiler {
 
   compile(source, { project }) {
     const lines = source.split(/\r?\n/u).map(value => value.trim()).filter(Boolean);
-    const header = clean(lines[0]).match(/^(?:begin\s+)?design (?:a |an )?(.+?) called (?:(?:"([^"]+)")|(.+?)) with id ([a-z0-9][a-z0-9._/-]*)$/iu);
+    const header = clean(lines[0]).match(/^(?:begin\s+)?design (?:a |an )?(.+?) called (?:(?:"([^"]+)")|(.+?)) with id ([a-z0-9][a-z0-9._/-]*)(?: using the (right-up-forward|legacy-xz-y) design frame)?$/iu);
     if (!header) {
-      const error = new Error('A design must begin with “Design a <kind> called <name> with id entity/<id>.”');
+      const error = new Error('A design must begin with “Design a <kind> called <name> with id entity/<id>.” Append “using the right-up-forward design frame” for canonical AI-oriented coordinates.');
       error.code = 'plainform_design_header';
       throw error;
     }
@@ -239,6 +324,9 @@ export class DesignPlainformCompiler {
     const designKind = header[1].trim();
     const designName = header[2] ?? header[3];
     const rootId = header[4];
+    const designFrame = header[5]?.toLowerCase() ?? LEGACY_DESIGN_FRAME;
+    const rootTransform = designRootTransform(designFrame);
+    const semanticFrame = designFrame === SEMANTIC_DESIGN_FRAME;
     const designSlug = slug(designName);
     const occupied = occupiedIds(project);
     if (occupied.has(rootId)) {
@@ -256,6 +344,7 @@ export class DesignPlainformCompiler {
     const entities = [];
     const aliases = { [key(designName)]: [rootId] };
     const interpretations = [`Will create the ${designKind} design “${designName}” as ${rootId}.`];
+    if (semanticFrame) interpretations.push('Will use the semantic right/up/forward frame mapped to canonical X/Y/Z world axes.');
     const geometryKinds = new Set();
     const lofts = [];
     const surfacePatches = [];
@@ -290,8 +379,15 @@ export class DesignPlainformCompiler {
         }
         return [...named.value];
       }
+      if (semanticFrame && dimension === 'length') return semanticVector(expression, scope, { dimensions: 3, phrase });
       return evaluateDesignVector(expression, scope, dimension);
     };
+    const loftVector = (expression, scope, phrase = 'Loft-local vector') => semanticFrame
+      ? semanticWorldToLoft(semanticVector(expression, scope, { dimensions: 3, phrase }))
+      : evaluateDesignVector(expression, scope, 'length');
+    const loftPointGroups = (expression, scope, phrase) => semanticFrame
+      ? semanticVectorGroups(expression, scope, { dimensions: 3, phrase }).map(semanticWorldToLoft)
+      : parseVectorGroups(expression, scope, { dimensions: 3, dimension: 'length', phrase });
     const referencePoint = phrase => {
       const name = key(phrase);
       const exact = projectIndex.entities.get(clean(phrase)) ?? projectIndex.entities.get(name);
@@ -404,9 +500,12 @@ export class DesignPlainformCompiler {
         : primitiveKind === 'cylinder'
           ? [dimensions.radius, dimensions.height, dimensions.radius]
           : [dimensions.width, dimensions.height, 1];
+      const transform = semanticFrame
+        ? relativeEntityTransform(composeTransformMatrix(rootTransform), composeTransformMatrix({ position, rotation, scale }))
+        : { position, rotation, scale };
       entities.push({
         id, kind: 'mesh', name, parentId: rootId,
-        transform: { position, rotation, scale },
+        transform,
         components: { mesh: { geometryId, ...(materialId ? { materialId } : {}) } },
         metadata: { plainformDesign: { primitive: primitiveKind, dimensions } },
       });
@@ -531,7 +630,7 @@ export class DesignPlainformCompiler {
           if (scope === variables) interpretations.push(`Defined ${name} as ${result.value} ${result.dimension}.`);
           continue;
         }
-        const profileStatement = statement.match(/^create a rectangular profile called (.+?) with width (.+?) and depth (.+?)(?:,? rounded by (.+))?$/iu);
+        const profileStatement = statement.match(/^create a rectangular profile called (.+?) with width (.+?) and (?:depth|height) (.+?)(?:,? rounded by (.+))?$/iu);
         if (profileStatement) {
           const name = key(profileStatement[1]);
           const width = finitePositive(length(profileStatement[2], scope, 'Profile width'), 'Profile width');
@@ -541,16 +640,17 @@ export class DesignPlainformCompiler {
           interpretations.push(`Defined rectangular profile “${name}” at ${width} by ${depth} metres.`);
           continue;
         }
-        const curvedProfile = statement.match(/^create a (?:(symmetric)\s+)?(?:(smooth)\s+)?profile called (.+?) through (.+?)(?:,? mirrored across the?\s*(x|z)(?:\s+centreline)?)?$/iu);
+        const curvedProfile = statement.match(/^create a (?:(symmetric)\s+)?(?:(smooth)\s+)?profile called (.+?) through (.+?)(?:,? mirrored across the?\s*(x|z|right|up)(?:\s+centreline)?)?$/iu);
         if (curvedProfile) {
           const name = key(curvedProfile[3]);
-          let points = profilePoints(curvedProfile[4], scope, `Profile ${name}`);
+          let points = profilePoints(curvedProfile[4], scope, `Profile ${name}`, designFrame);
           if (points.length < 3) {
             const error = new Error(`Profile “${name}” requires at least three points.`);
             error.code = 'plainform_profile_points'; throw error;
           }
-          const mirrorAxis = curvedProfile[5] ?? (curvedProfile[1] ? 'z' : null);
-          if (mirrorAxis) points = mirroredProfile(points, mirrorAxis.toLowerCase());
+          const authoredMirrorAxis = curvedProfile[5]?.toLowerCase() ?? (curvedProfile[1] ? (semanticFrame ? 'up' : 'z') : null);
+          const mirrorAxis = authoredMirrorAxis === 'up' ? 'z' : authoredMirrorAxis === 'right' ? 'x' : authoredMirrorAxis;
+          if (mirrorAxis) points = mirroredProfile(points, mirrorAxis);
           if (curvedProfile[2]) points = smoothClosedPoints(points);
           if (points.length > 256) {
             const error = new Error('Profiles support at most 256 evaluated points.');
@@ -558,13 +658,13 @@ export class DesignPlainformCompiler {
           }
           const bounds = profileBounds(points);
           profiles.set(name, { name, width: bounds.width, depth: bounds.depth, radius: 0, points, sections: [], smooth: Boolean(curvedProfile[2]) });
-          interpretations.push(`Defined ${curvedProfile[2] ? 'smooth ' : ''}${mirrorAxis ? `symmetric ${mirrorAxis}-mirrored ` : ''}profile “${name}” through ${points.length} evaluated points.`);
+          interpretations.push(`Defined ${curvedProfile[2] ? 'smooth ' : ''}${mirrorAxis ? `symmetric ${authoredMirrorAxis}-centreline ` : ''}profile “${name}” through ${points.length} evaluated points.`);
           continue;
         }
         const guideStatement = statement.match(/^create a (?:(smooth)\s+)?guide curve called (.+?) through (.+)$/iu);
         if (guideStatement) {
           const name = key(guideStatement[2]);
-          let points = parseVectorGroups(guideStatement[3], scope, { dimensions: 3, dimension: 'length', phrase: `Guide ${name}` });
+          let points = loftPointGroups(guideStatement[3], scope, `Guide ${name}`);
           if (points.length < 2) {
             const error = new Error(`Guide curve “${name}” requires at least two points.`); error.code = 'plainform_guide_points'; throw error;
           }
@@ -585,9 +685,7 @@ export class DesignPlainformCompiler {
             error.code = 'plainform_surface_anchor_unavailable'; throw error;
           }
           const coordinateSpace = surfaceCurveStatement[4].toLowerCase();
-          const authoredPoints = parseVectorGroups(surfaceCurveStatement[5], scope, {
-            dimensions: 3, dimension: 'length', phrase: `Surface curve ${name}`,
-          });
+          const authoredPoints = loftPointGroups(surfaceCurveStatement[5], scope, `Surface curve ${name}`);
           const minimum = closed ? 3 : 2;
           if (authoredPoints.length < minimum || authoredPoints.length > MAX_BOUNDARY_POINTS) {
             const error = new Error(`${closed ? 'Closed' : 'Open'} surface curve “${name}” requires ${minimum} to ${MAX_BOUNDARY_POINTS} points.`);
@@ -629,7 +727,7 @@ export class DesignPlainformCompiler {
             error.code = 'plainform_surface_anchor_unavailable'; throw error;
           }
           const position = profileProjectionStatement[4]
-            ? evaluateDesignVector(profileProjectionStatement[4], scope, 'length') : [0, 0, 0];
+            ? loftVector(profileProjectionStatement[4], scope, 'Profile projection centre') : [0, 0, 0];
           const rotation = profileProjectionStatement[5]
             ? evaluateDesignVector(profileProjectionStatement[5], scope, 'angle') : [0, 0, 0];
           const projectionMatrix = composeTransformMatrix({ position, rotation, scale: [1, 1, 1] });
@@ -690,12 +788,15 @@ export class DesignPlainformCompiler {
           interpretations.push(`Created surface-space offset curve $${name} ${distance} metres from $${sourceReference.name}.`);
           continue;
         }
-        const mirrorStatement = statement.match(/^create (.+?) as the mirror of (.+?) across the (x|y|z) centre plane(?: with id ([a-z0-9][a-z0-9._/-]*))?$/iu);
+        const mirrorStatement = statement.match(/^create (.+?) as the mirror of (.+?) across the (x|y|z|right|up|forward) centre plane(?: with id ([a-z0-9][a-z0-9._/-]*))?$/iu);
         if (mirrorStatement) {
           const targetName = clean(mirrorStatement[1]);
           const sourceName = clean(mirrorStatement[2]);
           const targetKey = key(targetName); const sourceKey = key(sourceName);
-          const axis = mirrorStatement[3].toLowerCase();
+          const authoredAxis = mirrorStatement[3].toLowerCase();
+          const axis = semanticFrame
+            ? ({ right: 'x', up: 'z', forward: 'y' }[authoredAxis] ?? authoredAxis)
+            : authoredAxis;
           const profile = profiles.get(sourceKey);
           const guide = guides.get(sourceKey);
           if (profile) {
@@ -735,7 +836,7 @@ export class DesignPlainformCompiler {
               materialId: source.components?.mesh?.materialId ?? source.materialId,
             });
           }
-          interpretations.push(`Created “${targetName}” as the exact ${axis}-centre-plane mirror of “${sourceName}”.`);
+          interpretations.push(`Created “${targetName}” as the exact ${authoredAxis}-centre-plane mirror of “${sourceName}”.`);
           continue;
         }
         const betweenRegionStatement = statement.match(/^name the surface between (\$[a-z0-9][a-z0-9._/-]*) and (\$[a-z0-9][a-z0-9._/-]*) as (.+)$/iu);
@@ -772,7 +873,7 @@ export class DesignPlainformCompiler {
             const error = new Error(`Surface region owner ${owner.entityId} has no project-owned mesh geometry to anchor against.`);
             error.code = 'plainform_surface_anchor_unavailable'; throw error;
           }
-          const seedPoint = evaluateDesignVector(pointRegionStatement[2], scope, 'length');
+          const seedPoint = loftVector(pointRegionStatement[2], scope, 'Surface-region centre');
           const radius = finitePositive(length(pointRegionStatement[3], scope, 'Surface region radius'), 'Surface region radius');
           const [projected] = projectSurfaceAnchors({ recipe: owner.recipe, matrix: owner.matrix, seedPoints: [seedPoint], entityId: owner.entityId });
           const region = semanticSurfaces.addRegion({
@@ -851,9 +952,7 @@ export class DesignPlainformCompiler {
             error.code = 'plainform_surface_anchor_unavailable'; throw error;
           }
           const coordinateSpace = surfaceBoundaryStatement[3].toLowerCase();
-          const authoredPoints = parseVectorGroups(surfaceBoundaryStatement[4], scope, {
-            dimensions: 3, dimension: 'length', phrase: `Surface boundary ${name}`,
-          });
+          const authoredPoints = loftPointGroups(surfaceBoundaryStatement[4], scope, `Surface boundary ${name}`);
           if (authoredPoints.length < 3 || authoredPoints.length > MAX_BOUNDARY_POINTS) {
             const error = new Error(`Boundary “${name}” requires 3 to ${MAX_BOUNDARY_POINTS} points.`);
             error.code = 'plainform_boundary_points'; throw error;
@@ -893,9 +992,7 @@ export class DesignPlainformCompiler {
           }
           const owner = boundaryOwner(boundaryStatement[2]);
           const coordinateSpace = boundaryStatement[3].toLowerCase();
-          const authoredPoints = parseVectorGroups(boundaryStatement[4], scope, {
-            dimensions: 3, dimension: 'length', phrase: `Boundary ${name}`,
-          });
+          const authoredPoints = loftPointGroups(boundaryStatement[4], scope, `Boundary ${name}`);
           if (authoredPoints.length < 3 || authoredPoints.length > MAX_BOUNDARY_POINTS) {
             const error = new Error(`Boundary “${name}” requires 3 to ${MAX_BOUNDARY_POINTS} points.`);
             error.code = 'plainform_boundary_points'; throw error;
@@ -937,7 +1034,7 @@ export class DesignPlainformCompiler {
           if (!Number.isSafeInteger(pointIndex) || pointIndex < 0 || pointIndex >= profile.points.length) {
             const error = new Error(`Profile point ${pointIndex} is outside profile “${profile.name}”.`); error.code = 'plainform_profile_point_index'; throw error;
           }
-          const offset = evaluateDesignVector(moveProfilePoint[3], scope, 'length');
+          const offset = loftVector(moveProfilePoint[3], scope, 'Profile point offset');
           profile.points[pointIndex] = profile.points[pointIndex].map((value, axis) => value + offset[axis]);
           Object.assign(profile, profileBounds(profile.points));
           interpretations.push(`Moved profile point ${pointIndex} of “${profile.name}” by ${offset.join(', ')} metres.`);
@@ -973,12 +1070,23 @@ export class DesignPlainformCompiler {
         }
         if (/^end$/iu.test(statement)) continue;
 
-        const controlledSection = statement.match(/^add a controlled section of (.+?) at height ([^,]+)(?:,\s*(.+))?$/iu);
+        const semanticControlledSection = semanticFrame
+          ? statement.match(/^add a controlled section of (.+?) at ([^,]+?)\s+(forward|backward)(?:,\s*(.+))?$/iu)
+          : null;
+        const legacyControlledSection = statement.match(/^add a controlled section of (.+?) at height ([^,]+)(?:,\s*(.+))?$/iu);
+        if (semanticFrame && legacyControlledSection) {
+          const error = new Error('A semantic design section cannot use “at height” for a path station. Use “at <length> forward” or “at <length> backward”.');
+          error.code = 'plainform_design_frame_ambiguous_station'; throw error;
+        }
+        const controlledSection = semanticControlledSection ?? legacyControlledSection;
         if (controlledSection) {
           const profile = profiles.get(key(controlledSection[1]));
           if (!profile) { const error = new Error(`Unknown profile “${controlledSection[1]}”.`); error.code = 'plainform_unknown_profile'; throw error; }
-          const pathHeight = length(controlledSection[2], scope, 'Section path height');
-          const options = controlledSection[3] ?? '';
+          const authoredStation = length(controlledSection[2], scope, 'Section station');
+          const pathHeight = semanticControlledSection
+            ? authoredStation * (controlledSection[3].toLowerCase() === 'forward' ? -1 : 1)
+            : authoredStation;
+          const options = semanticControlledSection ? (controlledSection[4] ?? '') : (controlledSection[3] ?? '');
           const widthMatch = options.match(/(?:set )?width (?:to )?([^,]+)/iu);
           const depthMatch = options.match(/(?:set )?(?:depth|height) (?:to )?([^,]+)/iu);
           const offsetMatch = options.match(/offset by (\[[^\]]+\])/iu);
@@ -988,13 +1096,14 @@ export class DesignPlainformCompiler {
           const scaleMatch = options.match(/scaled locally by (\[[^\]]+\])/iu);
           const desiredWidth = widthMatch ? finitePositive(length(widthMatch[1], scope, 'Section width'), 'Section width') : profile.width;
           const desiredDepth = depthMatch ? finitePositive(length(depthMatch[1], scope, 'Section depth'), 'Section depth') : profile.depth;
-          const independentScale = scaleMatch ? evaluateDesignVector(scaleMatch[1], scope, 'scalar') : [1, 1, 1];
+          const authoredScale = scaleMatch ? evaluateDesignVector(scaleMatch[1], scope, 'scalar') : [1, 1, 1];
+          const independentScale = semanticFrame ? [authoredScale[0], authoredScale[2], authoredScale[1]] : authoredScale;
           if (independentScale.some(value => !Number.isFinite(value) || value <= 0)) {
             const error = new Error('Local section scales must be greater than zero.'); error.code = 'plainform_design_dimension'; throw error;
           }
-          const offset = offsetMatch ? evaluateDesignVector(offsetMatch[1], scope, 'length') : [0, 0, 0];
-          if (verticalMatch) offset[1] += length(verticalMatch[1], scope, 'Vertical section offset');
-          if (lateralMatch) offset[2] += length(lateralMatch[1], scope, 'Lateral section offset');
+          const offset = offsetMatch ? loftVector(offsetMatch[1], scope, 'Section offset') : [0, 0, 0];
+          if (verticalMatch) offset[semanticFrame ? 2 : 1] += length(verticalMatch[1], scope, 'Vertical section offset');
+          if (lateralMatch) offset[semanticFrame ? 0 : 2] += length(lateralMatch[1], scope, 'Lateral section offset');
           const rotation = rotationMatch ? evaluateDesignVector(rotationMatch[1], scope, 'angle') : [0, 0, 0];
           profile.sections.push({
             id: `section/${slug(profile.name)}-${String(profile.sections.length + 1).padStart(3, '0')}`,
@@ -1008,13 +1117,24 @@ export class DesignPlainformCompiler {
           continue;
         }
 
-        const section = statement.match(/^add a section of (.+?) at height (.+?)(?:,? rotated around y by (.+?))?(?:,? and scaled horizontally by (.+))?$/iu);
+        const semanticSection = semanticFrame
+          ? statement.match(/^add a section of (.+?) at (.+?)\s+(forward|backward)(?:,? rotated around (?:up|y) by (.+?))?(?:,? and scaled horizontally by (.+))?$/iu)
+          : null;
+        const legacySection = statement.match(/^add a section of (.+?) at height (.+?)(?:,? rotated around y by (.+?))?(?:,? and scaled horizontally by (.+))?$/iu);
+        if (semanticFrame && legacySection) {
+          const error = new Error('A semantic design section cannot use “at height” for a path station. Use “at <length> forward” or “at <length> backward”.');
+          error.code = 'plainform_design_frame_ambiguous_station'; throw error;
+        }
+        const section = semanticSection ?? legacySection;
         if (section) {
           const profile = profiles.get(key(section[1]));
           if (!profile) { const error = new Error(`Unknown profile “${section[1]}”.`); error.code = 'plainform_unknown_profile'; throw error; }
-          const height = length(section[2], scope, 'Section height');
-          const rotation = section[3] ? angle(section[3], scope, 'Section rotation') : 0;
-          const scale = section[4] ? finitePositive(scalar(section[4], scope, 'Section scale'), 'Section scale') : 1;
+          const authoredStation = length(section[2], scope, 'Section station');
+          const height = semanticSection ? authoredStation * (section[3].toLowerCase() === 'forward' ? -1 : 1) : authoredStation;
+          const rotationSource = semanticSection ? section[4] : section[3];
+          const scaleSource = semanticSection ? section[5] : section[4];
+          const rotation = rotationSource ? angle(rotationSource, scope, 'Section rotation') : 0;
+          const scale = scaleSource ? finitePositive(scalar(scaleSource, scope, 'Section scale'), 'Section scale') : 1;
           profile.sections.push({
             id: `section/${slug(profile.name)}-${String(profile.sections.length + 1).padStart(3, '0')}`,
             points: profile.points.map(point => [...point]),
@@ -1051,14 +1171,14 @@ export class DesignPlainformCompiler {
             dimensions: {
               width: length(box[3], scope, 'Box width'), height: length(box[4], scope, 'Box height'), depth: length(box[5], scope, 'Box depth'),
             },
-            position: box[6] ? evaluateDesignVector(box[6], scope, 'length') : [0, 0, 0],
+            position: box[6] ? designVector(box[6], scope, 'length', 'Box centre') : [0, 0, 0],
             rotation: box[7] ? evaluateDesignVector(box[7], scope, 'angle') : [0, 0, 0],
             materialId: box[8],
           });
           continue;
         }
 
-        const cylinder = statement.match(/^create a cylinder called (.+?)(?: with id ([a-z0-9{}._/-]+))?,? with radius (.+?)(?=\s+and height)\s+and height (.+?)(?=,\s*cent(?:er|r)ed|,\s*rotated|,\s*using material|$)(?:,? cent(?:er|r)ed at (\[.+?\]))?(?:,? rotated by (\[.+?\]))?(?:,? using material ([a-z0-9][a-z0-9._/-]*))?$/iu);
+        const cylinder = statement.match(/^create a cylinder called (.+?)(?: with id ([a-z0-9{}._/-]+))?,? with radius (.+?)(?=\s+and height)\s+and height (.+?)(?=,\s*cent(?:er|r)ed|,\s*rotated|,\s*aligned|,\s*using material|$)(?:,? cent(?:er|r)ed at (\[.+?\]))?(?:,? rotated by (\[.+?\]))?(?:,? aligned along (?:the )?(right|left|up|down|forward|backward)(?: axis| direction)?)?(?:,? using material ([a-z0-9][a-z0-9._/-]*))?$/iu);
         if (cylinder) {
           autoNumber += 1;
           const name = interpolate(quoteName(cylinder[1]), scope);
@@ -1066,9 +1186,11 @@ export class DesignPlainformCompiler {
             id: cylinder[2] ? interpolate(cylinder[2], scope) : `entity/${designSlug}/${slug(name)}-${String(autoNumber).padStart(3, '0')}`,
             name, kind: 'cylinder',
             dimensions: { radius: length(cylinder[3], scope, 'Cylinder radius'), height: length(cylinder[4], scope, 'Cylinder height') },
-            position: cylinder[5] ? evaluateDesignVector(cylinder[5], scope, 'length') : [0, 0, 0],
-            rotation: cylinder[6] ? evaluateDesignVector(cylinder[6], scope, 'angle') : [0, 0, 0],
-            materialId: cylinder[7],
+            position: cylinder[5] ? designVector(cylinder[5], scope, 'length', 'Cylinder centre') : [0, 0, 0],
+            rotation: cylinder[6]
+              ? evaluateDesignVector(cylinder[6], scope, 'angle')
+              : cylinder[7] ? semanticAxisRotation(cylinder[7].toLowerCase()) : [0, 0, 0],
+            materialId: cylinder[8],
           });
           continue;
         }
@@ -1078,7 +1200,7 @@ export class DesignPlainformCompiler {
           const profile = profiles.get(key(extrude[1]));
           if (!profile) { const error = new Error(`Unknown profile “${extrude[1]}”.`); error.code = 'plainform_unknown_profile'; throw error; }
           const depth = finitePositive(length(extrude[2], scope, 'Extrusion depth'), 'Extrusion depth');
-          const centre = extrude[5] ? evaluateDesignVector(extrude[5], scope, 'length') : [0, 0, 0];
+          const centre = extrude[5] ? loftVector(extrude[5], scope, 'Extrusion centre') : [0, 0, 0];
           const position = [centre[0], centre[1], centre[2] - depth / 2];
           addGeneratedSolid({
             id: extrude[4], name: quoteName(extrude[3]),
@@ -1261,7 +1383,7 @@ export class DesignPlainformCompiler {
           if (!loft) { const error = new Error(`Local form modifiers currently require a generated loft; “${localModifier[2]}” is not one.`); error.code = 'plainform_modifier_target'; throw error; }
           loft.modifiers.push({
             kind: localModifier[1].toLowerCase(),
-            center: evaluateDesignVector(localModifier[3], scope, 'length'),
+            center: loftVector(localModifier[3], scope, 'Local modifier centre'),
             amount: finitePositive(length(localModifier[4], scope, 'Modifier amount'), 'Modifier amount'),
             radius: finitePositive(length(localModifier[5], scope, 'Modifier radius'), 'Modifier radius'),
           });
@@ -1394,12 +1516,15 @@ export class DesignPlainformCompiler {
           continue;
         }
 
-        const symmetryConstraintStatement = statement.match(/^keep (.+?) symmetric across (?:its |the )?(x|y|z) centre plane$/iu);
+        const symmetryConstraintStatement = statement.match(/^keep (.+?) symmetric across (?:its |the )?(x|y|z|right|up|forward) centre plane$/iu);
         if (symmetryConstraintStatement) {
           const owner = semanticSurfaceOwner(symmetryConstraintStatement[1]);
-          const axis = symmetryConstraintStatement[2].toLowerCase();
+          const authoredAxis = symmetryConstraintStatement[2].toLowerCase();
+          const axis = semanticFrame
+            ? ({ right: 'x', up: 'z', forward: 'y' }[authoredAxis] ?? authoredAxis)
+            : authoredAxis;
           constraints.push({ kind: 'symmetry', entityId: owner.entityId, axis });
-          interpretations.push(`Will keep ${owner.entityId} symmetric across its ${axis} centre plane or fail validation.`);
+          interpretations.push(`Will keep ${owner.entityId} symmetric across its ${authoredAxis} centre plane or fail validation.`);
           continue;
         }
 
@@ -1739,8 +1864,14 @@ export class DesignPlainformCompiler {
       ...(resources.length > 0 ? [{ op: 'resource.createMany', items: resources }] : []),
       { op: 'entity.create', sceneId: scene.id, entity: {
         id: rootId, kind: 'group', name: designName,
+        transform: rootTransform,
         metadata: { plainformDesign: {
           version: 1, kind: designKind, source, variables: variableMetadata,
+          designFrame: {
+            name: designFrame,
+            worldAxes: { right: '+X', up: '+Y', forward: '+Z' },
+            internalLoftAxes: { right: '+X', up: '+Z', forward: '-Y' },
+          },
           boundaries: [...boundaries.values()].map(boundary => ({
             name: boundary.name,
             ownerEntityId: boundary.ownerEntityId,

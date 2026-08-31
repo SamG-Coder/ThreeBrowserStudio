@@ -1311,6 +1311,39 @@ test('three_studio_apply commits a Design Plainform model through batched canoni
     .filter(id => id.startsWith('entity/runtime-tower/floor-')).length, 4);
 });
 
+test('three_studio_apply commits a semantic right-up-forward vehicle without an authored corrective rotation', async (t) => {
+  const { application } = await applicationFixture(t);
+  const source = [
+    'Design a vehicle called Runtime Semantic Car with id entity/runtime-semantic-car using the right-up-forward design frame.',
+    'Create a symmetric smooth profile called body section through [0 metres right, 45 centimetres up], [72 centimetres right, 32 centimetres up], [94 centimetres right, 26 centimetres down], [0 metres right, 38 centimetres down].',
+    'Add a controlled section of body section at 2.2 metres backward, width 1.55 metres, height 70 centimetres.',
+    'Add a controlled section of body section at 1.6 metres backward, width 1.9 metres, height 88 centimetres.',
+    'Add a controlled section of body section at 1.4 metres forward, width 1.86 metres, height 82 centimetres.',
+    'Add a controlled section of body section at 2.1 metres forward, width 1.42 metres, height 62 centimetres.',
+    'Loft a watertight solid called Body with id entity/runtime-semantic-body through all sections of body section, with curvature continuity.',
+    'Create a box called Front Axle Envelope with id entity/runtime-front-axle, with width 1.78 metres, height 68 centimetres, and depth 18 centimetres, centred at [0 metres right, 34 centimetres up, 1.45 metres forward].',
+  ].join('\n');
+  assert.doesNotMatch(source, /rotat(?:e|ed)/iu);
+  const result = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1', sessionId: application.sessionId,
+    projectId: 'project/active', baseRevision: 0,
+    idempotencyKey: 'plainform-semantic-frame-0001', label: 'Build a semantic-frame vehicle',
+    operations: null,
+    program: { language: 'plainform-v1', source },
+  }).catch(error => assert.fail(`Semantic-frame runtime application failed: ${JSON.stringify(error.details ?? error.message)}`));
+  assert.equal(result.success, true);
+  assert.equal(result.revision, 1);
+  const document = application.kernel.document;
+  const root = document.scenes['scene/main'].entities['entity/runtime-semantic-car'];
+  assert.equal(root.metadata.plainformDesign.designFrame.name, 'right-up-forward');
+  assert.deepEqual(root.metadata.plainformDesign.designFrame.worldAxes, { right: '+X', up: '+Y', forward: '+Z' });
+  assert.ok(Math.abs(root.transform.rotation[0] + Math.PI / 2) < 1e-12);
+  const recipe = Object.values(document.resources.geometries)
+    .find(resource => resource.recipe.kind === 'loft').recipe;
+  assert.deepEqual(recipe.sections.map(section => section.transform.translation[1]), [2.2, 1.6, -1.4, -2.1]);
+  assert.equal(document.scenes['scene/main'].entities['entity/runtime-front-axle'].parentId, root.id);
+});
+
 test('three_studio_apply commits guided curved lofts through the runtime boundary', async (t) => {
   const { application } = await applicationFixture(t);
   const result = await application.dispatch('three_studio_apply', {
