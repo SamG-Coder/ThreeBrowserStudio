@@ -1371,6 +1371,36 @@ test('three_studio_apply commits surface anchors, four boundary controls, and so
   assert.equal(patch.recipe.continuity, 'positional');
 });
 
+test('three_studio_apply persists surface curves and semantic regions through the kernel', async (t) => {
+  const { application } = await applicationFixture(t);
+  const result = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1', sessionId: application.sessionId,
+    projectId: 'project/active', baseRevision: 0,
+    idempotencyKey: 'plainform-semantic-surfaces-0001', label: 'Describe semantic surface intent',
+    operations: null,
+    program: {
+      language: 'plainform-v1',
+      source: [
+        'Design a shell study called Runtime Semantic Surfaces with id entity/runtime-semantic-surfaces.',
+        'Create a box called Body Shell with id entity/body-shell, with width 4 metres, height 2 metres, and depth 2 metres.',
+        'Create a surface curve called shoulder line on Body Shell through surface points nearest to design points [-1.5 metres, 60 centimetres, 2 metres], [0 metres, 75 centimetres, 2 metres], [1.5 metres, 60 centimetres, 2 metres].',
+        'Create a surface curve called sill line on Body Shell through surface points nearest to design points [-1.5 metres, -60 centimetres, 2 metres], [0 metres, -65 centimetres, 2 metres], [1.5 metres, -60 centimetres, 2 metres].',
+        'Name the surface between $shoulder-line and $sill-line as body side.',
+        'Name the surface within 12 centimetres of $shoulder-line as shoulder region.',
+      ].join('\n'),
+    },
+  }).catch(error => assert.fail(`Semantic surface runtime application failed: ${JSON.stringify(error.details ?? error.message)}`));
+  assert.equal(result.success, true);
+  assert.equal(result.revision, 1);
+  const root = application.kernel.document.scenes['scene/main'].entities['entity/runtime-semantic-surfaces'];
+  assert.equal(root.metadata.plainformDesign.surfaceCurves.length, 2);
+  assert.equal(root.metadata.plainformDesign.surfaceRegions.length, 2);
+  assert.deepEqual(root.metadata.plainformDesign.surfaceRegions[0].definition.references.map(reference => reference.name), [
+    'shoulder-line', 'sill-line',
+  ]);
+  assert.equal(root.metadata.plainformDesign.surfaceRegions[1].definition.distance, 0.12);
+});
+
 test('three_studio_apply compiles Shader Plainform into a validated graph and material assignment', async (t) => {
   const { application } = await applicationFixture(t);
   const setup = await application.dispatch('three_studio_apply', {

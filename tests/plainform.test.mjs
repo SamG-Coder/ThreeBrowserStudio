@@ -287,6 +287,79 @@ Create a constrained surface patch called Lid with id entity/lid between $brow-r
   assert.ok(Math.abs(firstHandle.reduce((sum, value, axis) => sum + (value - first[axis]) * normal[axis], 0)) < 1e-8);
 });
 
+test('Design Plainform stores reusable surface curves and deterministic semantic regions without mesh-level authoring', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a surface study called Semantic Regions with id entity/semantic-regions.
+Create a box called Body Shell with id entity/body-shell, with width 4 metres, height 2 metres, and depth 2 metres.
+Create a surface curve called shoulder line on Body Shell through surface points nearest to design points [-1.5 metres, 60 centimetres, 2 metres], [0 metres, 75 centimetres, 2 metres], [1.5 metres, 60 centimetres, 2 metres].
+Create a surface curve called sill line on Body Shell through surface points nearest to design points [-1.5 metres, -60 centimetres, 2 metres], [0 metres, -65 centimetres, 2 metres], [1.5 metres, -60 centimetres, 2 metres].
+Create a closed surface curve called door outline on Body Shell through surface points nearest to design points [-80 centimetres, 50 centimetres, 2 metres], [80 centimetres, 50 centimetres, 2 metres], [80 centimetres, -50 centimetres, 2 metres], [-80 centimetres, -50 centimetres, 2 metres].
+Name the surface between $shoulder-line and $sill-line as body side.
+Name the surface within 20 centimetres of $shoulder-line as shoulder region.
+Name the surface enclosed by $door-outline as door region.
+Name the surface on Body Shell around [0 metres, 0 metres, 2 metres] within 30 centimetres as centre detail.
+`, { project: projectFixture() });
+  assert.ok(compiled.operations.every(operation => operationSchema.safeParse(operation).success));
+  const root = compiled.operations.find(operation => operation.op === 'entity.create').entity;
+  const intent = root.metadata.plainformDesign;
+  assert.equal(intent.surfaceCurves.length, 3);
+  assert.deepEqual(intent.surfaceCurves.map(curve => curve.name), ['shoulder-line', 'sill-line', 'door-outline']);
+  assert.equal(intent.surfaceCurves[2].closed, true);
+  assert.ok(intent.surfaceCurves.every(curve => curve.anchors.every(anchor => Number.isInteger(anchor.triangleIndex))));
+  assert.deepEqual(intent.surfaceRegions.map(region => region.definition.kind), [
+    'betweenCurves', 'curveDistance', 'enclosedCurve', 'surfaceRadius',
+  ]);
+  assert.ok(intent.surfaceRegions.every(region => region.ownerEntityId === 'entity/body-shell'));
+  assert.equal(intent.surfaceRegions[1].definition.distance, 0.2);
+  assert.equal(intent.surfaceRegions[3].definition.radius, 0.3);
+  assert.ok(Number.isInteger(intent.surfaceRegions[3].anchor.triangleIndex));
+});
+
+test('Design Plainform permits intent-only surface annotation of existing geometry', () => {
+  const project = projectFixture();
+  project.resources.geometries['geometry/existing-shell'] = {
+    id: 'geometry/existing-shell', recipe: { kind: 'sphere', radius: 1, widthSegments: 16, heightSegments: 8 },
+  };
+  project.scenes['scene/main'].entities['entity/existing-shell'] = {
+    id: 'entity/existing-shell', kind: 'mesh', name: 'Existing Shell', parentId: null,
+    transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+    components: { mesh: { geometryId: 'geometry/existing-shell' } },
+  };
+  const compiled = new PlainformCompiler().compile(`
+Design a surface annotation called Existing Surface Intent with id entity/existing-surface-intent.
+Create a surface curve called equator on entity/existing-shell through surface points nearest to design points [-1 metre, 0 metres, 0 metres], [0 metres, 0 metres, 1 metre], [1 metre, 0 metres, 0 metres].
+Name the surface within 10 centimetres of $equator as equatorial band.
+`, { project });
+  assert.deepEqual(compiled.operations.map(operation => operation.op), ['entity.create']);
+  assert.equal(compiled.design.entityCount, 0);
+  assert.equal(compiled.operations[0].entity.metadata.plainformDesign.surfaceRegions[0].ownerEntityId, 'entity/existing-shell');
+});
+
+test('Design Plainform rejects ambiguous, cross-owner, and open-curve surface regions', () => {
+  assert.throws(() => new PlainformCompiler().compile(`
+Design a surface study called Ambiguous Region with id entity/ambiguous-region.
+Create a box called Shell with id entity/shell, with width 2 metres, height 2 metres, and depth 2 metres.
+Create a surface curve called rail on Shell through surface points nearest to design points [-50 centimetres, 0 metres, 2 metres], [50 centimetres, 0 metres, 2 metres].
+Name the region around $rail as vague region.
+`, { project: projectFixture() }), error => error.code === 'plainform_surface_region_extent_required');
+
+  assert.throws(() => new PlainformCompiler().compile(`
+Design a surface study called Cross Owner Region with id entity/cross-owner-region.
+Create a box called First with id entity/first, with width 2 metres, height 2 metres, and depth 2 metres, centred at [-2 metres, 0 metres, 0 metres].
+Create a box called Second with id entity/second, with width 2 metres, height 2 metres, and depth 2 metres, centred at [2 metres, 0 metres, 0 metres].
+Create a surface curve called first rail on First through surface points nearest to design points [-2.5 metres, 0 metres, 2 metres], [-1.5 metres, 0 metres, 2 metres].
+Create a surface curve called second rail on Second through surface points nearest to design points [1.5 metres, 0 metres, 2 metres], [2.5 metres, 0 metres, 2 metres].
+Name the surface between $first-rail and $second-rail as impossible region.
+`, { project: projectFixture() }), error => error.code === 'plainform_surface_region_owner_mismatch');
+
+  assert.throws(() => new PlainformCompiler().compile(`
+Design a surface study called Open Region with id entity/open-region.
+Create a box called Shell with id entity/shell, with width 2 metres, height 2 metres, and depth 2 metres.
+Create a surface curve called open outline on Shell through surface points nearest to design points [-50 centimetres, 50 centimetres, 2 metres], [50 centimetres, 50 centimetres, 2 metres], [50 centimetres, -50 centimetres, 2 metres].
+Name the surface enclosed by $open-outline as impossible region.
+`, { project: projectFixture() }), error => error.code === 'plainform_surface_region_not_closed');
+});
+
 test('Design Plainform projects anchors against a generated curved loft owner', () => {
   const compiled = new PlainformCompiler().compile(`
 Design a head study called Loft Surface Owner with id entity/loft-surface-owner.

@@ -203,6 +203,36 @@ sections. Their requested design continuity remains in metadata; the compiled
 loft uses positional interpolation over those already evaluated sections so a
 second implicit interpolation cannot move the constrained edges.
 
+### Surface curves and semantic regions
+
+Use a surface curve when a reusable design line must live on one existing
+surface. Open curves require 2–256 seed points; closed curves require 3–256.
+The compiler projects every seed with the same bounded nearest-surface process
+as anchored boundaries and stores its owner, projected points, normals,
+triangle anchors, and barycentric coordinates as design intent:
+
+```text
+Create a surface curve called shoulder line on Body Shell through surface points nearest to design points [-1.5 metres, 60 centimetres, 2 metres], [0 metres, 75 centimetres, 2 metres], [1.5 metres, 60 centimetres, 2 metres].
+Create a closed surface curve called door outline on Body Shell through surface points nearest to design points [-80 centimetres, 50 centimetres, 2 metres], [80 centimetres, 50 centimetres, 2 metres], [80 centimetres, -50 centimetres, 2 metres], [-80 centimetres, -50 centimetres, 2 metres].
+```
+
+Name deterministic regions without selecting vertices or triangles:
+
+```text
+Name the surface between $shoulder-line and $sill-line as body side.
+Name the surface within 20 centimetres of $shoulder-line as shoulder region.
+Name the surface enclosed by $door-outline as door region.
+Name the surface on Body Shell around [0 metres, 0 metres, 2 metres] within 30 centimetres as centre detail.
+```
+
+The two references in a `between` region must belong to the same owner. An
+`enclosed by` region requires a curve declared `closed`. Distances and radii
+must be positive lengths. `Name the region around $rail as shoulder` is
+intentionally invalid because it omits a deterministic extent. Surface curves
+and regions are persistent canonical intent, but this stage does not deform,
+split, or shell their owner automatically; use only the regional operations
+explicitly documented in later sections.
+
 Arbitrary profiles can also become bevelled watertight extrusions:
 
 ```text

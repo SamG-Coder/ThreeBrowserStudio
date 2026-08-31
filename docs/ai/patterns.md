@@ -179,6 +179,18 @@ exact grammar and coordinate conventions in
 `skills/threebrowser-studio-mcp/references/plainform.md`; do not infer
 unsupported CAD verbs from open-ended prose.
 
+Design Plainform can also annotate an existing project-owned surface without
+creating another mesh. `Create a surface curve called ... on ... through
+surface points nearest to design points ...` stores bounded projected anchors
+as reusable `$curve-name` intent. Add `closed` before `surface curve` for a
+loop. Deterministic surface regions may be named between two same-owner curves,
+within an explicit distance of a curve or boundary, inside a closed curve, or
+within an explicit radius of one projected surface point. These declarations
+store semantic intent on the design root; they do not deform geometry until a
+separate supported regional operation consumes them. A vague region such as
+`Name the region around $rail as shoulder` is rejected because it has no
+extent.
+
 When a complex result is weak, revise the authored profiles, section spacing,
 guide binding, dimensions, material, camera, and light before extending the
 language. Add a new Plainform/runtime capability only after a required form

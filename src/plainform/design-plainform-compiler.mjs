@@ -7,6 +7,7 @@ import {
   matchBoundaryDirection,
   projectSurfaceAnchors,
 } from './constrained-surface.mjs';
+import { SemanticSurfaceRegistry } from './semantic-surface.mjs';
 
 const MAX_DESIGN_ENTITIES = 128;
 const MAX_LOOP_ITERATIONS = 128;
@@ -231,6 +232,7 @@ export class DesignPlainformCompiler {
     const profiles = new Map();
     const guides = new Map();
     const boundaries = new Map();
+    const semanticSurfaces = new SemanticSurfaceRegistry({ boundaries, referenceKey: boundaryReferenceKey });
     const entities = [];
     const aliases = { [key(designName)]: [rootId] };
     const interpretations = [`Will create the ${designKind} design “${designName}” as ${rootId}.`];
@@ -440,11 +442,105 @@ export class DesignPlainformCompiler {
           interpretations.push(`Defined guide curve “${name}” through ${points.length} evaluated points.`);
           continue;
         }
+        const surfaceCurveStatement = statement.match(/^create a (?:(closed)\s+)?surface curve called (.+?) on (.+?) through surface points nearest to (local|design) points (.+)$/iu);
+        if (surfaceCurveStatement) {
+          const name = boundaryReferenceKey(surfaceCurveStatement[2]);
+          const closed = Boolean(surfaceCurveStatement[1]);
+          const owner = boundaryOwner(surfaceCurveStatement[3]);
+          if (!owner.recipe) {
+            const error = new Error(`Surface curve owner ${owner.entityId} has no project-owned mesh geometry to anchor against.`);
+            error.code = 'plainform_surface_anchor_unavailable'; throw error;
+          }
+          const coordinateSpace = surfaceCurveStatement[4].toLowerCase();
+          const authoredPoints = parseVectorGroups(surfaceCurveStatement[5], scope, {
+            dimensions: 3, dimension: 'length', phrase: `Surface curve ${name}`,
+          });
+          const minimum = closed ? 3 : 2;
+          if (authoredPoints.length < minimum || authoredPoints.length > MAX_BOUNDARY_POINTS) {
+            const error = new Error(`${closed ? 'Closed' : 'Open'} surface curve “${name}” requires ${minimum} to ${MAX_BOUNDARY_POINTS} points.`);
+            error.code = 'plainform_surface_curve_points'; throw error;
+          }
+          const seedPoints = coordinateSpace === 'local'
+            ? authoredPoints.map(point => transformPointByMatrix(owner.matrix, point))
+            : authoredPoints.map(point => [...point]);
+          const projected = projectSurfaceAnchors({
+            recipe: owner.recipe, matrix: owner.matrix, seedPoints, entityId: owner.entityId,
+          });
+          const points = projected.map(anchor => anchor.point);
+          if (new Set(points.map(point => point.map(value => value.toPrecision(12)).join('\u0000'))).size < minimum) {
+            const error = new Error(`Surface curve “${name}” projects to fewer than ${minimum} distinct surface points.`);
+            error.code = 'plainform_surface_curve_points'; throw error;
+          }
+          semanticSurfaces.addCurve({
+            name, ownerEntityId: owner.entityId, coordinateSpace, closed,
+            anchorMode: 'nearestSurface', authoredPoints: authoredPoints.map(point => [...point]),
+            points, normals: projected.map(anchor => anchor.normal),
+            anchors: projected.map((anchor, index) => ({
+              seedPoint: [...seedPoints[index]], projectedPoint: [...anchor.point], normal: [...anchor.normal],
+              triangleIndex: anchor.triangleIndex, barycentric: [...anchor.barycentric],
+            })),
+          });
+          interpretations.push(`Created ${closed ? 'closed ' : ''}surface curve $${name} on ${owner.entityId} with ${points.length} bounded anchors.`);
+          continue;
+        }
+        const betweenRegionStatement = statement.match(/^name the surface between (\$[a-z0-9][a-z0-9._/-]*) and (\$[a-z0-9][a-z0-9._/-]*) as (.+)$/iu);
+        if (betweenRegionStatement) {
+          const region = semanticSurfaces.addBetweenRegion({
+            name: betweenRegionStatement[3],
+            firstReference: betweenRegionStatement[1],
+            secondReference: betweenRegionStatement[2],
+          });
+          interpretations.push(`Named surface region “${region.name}” between $${boundaryReferenceKey(betweenRegionStatement[1])} and $${boundaryReferenceKey(betweenRegionStatement[2])}.`);
+          continue;
+        }
+        const curveDistanceRegionStatement = statement.match(/^name the surface within (.+?) of (\$[a-z0-9][a-z0-9._/-]*) as (.+)$/iu);
+        if (curveDistanceRegionStatement) {
+          const distance = finitePositive(length(curveDistanceRegionStatement[1], scope, 'Surface region distance'), 'Surface region distance');
+          const region = semanticSurfaces.addCurveDistanceRegion({
+            name: curveDistanceRegionStatement[3], reference: curveDistanceRegionStatement[2], distance,
+          });
+          interpretations.push(`Named surface region “${region.name}” within ${distance} metres of $${boundaryReferenceKey(curveDistanceRegionStatement[2])}.`);
+          continue;
+        }
+        const enclosedRegionStatement = statement.match(/^name the surface enclosed by (\$[a-z0-9][a-z0-9._/-]*) as (.+)$/iu);
+        if (enclosedRegionStatement) {
+          const region = semanticSurfaces.addEnclosedRegion({
+            name: enclosedRegionStatement[2], reference: enclosedRegionStatement[1],
+          });
+          interpretations.push(`Named surface region “${region.name}” enclosed by $${boundaryReferenceKey(enclosedRegionStatement[1])}.`);
+          continue;
+        }
+        const pointRegionStatement = statement.match(/^name the surface on (.+?) around (\[[^\]]+\]) within (.+?) as (.+)$/iu);
+        if (pointRegionStatement) {
+          const owner = boundaryOwner(pointRegionStatement[1]);
+          if (!owner.recipe) {
+            const error = new Error(`Surface region owner ${owner.entityId} has no project-owned mesh geometry to anchor against.`);
+            error.code = 'plainform_surface_anchor_unavailable'; throw error;
+          }
+          const seedPoint = evaluateDesignVector(pointRegionStatement[2], scope, 'length');
+          const radius = finitePositive(length(pointRegionStatement[3], scope, 'Surface region radius'), 'Surface region radius');
+          const [projected] = projectSurfaceAnchors({ recipe: owner.recipe, matrix: owner.matrix, seedPoints: [seedPoint], entityId: owner.entityId });
+          const region = semanticSurfaces.addRegion({
+            name: pointRegionStatement[4], ownerEntityId: owner.entityId,
+            definition: { kind: 'surfaceRadius', center: [...projected.point], radius },
+            anchor: {
+              seedPoint: [...seedPoint], projectedPoint: [...projected.point], normal: [...projected.normal],
+              triangleIndex: projected.triangleIndex, barycentric: [...projected.barycentric],
+            },
+          });
+          interpretations.push(`Named surface region “${region.name}” within ${radius} metres of one anchored point on ${owner.entityId}.`);
+          continue;
+        }
+        const ambiguousRegionStatement = statement.match(/^name the (?:surface )?region around (\$[a-z0-9][a-z0-9._/-]*) as (.+)$/iu);
+        if (ambiguousRegionStatement) {
+          const error = new Error(`Surface region “${ambiguousRegionStatement[2]}” needs an explicit extent. Use “Name the surface within <distance> of ${ambiguousRegionStatement[1]} as <name>.”`);
+          error.code = 'plainform_surface_region_extent_required'; throw error;
+        }
         const boundaryStatement = statement.match(/^name a boundary called (.+?) on (.+?) through (local|design) points (.+)$/iu);
         const surfaceBoundaryStatement = statement.match(/^name a (?:surface-anchored )?boundary called (.+?) on (.+?) through surface points nearest to (local|design) points (.+)$/iu);
         if (surfaceBoundaryStatement) {
           const name = boundaryReferenceKey(surfaceBoundaryStatement[1]);
-          if (boundaries.has(name)) {
+          if (semanticSurfaces.hasReference(name)) {
             const error = new Error(`Boundary “${name}” is already defined in this design.`);
             error.code = 'plainform_boundary_exists'; throw error;
           }
@@ -490,7 +586,7 @@ export class DesignPlainformCompiler {
         }
         if (boundaryStatement) {
           const name = boundaryReferenceKey(boundaryStatement[1]);
-          if (boundaries.has(name)) {
+          if (semanticSurfaces.hasReference(name)) {
             const error = new Error(`Boundary “${name}” is already defined in this design.`);
             error.code = 'plainform_boundary_exists'; throw error;
           }
@@ -877,8 +973,8 @@ export class DesignPlainformCompiler {
     };
 
     execute(1, lines.length, variables);
-    if (entities.length + lofts.length + surfacePatches.length === 0) {
-      const error = new Error('A design must create at least one solid or primitive.'); error.code = 'plainform_empty_design'; throw error;
+    if (entities.length + lofts.length + surfacePatches.length + semanticSurfaces.curves.size + semanticSurfaces.regions.size === 0) {
+      const error = new Error('A design must create at least one solid, primitive, surface curve, or surface region.'); error.code = 'plainform_empty_design'; throw error;
     }
 
     const resources = [...geometryKinds].map(kind => ({
@@ -1013,6 +1109,7 @@ export class DesignPlainformCompiler {
       error.code = 'plainform_design_entity_limit';
       throw error;
     }
+    const semanticSurfaceMetadata = semanticSurfaces.toMetadata();
     const operations = [
       ...(resources.length > 0 ? [{ op: 'resource.createMany', items: resources }] : []),
       { op: 'entity.create', sceneId: scene.id, entity: {
@@ -1032,9 +1129,10 @@ export class DesignPlainformCompiler {
               })),
             } : {}),
           })),
+          ...semanticSurfaceMetadata,
         } },
       } },
-      { op: 'entity.createMany', sceneId: scene.id, items: allEntities.map(entity => ({ entity })) },
+      ...(allEntities.length > 0 ? [{ op: 'entity.createMany', sceneId: scene.id, items: allEntities.map(entity => ({ entity })) }] : []),
     ];
     interpretations.push(`Will create ${allEntities.length} meshes using ${resources.length} shared or procedural geometries.`);
     return Object.freeze({
