@@ -191,6 +191,16 @@ separate supported regional operation consumes them. A vague region such as
 `Name the region around $rail as shoulder` is rejected because it has no
 extent.
 
+Curve-distance and surface-radius regions can drive deterministic normal
+displacement without naming mesh elements. Use `Raise the surface along
+<curve> by <length> with a smooth falloff of <length>` (also `Lower`, `Inset`,
+`Bulge`, or `Pinch`) or `<verb> <region> by <length>, falling off smoothly over
+<length>`. The compiler internally realizes a bounded indexed result, keeps the
+owner entity ID and transform, and records the affected-vertex count as derived
+evidence. An explicit positive falloff is mandatory. Between-curves and
+enclosed regions remain valid intent for later projection/split operations but
+are rejected as deformation masks in the current stage.
+
 When a complex result is weak, revise the authored profiles, section spacing,
 guide binding, dimensions, material, camera, and light before extending the
 language. Add a new Plainform/runtime capability only after a required form

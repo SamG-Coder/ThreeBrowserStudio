@@ -360,6 +360,80 @@ Name the surface enclosed by $open-outline as impossible region.
 `, { project: projectFixture() }), error => error.code === 'plainform_surface_region_not_closed');
 });
 
+test('Design Plainform deforms generated surfaces along curves and radius regions with bounded smooth falloff', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a product shell called Semantic Deformation with id entity/semantic-deformation.
+Create a cylinder called Body Shell with id entity/body-shell, with radius 1 metre and height 2 metres.
+Create a surface curve called shoulder line on Body Shell through surface points nearest to design points [-60 centimetres, 50 centimetres, 1.5 metres], [0 metres, 55 centimetres, 1.5 metres], [60 centimetres, 50 centimetres, 1.5 metres].
+Raise the surface along shoulder line by 8 centimetres with a smooth falloff of 80 centimetres.
+Name the surface on Body Shell around [0 metres, 0 metres, 1.5 metres] within 35 centimetres as centre boss.
+Bulge centre boss by 4 centimetres, falling off smoothly over 1 metre.
+`, { project: projectFixture() });
+  assert.ok(compiled.operations.every(operation => operationSchema.safeParse(operation).success));
+  const derived = compiled.operations[0].items
+    .map(item => item.resource)
+    .find(resource => resource.metadata?.plainformDesign?.primitive === 'semanticSurfaceResult');
+  assert.equal(derived.recipe.kind, 'indexedMesh');
+  assert.ok(derived.recipe.positions.some(value => Math.abs(value) > 1.0001));
+  const body = compiled.operations.find(operation => operation.op === 'entity.createMany').items
+    .map(item => item.entity).find(entity => entity.id === 'entity/body-shell');
+  assert.equal(body.components.mesh.geometryId, derived.id);
+  const root = compiled.operations.find(operation => operation.op === 'entity.create').entity;
+  assert.deepEqual(root.metadata.plainformDesign.surfaceDeformations.map(item => item.kind), [
+    'curveDisplacement', 'regionDisplacement',
+  ]);
+  assert.ok(root.metadata.plainformDesign.surfaceDeformations.every(item => item.affectedVertexCount > 0));
+  assert.equal(root.metadata.plainformDesign.surfaceDeformations[0].amount, 0.08);
+  assert.equal(root.metadata.plainformDesign.surfaceDeformations[1].falloff, 1);
+});
+
+test('Design Plainform patches an existing owner to one derived semantic surface while preserving its stable ID', () => {
+  const project = projectFixture();
+  project.resources.geometries['geometry/existing-shell'] = {
+    id: 'geometry/existing-shell', recipe: { kind: 'sphere', radius: 1, widthSegments: 16, heightSegments: 8 },
+  };
+  project.scenes['scene/main'].entities['entity/existing-shell'] = {
+    id: 'entity/existing-shell', kind: 'mesh', name: 'Existing Shell', parentId: null,
+    transform: { position: [1, 2, 3], rotation: [0, 0.2, 0], scale: [2, 1, 1] },
+    components: { mesh: { geometryId: 'geometry/existing-shell', materialId: 'material/leaf' } },
+  };
+  const compiled = new PlainformCompiler().compile(`
+Design a refinement called Existing Surface Deformation with id entity/existing-surface-deformation.
+Create a surface curve called crown line on entity/existing-shell through surface points nearest to design points [0 metres, 2.5 metres, 4.5 metres], [1 metre, 2.7 metres, 4.5 metres], [2 metres, 2.5 metres, 4.5 metres].
+Raise the surface along crown line by 5 centimetres with a smooth falloff of 60 centimetres.
+`, { project });
+  const patch = compiled.operations.find(operation => operation.op === 'entity.patch');
+  assert.equal(patch.entityId, 'entity/existing-shell');
+  assert.equal(patch.patch.components.mesh.materialId, 'material/leaf');
+  assert.match(patch.patch.components.mesh.geometryId, /semantic-surface$/u);
+  assert.equal(compiled.design.entityCount, 0);
+});
+
+test('Design Plainform rejects dimensionally invalid, ambiguous, and unsupported regional deformation', () => {
+  assert.throws(() => new PlainformCompiler().compile(`
+Design a shell study called Missing Falloff with id entity/missing-falloff.
+Create a cylinder called Shell with id entity/shell, with radius 1 metre and height 2 metres.
+Create a surface curve called rail on Shell through surface points nearest to design points [-50 centimetres, 0 metres, 2 metres], [0 metres, 20 centimetres, 2 metres], [50 centimetres, 0 metres, 2 metres].
+Raise the surface along rail by 4 centimetres.
+`, { project: projectFixture() }), error => error.code === 'plainform_surface_deformation_falloff_required');
+
+  assert.throws(() => new PlainformCompiler().compile(`
+Design a shell study called Bad Falloff Units with id entity/bad-falloff-units.
+Create a cylinder called Shell with id entity/shell, with radius 1 metre and height 2 metres.
+Create a surface curve called rail on Shell through surface points nearest to design points [-50 centimetres, 0 metres, 2 metres], [0 metres, 20 centimetres, 2 metres], [50 centimetres, 0 metres, 2 metres].
+Raise the surface along rail by 4 centimetres with a smooth falloff of 20 degrees.
+`, { project: projectFixture() }), error => error.code === 'plainform_dimension_mismatch');
+
+  assert.throws(() => new PlainformCompiler().compile(`
+Design a shell study called Unsupported Band with id entity/unsupported-band.
+Create a cylinder called Shell with id entity/shell, with radius 1 metre and height 2 metres.
+Create a surface curve called upper rail on Shell through surface points nearest to design points [-50 centimetres, 50 centimetres, 2 metres], [0 metres, 50 centimetres, 2 metres], [50 centimetres, 50 centimetres, 2 metres].
+Create a surface curve called lower rail on Shell through surface points nearest to design points [-50 centimetres, -50 centimetres, 2 metres], [0 metres, -50 centimetres, 2 metres], [50 centimetres, -50 centimetres, 2 metres].
+Name the surface between $upper-rail and $lower-rail as band.
+Bulge band by 4 centimetres, falling off smoothly over 20 centimetres.
+`, { project: projectFixture() }), error => error.code === 'plainform_surface_region_deformation_unsupported');
+});
+
 test('Design Plainform projects anchors against a generated curved loft owner', () => {
   const compiled = new PlainformCompiler().compile(`
 Design a head study called Loft Surface Owner with id entity/loft-surface-owner.

@@ -29,6 +29,7 @@ export class SemanticSurfaceRegistry {
     this.referenceKey = referenceKey;
     this.curves = new Map();
     this.regions = new Map();
+    this.deformations = [];
   }
 
   hasReference(name) {
@@ -71,6 +72,17 @@ export class SemanticSurfaceRegistry {
     }
     this.regions.set(name, { ...region, name });
     return this.regions.get(name);
+  }
+
+  resolveRegion(value) {
+    const name = this.referenceKey(value);
+    const region = this.regions.get(name);
+    if (!region) fail('plainform_unknown_surface_region', `Unknown surface region “${name}”. Define it before deforming it.`);
+    return region;
+  }
+
+  addDeformation(deformation) {
+    this.deformations.push(structuredClone(deformation));
   }
 
   addCurveDistanceRegion({ name, reference, distance }) {
@@ -141,6 +153,7 @@ export class SemanticSurfaceRegistry {
         definition: structuredClone(region.definition),
         ...(region.anchor ? { anchor: cloneAnchor(region.anchor) } : {}),
       })),
+      surfaceDeformations: this.deformations.map(deformation => structuredClone(deformation)),
     };
   }
 }

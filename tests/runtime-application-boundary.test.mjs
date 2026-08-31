@@ -1401,6 +1401,35 @@ test('three_studio_apply persists surface curves and semantic regions through th
   assert.equal(root.metadata.plainformDesign.surfaceRegions[1].definition.distance, 0.12);
 });
 
+test('three_studio_apply commits semantic curve deformation as one derived owner surface', async (t) => {
+  const { application } = await applicationFixture(t);
+  const result = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1', sessionId: application.sessionId,
+    projectId: 'project/active', baseRevision: 0,
+    idempotencyKey: 'plainform-semantic-deformation-0001', label: 'Raise one semantic surface line',
+    operations: null,
+    program: {
+      language: 'plainform-v1',
+      source: [
+        'Design a product shell called Runtime Semantic Deformation with id entity/runtime-semantic-deformation.',
+        'Create a cylinder called Body Shell with id entity/body-shell, with radius 1 metre and height 2 metres.',
+        'Create a surface curve called shoulder line on Body Shell through surface points nearest to design points [-60 centimetres, 50 centimetres, 1.5 metres], [0 metres, 55 centimetres, 1.5 metres], [60 centimetres, 50 centimetres, 1.5 metres].',
+        'Raise the surface along shoulder line by 8 centimetres with a smooth falloff of 80 centimetres.',
+      ].join('\n'),
+    },
+  }).catch(error => assert.fail(`Semantic deformation runtime application failed: ${JSON.stringify(error.details ?? error.message)}`));
+  assert.equal(result.success, true);
+  assert.equal(result.revision, 1);
+  const document = application.kernel.document;
+  const body = document.scenes['scene/main'].entities['entity/body-shell'];
+  const geometry = document.resources.geometries[body.components.mesh.geometryId];
+  assert.equal(geometry.recipe.kind, 'indexedMesh');
+  assert.equal(geometry.metadata.plainformDesign.ownerEntityId, 'entity/body-shell');
+  const intent = document.scenes['scene/main'].entities['entity/runtime-semantic-deformation'].metadata.plainformDesign;
+  assert.equal(intent.surfaceDeformations.length, 1);
+  assert.ok(intent.surfaceDeformations[0].affectedVertexCount > 0);
+});
+
 test('three_studio_apply compiles Shader Plainform into a validated graph and material assignment', async (t) => {
   const { application } = await applicationFixture(t);
   const setup = await application.dispatch('three_studio_apply', {

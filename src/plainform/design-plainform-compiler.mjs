@@ -8,6 +8,7 @@ import {
   projectSurfaceAnchors,
 } from './constrained-surface.mjs';
 import { SemanticSurfaceRegistry } from './semantic-surface.mjs';
+import { deformAlongSurfaceCurve, deformSurfaceRegion } from './semantic-surface-deformation.mjs';
 
 const MAX_DESIGN_ENTITIES = 128;
 const MAX_LOOP_ITERATIONS = 128;
@@ -241,6 +242,7 @@ export class DesignPlainformCompiler {
     const surfacePatches = [];
     const generatedResources = [];
     const booleanCommands = [];
+    const semanticDeformationStates = new Map();
     const ids = new Set([rootId]);
     let requestedPreview = false;
     let autoNumber = 0;
@@ -291,6 +293,7 @@ export class DesignPlainformCompiler {
           entityId: generated.entityId,
           matrix: composeTransformMatrix({ position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] }),
           recipe: loftRecipe(generated),
+          geometryId: generated.geometryId,
         };
         const geometryId = generated.components?.mesh?.geometryId;
         const generatedResource = generatedResources.find(item => item.resource.id === geometryId)?.resource;
@@ -298,6 +301,7 @@ export class DesignPlainformCompiler {
           entityId: generated.id,
           matrix: composeTransformMatrix(generated.transform),
           recipe: generatedResource?.recipe ?? unitRecipe(generated.metadata?.plainformDesign?.primitive),
+          geometryId,
         };
       }
       const exactId = clean(phrase);
@@ -313,11 +317,21 @@ export class DesignPlainformCompiler {
           entityId: exact.entity.id,
           matrix: spatial.worldMatrix(exact),
           recipe: resource?.recipe ?? resource?.parameters ?? resource,
+          geometryId,
+          meshComponent: exact.entity.components?.mesh,
         };
       }
       const error = new Error(`Boundary owner “${phrase}” must be an exact entity ID or an object created earlier in this design.`);
       error.code = 'plainform_boundary_owner_not_found';
       throw error;
+    };
+    const semanticDeformationOwner = phrase => {
+      const owner = boundaryOwner(phrase);
+      const existing = semanticDeformationStates.get(owner.entityId);
+      if (existing) return existing;
+      const state = { ...owner, originalGeometryId: owner.geometryId };
+      semanticDeformationStates.set(owner.entityId, state);
+      return state;
     };
     const addEntity = ({ id, name, kind: primitiveKind, dimensions, position, rotation = [0, 0, 0], materialId }) => {
       if (entities.length >= MAX_DESIGN_ENTITIES) {
@@ -535,6 +549,48 @@ export class DesignPlainformCompiler {
         if (ambiguousRegionStatement) {
           const error = new Error(`Surface region “${ambiguousRegionStatement[2]}” needs an explicit extent. Use “Name the surface within <distance> of ${ambiguousRegionStatement[1]} as <name>.”`);
           error.code = 'plainform_surface_region_extent_required'; throw error;
+        }
+        const curveDeformationStatement = statement.match(/^(raise|lower|inset|bulge|pinch) the surface along (.+?) by (.+?) with a smooth falloff of (.+)$/iu);
+        if (curveDeformationStatement) {
+          const operation = curveDeformationStatement[1].toLowerCase();
+          const curve = semanticSurfaces.resolveReference(curveDeformationStatement[2]);
+          if (curve.referenceKind !== 'surfaceCurve') {
+            const error = new Error(`Surface deformation along $${curve.name} requires a surface curve, not a patch boundary.`);
+            error.code = 'plainform_surface_curve_required'; throw error;
+          }
+          const magnitude = finitePositive(length(curveDeformationStatement[3], scope, 'Surface deformation amount'), 'Surface deformation amount');
+          const falloff = finitePositive(length(curveDeformationStatement[4], scope, 'Surface deformation falloff'), 'Surface deformation falloff');
+          const amount = ['lower', 'inset', 'pinch'].includes(operation) ? -magnitude : magnitude;
+          const owner = semanticDeformationOwner(curve.ownerEntityId);
+          const result = deformAlongSurfaceCurve({ owner, curve, amount, falloff });
+          owner.recipe = result.recipe;
+          semanticSurfaces.addDeformation({
+            kind: 'curveDisplacement', operation, ownerEntityId: owner.entityId,
+            reference: { name: curve.name, kind: curve.referenceKind }, amount, falloff,
+            affectedVertexCount: result.affectedVertexCount,
+          });
+          interpretations.push(`${operation[0].toUpperCase()}${operation.slice(1)}d the surface along $${curve.name} by ${magnitude} metres with ${falloff} metres of smooth falloff.`);
+          continue;
+        }
+        const regionDeformationStatement = statement.match(/^(raise|lower|inset|bulge|pinch) (.+?) by (.+?),? falling off smoothly over (.+)$/iu);
+        if (regionDeformationStatement) {
+          const operation = regionDeformationStatement[1].toLowerCase();
+          const region = semanticSurfaces.resolveRegion(regionDeformationStatement[2]);
+          const magnitude = finitePositive(length(regionDeformationStatement[3], scope, 'Surface deformation amount'), 'Surface deformation amount');
+          const falloff = finitePositive(length(regionDeformationStatement[4], scope, 'Surface deformation falloff'), 'Surface deformation falloff');
+          const amount = ['lower', 'inset', 'pinch'].includes(operation) ? -magnitude : magnitude;
+          const owner = semanticDeformationOwner(region.ownerEntityId);
+          const result = deformSurfaceRegion({
+            owner, region, amount, falloff,
+            resolveReference: name => semanticSurfaces.resolveReference(name),
+          });
+          owner.recipe = result.recipe;
+          semanticSurfaces.addDeformation({
+            kind: 'regionDisplacement', operation, ownerEntityId: owner.entityId,
+            region: region.name, amount, falloff, affectedVertexCount: result.affectedVertexCount,
+          });
+          interpretations.push(`${operation[0].toUpperCase()}${operation.slice(1)}d surface region “${region.name}” by ${magnitude} metres with ${falloff} metres of smooth falloff.`);
+          continue;
         }
         const boundaryStatement = statement.match(/^name a boundary called (.+?) on (.+?) through (local|design) points (.+)$/iu);
         const surfaceBoundaryStatement = statement.match(/^name a (?:surface-anchored )?boundary called (.+?) on (.+?) through surface points nearest to (local|design) points (.+)$/iu);
@@ -932,6 +988,12 @@ export class DesignPlainformCompiler {
           continue;
         }
 
+        const ambiguousDeformationStatement = statement.match(/^(?:raise|lower|inset|bulge|pinch) (?:the surface along )?(.+?) by (.+)$/iu);
+        if (ambiguousDeformationStatement) {
+          const error = new Error('Semantic surface deformation requires an explicit smooth falloff. Use “with a smooth falloff of <distance>” for a curve or “falling off smoothly over <distance>” for a region.');
+          error.code = 'plainform_surface_deformation_falloff_required'; throw error;
+        }
+
         const booleanStatement = statement.match(/^(subtract|union|intersect) (.+?) (?:from|with) (.+)$/iu);
         if (booleanStatement) {
           const operation = booleanStatement[1].toLowerCase();
@@ -1021,6 +1083,19 @@ export class DesignPlainformCompiler {
       },
     });
     resources.push(...generatedResources);
+    for (const state of semanticDeformationStates.values()) {
+      const geometryId = `geometry/plainform-design/${designSlug}/${slug(state.entityId)}-semantic-surface`;
+      if (occupied.has(geometryId) || resources.some(item => item.resource.id === geometryId)) {
+        const error = new Error(`Generated semantic surface geometry ID ${geometryId} already exists.`);
+        error.code = 'plainform_id_conflict'; throw error;
+      }
+      state.derivedGeometryId = geometryId;
+      resources.push({ resourceType: 'geometries', resource: {
+        id: geometryId,
+        metadata: { plainformDesign: { primitive: 'semanticSurfaceResult', ownerEntityId: state.entityId } },
+        recipe: state.recipe,
+      } });
+    }
     for (const resource of resources) {
       if (occupied.has(resource.resource.id)) {
         const error = new Error(`Generated geometry ID ${resource.resource.id} already exists.`); error.code = 'plainform_id_conflict'; throw error;
@@ -1045,6 +1120,10 @@ export class DesignPlainformCompiler {
         })),
       } },
     }))];
+    for (const state of semanticDeformationStates.values()) {
+      const generated = allEntities.find(entity => entity.id === state.entityId);
+      if (generated) generated.components.mesh.geometryId = state.derivedGeometryId;
+    }
     if (booleanCommands.length > 0) {
       const resourceById = new Map(resources.map(item => [item.resource.id, item]));
       const entityById = new Map(allEntities.map(entity => [entity.id, entity]));
@@ -1133,6 +1212,11 @@ export class DesignPlainformCompiler {
         } },
       } },
       ...(allEntities.length > 0 ? [{ op: 'entity.createMany', sceneId: scene.id, items: allEntities.map(entity => ({ entity })) }] : []),
+      ...[...semanticDeformationStates.values()]
+        .filter(state => !allEntities.some(entity => entity.id === state.entityId))
+        .map(state => ({ op: 'entity.patch', entityId: state.entityId, patch: {
+          components: { mesh: { ...state.meshComponent, geometryId: state.derivedGeometryId } },
+        } })),
     ];
     interpretations.push(`Will create ${allEntities.length} meshes using ${resources.length} shared or procedural geometries.`);
     return Object.freeze({

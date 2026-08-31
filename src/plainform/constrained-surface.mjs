@@ -185,6 +185,23 @@ function triangleMesh(recipe) {
   }
 }
 
+export function realizeSurfaceTriangles({ recipe, matrix, entityId }) {
+  const mesh = triangleMesh(recipe);
+  if (!mesh) {
+    const error = new Error(`Semantic surface deformation is unavailable for ${recipe?.kind ?? 'unknown'} geometry on ${entityId}. Realize it to indexed or editable geometry first.`);
+    error.code = 'plainform_surface_deformation_unavailable'; throw error;
+  }
+  if (mesh.positions.length > 250_000 || mesh.indices.length > 1_500_000) {
+    const error = new Error(`Semantic surface deformation on ${entityId} exceeds the bounded 250,000-vertex or 500,000-triangle limit.`);
+    error.code = 'plainform_surface_deformation_limit'; throw error;
+  }
+  return {
+    localPositions: mesh.positions.map(point => [...point]),
+    worldPositions: mesh.positions.map(point => transformPointByMatrix(matrix, point)),
+    indices: [...mesh.indices],
+  };
+}
+
 export function projectSurfaceAnchors({ recipe, matrix, seedPoints, entityId }) {
   const mesh = triangleMesh(recipe);
   if (!mesh) {

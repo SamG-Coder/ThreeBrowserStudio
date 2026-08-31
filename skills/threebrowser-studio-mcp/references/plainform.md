@@ -233,6 +233,33 @@ and regions are persistent canonical intent, but this stage does not deform,
 split, or shell their owner automatically; use only the regional operations
 explicitly documented in later sections.
 
+Curve-distance and surface-radius intent can drive a bounded normal
+displacement while the compiler keeps topology bookkeeping private:
+
+```text
+Raise the surface along shoulder line by 18 millimetres with a smooth falloff of 12 centimetres.
+Inset jaw region by 4 millimetres, falling off smoothly over 3 centimetres.
+Bulge centre detail by 2 millimetres, falling off smoothly over 8 millimetres.
+```
+
+Supported verbs are `raise`, `lower`, `inset`, `bulge`, and `pinch`. Raise and
+bulge follow the evaluated outward surface normal; lower, inset, and pinch use
+its inverse. Amount and falloff must be positive lengths. The compiler realizes
+the supported source surface internally, derives smooth influence without
+exposing vertices, preserves the owner entity's stable ID and transform, and
+stores the semantic operation plus affected-vertex count on the design root.
+
+Every deformation requires an explicit falloff. For example, `Raise the
+surface along shoulder line by 8 millimetres` fails with
+`plainform_surface_deformation_falloff_required`. A falloff that reaches no
+evaluated surface vertices fails instead of silently producing no change.
+Curve deformation requires a `surface curve`, not an ordinary patch boundary.
+This stage accepts curve-distance and surface-radius regions as deformation
+masks. Between-curves and enclosed regions remain valid named intent for later
+projection and split operations and currently fail with
+`plainform_surface_region_deformation_unsupported` if used as deformation
+masks.
+
 Arbitrary profiles can also become bevelled watertight extrusions:
 
 ```text
