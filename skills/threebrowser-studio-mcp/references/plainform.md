@@ -112,8 +112,12 @@ Use spatially distinct first points for multiple rails:
 
 ```text
 Create a smooth guide curve called shoulder line through [58 centimetres, 0 metres, 24 centimetres], [66 centimetres, 1.4 metres, 30 centimetres], [54 centimetres, 3 metres, 18 centimetres].
-Loft a watertight solid called Body Shell with id entity/body-shell through all sections of body section, following shoulder line, with curvature continuity.
+Loft a watertight solid called Body Shell with id entity/body-shell through all sections of body section, following shoulder line, with curvature continuity, using material material/body-paint.
 ```
+
+Append `using material <material-id>` to a loft to assign an existing canonical
+material during the same atomic Design program. The material must already
+exist in the project.
 
 Continuity is positional, tangent, or curvature within one loft. The latter
 two insert smooth deterministic section interpolation. You may also write

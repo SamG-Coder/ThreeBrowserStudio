@@ -258,6 +258,9 @@ Remember that controlled sections preserve one base profile's topology: author
 silhouette landmarks in that profile, use separate guides for their longitudinal
 paths, and state mirrored local modifiers on both sides. Prove booleans first on
 a low-complexity representative part such as a cylinder annulus.
+Loft statements accept the same optional `using material <material-id>` clause
+as other generated surfaces, so the primary evaluated form need not depend on
+a later non-Plainform assignment.
 
 Face-grid orientation is explicit and independent from placement. Append one
 of these phrases when the default local-Z-to-face-normal behavior is not the

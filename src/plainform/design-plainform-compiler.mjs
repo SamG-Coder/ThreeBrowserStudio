@@ -969,7 +969,7 @@ export class DesignPlainformCompiler {
           continue;
         }
 
-        const loft = statement.match(/^loft a (?:watertight )?(?:solid )?called (.+?) with id ([a-z0-9][a-z0-9._/-]*) through all sections of (.+?)(?:,? following (.+?))?(?:,? with (positional|tangent|curvature) continuity)?$/iu);
+        const loft = statement.match(/^loft a (?:watertight )?(?:solid )?called (.+?) with id ([a-z0-9][a-z0-9._/-]*) through all sections of (.+?)(?:,? following (.+?))?(?:,? with (positional|tangent|curvature) continuity)?(?:,? using material ([a-z0-9][a-z0-9._/-]*))?$/iu);
         if (loft) {
           const profile = profiles.get(key(loft[3]));
           if (!profile || profile.sections.length < 2) {
@@ -989,7 +989,7 @@ export class DesignPlainformCompiler {
           });
           lofts.push({
             entityId, geometryId, name: quoteName(loft[1]), profile,
-            guideCurves, continuity: loft[5]?.toLowerCase() ?? 'positional', modifiers: [],
+            guideCurves, continuity: loft[5]?.toLowerCase() ?? 'positional', materialId: loft[6], modifiers: [],
           });
           aliases[key(loft[1])] = [entityId];
           interpretations.push(`Will loft “${quoteName(loft[1])}” with ${guideCurves.length} guide curves and ${loft[5]?.toLowerCase() ?? 'positional'} continuity.`);
@@ -1377,7 +1377,7 @@ export class DesignPlainformCompiler {
     const variableMetadata = Object.fromEntries([...variables].map(([name, value]) => [name, value]));
     const allEntities = [...entities, ...lofts.map(loft => ({
       id: loft.entityId, kind: 'mesh', name: loft.name, parentId: rootId,
-      components: { mesh: { geometryId: loft.geometryId } },
+      components: { mesh: { geometryId: loft.geometryId, ...(loft.materialId ? { materialId: loft.materialId } : {}) } },
       metadata: { plainformDesign: {
         primitive: 'loft', profile: loft.profile.name, continuity: loft.continuity,
         guides: loft.guideCurves.map(guide => guide.name), modifiers: loft.modifiers,

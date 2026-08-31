@@ -176,7 +176,7 @@ Create a guide curve called shoulder line through [42 centimetres, 0 metres, 30 
 Add a controlled section of body section at height 0 metres, width 92 centimetres, depth 84 centimetres, offset by [0 metres, 0 metres, 0 metres], rotated by [0 degrees, 0 degrees, 0 degrees], and scaled locally by [0.8, 1, 0.9].
 Add a controlled section of body section at height 1 metre, width 1.10 metres, depth 92 centimetres, offset vertically by 8 centimetres, offset laterally by 5 centimetres.
 Add a controlled section of body section at height 2 metres, width 94 centimetres, depth 76 centimetres, offset by [0 metres, 2 centimetres, 0 metres].
-Loft a watertight solid called Guided Body with id entity/guided-body through all sections of body section, following shoulder line, with curvature continuity.
+Loft a watertight solid called Guided Body with id entity/guided-body through all sections of body section, following shoulder line, with curvature continuity, using material material/leaf.
 Bulge Guided Body outward around [0 metres, 1 metre, 30 centimetres] by 6 centimetres within 70 centimetres.
 Offset the surface of Guided Body by 1 centimetre.
 Preview these changes.
@@ -189,6 +189,9 @@ Preview these changes.
   assert.equal(resource.recipe.sections.length, 3);
   assert.notEqual(resource.recipe.sections[0].transform.scale[0], resource.recipe.sections[0].transform.scale[2]);
   assert.deepEqual(resource.recipe.sections[1].transform.translation, [0, 1.08, 0.05]);
+  const entity = compiled.operations.find(operation => operation.op === 'entity.createMany').items
+    .map(item => item.entity).find(item => item.id === 'entity/guided-body');
+  assert.equal(entity.components.mesh.materialId, 'material/leaf');
   assert.ok(compiled.operations.every(operation => operationSchema.safeParse(operation).success));
 });
 
