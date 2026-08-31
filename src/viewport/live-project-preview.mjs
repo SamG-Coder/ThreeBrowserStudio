@@ -47,9 +47,12 @@ export function createLiveProjectPreview({ THREE, TSL, viewport, getAspect } = {
     const previous = compiled;
     try {
       onBeforeSwap?.();
-      viewport.scene.add(next.root);
-      viewport.setAppearance?.(next);
-      viewport.setAuthoredCamera?.(next.activeCamera ?? viewport.camera);
+      if (typeof viewport.setCommittedLayer === 'function') viewport.setCommittedLayer(next);
+      else {
+        viewport.scene.add(next.root);
+        viewport.setAppearance?.(next);
+        viewport.setAuthoredCamera?.(next.activeCamera ?? viewport.camera);
+      }
       viewport.followShot?.();
     } catch (error) {
       next.dispose();

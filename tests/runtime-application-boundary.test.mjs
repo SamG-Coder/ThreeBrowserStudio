@@ -233,6 +233,9 @@ function fakeViewport() {
     },
     titles: [],
     outlines: [],
+    committedLayer: null,
+    previewLayer: null,
+    layerMode: 'scene',
     viewMode: 'follow-shot',
     authoredCamera: camera,
     setRenderCamera(next) {
@@ -256,6 +259,42 @@ function fakeViewport() {
     },
     setExplorerOutline(outline) {
       this.outlines.push(outline);
+    },
+    setCommittedLayer(next) {
+      this.committedLayer?.root?.removeFromParent?.();
+      this.committedLayer = next;
+      this.scene.add(next.root);
+      this.scene.background = next.background ?? null;
+      this.scene.backgroundNode = next.backgroundNode ?? null;
+      this.scene.fog = next.fog ?? null;
+      next.root.visible = true;
+      this.setAuthoredCamera(next.activeCamera ?? this.camera);
+    },
+    setPreviewLayer(next) {
+      this.previewLayer?.root?.removeFromParent?.();
+      this.previewLayer = next;
+      this.scene.add(next.root);
+      if (this.committedLayer?.root) this.committedLayer.root.visible = false;
+      next.root.visible = true;
+      this.layerMode = 'preview';
+    },
+    clearPreviewLayer({ preserveRoot = false } = {}) {
+      if (!preserveRoot) this.previewLayer?.root?.removeFromParent?.();
+      this.previewLayer = null;
+      if (this.committedLayer?.root) this.committedLayer.root.visible = true;
+      this.layerMode = 'scene';
+    },
+    getViewportLayerState() {
+      return {
+        mode: this.layerMode,
+        gridVisible: true,
+        previewActive: Boolean(this.previewLayer),
+        layers: {
+          scene: this.committedLayer?.root?.visible === true,
+          preview: this.previewLayer?.root?.visible === true,
+          grid: true,
+        },
+      };
     },
   };
   return viewport;
@@ -1704,7 +1743,10 @@ test('dry-run apply retains one guarded candidate and promotes it without a seco
   assert.ok(result.authoring.timingsMs.total >= result.authoring.timingsMs.compile);
   assert.equal(application.kernel.revision, 0);
   assert.equal(application.kernel.document.scenes['scene/main'].entities['entity/preview'], undefined);
-  assert.deepEqual(viewport.scene.children, [liveRoot]);
+  assert.equal(viewport.previewLayer?.root, viewport.scene.children.at(-1));
+  assert.equal(viewport.layerMode, 'preview');
+  assert.equal(viewport.previewLayer.root.visible, true);
+  assert.equal(liveRoot.visible, false, 'the retained dry-run candidate becomes the visible viewport layer');
   assert.equal(viewport.titles.length, titleCountBefore);
   assert.equal(THREE.groups.length, groupCountBefore + 2, 'candidate root and entity should be compiled');
   assert.equal(THREE.groups.at(-2).clearCount, 0, 'candidate remains available for guarded promotion');
@@ -1727,6 +1769,9 @@ test('dry-run apply retains one guarded candidate and promotes it without a seco
   assert.equal(promoted.revision, 1);
   assert.equal(promoted.authoring.compileCount, 0);
   assert.equal(promoted.authoring.promotedCandidate, true);
+  assert.equal(viewport.previewLayer, null);
+  assert.equal(viewport.layerMode, 'scene');
+  assert.equal(viewport.committedLayer.root.visible, true);
   assert.equal(THREE.groups.length, groupCountBefore + 2, 'promotion reuses the compiled candidate');
   assert.ok(application.kernel.document.scenes['scene/main'].entities['entity/preview']);
 
@@ -1832,6 +1877,9 @@ test('a project switch compile failure preserves the active project and live sce
   assert.equal(status.projectPath, path.join(studioRoot, 'projects', 'active'));
   assert.equal(status.viewport.viewMode, 'follow-shot');
   assert.equal(status.capabilities.viewportReviewMode, true);
+  assert.deepEqual(status.capabilities.viewportLayers, ['scene', 'preview', 'grid', 'lighting']);
+  assert.equal(status.capabilities.candidatePreview, true);
+  assert.equal(status.capabilities.gridFloor, true);
   assert.equal(status.capabilities.overlayInvalidation, true);
   assert.equal(status.capabilities.layoutGenerators, true);
   assert.deepEqual(status.capabilities.layoutPatterns, [...LAYOUT_PATTERN_MODES]);

@@ -472,7 +472,8 @@ It is cheap and should be the first call after connection or compaction.
 ### 2. `three_studio_project`
 
 Currently lists, creates, opens, and atomically saves managed Studio projects.
-`starter` is the only template. Checkpoint/snapshot, close, export, project
+`blank` creates an asset-free empty scene and `starter` remains the optional
+lit primitive stage. Checkpoint/snapshot, close, export, project
 duplication/rename/deletion, and scene-management actions are not in this tool
 schema; scenes are authored by the implemented `apply` operations.
 
@@ -566,7 +567,9 @@ Operation families include:
 In-transaction aliases such as `$ground` let later operations reference new
 entities/resources without round trips. A dry-run returns resolved IDs, the
 compact document diff, diagnostics, and expected invalidations without
-touching the document or viewport. Script, arbitrary selection/review-camera,
+touching the canonical document. Its fully compiled candidate becomes a
+transient visible Preview viewport layer until promotion, replacement, or a
+project switch. Script, arbitrary selection/review-camera,
 layout modes beyond the four declared patterns, and persistent Play-parameter
 operations are not in the current schema.
 
@@ -661,7 +664,8 @@ Every `apply` follows the same path:
    geometry, ordered modifier/constraint subset, shared raster textures,
    PBR/physical material, light, camera, fog, shadow, and Action factories.
 8. Compute normalized diff, inverse operations, hashes, and invalidations.
-9. If dry-run, return without publishing document or viewport state.
+9. If dry-run, retain the compiled result as a transient visible Preview layer
+   without publishing document, revision, history, recovery, or export state.
 10. For a commit, increment once and atomically publish recovery/journal state.
 11. Swap the fully compiled scene at a frame boundary and dispose the previous
     compiled scene.
@@ -736,11 +740,15 @@ allowing deliberate procedural bake workflows.
 The scene is the interface. The viewport occupies the window.
 
 The only persistent chrome is a left side panel composited through one
-`CanvasTexture` sprite: Log (virtualized MCP command feed plus a visible
-scrollbar), Explorer (a read-only tree of the active scene's objects, groups,
-and collections), and a clipped, pixel-scroll Settings page (Follow shot /
-Review, canonical RTX controls, capability-gated DLSS 5 controls, Log, and
-project transfer). The panel bitmap is a
+`CanvasTexture` sprite: Log, Plainform, Explorer, Layers, and Settings. Layers
+switches among the committed scene, retained Preview candidate, or both, and
+toggles a Blender-style grid floor and conditional workbench lighting for empty
+scenes. Grid, workbench lighting, and Preview are transient viewport
+helpers: they are not canonical entities, resources, assets, history, or export
+content. Workbench lighting automatically yields when the visible compiled
+layer contains authored lights. Settings remains a clipped pixel-scroll page for Follow shot / Review,
+canonical RTX controls, capability-gated DLSS 5 controls, Log, and project
+transfer. The panel bitmap is a
 fixed size; window resize only moves the sprite. It is not an inspector.
 A Follow-shot chip is the camera control; first drag on the view enters Review.
 Ctrl+Shift+M hides the panel.

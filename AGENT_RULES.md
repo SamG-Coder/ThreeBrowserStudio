@@ -164,6 +164,9 @@ Use it only after both status and the current tool schema expose it.
 - Create with `template: "blank"` for an empty scene. Use `scene.clear` with
   the inspected `sceneHash` to wipe the current scene without the starter
   composition. `template: "starter"` remains the optional lit primitive stage.
+- The blank scene uses only transient viewport grid and workbench-light helpers
+  for spatial context; they are never project entities, resources, assets,
+  history entries, or exports. Workbench lighting yields to authored lights.
 
 ## JavaScript game-code rules (future behaviour capability)
 
@@ -218,6 +221,10 @@ operations.
 - Treat the visible native viewport as shared progress with the user; inspect
   the returned offscreen capture as the actual render evidence. The Explorer
   tab is a read-only outline of objects and groups, not a property inspector.
+- A successful dry run is visibly installed as the transient Preview layer and
+  the HUD says `STUDIO · PREVIEW`. The Layers tab can show the committed scene,
+  Preview, both, and the grid. Promotion reuses the same compiled candidate;
+  none of these layer controls mutate canonical project state.
 - Read `status.viewport.viewMode`. `follow-shot` is the authored / AI camera.
   `review` means the human is flying a session-only camera that does not
   write the document. Evidence, `effectiveCamera`, and `cameraId` stay on the

@@ -47,7 +47,9 @@ typed input mode, not a scripting escape hatch.
    `jobKinds` includes `sceneExport`.
 4. Create or open the intended project with `three_studio_project`. For a new
    live build, use a fresh meaningful project path and `template: "blank"` so
-   the viewport starts empty. Pass `template: "starter"` only when you want the
+   the canonical project starts empty; viewport-only grid and conditional
+   workbench-light helpers supply context without becoming assets. Pass
+   `template: "starter"` only when you want the
    lit primitive stage. To wipe the current scene in place, inspect `sceneHash`
    and apply `scene.clear`.
 5. Inspect the active scene, current revision, and only the bounded catalog or
@@ -84,6 +86,11 @@ batches. Read `pixelForecast` on every apply (dry-run and commit):
 document patch succeeds. Inspect a subtree and its guard hash before
 recursive deletion. Never delete a referenced resource without resolving its
 references in the same transaction.
+
+A successful dry run is visible immediately as the retained Preview layer and
+the HUD says `STUDIO · PREVIEW`. The Layers tab can show committed, Preview,
+both, and the viewport-only grid. Promote the exact candidate token to reuse
+that compiled scene; layer choices never mutate canonical project state.
 
 Compile-heavy tools (`three_studio_apply`, `three_studio_render`,
 `three_studio_project`, `three_studio_history`) use a 120s RPC budget.

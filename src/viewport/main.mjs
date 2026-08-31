@@ -21,6 +21,7 @@ import {
 import { openProjectPackFile, saveProjectPackFile } from "./project-file-transfer.mjs";
 import { showStarterProjectFromLocation } from "../browser/starter-project-scene.mjs";
 import { createSceneControllerInput } from './scene-controller-input.mjs';
+import { createViewportLayers } from './viewport-layers.mjs';
 
 document.title = "ThreeBrowser Studio — waiting for project";
 
@@ -108,6 +109,7 @@ async function main() {
   let rtxLighting = null;
   let activeRtxSettings = {};
   let preview = null;
+  let viewportLayers = null;
   let bootstrapDisposed = browserHost;
   let transferBusy = false;
   let initialBrowserProjectStatus = null;
@@ -123,6 +125,11 @@ async function main() {
     onViewModeChange(mode) {
       reviewSession.setViewMode(mode);
     },
+    onViewportLayerChange(patch) {
+      if (patch?.mode) viewportLayers?.setMode(patch.mode);
+      if (patch?.gridVisible !== undefined) viewportLayers?.setGridVisible(patch.gridVisible);
+      if (patch?.studioLightVisible !== undefined) viewportLayers?.setStudioLightVisible(patch.studioLightVisible);
+    },
     async onRtxSettingsChange(patch) {
       if (!application) throw new Error('The native Studio project is not ready.');
       await application.patchActiveSceneRtx(patch);
@@ -136,6 +143,24 @@ async function main() {
     },
     onExportProject() { void transferProject("export"); },
     onImportProject() { void transferProject("import"); },
+  });
+
+  const presentCompiledLayer = compiled => {
+    scene.background = compiled?.background ?? null;
+    scene.backgroundNode = compiled?.backgroundNode ?? null;
+    scene.fog = compiled?.fog ?? null;
+    if (!scene.background && !scene.backgroundNode) renderer.setClearColor(STUDIO_RENDER_STATE.clearColor, 1);
+    reviewSession.setAuthoredCamera(compiled?.activeCamera ?? camera);
+  };
+  viewportLayers = createViewportLayers({
+    THREE,
+    scene,
+    onPresentationChange(compiled) {
+      presentCompiledLayer(compiled);
+    },
+    onStateChange(state) {
+      liveFeed.setViewportLayerState?.(state);
+    },
   });
 
   function syncGraphicsSettingsState() {
@@ -286,6 +311,8 @@ async function main() {
     preview = null;
     await application?.dispose();
     liveFeed.dispose();
+    viewportLayers?.dispose();
+    viewportLayers = null;
     commandTelemetry.dispose();
     capture.dispose();
     rtxLighting.dispose();
@@ -332,6 +359,27 @@ async function main() {
       scene.backgroundNode = backgroundNode;
       scene.fog = fog;
       if (!background && !backgroundNode) renderer.setClearColor(STUDIO_RENDER_STATE.clearColor, 1);
+    },
+    setCommittedLayer(compiled) {
+      return viewportLayers?.setCommitted(compiled);
+    },
+    setPreviewLayer(compiled, options) {
+      return viewportLayers?.setPreview(compiled, options);
+    },
+    clearPreviewLayer(options) {
+      return viewportLayers?.clearPreview(options);
+    },
+    setViewportLayerMode(mode) {
+      return viewportLayers?.setMode(mode);
+    },
+    setGridVisible(visible) {
+      return viewportLayers?.setGridVisible(visible);
+    },
+    setStudioLightVisible(visible) {
+      return viewportLayers?.setStudioLightVisible(visible);
+    },
+    getViewportLayerState() {
+      return viewportLayers?.getState();
     },
     async configureRtx({ root, settings = {} } = {}) {
       activeRtxSettings = structuredClone(settings);

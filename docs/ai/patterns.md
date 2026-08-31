@@ -108,7 +108,11 @@ For a costly batch, dry-run once and retain the returned `candidateToken`.
 Submit the identical operation batch at the same `baseRevision` with that token
 to promote the already compiled candidate. Tokens are content guarded, keep
 only one candidate alive, and fail closed after another dry run or project
-switch. Use `resource.createMany` when provisioning several independent typed
+switch. A successful dry run automatically becomes the visible Preview layer;
+the HUD says `STUDIO · PREVIEW`. Use the Layers tab to inspect the committed
+scene, Preview, both, or transient grid/workbench-light helpers. These choices
+do not mutate or export project state. The workbench light automatically yields
+to authored lighting. Use `resource.createMany` when provisioning several independent typed
 resources so one semantic operation and compact inverse replace many core ops.
 
 Procedural geometry is intentionally concise during block-out. Before detailed
@@ -336,6 +340,12 @@ name **whitelisted** op types only. Neither is visual proof.
 **When:** deletes, graph resources, large batches, unclear sockets.
 
 Dry-run destructive, large, graph-resource, or high-budget work first.
+
+The compiled candidate is visible in the native window after a successful dry
+run even though the canonical revision does not advance. The Preview layer is
+removed by promotion, replacement, or project switch. `All layers` is useful
+for spatial comparison, but overlapping unchanged geometry is expected because
+the candidate is a complete compiled project rather than a delta mesh.
 
 Every apply (dry-run and commit) returns `pixelForecast`:
 

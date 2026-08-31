@@ -304,6 +304,7 @@ export function createMcpLiveFeedWebGpuHud({
   promptTab = false,
   onTabChange,
   onVisibilityChange,
+  onViewportLayerChange,
   onExportProject,
   onImportProject,
   onRtxSettingsChange,
@@ -408,6 +409,15 @@ export function createMcpLiveFeedWebGpuHud({
   let explorerExpanded = new Set();
   let explorerKnownIds = new Set();
   let explorerRows = Object.freeze([]);
+  let viewportLayerState = Object.freeze({
+    mode: 'scene',
+    gridVisible: true,
+    studioLightVisible: true,
+    previewActive: false,
+    previewLabel: '',
+    previewRevision: null,
+    layers: Object.freeze({ scene: true, preview: false, grid: true, lighting: true }),
+  });
   let rtxAuthoritativeSettings = normalizeRtxUiState();
   let rtxUiSettings = rtxAuthoritativeSettings;
   const pendingRtxSettings = new Map();
@@ -460,6 +470,7 @@ export function createMcpLiveFeedWebGpuHud({
     { id: 'log', label: 'Log' },
     { id: 'plainform', label: 'Plainform' },
     { id: 'explorer', label: 'Explorer' },
+    { id: 'layers', label: 'Layers' },
     { id: 'settings', label: 'Settings' },
   ];
   if (promptTab) tabItems.push({ id: 'prompt', label: 'Prompt' });
@@ -472,6 +483,7 @@ export function createMcpLiveFeedWebGpuHud({
       logPage.setVisible(id === 'log');
       plainformPage.setVisible(id === 'plainform');
       explorerPage.setVisible(id === 'explorer');
+      layersPage.setVisible(id === 'layers');
       settingsPage.setVisible(id === 'settings');
       promptPage?.setVisible(id === 'prompt');
       syncStatus();
@@ -634,6 +646,60 @@ export function createMcpLiveFeedWebGpuHud({
   explorerList.onScroll = value => {
     explorerScroll.setScroll(value, { notify: false });
   };
+
+  const layersPage = host.add(new Control({
+    name: 'layers-page',
+    visible: false,
+    backColor: PANEL_LAYER_TRANSPARENT,
+  }));
+  const layersLabel = layersPage.add(new Label({
+    name: 'layers-label',
+    text: 'Viewport layers',
+    font: UI_FONT_BOLD,
+    color: '#9fc6f2',
+  }));
+  const sceneLayerOption = layersPage.add(new RadioOption({
+    name: 'layer-scene',
+    text: 'Committed scene',
+    selected: true,
+    onSelect() { requestViewportLayerPatch({ mode: 'scene' }); },
+  }));
+  const previewLayerOption = layersPage.add(new RadioOption({
+    name: 'layer-preview',
+    text: 'Preview candidate',
+    selected: false,
+    enabled: false,
+    onSelect() { requestViewportLayerPatch({ mode: 'preview' }); },
+  }));
+  const allLayersOption = layersPage.add(new RadioOption({
+    name: 'layer-all',
+    text: 'All layers',
+    selected: false,
+    enabled: false,
+    onSelect() { requestViewportLayerPatch({ mode: 'all' }); },
+  }));
+  const gridLayerToggle = layersPage.add(new ToggleOption({
+    name: 'layer-grid',
+    text: 'Grid floor  ·  viewport only',
+    selected: true,
+    onChange(selected) { requestViewportLayerPatch({ gridVisible: selected }); },
+  }));
+  const studioLightToggle = layersPage.add(new ToggleOption({
+    name: 'layer-studio-light',
+    text: 'Studio light  ·  only without authored lights',
+    selected: true,
+    onChange(selected) { requestViewportLayerPatch({ studioLightVisible: selected }); },
+  }));
+  const previewLayerStatus = layersPage.add(new Label({
+    name: 'layer-preview-status',
+    text: 'No preview candidate',
+    color: '#7f94ad',
+  }));
+  const layersHint = layersPage.add(new Label({
+    name: 'layers-hint',
+    text: 'Grid and preview are transient viewport layers. They are never project assets or exports.',
+    color: '#7f94ad',
+  }));
 
   const settingsPage = host.add(new Control({
     name: 'settings-page',
@@ -965,6 +1031,7 @@ export function createMcpLiveFeedWebGpuHud({
     logPage.setBounds(0, contentY, host.width, contentHeight);
     plainformPage.setBounds(0, contentY, host.width, contentHeight);
     explorerPage.setBounds(0, contentY, host.width, contentHeight);
+    layersPage.setBounds(0, contentY, host.width, contentHeight);
     settingsPage.setBounds(0, contentY, host.width, contentHeight);
     promptPage?.setBounds(0, contentY, host.width, contentHeight);
     logToolbar.setBounds(0, 0, logPage.width, LOG_TOOLBAR_HEIGHT);
@@ -992,6 +1059,14 @@ export function createMcpLiveFeedWebGpuHud({
     );
     explorerList.setBounds(0, 0, Math.max(40, explorerPage.width - SCROLL_WIDTH), explorerPage.height);
     explorerScroll.setBounds(explorerPage.width - SCROLL_WIDTH, 0, SCROLL_WIDTH, explorerPage.height);
+    layersLabel.setBounds(12, 12, layersPage.width - 24, 20);
+    sceneLayerOption.setBounds(8, 40, layersPage.width - 16, 30);
+    previewLayerOption.setBounds(8, 72, layersPage.width - 16, 30);
+    allLayersOption.setBounds(8, 104, layersPage.width - 16, 30);
+    gridLayerToggle.setBounds(8, 146, layersPage.width - 16, 30);
+    studioLightToggle.setBounds(8, 178, layersPage.width - 16, 30);
+    previewLayerStatus.setBounds(12, 220, layersPage.width - 24, 38);
+    layersHint.setBounds(12, 264, layersPage.width - 24, 58);
     settingsViewport.setBounds(0, 0, Math.max(40, settingsPage.width - SCROLL_WIDTH), settingsPage.height);
     settingsViewport.setContentHeight(SETTINGS_CONTENT_HEIGHT);
     settingsScroll.setBounds(settingsPage.width - SCROLL_WIDTH, 0, SCROLL_WIDTH, settingsPage.height);
@@ -1182,6 +1257,65 @@ export function createMcpLiveFeedWebGpuHud({
     dlss5StatusLabel.setText(featureStatusText(dlss5UiStatus, 'DLSS 5'));
   }
 
+  function syncViewportLayerControls() {
+    sceneLayerOption.setSelected(viewportLayerState.mode === 'scene');
+    previewLayerOption.setSelected(viewportLayerState.mode === 'preview');
+    allLayersOption.setSelected(viewportLayerState.mode === 'all');
+    previewLayerOption.setEnabled(viewportLayerState.previewActive);
+    allLayersOption.setEnabled(viewportLayerState.previewActive);
+    gridLayerToggle.setSelected(viewportLayerState.gridVisible);
+    studioLightToggle.setSelected(viewportLayerState.studioLightVisible);
+    const revision = Number.isInteger(viewportLayerState.previewRevision)
+      ? ` · candidate r${viewportLayerState.previewRevision}`
+      : '';
+    const label = viewportLayerState.previewLabel ? ` · ${viewportLayerState.previewLabel}` : '';
+    previewLayerStatus.setText(viewportLayerState.previewActive
+      ? `PREVIEW ACTIVE${revision}${label}`
+      : 'No preview candidate');
+    title.setText(viewportLayerState.previewActive ? 'STUDIO  ·  PREVIEW' : 'STUDIO');
+  }
+
+  function setViewportLayerState(value = {}) {
+    const previewActive = value.previewActive === true;
+    const requestedMode = ['scene', 'preview', 'all'].includes(value.mode) ? value.mode : 'scene';
+    viewportLayerState = Object.freeze({
+      mode: previewActive ? requestedMode : 'scene',
+      gridVisible: value.gridVisible !== false,
+      studioLightVisible: value.studioLightVisible !== false,
+      previewActive,
+      previewLabel: String(value.previewLabel ?? ''),
+      previewRevision: Number.isInteger(value.previewRevision) ? value.previewRevision : null,
+      layers: Object.freeze({
+        scene: value.layers?.scene === true,
+        preview: value.layers?.preview === true,
+        grid: value.layers?.grid !== false,
+        lighting: value.layers?.lighting !== false,
+      }),
+    });
+    syncViewportLayerControls();
+    syncStatus();
+    return viewportLayerState;
+  }
+
+  function requestViewportLayerPatch(patch) {
+    try {
+      onViewportLayerChange?.(Object.freeze({ ...patch }));
+      if (patch.mode) viewportLayerState = Object.freeze({ ...viewportLayerState, mode: patch.mode });
+      if (patch.gridVisible !== undefined) {
+        viewportLayerState = Object.freeze({ ...viewportLayerState, gridVisible: patch.gridVisible === true });
+      }
+      if (patch.studioLightVisible !== undefined) {
+        viewportLayerState = Object.freeze({ ...viewportLayerState, studioLightVisible: patch.studioLightVisible === true });
+      }
+      syncViewportLayerControls();
+      syncStatus();
+      return true;
+    } catch (error) {
+      previewLayerStatus.setText(`Layer update failed · ${error?.message ?? String(error)}`);
+      return false;
+    }
+  }
+
   function requestRtxPatch(patch) {
     const merged = { ...rtxUiSettings, ...patch };
     const { enabled, ...settings } = merged;
@@ -1321,7 +1455,9 @@ export function createMcpLiveFeedWebGpuHud({
         ? `Plainform stream  ·  ${plainformRows.length} lines  ·  ${plainformFirst}–${plainformLast}`
       : tab === 'explorer'
         ? `Explorer  ·  ${objectCount} objects  ·  ${explorerFirst}–${explorerLast}`
-        : tab === 'prompt'
+      : tab === 'layers'
+        ? `${viewportLayerState.previewActive ? 'PREVIEW ACTIVE' : 'Layers'}  ·  ${viewportLayerState.mode}  ·  grid ${viewportLayerState.gridVisible ? 'on' : 'off'}`
+      : tab === 'prompt'
           ? 'Prompt  ·  PIN-encrypted models'
           : 'Settings';
     const nextColor = activeCount > 0 && tab === 'log' ? '#f2b45c' : '#7f94ad';
@@ -1611,6 +1747,7 @@ export function createMcpLiveFeedWebGpuHud({
   };
 
   syncGraphicsControls();
+  syncViewportLayerControls();
   latest = boundedEntries(safeSnapshot(source));
   retainedPlainformSnapshots = Object.freeze(plainformSnapshots(latest));
   plainformRows = flattenPlainformRows(latest);
@@ -1672,6 +1809,7 @@ export function createMcpLiveFeedWebGpuHud({
     updateCamera,
     setViewMode,
     setExplorerOutline,
+    setViewportLayerState,
     setGraphicsSettingsState,
     setProjectTransferStatus(text) {
       projectTransferStatus.setText(text);
@@ -1696,6 +1834,7 @@ export function createMcpLiveFeedWebGpuHud({
         dlss5: Object.freeze({ settings: dlss5UiSettings, status: dlss5UiStatus }),
       });
     },
+    get viewportLayerState() { return viewportLayerState; },
     get visibleRowCount() { return Math.min(list.capacity, latest.length); },
     get visiblePlainformText() {
       return plainformRows

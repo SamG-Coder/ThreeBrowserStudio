@@ -183,17 +183,24 @@ location, set `THREEBROWSER_RUNTIME_ROOT` to the absolute
 `.studio-local.json` file. Machine-local paths never enter a saved project.
 
 `npm run launch` opens one native WebGPU window and restores the last opened
-project (falling back to `projects/live`). The first launch seeds a 13.6 KB,
-asset-free starter stage. Later launches restore the named project, newer
+project (falling back to `projects/live`). A genuinely new fallback project is
+a blank, asset-free scene; the viewport-only grid and conditional workbench
+lighting keep it readable without adding project entities or resources. The
+workbench light yields whenever the visible compiled layer has authored lights.
+The optional `starter` template
+still provides the lit primitive stage. Later launches restore the named project, newer
 recovery journal, review camera, selected render camera, and evidence metadata.
 The authenticated connection marker is kept outside the repository at
 `%LOCALAPPDATA%\ThreeBrowserStudio\live-session.json` with a current-user-only
 Windows ACL.
 
 Press **Ctrl+Shift+M** in the native window to hide the side panel. The panel
-is retained 2D chrome (Log + Explorer + Settings), not an inspector: a
+is retained 2D chrome (Log + Plainform + Explorer + Layers + Settings), not an inspector: a
 virtualized, redacted MCP command log with compact or expanded details, a visible scrollbar, a read-only
-scene tree of objects and groups, and a scrollable Settings page. Settings owns
+scene tree of objects and groups, transient committed/Preview/Grid layer
+controls, and a scrollable Settings page. A successful dry run automatically
+shows its retained Preview layer and labels the HUD `STUDIO · PREVIEW`; promote
+the returned candidate token to reuse that exact compiled candidate. Settings owns
 Follow shot / Review, the complete canonical ray-lighting/shadow/AO controls,
 and a separately capability-gated DLSS 5 Neural Rendering switch. DLSS 5 is
 shown as unavailable unless the active Runtime, GPU, and signed plug-in all

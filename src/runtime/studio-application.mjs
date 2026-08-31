@@ -1643,7 +1643,7 @@ export class StudioApplication {
       if (rememberedProject && !(await pathExists(path.join(rememberedProject, 'project.threestudio.json')))) rememberedProject = null;
     }
     const initial = path.resolve(projectPath ?? rememberedProject ?? path.join(this.projectsRoot, 'live'));
-    await this.#openOrCreate(initial, { create: true, name: 'Live Studio Project', template: 'starter' });
+    await this.#openOrCreate(initial, { create: true, name: 'Live Studio Project', template: 'blank' });
     this.#bridge = await createLiveBridgeServer({
       credentials: this.#credentials,
       serverInfo: { toolContract: TOOL_CONTRACT },
@@ -1734,11 +1734,13 @@ export class StudioApplication {
         && this.#dryRunCandidate?.token === this.#pendingCandidateToken) {
       this.#prepared?.dispose();
       this.#prepared = this.#dryRunCandidate.compiled;
+      this.#viewport.clearPreviewLayer?.({ preserveRoot: true });
       this.#dryRunCandidate = null;
       if (this.#activeApplyMetrics) this.#activeApplyMetrics.promotedCandidate = true;
       return;
     }
     if (context.dryRun !== true && this.#dryRunCandidate) {
+      this.#viewport.clearPreviewLayer?.();
       this.#dryRunCandidate.compiled.dispose();
       this.#dryRunCandidate = null;
     }
@@ -1753,11 +1755,17 @@ export class StudioApplication {
       }
     }
     if (context.dryRun === true) {
+      this.#viewport.clearPreviewLayer?.();
       this.#dryRunCandidate?.compiled.dispose();
       this.#dryRunCandidate = this.#pendingCandidateToken
         ? { token: this.#pendingCandidateToken, compiled: candidate }
         : null;
-      if (!this.#dryRunCandidate) candidate.dispose();
+      if (this.#dryRunCandidate) {
+        this.#viewport.setPreviewLayer?.(candidate, {
+          label: context.label,
+          revision: document.revision,
+        });
+      } else candidate.dispose();
       return;
     }
     this.#prepared?.dispose();
@@ -1772,18 +1780,22 @@ export class StudioApplication {
     if (this.#logicController?.active) this.#stopLogicController();
     this.#bootstrap?.dispose();
     this.#bootstrap = null;
-    this.#viewport.scene.add(next.root);
-    if (typeof this.#viewport.setAppearance === 'function') {
-      this.#viewport.setAppearance(next);
+    if (typeof this.#viewport.setCommittedLayer === 'function') {
+      this.#viewport.setCommittedLayer(next);
     } else {
-      this.#viewport.scene.background = next.background;
-      this.#viewport.scene.backgroundNode = next.backgroundNode;
-      this.#viewport.scene.fog = next.fog;
-    }
-    if (typeof this.#viewport.setAuthoredCamera === 'function') {
-      this.#viewport.setAuthoredCamera(next.activeCamera ?? this.#viewport.camera);
-    } else {
-      this.#viewport.setRenderCamera(next.activeCamera ?? this.#viewport.camera);
+      this.#viewport.scene.add(next.root);
+      if (typeof this.#viewport.setAppearance === 'function') {
+        this.#viewport.setAppearance(next);
+      } else {
+        this.#viewport.scene.background = next.background;
+        this.#viewport.scene.backgroundNode = next.backgroundNode;
+        this.#viewport.scene.fog = next.fog;
+      }
+      if (typeof this.#viewport.setAuthoredCamera === 'function') {
+        this.#viewport.setAuthoredCamera(next.activeCamera ?? this.#viewport.camera);
+      } else {
+        this.#viewport.setRenderCamera(next.activeCamera ?? this.#viewport.camera);
+      }
     }
     const previous = this.#compiled;
     this.#compiled = next;
@@ -1872,6 +1884,7 @@ export class StudioApplication {
     const previousUnsubscribe = this.#unsubscribe;
     previousUnsubscribe?.();
     this.#prepared?.dispose();
+    this.#viewport.clearPreviewLayer?.();
     this.#dryRunCandidate?.compiled.dispose();
     this.#dryRunCandidate = null;
     this.#prepared = candidate;
@@ -2006,6 +2019,7 @@ export class StudioApplication {
         height,
         aspect: width / height,
         effectiveCamera,
+        layers: this.#viewport.getViewportLayerState?.() ?? null,
         rtx,
       },
       rtx,
@@ -2155,6 +2169,9 @@ export class StudioApplication {
         renderers: ['webgpu'],
         renderPasses: ['beauty', 'raster', 'objectId', 'albedo', 'roughness', 'normal', 'uv'],
         viewportReviewMode: true,
+        viewportLayers: ['scene', 'preview', 'grid', 'lighting'],
+        candidatePreview: true,
+        gridFloor: true,
         overlayInvalidation: true,
         applyPixelForecast: true,
         compileHeavyRpcTimeoutMs: 120_000,
@@ -2847,6 +2864,8 @@ export class StudioApplication {
       const candidate = this.#dryRunCandidate.compiled;
       const scene = this.#viewport.scene;
       const previousRootVisible = this.#compiled?.root?.visible;
+      const candidateParent = candidate.root.parent;
+      const candidateVisible = candidate.root.visible;
       const previousBackground = scene.background;
       const previousBackgroundNode = scene.backgroundNode;
       const previousFog = scene.fog;
@@ -2872,7 +2891,8 @@ export class StudioApplication {
           },
         });
       } finally {
-        candidate.root.removeFromParent?.();
+        if (!candidateParent) candidate.root.removeFromParent?.();
+        candidate.root.visible = candidateVisible;
         if (this.#compiled?.root && previousRootVisible !== undefined) this.#compiled.root.visible = previousRootVisible;
         scene.background = previousBackground;
         scene.backgroundNode = previousBackgroundNode;
@@ -3346,6 +3366,7 @@ export class StudioApplication {
       if (owned) await rm(this.#markerPath, { force: true }).catch(() => {});
     }
     this.#prepared?.dispose();
+    this.#viewport.clearPreviewLayer?.();
     this.#dryRunCandidate?.compiled.dispose();
     this.#logicController?.stop();
     this.#logicController = null;

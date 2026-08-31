@@ -230,6 +230,7 @@ function fixture({
   onImportProject,
   onRtxSettingsChange,
   onDlss5SettingsChange,
+  onViewportLayerChange,
   writeClipboardText,
 } = {}) {
   const document = new FakeDocument();
@@ -244,6 +245,7 @@ function fixture({
     onImportProject,
     onRtxSettingsChange,
     onDlss5SettingsChange,
+    onViewportLayerChange,
     writeClipboardText,
     setIntervalFn: timers.setIntervalFn,
     clearIntervalFn: timers.clearIntervalFn,
@@ -539,6 +541,41 @@ test('settings tab switches without a full-tree glyph rebuild and view-mode is r
   assert.equal(hud.tab, 'settings');
 });
 
+test('Layers exposes committed, preview, all, and transient grid controls', () => {
+  const changes = [];
+  const { hud } = fixture({
+    onViewportLayerChange(patch) { changes.push(patch); },
+  });
+  const tabs = findControl(hud.host, 'tabs');
+  tabs.setSelected('layers');
+  assert.equal(hud.tab, 'layers');
+  assert.equal(findControl(hud.host, 'layer-preview').enabled, false);
+  assert.equal(findControl(hud.host, 'layer-all').enabled, false);
+  assert.equal(findControl(hud.host, 'layer-grid').selected, true);
+
+  hud.setViewportLayerState({
+    mode: 'preview',
+    gridVisible: true,
+    studioLightVisible: true,
+    previewActive: true,
+    previewLabel: 'Preview roof form',
+    previewRevision: 7,
+    layers: { scene: false, preview: true, grid: true, lighting: true },
+  });
+  assert.equal(findControl(hud.host, 'layer-preview').enabled, true);
+  assert.equal(findControl(hud.host, 'layer-preview').selected, true);
+  assert.match(findControl(hud.host, 'layer-preview-status').text, /PREVIEW ACTIVE.*r7.*Preview roof form/u);
+  assert.match(findControl(hud.host, 'title').text, /PREVIEW/u);
+
+  findControl(hud.host, 'layer-all').onPointerDown();
+  findControl(hud.host, 'layer-grid').onPointerDown();
+  findControl(hud.host, 'layer-studio-light').onPointerDown();
+  assert.deepEqual(changes, [{ mode: 'all' }, { gridVisible: false }, { studioLightVisible: false }]);
+  assert.equal(hud.viewportLayerState.mode, 'all');
+  assert.equal(hud.viewportLayerState.gridVisible, false);
+  assert.equal(hud.viewportLayerState.studioLightVisible, false);
+});
+
 test('Settings is a clipped pixel-scroll page with a visible synchronized scrollbar', () => {
   const { eventTarget, hud } = fixture({ width: 1000, height: 700, pixelRatio: 1 });
   hud.host.children.find(child => child.name === 'tabs').setSelected('settings');
@@ -830,13 +867,13 @@ test('HUD backing bitmap never exceeds the visible control or window bounds', ()
 test('Prompt tab is browser-only and does not appear on the native HUD', () => {
   const native = fixture();
   const nativeTabs = native.hud.host.children.find(child => child.name === 'tabs');
-  assert.deepEqual(nativeTabs.tabs.map(tab => tab.id), ['log', 'plainform', 'explorer', 'settings']);
+  assert.deepEqual(nativeTabs.tabs.map(tab => tab.id), ['log', 'plainform', 'explorer', 'layers', 'settings']);
   assert.equal(native.hud.host.children.some(child => child.name === 'prompt-page'), false);
   native.hud.dispose();
 
   const browser = fixture({ promptTab: true });
   const browserTabs = browser.hud.host.children.find(child => child.name === 'tabs');
-  assert.deepEqual(browserTabs.tabs.map(tab => tab.id), ['log', 'plainform', 'explorer', 'settings', 'prompt']);
+  assert.deepEqual(browserTabs.tabs.map(tab => tab.id), ['log', 'plainform', 'explorer', 'layers', 'settings', 'prompt']);
   browserTabs.setSelected('prompt');
   assert.equal(browser.hud.tab, 'prompt');
   const promptPage = browser.hud.host.children.find(child => child.name === 'prompt-page');
