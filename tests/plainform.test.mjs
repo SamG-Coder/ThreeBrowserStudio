@@ -192,6 +192,69 @@ Preview these changes.
   assert.ok(compiled.operations.every(operation => operationSchema.safeParse(operation).success));
 });
 
+test('Design Plainform spans generic named boundaries with a constrained open surface patch', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a vehicle connector called Boundary Patch with id entity/boundary-patch.
+Create a box called Roof with id entity/roof, with width 2 metres, height 20 centimetres, and depth 1 metre, centred at [0 metres, 1.5 metres, 0 metres].
+Create a box called Cowl with id entity/cowl, with width 2.2 metres, height 20 centimetres, and depth 1 metre, centred at [0 metres, 50 centimetres, -1 metre].
+Name a boundary called roof front on Roof through design points [-1 metre, 1.4 metres, -50 centimetres], [0 metres, 1.5 metres, -55 centimetres], [1 metre, 1.4 metres, -50 centimetres].
+Name a boundary called cowl rear on Cowl through design points [1.1 metres, 60 centimetres, -50 centimetres], [0 metres, 65 centimetres, -55 centimetres], [-1.1 metres, 60 centimetres, -50 centimetres].
+Create a constrained surface patch called Windshield with id entity/windshield between $roof-front and $cowl-rear, with tangent continuity, using material material/leaf.
+`, { project: projectFixture() });
+  assert.ok(compiled.operations.every(operation => operationSchema.safeParse(operation).success));
+  const patchResource = compiled.operations[0].items.find(item => item.resource.metadata?.plainformDesign?.primitive === 'surfacePatch').resource;
+  assert.equal(patchResource.recipe.kind, 'loft');
+  assert.equal(patchResource.recipe.closedProfile, false);
+  assert.equal(patchResource.recipe.capStart, false);
+  assert.equal(patchResource.recipe.capEnd, false);
+  assert.equal(patchResource.recipe.continuity, 'tangent');
+  assert.equal(patchResource.recipe.subdivisions, 3);
+  assert.equal(patchResource.recipe.alignProfile, 'authored');
+  assert.deepEqual(patchResource.recipe.sections.map(section => section.id), [
+    'boundary/roof-front', 'boundary/cowl-rear',
+  ]);
+  assert.deepEqual(patchResource.recipe.sections[1].points[0], [-1.1, 0.6, -0.5]);
+  const patchEntity = compiled.operations[2].items.map(item => item.entity)
+    .find(entity => entity.id === 'entity/windshield');
+  assert.deepEqual(patchEntity.components.mesh, {
+    geometryId: patchResource.id, materialId: 'material/leaf',
+  });
+  assert.deepEqual(patchEntity.metadata.plainformDesign.boundaryRefs, [
+    { name: 'roof-front', ownerEntityId: 'entity/roof' },
+    { name: 'cowl-rear', ownerEntityId: 'entity/cowl' },
+  ]);
+  const root = compiled.operations[1].entity;
+  assert.deepEqual(root.metadata.plainformDesign.boundaries.map(boundary => boundary.name), [
+    'roof-front', 'cowl-rear',
+  ]);
+});
+
+test('Design Plainform transforms local boundary points and rejects invalid named boundary references', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a connector called Local Boundary with id entity/local-boundary.
+Create a box called Rotated Panel with id entity/rotated-panel, with width 2 metres, height 2 metres, and depth 2 metres, centred at [3 metres, 0 metres, 0 metres], rotated by [0 degrees, 90 degrees, 0 degrees].
+Name a boundary called panel edge on Rotated Panel through local points [0 metres, -50 centimetres, -50 centimetres], [0 metres, 0 metres, -50 centimetres], [0 metres, 50 centimetres, -50 centimetres].
+Name a boundary called design edge on Rotated Panel through design points [2 metres, -1 metre, 1 metre], [2 metres, 0 metres, 1 metre], [2 metres, 1 metre, 1 metre].
+Create a constrained surface patch called Local Patch with id entity/local-patch between $panel-edge and $design-edge.
+`, { project: projectFixture() });
+  const patchResource = compiled.operations[0].items.find(item => item.resource.metadata?.plainformDesign?.primitive === 'surfacePatch').resource;
+  assert.ok(Math.abs(patchResource.recipe.sections[0].points[0][0] - 2) < 1e-9);
+  assert.ok(Math.abs(patchResource.recipe.sections[0].points[0][2]) < 1e-9);
+
+  assert.throws(() => new PlainformCompiler().compile(`
+Design a connector called Missing Boundary with id entity/missing-boundary.
+Create a box called Panel with id entity/panel, with width 1 metre, height 1 metre, and depth 1 metre.
+Name a boundary called edge on Panel through design points [0 metres, 0 metres, 0 metres], [0 metres, 1 metre, 0 metres], [0 metres, 2 metres, 0 metres].
+Create a constrained surface patch called Broken with id entity/broken-patch between $edge and $absent.
+`, { project: projectFixture() }), error => error.code === 'plainform_unknown_boundary');
+
+  assert.throws(() => new PlainformCompiler().compile(`
+Design a connector called Short Boundary with id entity/short-boundary.
+Create a box called Panel with id entity/panel, with width 1 metre, height 1 metre, and depth 1 metre.
+Name a boundary called edge on Panel through design points [0 metres, 0 metres, 0 metres], [0 metres, 1 metre, 0 metres].
+`, { project: projectFixture() }), error => error.code === 'plainform_boundary_points');
+});
+
 test('Design Plainform extrudes arbitrary profiles and lowers deterministic boolean subtraction', () => {
   const compiled = new PlainformCompiler().compile(`
 Design a bracket called Boolean Bracket with id entity/boolean-bracket.

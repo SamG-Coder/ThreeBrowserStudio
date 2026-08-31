@@ -1,9 +1,12 @@
 import { evaluateDesignExpression, evaluateDesignVector } from './design-expression.mjs';
 import { ProjectIndex } from '../core/indexes.mjs';
 import { PlainformSpatialResolver } from './spatial-relations.mjs';
+import { composeTransformMatrix, transformPointByMatrix } from '../core/transform-math.mjs';
 
 const MAX_DESIGN_ENTITIES = 128;
 const MAX_LOOP_ITERATIONS = 128;
+const MAX_BOUNDARIES = 128;
+const MAX_BOUNDARY_POINTS = 256;
 
 function clean(value) {
   return value.trim().replace(/[.:;]+$/u, '').trim();
@@ -161,6 +164,22 @@ function splitNames(value) {
   return value.split(/\s*(?:,|\band\b)\s*/iu).map(key).filter(Boolean);
 }
 
+function boundaryReferenceKey(value) {
+  return slug(value.replace(/^\$/u, ''));
+}
+
+function endpointDistanceSquared(left, right) {
+  return left.reduce((sum, value, axis) => sum + (value - right[axis]) ** 2, 0);
+}
+
+function matchBoundaryDirection(first, second) {
+  const same = endpointDistanceSquared(first[0], second[0])
+    + endpointDistanceSquared(first.at(-1), second.at(-1));
+  const reversed = endpointDistanceSquared(first[0], second.at(-1))
+    + endpointDistanceSquared(first.at(-1), second[0]);
+  return reversed < same ? [...second].reverse() : second;
+}
+
 function activeScene(project) {
   const sceneId = project.activeSceneId ?? project.sceneOrder?.[0] ?? Object.keys(project.scenes ?? {})[0];
   if (!sceneId || !project.scenes?.[sceneId]) {
@@ -214,11 +233,13 @@ export class DesignPlainformCompiler {
     const variables = new Map();
     const profiles = new Map();
     const guides = new Map();
+    const boundaries = new Map();
     const entities = [];
     const aliases = { [key(designName)]: [rootId] };
     const interpretations = [`Will create the ${designKind} design “${designName}” as ${rootId}.`];
     const geometryKinds = new Set();
     const lofts = [];
+    const surfacePatches = [];
     const generatedResources = [];
     const booleanCommands = [];
     const ids = new Set([rootId]);
@@ -244,6 +265,33 @@ export class DesignPlainformCompiler {
       if (generated) return [...generated.transform.position];
       const error = new Error(`No exact design reference matches “${phrase}”.`);
       error.code = 'plainform_reference_not_found';
+      throw error;
+    };
+    const generatedEntity = phrase => {
+      const normalized = key(phrase);
+      const generatedId = aliases[normalized]?.[0] ?? clean(phrase);
+      return entities.find(entity => entity.id === generatedId)
+        ?? lofts.find(loft => loft.entityId === generatedId);
+    };
+    const boundaryOwner = phrase => {
+      const generated = generatedEntity(phrase);
+      if (generated) {
+        const entity = generated.entityId
+          ? { id: generated.entityId, transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] } }
+          : generated;
+        return { entityId: entity.id, matrix: composeTransformMatrix(entity.transform) };
+      }
+      const exactId = clean(phrase);
+      const exact = projectIndex.entities.get(exactId);
+      if (exact) {
+        if (exact.sceneId !== scene.id) {
+          const error = new Error(`Boundary owner ${exact.entity.id} belongs to ${exact.sceneId}, not the active scene ${scene.id}.`);
+          error.code = 'plainform_cross_scene_boundary'; throw error;
+        }
+        return { entityId: exact.entity.id, matrix: spatial.worldMatrix(exact) };
+      }
+      const error = new Error(`Boundary owner “${phrase}” must be an exact entity ID or an object created earlier in this design.`);
+      error.code = 'plainform_boundary_owner_not_found';
       throw error;
     };
     const addEntity = ({ id, name, kind: primitiveKind, dimensions, position, rotation = [0, 0, 0], materialId }) => {
@@ -367,6 +415,42 @@ export class DesignPlainformCompiler {
           }
           guides.set(name, { name, points });
           interpretations.push(`Defined guide curve “${name}” through ${points.length} evaluated points.`);
+          continue;
+        }
+        const boundaryStatement = statement.match(/^name a boundary called (.+?) on (.+?) through (local|design) points (.+)$/iu);
+        if (boundaryStatement) {
+          const name = boundaryReferenceKey(boundaryStatement[1]);
+          if (boundaries.has(name)) {
+            const error = new Error(`Boundary “${name}” is already defined in this design.`);
+            error.code = 'plainform_boundary_exists'; throw error;
+          }
+          if (boundaries.size >= MAX_BOUNDARIES) {
+            const error = new Error(`Design Plainform supports at most ${MAX_BOUNDARIES} named boundaries.`);
+            error.code = 'plainform_boundary_limit'; throw error;
+          }
+          const owner = boundaryOwner(boundaryStatement[2]);
+          const coordinateSpace = boundaryStatement[3].toLowerCase();
+          const authoredPoints = parseVectorGroups(boundaryStatement[4], scope, {
+            dimensions: 3, dimension: 'length', phrase: `Boundary ${name}`,
+          });
+          if (authoredPoints.length < 3 || authoredPoints.length > MAX_BOUNDARY_POINTS) {
+            const error = new Error(`Boundary “${name}” requires 3 to ${MAX_BOUNDARY_POINTS} points.`);
+            error.code = 'plainform_boundary_points'; throw error;
+          }
+          if (new Set(authoredPoints.map(point => point.join('\u0000'))).size < 3) {
+            const error = new Error(`Boundary “${name}” requires at least three distinct points.`);
+            error.code = 'plainform_boundary_points'; throw error;
+          }
+          const points = coordinateSpace === 'local'
+            ? authoredPoints.map(point => transformPointByMatrix(owner.matrix, point))
+            : authoredPoints.map(point => [...point]);
+          boundaries.set(name, {
+            name, ownerEntityId: owner.entityId,
+            coordinateSpace,
+            authoredPoints: authoredPoints.map(point => [...point]),
+            points,
+          });
+          interpretations.push(`Named boundary $${name} on ${owner.entityId} through ${points.length} constrained ${coordinateSpace}-space points.`);
           continue;
         }
         const smoothProfileStatement = statement.match(/^(?:smooth|round the transitions of) (?:profile )?(.+?)(?: with (\d+) samples)?$/iu);
@@ -575,6 +659,49 @@ export class DesignPlainformCompiler {
           continue;
         }
 
+        const patch = statement.match(/^create a constrained surface patch called (.+?) with id ([a-z0-9][a-z0-9._/-]*) between (\$[a-z0-9][a-z0-9._/-]*) and (\$[a-z0-9][a-z0-9._/-]*)(?:,? with (positional|tangent|curvature) continuity)?(?:,? using material ([a-z0-9][a-z0-9._/-]*))?$/iu);
+        if (patch) {
+          const firstName = boundaryReferenceKey(patch[3]);
+          const secondName = boundaryReferenceKey(patch[4]);
+          const first = boundaries.get(firstName);
+          const second = boundaries.get(secondName);
+          if (!first || !second) {
+            const missing = [!first ? `$${firstName}` : null, !second ? `$${secondName}` : null].filter(Boolean);
+            const error = new Error(`Unknown named boundary ${missing.join(' and ')}. Define each boundary before creating its patch.`);
+            error.code = 'plainform_unknown_boundary'; throw error;
+          }
+          const entityId = patch[2];
+          const geometryId = `geometry/plainform-design/${designSlug}/${slug(patch[1])}`;
+          if (occupied.has(entityId) || ids.has(entityId) || occupied.has(geometryId) || ids.has(geometryId)) {
+            const error = new Error(`Surface patch ID ${entityId} or ${geometryId} already exists.`);
+            error.code = 'plainform_id_conflict'; throw error;
+          }
+          ids.add(entityId); ids.add(geometryId);
+          const secondPoints = matchBoundaryDirection(first.points, second.points);
+          const maximumSpanSquared = first.points.reduce((maximum, point, index) => {
+            const factor = index / Math.max(1, first.points.length - 1);
+            const scaled = factor * (secondPoints.length - 1);
+            const lower = Math.min(secondPoints.length - 2, Math.floor(scaled));
+            const local = scaled - lower;
+            const matched = secondPoints[lower].map((value, axis) => (
+              value + (secondPoints[lower + 1][axis] - value) * local
+            ));
+            return Math.max(maximum, endpointDistanceSquared(point, matched));
+          }, 0);
+          if (maximumSpanSquared <= 1e-18) {
+            const error = new Error('A constrained surface patch requires two spatially distinct boundaries.');
+            error.code = 'plainform_degenerate_surface_patch'; throw error;
+          }
+          const continuity = patch[5]?.toLowerCase() ?? 'positional';
+          surfacePatches.push({
+            entityId, geometryId, name: quoteName(patch[1]), continuity, materialId: patch[6],
+            boundaries: [first, { ...second, points: secondPoints }],
+          });
+          aliases[key(patch[1])] = [entityId];
+          interpretations.push(`Will span $${first.name} and $${second.name} with constrained patch “${quoteName(patch[1])}” using ${continuity} continuity.`);
+          continue;
+        }
+
         const blendSections = statement.match(/^blend the sections of (.+?) with (positional|tangent|curvature) continuity$/iu);
         if (blendSections) {
           const entityId = aliases[key(blendSections[1])]?.[0];
@@ -664,7 +791,7 @@ export class DesignPlainformCompiler {
     };
 
     execute(1, lines.length, variables);
-    if (entities.length + lofts.length === 0) {
+    if (entities.length + lofts.length + surfacePatches.length === 0) {
       const error = new Error('A design must create at least one solid or primitive.'); error.code = 'plainform_empty_design'; throw error;
     }
 
@@ -687,6 +814,34 @@ export class DesignPlainformCompiler {
         modifiers: loft.modifiers,
       } },
     });
+    for (const patch of surfacePatches) resources.push({
+      resourceType: 'geometries',
+      resource: {
+        id: patch.geometryId,
+        metadata: { plainformDesign: {
+          primitive: 'surfacePatch',
+          boundaryRefs: patch.boundaries.map(boundary => ({
+            name: boundary.name, ownerEntityId: boundary.ownerEntityId,
+          })),
+        } },
+        recipe: {
+          kind: 'loft',
+          sections: patch.boundaries.map(boundary => ({
+            id: `boundary/${slug(boundary.name)}`,
+            points: boundary.points.map(point => [...point]),
+          })),
+          closedProfile: false,
+          capStart: false,
+          capEnd: false,
+          profileResolution: Math.max(...patch.boundaries.map(boundary => boundary.points.length)),
+          subdivisions: patch.continuity === 'positional' ? 0 : 3,
+          alignProfile: 'authored',
+          continuity: patch.continuity,
+          guideCurves: [],
+          modifiers: [],
+        },
+      },
+    });
     resources.push(...generatedResources);
     for (const resource of resources) {
       if (occupied.has(resource.resource.id)) {
@@ -700,6 +855,15 @@ export class DesignPlainformCompiler {
       metadata: { plainformDesign: {
         primitive: 'loft', profile: loft.profile.name, continuity: loft.continuity,
         guides: loft.guideCurves.map(guide => guide.name), modifiers: loft.modifiers,
+      } },
+    })), ...surfacePatches.map(patch => ({
+      id: patch.entityId, kind: 'mesh', name: patch.name, parentId: rootId,
+      components: { mesh: { geometryId: patch.geometryId, ...(patch.materialId ? { materialId: patch.materialId } : {}) } },
+      metadata: { plainformDesign: {
+        primitive: 'surfacePatch', continuity: patch.continuity,
+        boundaryRefs: patch.boundaries.map(boundary => ({
+          name: boundary.name, ownerEntityId: boundary.ownerEntityId,
+        })),
       } },
     }))];
     if (booleanCommands.length > 0) {
@@ -770,7 +934,15 @@ export class DesignPlainformCompiler {
       ...(resources.length > 0 ? [{ op: 'resource.createMany', items: resources }] : []),
       { op: 'entity.create', sceneId: scene.id, entity: {
         id: rootId, kind: 'group', name: designName,
-        metadata: { plainformDesign: { version: 1, kind: designKind, source, variables: variableMetadata } },
+        metadata: { plainformDesign: {
+          version: 1, kind: designKind, source, variables: variableMetadata,
+          boundaries: [...boundaries.values()].map(boundary => ({
+            name: boundary.name,
+            ownerEntityId: boundary.ownerEntityId,
+            coordinateSpace: boundary.coordinateSpace,
+            authoredPoints: boundary.authoredPoints.map(point => [...point]),
+          })),
+        } },
       } },
       { op: 'entity.createMany', sceneId: scene.id, items: allEntities.map(entity => ({ entity })) },
     ];

@@ -166,10 +166,13 @@ loops, trigonometric/easing expressions, exact box and rotatable cylinder
 primitives, arbitrary or symmetric smooth profiles, independently controlled
 loft sections, open guide curves, positional/tangent/curvature interpolation,
 bounded local bulge/pinch/offset shaping, bevelled profile extrusion, and
-deterministic union/subtract/intersect. It emits shared geometry and batched
-entities, so repeated mathematical elements do not consume one operation per
-mesh. The design root retains the source and evaluated top-level parameters in
-metadata. Use the full exact grammar and coordinate conventions in
+deterministic union/subtract/intersect. For the remaining cross-object surface
+attachment case, it also supports exact entity-owned named boundaries and
+constrained open patches between two `$boundary` references. It emits shared
+geometry and batched entities, so repeated mathematical elements do not
+consume one operation per mesh. The design root retains the source, evaluated
+top-level parameters, and boundary declarations in metadata. Use the full
+exact grammar and coordinate conventions in
 `skills/threebrowser-studio-mcp/references/plainform.md`; do not infer
 unsupported CAD verbs from open-ended prose.
 

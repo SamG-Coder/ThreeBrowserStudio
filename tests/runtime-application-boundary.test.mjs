@@ -1304,6 +1304,42 @@ test('three_studio_apply commits guided curved lofts through the runtime boundar
   assert.equal(bodyRecipe.modifiers.length, 1);
 });
 
+test('three_studio_apply commits named cross-object boundaries as a constrained surface patch', async (t) => {
+  const { application } = await applicationFixture(t);
+  const result = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1', sessionId: application.sessionId,
+    projectId: 'project/active', baseRevision: 0,
+    idempotencyKey: 'plainform-boundary-patch-0001', label: 'Join two exact object boundaries',
+    operations: null,
+    program: {
+      language: 'plainform-v1',
+      source: [
+        'Design a connector called Runtime Patch with id entity/runtime-patch.',
+        'Create a box called Upper Panel with id entity/upper-panel, with width 2 metres, height 20 centimetres, and depth 1 metre.',
+        'Create a box called Lower Panel with id entity/lower-panel, with width 2 metres, height 20 centimetres, and depth 1 metre.',
+        'Name a boundary called upper edge on Upper Panel through design points [-1 metre, 1 metre, 0 metres], [0 metres, 1.1 metres, 10 centimetres], [1 metre, 1 metre, 0 metres].',
+        'Name a boundary called lower edge on Lower Panel through design points [1 metre, 0 metres, 0 metres], [0 metres, -10 centimetres, 10 centimetres], [-1 metre, 0 metres, 0 metres].',
+        'Create a constrained surface patch called Connector Skin with id entity/connector-skin between $upper-edge and $lower-edge, with curvature continuity.',
+      ].join('\n'),
+    },
+  }).catch(error => assert.fail(`Boundary patch runtime application failed: ${JSON.stringify(error.details ?? error.message)}`));
+  assert.equal(result.success, true);
+  assert.equal(result.revision, 1);
+  assert.deepEqual(result.plainform.design, {
+    rootId: 'entity/runtime-patch', entityCount: 3, resourceCount: 2, variableCount: 0,
+  });
+  const document = application.kernel.document;
+  const patch = document.resources.geometries['geometry/plainform-design/runtime-patch/connector-skin'];
+  assert.equal(patch.recipe.kind, 'loft');
+  assert.equal(patch.recipe.closedProfile, false);
+  assert.equal(patch.recipe.continuity, 'curvature');
+  assert.deepEqual(patch.metadata.plainformDesign.boundaryRefs, [
+    { name: 'upper-edge', ownerEntityId: 'entity/upper-panel' },
+    { name: 'lower-edge', ownerEntityId: 'entity/lower-panel' },
+  ]);
+  assert.equal(document.scenes['scene/main'].entities['entity/connector-skin'].parentId, 'entity/runtime-patch');
+});
+
 test('three_studio_apply compiles Shader Plainform into a validated graph and material assignment', async (t) => {
   const { application } = await applicationFixture(t);
   const setup = await application.dispatch('three_studio_apply', {

@@ -129,6 +129,40 @@ Pinch Body Shell inward around [0 metres, 3.2 metres, 0 metres] by 2 centimetres
 Offset the surface of Body Shell by 5 millimetres.
 ```
 
+### Named boundaries and constrained patches
+
+Use named boundaries only when two independently authored objects need one
+surface to meet both of them exactly. A boundary belongs to one exact entity
+and contains 3–256 ordered points. Its `$name` is stable within the Design
+program and is recorded with the owner ID in canonical metadata.
+
+Use `design points` when the coordinates are already in the design root's
+coordinate system. Use `local points` when the coordinates are in the owning
+entity's pre-transform geometry space; the compiler applies that entity's
+canonical transform:
+
+```text
+Name a boundary called roof front on Roof Panel through design points [-80 centimetres, 1.32 metres, 20 centimetres], [0 metres, 1.38 metres, 18 centimetres], [80 centimetres, 1.32 metres, 20 centimetres].
+Name a boundary called cowl rear on Cowl Panel through design points [-86 centimetres, 82 centimetres, -42 centimetres], [0 metres, 86 centimetres, -45 centimetres], [86 centimetres, 82 centimetres, -42 centimetres].
+Create a constrained surface patch called Windshield with id entity/windshield between $roof-front and $cowl-rear, with curvature continuity, using material material/glass.
+```
+
+The compiler matches the second boundary's endpoint direction to the first,
+then lowers the result to a bounded open, uncapped loft. `positional` uses the
+two authored rails directly; `tangent` and `curvature` add deterministic
+intermediate sections. The named owner references, authored coordinates, and
+resolved boundary references remain inspectable in project metadata.
+
+The first boundary's point order determines the patch front face; the compiler
+only reverses the second rail to prevent a twist. Reverse both authored point
+orders when the surface normal must face the opposite side.
+
+This is an atomic authored constraint, not executable code or a hidden live
+solver. Moving an individual source object later does not silently regenerate
+the patch; re-author the Design program when the source boundary changes. A
+shared parent transform remains coherent because the source objects and patch
+move together.
+
 Arbitrary profiles can also become bevelled watertight extrusions:
 
 ```text
@@ -181,9 +215,10 @@ Ensure the design is exactly tower height high.
 ```
 
 Loops require ascending integer bounds and are limited to 128 iterations.
-Design programs create at most 128 entities. The root group's metadata retains
-the exact Plainform source and evaluated top-level parameter values so the
-design intent remains inspectable. End with the ordinary preview sentence for
+Design programs create at most 128 entities and define at most 128 named
+boundaries. The root group's metadata retains the exact Plainform source,
+evaluated top-level parameter values, and boundary declarations so the design
+intent remains inspectable. End with the ordinary preview sentence for
 candidate compilation before commit.
 
 ## Preview and promote
