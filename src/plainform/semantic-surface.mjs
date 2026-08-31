@@ -146,6 +146,7 @@ export class SemanticSurfaceRegistry {
         anchorMode: curve.anchorMode,
         authoredPoints: curve.authoredPoints.map(point => [...point]),
         anchors: curve.anchors.map(cloneAnchor),
+        ...(curve.projection ? { projection: structuredClone(curve.projection) } : {}),
       })),
       surfaceRegions: [...this.regions.values()].map(region => ({
         name: region.name,

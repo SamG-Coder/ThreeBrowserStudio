@@ -434,6 +434,63 @@ Bulge band by 4 centimetres, falling off smoothly over 20 centimetres.
 `, { project: projectFixture() }), error => error.code === 'plainform_surface_region_deformation_unsupported');
 });
 
+test('Design Plainform projects profiles and surface references as reusable anchored curves', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a surface projection study called Projected Details with id entity/projected-details.
+Create a box called Source Panel with id entity/source-panel, with width 2 metres, height 2 metres, and depth 20 centimetres, centred at [0 metres, 0 metres, 1 metre].
+Create a box called Target Panel with id entity/target-panel, with width 2 metres, height 2 metres, and depth 20 centimetres, centred at [0 metres, 0 metres, 0 metres].
+Create a smooth profile called badge outline through [-30 centimetres, -20 centimetres], [30 centimetres, -20 centimetres], [30 centimetres, 20 centimetres], [-30 centimetres, 20 centimetres].
+Project profile badge outline onto Source Panel as source badge, centred at [0 metres, 0 metres, 1.5 metres], rotated by [0 degrees, 0 degrees, 0 degrees].
+Project $source-badge onto Target Panel as target badge.
+Name the surface enclosed by $target-badge as target badge region.
+`, { project: projectFixture() });
+  const root = compiled.operations.find(operation => operation.op === 'entity.create').entity;
+  const curves = root.metadata.plainformDesign.surfaceCurves;
+  assert.equal(curves.length, 2);
+  assert.equal(curves[0].projection.kind, 'profile');
+  assert.equal(curves[0].projection.profile, 'badge outline');
+  assert.equal(curves[1].projection.kind, 'surfaceReference');
+  assert.equal(curves[1].projection.source.name, 'source-badge');
+  assert.equal(curves[1].ownerEntityId, 'entity/target-panel');
+  assert.equal(root.metadata.plainformDesign.surfaceRegions[0].definition.kind, 'enclosedCurve');
+});
+
+test('Design Plainform creates actual bounded shell thickness while keeping the owner entity stable', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a hollow product called Shelled Product with id entity/shelled-product.
+Create a cylinder called Housing with id entity/housing, with radius 1 metre and height 2 metres.
+Shell Housing inward by 10 centimetres.
+`, { project: projectFixture() });
+  const resources = compiled.operations[0].items.map(item => item.resource);
+  const derived = resources.find(resource => resource.metadata?.plainformDesign?.primitive === 'semanticSurfaceResult');
+  assert.equal(derived.recipe.kind, 'indexedMesh');
+  const originalVertexCount = (2 + 32 * 2);
+  assert.equal(derived.recipe.positions.length / 3, originalVertexCount * 2);
+  const housing = compiled.operations.find(operation => operation.op === 'entity.createMany').items
+    .map(item => item.entity).find(entity => entity.id === 'entity/housing');
+  assert.equal(housing.components.mesh.geometryId, derived.id);
+  const shellIntent = compiled.operations.find(operation => operation.op === 'entity.create').entity
+    .metadata.plainformDesign.surfaceDeformations[0];
+  assert.deepEqual({ kind: shellIntent.kind, operation: shellIntent.operation, thickness: shellIntent.thickness }, {
+    kind: 'shell', operation: 'inward', thickness: 0.1,
+  });
+  assert.equal(shellIntent.boundaryEdgeCount, 0);
+});
+
+test('Design Plainform rejects unsafe shell thickness and fake interior shell openings', () => {
+  assert.throws(() => new PlainformCompiler().compile(`
+Design a hollow product called Unsafe Shell with id entity/unsafe-shell.
+Create a box called Housing with id entity/housing, with width 1 metre, height 1 metre, and depth 1 metre.
+Shell Housing inward by 60 centimetres.
+`, { project: projectFixture() }), error => error.code === 'plainform_shell_self_intersection_risk');
+
+  assert.throws(() => new PlainformCompiler().compile(`
+Design a hollow product called Fake Opening with id entity/fake-opening.
+Create a box called Housing with id entity/housing, with width 1 metre, height 1 metre, and depth 1 metre.
+Shell Housing inward by 5 centimetres, leaving the bottom boundary open.
+`, { project: projectFixture() }), error => error.code === 'plainform_shell_open_boundary_requires_split');
+});
+
 test('Design Plainform projects anchors against a generated curved loft owner', () => {
   const compiled = new PlainformCompiler().compile(`
 Design a head study called Loft Surface Owner with id entity/loft-surface-owner.

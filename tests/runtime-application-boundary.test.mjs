@@ -1430,6 +1430,35 @@ test('three_studio_apply commits semantic curve deformation as one derived owner
   assert.ok(intent.surfaceDeformations[0].affectedVertexCount > 0);
 });
 
+test('three_studio_apply commits projected surface intent and actual shell thickness', async (t) => {
+  const { application } = await applicationFixture(t);
+  const result = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1', sessionId: application.sessionId,
+    projectId: 'project/active', baseRevision: 0,
+    idempotencyKey: 'plainform-project-shell-0001', label: 'Project detail and shell its owner',
+    operations: null,
+    program: {
+      language: 'plainform-v1',
+      source: [
+        'Design a hollow product called Runtime Projected Shell with id entity/runtime-projected-shell.',
+        'Create a cylinder called Housing with id entity/housing, with radius 1 metre and height 2 metres.',
+        'Create a smooth profile called badge through [-20 centimetres, -20 centimetres], [20 centimetres, -20 centimetres], [20 centimetres, 20 centimetres], [-20 centimetres, 20 centimetres].',
+        'Project profile badge onto Housing as housing badge, centred at [0 metres, 0 metres, 1.2 metres].',
+        'Name the surface enclosed by $housing-badge as badge region.',
+        'Shell Housing inward by 8 centimetres.',
+      ].join('\n'),
+    },
+  }).catch(error => assert.fail(`Projection and shell runtime application failed: ${JSON.stringify(error.details ?? error.message)}`));
+  assert.equal(result.success, true);
+  const document = application.kernel.document;
+  const root = document.scenes['scene/main'].entities['entity/runtime-projected-shell'];
+  assert.equal(root.metadata.plainformDesign.surfaceCurves[0].projection.kind, 'profile');
+  assert.equal(root.metadata.plainformDesign.surfaceRegions[0].definition.kind, 'enclosedCurve');
+  assert.equal(root.metadata.plainformDesign.surfaceDeformations[0].kind, 'shell');
+  const housing = document.scenes['scene/main'].entities['entity/housing'];
+  assert.equal(document.resources.geometries[housing.components.mesh.geometryId].recipe.kind, 'indexedMesh');
+});
+
 test('three_studio_apply compiles Shader Plainform into a validated graph and material assignment', async (t) => {
   const { application } = await applicationFixture(t);
   const setup = await application.dispatch('three_studio_apply', {

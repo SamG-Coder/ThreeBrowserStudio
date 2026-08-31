@@ -260,6 +260,38 @@ projection and split operations and currently fail with
 `plainform_surface_region_deformation_unsupported` if used as deformation
 masks.
 
+Project a profile or an existing surface reference onto another owner when a
+detail must follow the target surface rather than rely on world-space overlap:
+
+```text
+Project profile badge outline onto Housing as housing badge, centred at [0 metres, 0 metres, 1.2 metres], rotated by [0 degrees, 0 degrees, 0 degrees].
+Project $source-badge onto Target Panel as target badge.
+```
+
+A profile projection becomes a closed surface curve. Its profile points are
+placed in design space by the optional centre and XYZ rotation before bounded
+nearest-surface projection. A `$reference` projection reprojects the already
+evaluated world points and preserves whether a source surface curve is closed.
+The resulting curve can be named as a region or consumed by later supported
+surface operations. Projection records its source intent and all resolved
+anchors; it does not create a floating duplicate mesh.
+
+Create actual thickness with:
+
+```text
+Shell Body Panel inward by 1.2 millimetres.
+Shell Housing outward by 3 millimetres.
+```
+
+Shelling realizes the supported source surface internally, duplicates and
+offsets its skin along evaluated normals, reverses the inner winding, and
+closes genuine topology boundary edges. The owner entity ID, transform, and
+material assignment remain stable. A thickness at or above half the smallest
+non-zero owner span fails conservatively with
+`plainform_shell_self_intersection_risk`. `Shell Housing inward by 4
+millimetres, leaving $opening open` is not accepted while `$opening` is only an
+interior semantic curve: split it into a genuine topology boundary first.
+
 Arbitrary profiles can also become bevelled watertight extrusions:
 
 ```text

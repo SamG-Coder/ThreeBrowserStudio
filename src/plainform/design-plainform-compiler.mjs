@@ -9,6 +9,7 @@ import {
 } from './constrained-surface.mjs';
 import { SemanticSurfaceRegistry } from './semantic-surface.mjs';
 import { deformAlongSurfaceCurve, deformSurfaceRegion } from './semantic-surface-deformation.mjs';
+import { shellSurface } from './semantic-surface-shell.mjs';
 
 const MAX_DESIGN_ENTITIES = 128;
 const MAX_LOOP_ITERATIONS = 128;
@@ -495,6 +496,63 @@ export class DesignPlainformCompiler {
             })),
           });
           interpretations.push(`Created ${closed ? 'closed ' : ''}surface curve $${name} on ${owner.entityId} with ${points.length} bounded anchors.`);
+          continue;
+        }
+        const profileProjectionStatement = statement.match(/^project profile (.+?) onto (.+?) as (.+?)(?:,? centred at (\[[^\]]+\]))?(?:,? rotated by (\[[^\]]+\]))?$/iu);
+        if (profileProjectionStatement) {
+          const profile = profiles.get(key(profileProjectionStatement[1]));
+          if (!profile) {
+            const error = new Error(`Unknown profile “${profileProjectionStatement[1]}”.`);
+            error.code = 'plainform_unknown_profile'; throw error;
+          }
+          const owner = boundaryOwner(profileProjectionStatement[2]);
+          if (!owner.recipe) {
+            const error = new Error(`Projection owner ${owner.entityId} has no project-owned mesh geometry to project onto.`);
+            error.code = 'plainform_surface_anchor_unavailable'; throw error;
+          }
+          const position = profileProjectionStatement[4]
+            ? evaluateDesignVector(profileProjectionStatement[4], scope, 'length') : [0, 0, 0];
+          const rotation = profileProjectionStatement[5]
+            ? evaluateDesignVector(profileProjectionStatement[5], scope, 'angle') : [0, 0, 0];
+          const projectionMatrix = composeTransformMatrix({ position, rotation, scale: [1, 1, 1] });
+          const seedPoints = profile.points.map(point => transformPointByMatrix(projectionMatrix, point));
+          const projected = projectSurfaceAnchors({ recipe: owner.recipe, matrix: owner.matrix, seedPoints, entityId: owner.entityId });
+          const name = boundaryReferenceKey(profileProjectionStatement[3]);
+          semanticSurfaces.addCurve({
+            name, ownerEntityId: owner.entityId, coordinateSpace: 'design', closed: true,
+            anchorMode: 'nearestSurface', authoredPoints: seedPoints.map(point => [...point]),
+            points: projected.map(anchor => anchor.point), normals: projected.map(anchor => anchor.normal),
+            anchors: projected.map((anchor, index) => ({
+              seedPoint: [...seedPoints[index]], projectedPoint: [...anchor.point], normal: [...anchor.normal],
+              triangleIndex: anchor.triangleIndex, barycentric: [...anchor.barycentric],
+            })),
+            projection: { kind: 'profile', profile: profile.name, position, rotation },
+          });
+          interpretations.push(`Projected profile “${profile.name}” onto ${owner.entityId} as closed surface curve $${name}.`);
+          continue;
+        }
+        const referenceProjectionStatement = statement.match(/^project (\$[a-z0-9][a-z0-9._/-]*) onto (.+?) as (.+)$/iu);
+        if (referenceProjectionStatement) {
+          const sourceReference = semanticSurfaces.resolveReference(referenceProjectionStatement[1]);
+          const owner = boundaryOwner(referenceProjectionStatement[2]);
+          if (!owner.recipe) {
+            const error = new Error(`Projection owner ${owner.entityId} has no project-owned mesh geometry to project onto.`);
+            error.code = 'plainform_surface_anchor_unavailable'; throw error;
+          }
+          const seedPoints = sourceReference.points.map(point => [...point]);
+          const projected = projectSurfaceAnchors({ recipe: owner.recipe, matrix: owner.matrix, seedPoints, entityId: owner.entityId });
+          const name = boundaryReferenceKey(referenceProjectionStatement[3]);
+          semanticSurfaces.addCurve({
+            name, ownerEntityId: owner.entityId, coordinateSpace: 'design', closed: Boolean(sourceReference.closed),
+            anchorMode: 'nearestSurface', authoredPoints: seedPoints.map(point => [...point]),
+            points: projected.map(anchor => anchor.point), normals: projected.map(anchor => anchor.normal),
+            anchors: projected.map((anchor, index) => ({
+              seedPoint: [...seedPoints[index]], projectedPoint: [...anchor.point], normal: [...anchor.normal],
+              triangleIndex: anchor.triangleIndex, barycentric: [...anchor.barycentric],
+            })),
+            projection: { kind: 'surfaceReference', source: { name: sourceReference.name, kind: sourceReference.referenceKind } },
+          });
+          interpretations.push(`Projected $${sourceReference.name} onto ${owner.entityId} as surface curve $${name}.`);
           continue;
         }
         const betweenRegionStatement = statement.match(/^name the surface between (\$[a-z0-9][a-z0-9._/-]*) and (\$[a-z0-9][a-z0-9._/-]*) as (.+)$/iu);
@@ -985,6 +1043,25 @@ export class DesignPlainformCompiler {
           if (!loft) { const error = new Error(`Surface offset currently requires a generated loft; “${offsetSurface[1]}” is not one.`); error.code = 'plainform_modifier_target'; throw error; }
           loft.modifiers.push({ kind: 'offset', center: [0, 0, 0], amount: length(offsetSurface[2], scope, 'Surface offset') });
           interpretations.push(`Will offset the surface of “${loft.name}” by ${loft.modifiers.at(-1).amount} metres.`);
+          continue;
+        }
+
+        const shellStatement = statement.match(/^shell (.+?) (inward|outward) by (.+)$/iu);
+        if (shellStatement) {
+          if (/\bleaving\b.+\bopen$/iu.test(shellStatement[3])) {
+            const error = new Error('Shell openings require a genuine split topology boundary. Split the surface first; arbitrary interior intent curves cannot be treated as open mesh edges.');
+            error.code = 'plainform_shell_open_boundary_requires_split'; throw error;
+          }
+          const owner = semanticDeformationOwner(shellStatement[1]);
+          const direction = shellStatement[2].toLowerCase();
+          const thickness = finitePositive(length(shellStatement[3], scope, 'Shell thickness'), 'Shell thickness');
+          const result = shellSurface({ owner, thickness, direction });
+          owner.recipe = result.recipe;
+          semanticSurfaces.addDeformation({
+            kind: 'shell', operation: direction, ownerEntityId: owner.entityId, thickness,
+            sourceVertexCount: result.sourceVertexCount, boundaryEdgeCount: result.boundaryEdgeCount,
+          });
+          interpretations.push(`Shelled ${owner.entityId} ${direction} by ${thickness} metres with ${result.boundaryEdgeCount} actual topology boundary edges closed.`);
           continue;
         }
 

@@ -201,6 +201,16 @@ evidence. An explicit positive falloff is mandatory. Between-curves and
 enclosed regions remain valid intent for later projection/split operations but
 are rejected as deformation masks in the current stage.
 
+Projection can turn a named profile or existing `$surface-reference` into a
+new anchored surface curve on another owner. Profile projection accepts an
+explicit design-space centre and optional rotation; reference projection uses
+the already evaluated world points. `Shell <owner> inward|outward by <length>`
+creates a bounded indexed result with duplicated offset skin, reversed inner
+winding, and walls on genuine topology boundary edges. Thickness at or above
+half the smallest non-zero owner span is rejected conservatively. A requested
+open interior boundary is rejected until that curve has become real split
+topology.
+
 When a complex result is weak, revise the authored profiles, section spacing,
 guide binding, dimensions, material, camera, and light before extending the
 language. Add a new Plainform/runtime capability only after a required form
