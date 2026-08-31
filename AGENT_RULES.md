@@ -308,6 +308,12 @@ operations.
 - Treat realism as the combination of silhouette, bevel/profile detail,
   coherent material response, scale cues, camera, and lighting. Polygon count
   alone is not evidence of realism.
+- For Design Plainform, prefer arbitrary/symmetric profiles, controlled loft
+  sections, guide curves, continuity, local form modifiers, extrusion, and
+  bounded booleans before proposing another primitive. Diagnose weak authored
+  sections or incomplete documentation first; extend the compiler/runtime only
+  when the intended form cannot reasonably be expressed with those general
+  capabilities.
 - Use graph parameters or material instances for shader variants.
 - Avoid per-object lights when an emissive material or shared light suffices.
 - Keep interactive texture graphs at or below 2048 unless a bake job is

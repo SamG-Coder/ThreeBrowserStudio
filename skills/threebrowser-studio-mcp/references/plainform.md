@@ -73,6 +73,76 @@ Create a box called Podium with id entity/podium, with width 50 metres, height 8
 Create a cylinder called Column with id entity/column, with radius 40 centimetres and height 6 metres, centred at [0, 3 metres, 0].
 ```
 
+Boxes and cylinders may append `rotated by [x, y, z]` and `using material
+material/id`. Cylinder height follows local Y before rotation.
+
+### Curved manufactured forms
+
+Profiles lie in local XZ and loft along local Y. Define arbitrary control
+points explicitly; `smooth` performs bounded closed Catmull-Rom resampling.
+`symmetric` mirrors the supplied half profile across Z unless another
+centreline is named:
+
+```text
+Create a symmetric smooth profile called body section through [0 metres, 42 centimetres], [50 centimetres, 30 centimetres], [62 centimetres, -18 centimetres], [0 metres, -38 centimetres], mirrored across the z centreline.
+Smooth profile body section with 48 samples.
+Move profile point 12 of body section by [2 centimetres, 0 metres, -1 centimetre].
+```
+
+Use controlled sections when width, profile depth, local scale, position, and
+rotation must vary independently. `height` after `at` is the loft-path Y
+coordinate; `width` controls local X; `depth` controls local Z. Vertical offset
+adds local Y and lateral offset adds local Z:
+
+```text
+Add a controlled section of body section at height 0 metres, width 1.72 metres, depth 78 centimetres.
+Add a controlled section of body section at height 1.4 metres, width 1.90 metres, depth 1.08 metres, offset vertically by 6 centimetres, offset laterally by 2 centimetres, rotated by [0 degrees, 1 degree, 0 degrees], and scaled locally by [1, 1, 0.96].
+```
+
+Guide curves are open curves in loft-local XYZ. A guide binds to the closest
+point on the first section and pulls the corresponding point across the loft.
+Use spatially distinct first points for multiple rails:
+
+```text
+Create a smooth guide curve called shoulder line through [58 centimetres, 0 metres, 24 centimetres], [66 centimetres, 1.4 metres, 30 centimetres], [54 centimetres, 3 metres, 18 centimetres].
+Loft a watertight solid called Body Shell with id entity/body-shell through all sections of body section, following shoulder line, with curvature continuity.
+```
+
+Continuity is positional, tangent, or curvature within one loft. The latter
+two insert smooth deterministic section interpolation. You may also write
+`Blend the sections of Body Shell with curvature continuity`. Plainform rejects
+cross-solid continuity; describe the transition as sections of the same loft
+instead of assuming an edge blend.
+
+Apply bounded local shaping to an authored loft before a boolean operation:
+
+```text
+Bulge Body Shell outward around [0 metres, 1.8 metres, 22 centimetres] by 4 centimetres within 65 centimetres.
+Pinch Body Shell inward around [0 metres, 3.2 metres, 0 metres] by 2 centimetres within 40 centimetres.
+Offset the surface of Body Shell by 5 millimetres.
+```
+
+Arbitrary profiles can also become bevelled watertight extrusions:
+
+```text
+Extrude profile splitter outline by 18 centimetres as a solid called Front Splitter with id entity/front-splitter, centred at [0 metres, 3.8 metres, -30 centimetres], rotated by [90 degrees, 0 degrees, 0 degrees], using material material/carbon.
+```
+
+Boolean commands accept generated solids from the same Design program. The
+tool is hidden and the target keeps its stable entity ID. Repeated commands of
+the same kind form one deterministic bounded chain:
+
+```text
+Subtract Front Clearance from Body Shell.
+Union Reinforcement with Chassis.
+Intersect Crop Volume with Detail Shell.
+```
+
+Use booleans for real voids or fused silhouettes, not panel lines that can be
+expressed with an overlapping trim solid. Mixed boolean chains on the same
+target and nested imported CSG are deliberately rejected. A CSG recipe accepts
+2–32 non-CSG operands and has a 2,000,000-triangle output safety limit.
+
 For a parametric envelope, define one profile, add transformed sections in a
 bounded loop, and loft them. Floor plates share one unit-box geometry even when
 their dimensions differ:
@@ -107,3 +177,9 @@ Plainform accepts at most 256 statements and lowers at most 128 operations.
 Split a larger build into visible semantic stages. If the compiler rejects a
 sentence, revise it from the diagnostic rather than paraphrasing repeatedly or
 falling back to raw code.
+
+For complex forms, inspect the compiled recipe before inventing a new feature.
+Fix the authored section placement, guide binding, dimensions, or camera first.
+Extend Plainform/runtime only when the required shape cannot reasonably be
+expressed with arbitrary profiles, controlled sections, guide curves, local
+modifiers, extrusions, primitives, and bounded booleans.

@@ -162,13 +162,21 @@ can both be transformed, for example `Move the tower up by 2 metres` and
 
 Design Plainform begins with `Design a <kind> called <name> with id <stable-id>`.
 Use it for unit-checked parametric solids: named dimensions, bounded integer
-loops, trigonometric/easing expressions, exact box and cylinder primitives,
-rectangular profiles, transformed floor plates, and watertight lofts. It emits
-shared primitive geometry and `entity.createMany`, so repeated mathematical
-elements do not consume one operation per mesh. The design root retains the
-source and evaluated top-level parameters in metadata. Use the full grammar and
-limits in `skills/threebrowser-studio-mcp/references/plainform.md`; do not infer
+loops, trigonometric/easing expressions, exact box and rotatable cylinder
+primitives, arbitrary or symmetric smooth profiles, independently controlled
+loft sections, open guide curves, positional/tangent/curvature interpolation,
+bounded local bulge/pinch/offset shaping, bevelled profile extrusion, and
+deterministic union/subtract/intersect. It emits shared geometry and batched
+entities, so repeated mathematical elements do not consume one operation per
+mesh. The design root retains the source and evaluated top-level parameters in
+metadata. Use the full exact grammar and coordinate conventions in
+`skills/threebrowser-studio-mcp/references/plainform.md`; do not infer
 unsupported CAD verbs from open-ended prose.
+
+When a complex result is weak, revise the authored profiles, section spacing,
+guide binding, dimensions, material, camera, and light before extending the
+language. Add a new Plainform/runtime capability only after a required form
+cannot reasonably be expressed with the existing general-purpose operations.
 
 Face-grid orientation is explicit and independent from placement. Append one
 of these phrases when the default local-Z-to-face-normal behavior is not the
