@@ -63,18 +63,24 @@ The nine-tool shape is stable, but each tool advertises only its live slice:
 - `play`: deterministic Action animation and timeline-driven Ocean displacement
   enter/stop/pause/resume/seek/step plus recorded input, without script,
   blueprint, physics, or game-logic execution;
-- `project`: list, create, open, and atomic save; and
+- `project`: list, create, open, atomic save, and guarded import/export of one
+  configured external JSON artifact as canonical project data;
 - `history`: list, inspect, undo, and redo.
 
-The jobs tool remains as an explicit reserved ninth slot and always reports
-`job_not_implemented`. Shader and texture graph resources are authored through
-ordinary resource operations: the live subset compiles to TSL/WebGPU and the
-procedural subset can be deterministically CPU-baked. Bounded inline
+The jobs tool exposes deterministic procedural texture baking and scene or
+entity-subtree glTF/GLB export. When a machine-local rehearsal root is
+configured, it also exposes `rehearsalRun`: Studio accepts only a
+repository-relative run-spec path and invokes the fixed sidecar with
+`shell: false` and a minimal environment. It never accepts a command. Shader
+and texture graph resources are authored through ordinary resource operations:
+the live subset compiles to TSL/WebGPU and the procedural subset can be
+deterministically CPU-baked. Bounded inline
 `dataTexture` resources compile once to shared RGBA8 WebGPU textures and bind
 to supported raster material map slots. Existing format-v1 generic texture
 placeholders remain valid/indexable but are not live raster inputs. Script operations,
 layout generators, scoped or code/asset/render validation, diagnostic passes,
-export, and RTX evidence remain absent. Status capabilities are authoritative.
+whole-project/application export, and RTX evidence remain absent. Status
+capabilities are authoritative.
 
 ## Lean dependency boundary
 
@@ -180,7 +186,9 @@ sibling checkout at `..\ThreeBrowser\ThreeBrowserRuntime`. For another
 location, set `THREEBROWSER_RUNTIME_ROOT` to the absolute
 `ThreeBrowserRuntime` directory, or put
 `{ "runtimeRoot": "C:\\path\\to\\ThreeBrowserRuntime" }` in the ignored
-`.studio-local.json` file. Machine-local paths never enter a saved project.
+`.studio-local.json` file. A controlled external rehearsal can additionally set
+`"rehearsalRoot"` there (or `THREE_STUDIO_REHEARSAL_ROOT`). Machine-local paths
+never enter a saved project.
 
 `npm run launch` opens one native WebGPU window and restores the last opened
 project (falling back to `projects/live`). A genuinely new fallback project is

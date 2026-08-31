@@ -16,6 +16,24 @@ function cleanRoot(value) {
   return text ? path.resolve(text) : null;
 }
 
+export async function readStudioLocalConfig({
+  studioRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url))),
+} = {}) {
+  const localConfigPath = path.join(studioRoot, ".studio-local.json");
+  if (!(await exists(localConfigPath))) return Object.freeze({});
+  try {
+    const config = JSON.parse(await readFile(localConfigPath, "utf8"));
+    const normalized = {};
+    const runtimeRoot = cleanRoot(config.runtimeRoot);
+    const rehearsalRoot = cleanRoot(config.rehearsalRoot);
+    if (runtimeRoot) normalized.runtimeRoot = runtimeRoot;
+    if (rehearsalRoot) normalized.rehearsalRoot = rehearsalRoot;
+    return Object.freeze(normalized);
+  } catch (error) {
+    throw new Error(`Invalid ${localConfigPath}: ${error.message}`);
+  }
+}
+
 export async function resolveRuntimeRoot({
   studioRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url))),
   environment = process.env,
@@ -25,15 +43,9 @@ export async function resolveRuntimeRoot({
   const configuredEnvironment = cleanRoot(environment.THREEBROWSER_RUNTIME_ROOT);
   if (configuredEnvironment) candidates.push({ source: "environment", root: configuredEnvironment });
 
-  const localConfigPath = path.join(studioRoot, ".studio-local.json");
-  if (await exists(localConfigPath)) {
-    try {
-      const config = JSON.parse(await readFile(localConfigPath, "utf8"));
-      const configuredFile = cleanRoot(config.runtimeRoot);
-      if (configuredFile) candidates.push({ source: ".studio-local.json", root: configuredFile });
-    } catch (error) {
-      throw new Error(`Invalid ${localConfigPath}: ${error.message}`);
-    }
+  const localConfig = await readStudioLocalConfig({ studioRoot });
+  if (localConfig.runtimeRoot) {
+    candidates.push({ source: ".studio-local.json", root: localConfig.runtimeRoot });
   }
 
   const packaged = path.resolve(studioRoot, "..", "host");

@@ -240,12 +240,15 @@ export const OPERATION_TYPES = Object.freeze([
   'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
   'geometry.edit', 'geometry.realize', 'geometry.loft.edit', 'geometry.selection.edit',
   'material.variant.create', 'material.look.create', 'material.look.patch',
+  'artifact.json.patch',
   'resource.create', 'resource.createMany', 'resource.patch', 'resource.delete',
 ]);
 
 const alias = z.string().min(2).max(65).regex(/^\$[a-z][a-z0-9_-]{0,63}$/);
 const reference = z.union([identifier, alias]);
 const hash = z.string().length(64).regex(/^[a-f0-9]{64}$/);
+const jsonPointer = z.string().min(1).max(1024).regex(/^(?:\/(?:[^~/]|~[01])*)+$/u);
+const artifactSchemaId = z.string().min(1).max(160).regex(/^[A-Za-z0-9][A-Za-z0-9._/@-]*$/u);
 const insertionIndex = z.number().int().min(0).max(20_000);
 const modifierIndex = z.number().int().min(0).max(63);
 const exactEntityReferences = z.array(reference).min(1).max(200).refine(
@@ -1377,6 +1380,12 @@ const directOperations = [
     look: materialLookEnum.optional(),
     ...materialLookOverrides,
   }),
+  operation('artifact.json.patch', {
+    artifactId: reference,
+    pointer: jsonPointer,
+    value: jsonValueSchema,
+    expectedArtifactHash: hash,
+  }),
   operation('resource.create', { resourceType, resource: resourceJsonObjectSchema, alias: alias.optional() }),
   operation('resource.createMany', { items: z.array(z.object({
     resourceType,
@@ -1487,7 +1496,7 @@ export const SCENE_EXPORT_FORMATS = Object.freeze(['glb', 'gltf']);
 
 export const jobSchema = z.object({
   ...connectionFields,
-  action: z.enum(['textureBake', 'sceneExport']),
+  action: z.enum(['textureBake', 'sceneExport', 'rehearsalRun']),
   projectId: identifier,
   graphId: identifier.optional(),
   textureId: identifier.optional(),
@@ -1496,36 +1505,45 @@ export const jobSchema = z.object({
   sceneId: identifier.optional(),
   entityId: identifier.optional(),
   format: z.enum(SCENE_EXPORT_FORMATS).optional(),
+  runSpecReference: z.string().min(1).max(1024).optional(),
   name: z.string().min(1).max(160).optional(),
   baseRevision: nonNegativeInteger,
   idempotencyKey,
   label,
 }).strict().superRefine((value, context) => {
-  if (value.action !== 'textureBake') return;
-  for (const field of ['graphId', 'textureId', 'output', 'resolution']) {
-    if (value[field] === undefined) {
-      context.addIssue({ code: 'custom', path: [field], message: `${field} is required for textureBake.` });
+  if (value.action === 'textureBake') {
+    for (const field of ['graphId', 'textureId', 'output', 'resolution']) {
+      if (value[field] === undefined) context.addIssue({ code: 'custom', path: [field], message: `${field} is required for textureBake.` });
     }
-  }
-  if (value.resolution && value.output) {
+    if (!value.resolution || !value.output) return;
     const channels = value.output === 'roughness' ? 1 : 4;
     if (value.resolution[0] * value.resolution[1] * channels > DATA_TEXTURE_LIMITS.maxEncodedBytes) {
-      context.addIssue({
-        code: 'custom',
-        path: ['resolution'],
-        message: 'Texture bake decoded output exceeds the canonical encoded-source byte budget.',
-      });
+      context.addIssue({ code: 'custom', path: ['resolution'], message: 'Texture bake decoded output exceeds the canonical encoded-source byte budget.' });
     }
+    return;
+  }
+  if (value.action === 'sceneExport') return;
+  if (value.runSpecReference === undefined) {
+    context.addIssue({ code: 'custom', path: ['runSpecReference'], message: 'runSpecReference is required for rehearsalRun.' });
+  } else if (!/^(?![A-Za-z]:)(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u.test(value.runSpecReference)) {
+    context.addIssue({ code: 'custom', path: ['runSpecReference'], message: 'runSpecReference must be a normalized repository-relative path.' });
+  }
+  for (const field of ['graphId', 'textureId', 'output', 'resolution', 'sceneId', 'entityId', 'format', 'name']) {
+    if (value[field] !== undefined) context.addIssue({ code: 'custom', path: [field], message: `${field} is not accepted for rehearsalRun.` });
   }
 });
 
 export const projectSchema = z.object({
   ...connectionFields,
-  action: z.enum(['list', 'create', 'open', 'save']),
+  action: z.enum(['list', 'create', 'open', 'save', 'artifactImport', 'artifactExport']),
   projectId: identifier.optional(),
   path: z.string().min(1).max(1024).optional(),
   name: z.string().min(1).max(160).optional(),
   template: z.enum(PROJECT_TEMPLATES).optional(),
+  artifactId: identifier.optional(),
+  schemaId: artifactSchemaId.optional(),
+  expectedFileSha256: hash.optional(),
+  expectedArtifactHash: hash.optional(),
   baseRevision: nonNegativeInteger.optional(),
   idempotencyKey: idempotencyKey.optional(),
   label: label.optional(),
@@ -1536,8 +1554,18 @@ export const projectSchema = z.object({
   }
   if (value.action === 'create' && value.path === undefined) context.addIssue({ code: 'custom', path: ['path'], message: 'path is required to create a project.' });
   if (value.action === 'open' && value.path === undefined && value.projectId === undefined) context.addIssue({ code: 'custom', path: ['path'], message: 'path or projectId is required to open a project.' });
-  if (value.action === 'save' && value.projectId === undefined) context.addIssue({ code: 'custom', path: ['projectId'], message: 'projectId is required for save.' });
-  if (value.action === 'save' && value.baseRevision === undefined) context.addIssue({ code: 'custom', path: ['baseRevision'], message: 'baseRevision is required for save.' });
+  if (['save', 'artifactImport', 'artifactExport'].includes(value.action) && value.projectId === undefined) context.addIssue({ code: 'custom', path: ['projectId'], message: `projectId is required for ${value.action}.` });
+  if (['save', 'artifactImport', 'artifactExport'].includes(value.action) && value.baseRevision === undefined) context.addIssue({ code: 'custom', path: ['baseRevision'], message: `baseRevision is required for ${value.action}.` });
+  if (['artifactImport', 'artifactExport'].includes(value.action)) {
+    for (const field of ['path', 'artifactId', 'expectedFileSha256']) {
+      if (value[field] === undefined) context.addIssue({ code: 'custom', path: [field], message: `${field} is required for ${value.action}.` });
+    }
+    if (value.path !== undefined && !/^(?![A-Za-z]:)(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u.test(value.path)) {
+      context.addIssue({ code: 'custom', path: ['path'], message: 'Artifact paths must be normalized repository-relative paths.' });
+    }
+  }
+  if (value.action === 'artifactImport' && value.schemaId === undefined) context.addIssue({ code: 'custom', path: ['schemaId'], message: 'schemaId is required for artifactImport.' });
+  if (value.action === 'artifactExport' && value.expectedArtifactHash === undefined) context.addIssue({ code: 'custom', path: ['expectedArtifactHash'], message: 'expectedArtifactHash is required for artifactExport.' });
 });
 
 export const playSchema = z.object({

@@ -11,6 +11,7 @@ import {
   LiveBridgeClient,
   MAX_MESSAGE_BYTES,
   PathwireCodec,
+  MAX_REQUEST_TIMEOUT_MS,
   PROTOCOL_VERSION,
   RpcError,
   assertLiveSessionIdentity,
@@ -19,10 +20,15 @@ import {
   createSessionMarker,
   defaultSessionMarkerPath,
   readSessionMarker,
+  requestTimeoutMsForMethod,
   safeError,
   writeSessionMarker,
 } from '../src/bridge/index.mjs';
 import { resolveLiveConnectionOptions } from '../src/mcp/server.mjs';
+
+test('compile-heavy timeout policy includes controlled jobs', () => {
+  assert.equal(requestTimeoutMsForMethod('three_studio_job'), MAX_REQUEST_TIMEOUT_MS);
+});
 
 const execFileAsync = promisify(execFile);
 

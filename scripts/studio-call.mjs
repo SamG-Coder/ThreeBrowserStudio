@@ -1,5 +1,10 @@
 import path from 'node:path';
-import { LiveBridgeClient, defaultSessionMarkerPath, readSessionMarker } from '../src/bridge/index.mjs';
+import {
+  LiveBridgeClient,
+  defaultSessionMarkerPath,
+  readSessionMarker,
+  requestTimeoutMsForMethod,
+} from '../src/bridge/index.mjs';
 
 const args = process.argv.slice(2);
 let markerPath = defaultSessionMarkerPath();
@@ -19,7 +24,7 @@ if (args[0]) {
 const client = new LiveBridgeClient(marker);
 try {
   await client.connect();
-  const result = await client.request(method, params);
+  const result = await client.request(method, params, { timeoutMs: requestTimeoutMsForMethod(method) });
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 } finally {
   await client.close();

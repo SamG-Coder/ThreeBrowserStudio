@@ -9,6 +9,7 @@ export const COMPILE_HEAVY_METHODS = Object.freeze(new Set([
   'three_studio_render',
   'three_studio_project',
   'three_studio_history',
+  'three_studio_job',
 ]));
 
 export function requestTimeoutMsForMethod(method, fallback = DEFAULT_REQUEST_TIMEOUT_MS) {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createProjectDocument } from '../src/core/index.mjs';
+import { contentHash, createProjectDocument } from '../src/core/index.mjs';
 import { translateToolOperation } from '../src/runtime/studio-application.mjs';
 
 test('runtime forwards strict core-shaped MCP operations without weakening them', () => {
@@ -131,6 +131,66 @@ test('runtime rejects reserved pipelines instead of silently accepting them', ()
     () => translateToolOperation({ op: 'layout.grid', ids: [], parameters: {} }, project),
     error => error.code === 'operation_not_implemented',
   );
+});
+
+test('artifact.json.patch lowers one guarded JSON-pointer replacement without touching unrelated content', () => {
+  const artifact = {
+    id: 'artifact/hero-chamber',
+    kind: 'jsonArtifact',
+    name: 'Hero Chamber',
+    mediaType: 'application/json',
+    schemaId: 'project-labyrinth/labyrinth-spec@0.1.0',
+    document: {
+      schemaVersion: '0.1.0',
+      displayName: 'Hero Chamber',
+      poses: [{ id: 'split-link', overrides: [{ moduleId: 'shuttle', transform: { position: [6, 0, 0] } }] }],
+      validation: { maxModules: 32 },
+    },
+    metadata: { importedFrom: 'examples/hero-chamber.labyrinth.json' },
+  };
+  artifact.sourceText = `${JSON.stringify(artifact.document)}\n`;
+  const project = createProjectDocument({ projectId: 'project/test', resources: { assets: [artifact] } });
+  const canonical = project.resources.assets[artifact.id];
+  const translated = translateToolOperation({
+    op: 'artifact.json.patch',
+    artifactId: artifact.id,
+    pointer: '/poses/0/overrides/0/transform/position/0',
+    value: 7,
+    expectedArtifactHash: contentHash(canonical),
+  }, project);
+  assert.deepEqual(translated, {
+    type: 'resource.patch',
+    resourceType: 'assets',
+    resourceId: artifact.id,
+    patch: {
+      document: {
+        schemaVersion: '0.1.0',
+        displayName: 'Hero Chamber',
+        poses: [{ id: 'split-link', overrides: [{ moduleId: 'shuttle', transform: { position: [7, 0, 0] } }] }],
+        validation: { maxModules: 32 },
+      },
+      sourceText: artifact.sourceText.replace('[6,0,0]', '[7,0,0]'),
+    },
+  });
+  assert.equal(project.resources.assets[artifact.id].document.poses[0].overrides[0].transform.position[0], 6);
+});
+
+test('artifact.json.patch rejects stale hashes and missing pointer targets', () => {
+  const project = createProjectDocument({
+    projectId: 'project/test',
+    resources: { assets: [{
+      id: 'artifact/hero-chamber', kind: 'jsonArtifact', mediaType: 'application/json',
+      schemaId: 'project-labyrinth/labyrinth-spec@0.1.0', document: { poses: [] },
+    }] },
+  });
+  assert.throws(() => translateToolOperation({
+    op: 'artifact.json.patch', artifactId: 'artifact/hero-chamber', pointer: '/poses/0', value: {},
+    expectedArtifactHash: '0'.repeat(64),
+  }, project), error => error.code === 'artifact_hash_mismatch');
+  assert.throws(() => translateToolOperation({
+    op: 'artifact.json.patch', artifactId: 'artifact/hero-chamber', pointer: '/poses/0', value: {},
+    expectedArtifactHash: contentHash(project.resources.assets['artifact/hero-chamber']),
+  }, project), error => error.code === 'artifact_pointer_not_found');
 });
 
 test('runtime validates typed graph resources before they reach the kernel', () => {

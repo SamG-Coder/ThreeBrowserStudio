@@ -30,6 +30,8 @@ test("runtime resolver prefers the explicit environment without copying runtime 
 });
 
 test("runtime resolver accepts a machine-local configuration", async () => {
+  const readStudioLocalConfig = (await import("../scripts/runtime-path.mjs")).readStudioLocalConfig;
+  assert.equal(typeof readStudioLocalConfig, "function");
   const temporary = await mkdtemp(path.join(os.tmpdir(), "three-studio-config-"));
   const studioRoot = path.join(temporary, "studio");
   const runtimeRoot = path.join(temporary, "runtime");
@@ -37,7 +39,7 @@ test("runtime resolver accepts a machine-local configuration", async () => {
   await fakeRuntime(runtimeRoot);
   await writeFile(
     path.join(studioRoot, ".studio-local.json"),
-    JSON.stringify({ runtimeRoot }),
+    JSON.stringify({ runtimeRoot, rehearsalRoot: path.join(temporary, "infinity") }),
     "utf8",
   );
   const result = await resolveRuntimeRoot({
@@ -47,6 +49,10 @@ test("runtime resolver accepts a machine-local configuration", async () => {
   });
   assert.equal(result.source, ".studio-local.json");
   assert.equal(result.root, path.resolve(runtimeRoot));
+  assert.deepEqual(await readStudioLocalConfig({ studioRoot }), {
+    runtimeRoot: path.resolve(runtimeRoot),
+    rehearsalRoot: path.resolve(temporary, "infinity"),
+  });
 });
 
 test("runtime resolver finds a packaged host beside the app folder", async () => {

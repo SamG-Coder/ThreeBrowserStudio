@@ -108,6 +108,9 @@ import { createTransactionId } from '../core/util.mjs';
 export { materialLookResource, queryLookCatalog } from './material-looks.mjs';
 import { bakeProceduralTextureGraph } from './procedural-texture-compiler.mjs';
 import { createLogicControllerRuntime, LOGIC_CONTROLLER_LIMITS } from './logic-controller-runtime.mjs';
+import { createProjectArtifactExchange } from './project-artifact-exchange.mjs';
+import { createRehearsalSidecarClient } from './rehearsal-sidecar-client.mjs';
+import { synchronizeJsonSource } from './json-artifact.mjs';
 
 const INSPECT_RESPONSE_ENVELOPE_RESERVE_BYTES = 2_048;
 
@@ -533,6 +536,52 @@ function translateStrokeOperation(operation, document) {
 
 export function translateToolOperation(operation, document) {
   const data = operation.data ?? {};
+  if (operation.op === 'artifact.json.patch') {
+    const { resource } = new ProjectIndex(document).getResource(operation.artifactId, 'assets');
+    if (resource.kind !== 'jsonArtifact' || resource.mediaType !== 'application/json' || !isRecord(resource.document)) {
+      throw new StudioError('invalid_artifact_target', `${operation.artifactId} is not a canonical JSON artifact.`, {
+        artifactId: operation.artifactId,
+      });
+    }
+    const actualArtifactHash = contentHash(resource);
+    if (operation.expectedArtifactHash !== actualArtifactHash) {
+      throw new StudioError('artifact_hash_mismatch', `Artifact ${operation.artifactId} changed after it was inspected.`, {
+        artifactId: operation.artifactId,
+        expectedArtifactHash: operation.expectedArtifactHash,
+        actualArtifactHash,
+      });
+    }
+    const next = structuredClone(resource.document);
+    const tokens = operation.pointer.slice(1).split('/').map(token => token.replaceAll('~1', '/').replaceAll('~0', '~'));
+    const forbidden = new Set(['__proto__', 'prototype', 'constructor']);
+    let target = next;
+    for (let index = 0; index < tokens.length; index += 1) {
+      const token = tokens[index];
+      if (forbidden.has(token)) {
+        throw new StudioError('artifact_pointer_forbidden', 'Artifact JSON pointers cannot target prototype properties.', {
+          artifactId: operation.artifactId,
+          pointer: operation.pointer,
+        });
+      }
+      const key = Array.isArray(target) && /^(?:0|[1-9][0-9]*)$/u.test(token) ? Number(token) : token;
+      if ((typeof target !== 'object' || target === null) || !Object.hasOwn(target, key)) {
+        throw new StudioError('artifact_pointer_not_found', `Artifact JSON pointer ${operation.pointer} does not identify an existing value.`, {
+          artifactId: operation.artifactId,
+          pointer: operation.pointer,
+        });
+      }
+      if (index === tokens.length - 1) target[key] = structuredClone(operation.value);
+      else target = target[key];
+    }
+    const patch = { document: next };
+    if (typeof resource.sourceText === 'string') patch.sourceText = synchronizeJsonSource(resource.sourceText, next);
+    return {
+      type: 'resource.patch',
+      resourceType: 'assets',
+      resourceId: operation.artifactId,
+      patch,
+    };
+  }
   if (operation.op === 'stroke.apply') return translateStrokeOperation(operation, document);
   if (operation.op === 'entity.createMany') return operation.items.map(item => ({
     type: 'entity.create', sceneId: operation.sceneId, entity: item.entity,
@@ -1510,6 +1559,8 @@ export class StudioApplication {
   #beginCommand = null;
   #commandMetrics = null;
   #activeApplyMetrics = null;
+  #artifactExchange;
+  #rehearsalClient;
 
   constructor({ THREE, TSL, viewport, bootstrap, markerPath, credentials, beginCommand, commandMetrics, environment = process.env, projectsRoot } = {}) {
     this.#THREE = THREE;
@@ -1524,6 +1575,9 @@ export class StudioApplication {
     this.studioRoot = path.resolve(studioRoot);
     const configuredProjects = String(projectsRoot ?? env.THREE_STUDIO_PROJECTS ?? '').trim();
     this.projectsRoot = path.resolve(configuredProjects || path.join(this.studioRoot, 'projects'));
+    const rehearsalRoot = String(env.THREE_STUDIO_REHEARSAL_ROOT ?? '').trim();
+    this.#artifactExchange = createProjectArtifactExchange({ repositoryRoot: rehearsalRoot });
+    this.#rehearsalClient = createRehearsalSidecarClient({ repositoryRoot: rehearsalRoot, environment: env });
     this.#markerPath = path.resolve(markerPath ?? env.THREE_STUDIO_SESSION_MARKER ?? defaultSessionMarkerPath({ env }));
     this.#localStatePath = path.join(path.dirname(this.#markerPath), 'studio-state.json');
   }
@@ -2071,8 +2125,15 @@ export class StudioApplication {
         timelineGeometryMaxSamples: GEOMETRY_MODIFIER_LIMITS.maxOceanTimelineSamples,
         dynamicRtxGeometry: 'excluded-from-static-scene',
         jobs: true,
-        jobKinds: ['textureBake', 'sceneExport'],
+        jobKinds: ['textureBake', 'sceneExport', ...(this.#rehearsalClient.configured ? ['rehearsalRun'] : [])],
         projectTemplates: ['blank', 'starter'],
+        rehearsal: {
+          configured: this.#rehearsalClient.configured,
+          action: 'rehearsalRun',
+          protocol: 'fixed-sidecar-json-rpc',
+          runSpecPolicy: 'configured-root-relative-only',
+          shell: false,
+        },
         graphDomains: ['shader', 'texture', 'blueprint'],
         entityKinds: [
           'scene', 'group', 'empty', 'gameObject', 'mesh', 'instancedMesh',
@@ -2177,7 +2238,14 @@ export class StudioApplication {
         applyPixelForecast: true,
         compileHeavyRpcTimeoutMs: 120_000,
         validationChecks: ['schemas', 'references', 'hierarchy', 'graphs', 'animations', 'budgets'],
-        projectActions: ['list', 'create', 'open', 'save'],
+        projectActions: ['list', 'create', 'open', 'save', 'artifactImport', 'artifactExport'],
+        projectArtifacts: {
+          configured: this.#artifactExchange.configured,
+          kind: 'jsonArtifact',
+          mediaType: 'application/json',
+          editOperation: 'artifact.json.patch',
+          pathPolicy: 'configured-root-relative-only',
+        },
         historyActions: ['list', 'inspect', 'undo', 'redo'],
         playSimulation: 'actions-controller-physics-and-timeline-modifiers',
         maxShadowLights: 16,
@@ -2246,6 +2314,24 @@ export class StudioApplication {
   async #job(params, context = {}) {
     this.#assertTarget(params, { requireActiveScene: false });
     if (params.action === 'sceneExport') return this.#exportScene(params);
+    if (params.action === 'rehearsalRun') {
+      if (!this.#rehearsalClient.configured) throw new StudioError('rehearsal_not_configured', 'Rehearsal jobs require THREE_STUDIO_REHEARSAL_ROOT.');
+      if (params.baseRevision !== this.#kernel.revision) {
+        throw new StudioError('revision_conflict', `Base revision ${params.baseRevision} does not match ${this.#kernel.revision}.`);
+      }
+      const rehearsal = await this.#rehearsalClient.run({
+        runSpecReference: params.runSpecReference,
+        signal: context.signal,
+      });
+      return {
+        success: true,
+        projectId: this.#kernel.projectId,
+        revision: this.#kernel.revision,
+        savedRevision: this.#kernel.document.savedRevision,
+        dirty: this.#kernel.dirty,
+        job: { action: params.action, ...rehearsal },
+      };
+    }
     if (params.action !== 'textureBake') throw new StudioError('job_not_implemented', `Job ${params.action} is not enabled.`);
     const resource = this.#kernel.document.resources?.graphs?.[params.graphId];
     if (!resource) throw new StudioError('not_found', `Graph ${params.graphId} does not exist.`, { id: params.graphId, kind: 'graph' });
@@ -2402,6 +2488,52 @@ export class StudioApplication {
     }
     if (params.projectId !== this.#kernel.projectId) throw new StudioError('project_mismatch', `Active project is ${this.#kernel.projectId}.`);
     if (params.baseRevision !== this.#kernel.revision) throw new StudioError('revision_conflict', `Base revision ${params.baseRevision} does not match ${this.#kernel.revision}.`);
+    if (params.action === 'artifactImport') {
+      if (!this.#artifactExchange.configured) throw new StudioError('artifact_exchange_not_configured', 'Artifact exchange requires THREE_STUDIO_REHEARSAL_ROOT.');
+      const imported = await this.#artifactExchange.importArtifact({
+        reference: params.path,
+        artifactId: params.artifactId,
+        name: params.name,
+        schemaId: params.schemaId,
+        expectedFileSha256: params.expectedFileSha256,
+      });
+      const result = await this.#apply({
+        protocolVersion: params.protocolVersion,
+        sessionId: params.sessionId,
+        projectId: params.projectId,
+        baseRevision: params.baseRevision,
+        idempotencyKey: params.idempotencyKey,
+        label: params.label,
+        operations: [{ op: 'resource.create', resourceType: 'asset', resource: imported.artifact }],
+      });
+      return {
+        ...result,
+        artifact: {
+          id: params.artifactId,
+          schemaId: params.schemaId,
+          reference: params.path,
+          fileSha256: imported.fileSha256,
+          artifactHash: contentHash(this.#kernel.document.resources.assets[params.artifactId]),
+        },
+      };
+    }
+    if (params.action === 'artifactExport') {
+      if (!this.#artifactExchange.configured) throw new StudioError('artifact_exchange_not_configured', 'Artifact exchange requires THREE_STUDIO_REHEARSAL_ROOT.');
+      const { resource } = new ProjectIndex(this.#kernel.document).getResource(params.artifactId, 'assets');
+      const exported = await this.#artifactExchange.exportArtifact({
+        reference: params.path,
+        artifact: resource,
+        expectedArtifactHash: params.expectedArtifactHash,
+        expectedFileSha256: params.expectedFileSha256,
+      });
+      return {
+        success: true,
+        projectId: this.#kernel.projectId,
+        revision: this.#kernel.revision,
+        savedRevision: this.#kernel.document.savedRevision,
+        artifact: { id: params.artifactId, ...exported },
+      };
+    }
     if (params.action === 'save' || params.action === 'checkpoint') {
       const result = await this.#kernel.save();
       this.#viewport.setTitle({ project: this.#kernel.document.name, scene: this.#kernel.document.scenes[this.#kernel.document.activeSceneId]?.name, revision: this.#kernel.revision, dirty: false });
