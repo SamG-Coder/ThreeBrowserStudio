@@ -264,11 +264,24 @@ look nearly uniform. Add meaningful profile or section resolution in the
 authored source when the silhouette needs local detail. Smooth shading changes
 normal interpolation, not the underlying silhouette.
 Curve deformation requires a `surface curve`, not an ordinary patch boundary.
-This stage accepts curve-distance and surface-radius regions as deformation
-masks. Between-curves and enclosed regions remain valid named intent for later
-projection and split operations and currently fail with
-`plainform_surface_region_deformation_unsupported` if used as deformation
-masks.
+Curve-distance, surface-radius, between-curves, and enclosed-curve regions can
+all act as bounded deformation masks. Enclosed regions use the closed projected
+curve; between-curves regions use the two authored rails and their evaluated
+separation. Every deformation still requires an explicit positive falloff and
+fails when the evaluated source has no affected vertices.
+
+Create reusable surface-space offsets when a shut line, lip, seal, or band must
+remain related to an anchored curve instead of being guessed independently:
+
+```text
+Create a surface offset curve called opening lip from $opening by 8 millimetres to the left.
+Name the surface between $opening and $opening-lip as lip band.
+Raise lip band by 2 millimetres, falling off smoothly over 12 millimetres.
+```
+
+The source must be a surface-anchored curve with recorded normals. `left` and
+`right` are evaluated from each sample's surface normal and path tangent, then
+the seeds are projected back onto the same owner. Degenerate frames reject.
 
 Project a profile or an existing surface reference onto another owner when a
 detail must follow the target surface rather than rely on world-space overlap:
@@ -324,6 +337,21 @@ angle in radians internally. Only width-at-height is supported for a
 height-specific cross-section; asking for depth-at-height or height-at-height
 fails with `plainform_surface_measurement_unsupported`.
 
+Named references can also provide bounded vector context for later placement:
+
+```text
+Let mount point be the point 62 percent along $door-upper-rail.
+Let mount tangent be the tangent of $door-upper-rail at 62 percent.
+Let mount normal be the normal of $door-upper-rail at 62 percent.
+Let mount outward be the outward direction of $door-upper-rail at 62 percent.
+Create a cylinder called Pylon with id entity/pylon, with radius 2 centimetres and height 20 centimetres.
+Place Pylon centred at mount point, aligning its local y axis with mount normal.
+```
+
+Point values are typed lengths. Tangent, normal, and outward values are typed
+direction vectors. Normal/outward queries require surface-anchored references.
+The percentage must remain within the bounded 0–100 percent path domain.
+
 Use compile-time constraints when a later semantic deformation must fail
 rather than silently violate design intent:
 
@@ -339,7 +367,17 @@ failure aborts the whole atomic apply with
 `plainform_constraint_unsatisfied`. This is deliberately not a hidden live
 solver and does not claim enforcement for unrelated direct MCP mutations.
 
-### Attach, trim, and exact surface splitting
+Use correspondence-based clearance when a minimum distance is not enough:
+
+```text
+Maintain 4 millimetres uniform clearance between $door-edge and $body-edge within 0.5 millimetres tolerance.
+```
+
+The compiler arc-length resamples both references, chooses the non-twisting
+endpoint correspondence, and rejects when either the minimum or maximum sample
+separation falls outside the requested tolerance.
+
+### Attach, trim, imprint, open, and surface splitting
 
 Join two intersecting solids created earlier in the same Design program with:
 
@@ -376,7 +414,9 @@ coordinates. Tangent or curvature continuity remains an explicit rejection,
 not an implied property of a successful positional union.
 
 Split one coherent surface along an existing semantic loop with two immediate
-statements:
+statements. A curve already following topology edges uses those edges exactly.
+A curve crossing triangle interiors receives a bounded deterministic imprint
+onto the evaluated triangle topology before partitioning:
 
 ```text
 Split Housing along $front-perimeter.
@@ -385,21 +425,63 @@ Call the enclosed surface Front Panel with id entity/front-panel.
 
 The first statement requires a closed surface curve owned by the surface being
 split. The second statement is mandatory and gives the enclosed result a
-stable semantic identity. The owner keeps its ID and becomes the remainder;
-the named result is a separate, non-overlapping indexed surface. The exact
-solver currently accepts only a simple closed curve whose anchors and segments
-coincide with existing topology vertices and edges and whose removal separates
-the owner into exactly two components. Curves crossing triangle interiors fail
-with `plainform_surface_split_requires_edge_loop`; open curves fail with
-`plainform_surface_split_not_closed`; non-separating loops fail with
-`plainform_surface_split_nonseparating_loop`. No approximate centroid cut,
-overlapping duplicate, or raw topology command is emitted.
+stable semantic identity. Append `using material material/id` to give the
+separated surface a different existing material. The owner keeps its ID and
+becomes the remainder; the named result is a separate, non-overlapping indexed
+surface. Empty and non-separating imprints reject rather than emitting
+overlapping faces.
+
+Turn the enclosed portion into a genuine opening instead of a second surface:
+
+```text
+Imprint $intake-outline into Body Shell.
+Open Body Shell along $intake-outline.
+Shell Body Shell inward by 2.2 millimetres, leaving $intake-outline open.
+```
+
+`Imprint` records the explicit topology intent. `Open` removes the enclosed
+evaluated surface and creates real boundary edges. The shell statement accepts
+the referenced opening only after that topology stage has succeeded.
+
+For a bounded tangent or curvature connector between two anchored owners, use
+an explicit boundary blend rather than relabelling a CSG union:
+
+```text
+Blend $door-rail into $mirror-rail over 6 centimetres as a surface called Mirror Fairing with id entity/mirror-fairing, with curvature continuity, using material material/body-paint.
+```
+
+Both references must carry source normals. The result is a constrained open
+surface whose authored blend width, source owners, and continuity remain in
+metadata; it does not claim to weld either owner invisibly.
 
 Arbitrary profiles can also become bevelled watertight extrusions:
 
 ```text
 Extrude profile splitter outline by 18 centimetres as a solid called Front Splitter with id entity/front-splitter, centred at [0 metres, 3.8 metres, -30 centimetres], rotated by [90 degrees, 0 degrees, 0 degrees], using material material/carbon.
 ```
+
+Sweep a reusable profile along a guide when an extrusion is not sufficient:
+
+```text
+Sweep profile pylon section along guide pylon path as a solid called Mirror Pylon with id entity/mirror-pylon, scaling from 1 to 60 percent, rotating by 12 degrees along the path, using material material/carbon.
+```
+
+Sweeps use deterministic transported frames, bounded start/end scale, and a
+total path twist. The evaluated profile-path product is capped at 65,536
+vertices.
+
+Mirror profiles, guides, anchored references, patches, and generated solids
+without duplicating coordinates manually:
+
+```text
+Create right shoulder as the mirror of left shoulder across the x centre plane.
+Create Right Mirror as the mirror of Left Mirror across the x centre plane with id entity/right-mirror.
+```
+
+Anchored references are reprojected onto their owner after mirroring. Generated
+surface winding is reversed so normals remain outward. Object Plainform
+prefabs remain the preferred way to reuse a complete previously committed
+assembly.
 
 Boolean commands accept generated solids from the same Design program. The
 tool is hidden and the target keeps its stable entity ID. Repeated commands of

@@ -323,7 +323,12 @@ operations.
   points must be projected onto project-owned geometry; use named end
   boundaries only when both patch corners require exact control; request
   source tangency only from anchored rails with recorded normals. All are
-  authored snapshots, not a live constraint solver. Diagnose weak authored
+  authored snapshots, not a live constraint solver. Closed and between-curve
+  regions may drive bounded deformation; surface offsets create related bands;
+  imprint/open creates evaluated topology boundaries; transported sweeps,
+  centre-plane mirrors, reference-derived frames, uniform boundary clearance,
+  and source-tangent blends remain generic manufactured-form tools rather than
+  subject-specific nouns. Diagnose weak authored
   documentation first; extend the compiler/runtime only when the intended form
   cannot reasonably be expressed with those general capabilities.
 - Use graph parameters or material instances for shader variants.

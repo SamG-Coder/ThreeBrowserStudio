@@ -6,11 +6,12 @@ import {
   buildConstrainedPatchSections,
   matchBoundaryDirection,
   projectSurfaceAnchors,
+  realizeSurfaceTriangles,
 } from './constrained-surface.mjs';
 import { SemanticSurfaceRegistry } from './semantic-surface.mjs';
 import { deformAlongSurfaceCurve, deformSurfaceRegion } from './semantic-surface-deformation.mjs';
 import { shellSurface } from './semantic-surface-shell.mjs';
-import { splitSurfaceAlongCurve } from './semantic-surface-split.mjs';
+import { openSurfaceAlongCurve, splitSurfaceAlongCurve } from './semantic-surface-split.mjs';
 import {
   angleBetweenSurfaceReferences,
   assertSurfaceSymmetry,
@@ -18,6 +19,14 @@ import {
   surfaceBounds,
   surfaceWidthAtHeight,
 } from './semantic-surface-query.mjs';
+import {
+  mirrorEvaluatedSurface,
+  mirrorVector,
+  offsetSurfaceCurve,
+  sampleSurfaceReference,
+  surfaceReferenceSeparation,
+  sweepProfileAlongGuide,
+} from './semantic-surface-reference.mjs';
 
 const MAX_DESIGN_ENTITIES = 128;
 const MAX_LOOP_ITERATIONS = 128;
@@ -239,6 +248,7 @@ export class DesignPlainformCompiler {
     }
 
     const variables = new Map();
+    const vectorVariables = new Map();
     const profiles = new Map();
     const guides = new Map();
     const boundaries = new Map();
@@ -253,6 +263,8 @@ export class DesignPlainformCompiler {
     const booleanCommands = [];
     const semanticDeformationStates = new Map();
     const constraints = [];
+    const imprintedCurves = new Set();
+    const openedSurfaceCurves = new Map();
     let pendingSurfaceSplit = null;
     const ids = new Set([rootId]);
     let requestedPreview = false;
@@ -267,6 +279,18 @@ export class DesignPlainformCompiler {
         const error = new Error(`${phrase} must be an angle.`); error.code = 'plainform_dimension_mismatch'; throw error;
       }
       return result.value;
+    };
+    const designVector = (expression, scope, dimension, phrase = 'Vector') => {
+      const normalized = key(expression);
+      const named = vectorVariables.get(normalized);
+      if (named) {
+        if (named.dimension !== dimension) {
+          const error = new Error(`${phrase} “${normalized}” must be ${dimension}, received ${named.dimension}.`);
+          error.code = 'plainform_dimension_mismatch'; throw error;
+        }
+        return [...named.value];
+      }
+      return evaluateDesignVector(expression, scope, dimension);
     };
     const referencePoint = phrase => {
       const name = key(phrase);
@@ -283,7 +307,8 @@ export class DesignPlainformCompiler {
       const normalized = key(phrase);
       const generatedId = aliases[normalized]?.[0] ?? clean(phrase);
       return entities.find(entity => entity.id === generatedId)
-        ?? lofts.find(loft => loft.entityId === generatedId);
+        ?? lofts.find(loft => loft.entityId === generatedId)
+        ?? surfacePatches.find(patch => patch.entityId === generatedId);
     };
     const unitRecipe = primitiveKind => primitiveKind === 'box'
       ? { kind: 'box', width: 1, height: 1, depth: 1 }
@@ -303,7 +328,17 @@ export class DesignPlainformCompiler {
         if (generated.entityId) return {
           entityId: generated.entityId,
           matrix: composeTransformMatrix({ position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] }),
-          recipe: loftRecipe(generated),
+          recipe: generated.profile ? loftRecipe(generated) : {
+            kind: 'loft',
+            sections: generated.sections ?? generated.boundaries.map(boundary => ({
+              id: `boundary/${slug(boundary.name)}`, points: boundary.points.map(point => [...point]),
+            })),
+            closedProfile: false, capStart: false, capEnd: false,
+            profileResolution: generated.profileResolution ?? Math.max(...generated.boundaries.map(boundary => boundary.points.length)),
+            subdivisions: generated.sections ? 0 : (generated.continuity === 'positional' ? 0 : 3),
+            alignProfile: 'authored', continuity: generated.sections ? 'positional' : generated.continuity,
+            guideCurves: [], modifiers: [],
+          },
           geometryId: generated.geometryId,
         };
         const geometryId = generated.components?.mesh?.geometryId;
@@ -450,6 +485,32 @@ export class DesignPlainformCompiler {
           const name = key(surfaceAngleStatement[1]);
           scope.set(name, Object.freeze({ value, dimension: 'angle' }));
           if (scope === variables) interpretations.push(`Measured ${name} as ${value} radians between two surface references.`);
+          continue;
+        }
+        const surfacePointStatement = statement.match(/^let (.+?) be (?:the )?point (.+?) along (\$[a-z0-9][a-z0-9._/-]*)$/iu);
+        if (surfacePointStatement) {
+          const factor = scalar(surfacePointStatement[2], scope, 'Surface-reference position');
+          const reference = semanticSurfaces.resolveReference(surfacePointStatement[3]);
+          const sample = sampleSurfaceReference(reference, factor);
+          const name = key(surfacePointStatement[1]);
+          vectorVariables.set(name, Object.freeze({ value: Object.freeze([...sample.point]), dimension: 'length', source: reference.name, factor }));
+          interpretations.push(`Sampled ${name} at ${factor * 100} percent along $${reference.name}.`);
+          continue;
+        }
+        const surfaceFrameStatement = statement.match(/^let (.+?) be (?:the )?(tangent|normal|outward direction) of (\$[a-z0-9][a-z0-9._/-]*)(?: at (.+?))?$/iu);
+        if (surfaceFrameStatement) {
+          const reference = semanticSurfaces.resolveReference(surfaceFrameStatement[3]);
+          const factor = surfaceFrameStatement[4] ? scalar(surfaceFrameStatement[4], scope, 'Surface-reference frame position') : 0.5;
+          const sample = sampleSurfaceReference(reference, factor);
+          const component = surfaceFrameStatement[2].toLowerCase() === 'outward direction' ? 'outward' : surfaceFrameStatement[2].toLowerCase();
+          const value = sample[component];
+          if (!value) {
+            const error = new Error(`Surface reference $${reference.name} has no anchored ${component}; use a surface-anchored curve or boundary.`);
+            error.code = 'plainform_surface_reference_frame_unavailable'; throw error;
+          }
+          const name = key(surfaceFrameStatement[1]);
+          vectorVariables.set(name, Object.freeze({ value: Object.freeze([...value]), dimension: 'scalar', source: reference.name, factor, component }));
+          interpretations.push(`Derived ${component} vector ${name} at ${factor * 100} percent along $${reference.name}.`);
           continue;
         }
         const distanceStatement = statement.match(/^let (.+?) be (?:the )?distance between (.+?) and (.+)$/iu);
@@ -610,6 +671,71 @@ export class DesignPlainformCompiler {
             projection: { kind: 'surfaceReference', source: { name: sourceReference.name, kind: sourceReference.referenceKind } },
           });
           interpretations.push(`Projected $${sourceReference.name} onto ${owner.entityId} as surface curve $${name}.`);
+          continue;
+        }
+        const surfaceOffsetStatement = statement.match(/^create a surface offset curve called (.+?) from (\$[a-z0-9][a-z0-9._/-]*) by (.+?)(?: to the (left|right))?$/iu);
+        if (surfaceOffsetStatement) {
+          const sourceReference = semanticSurfaces.resolveReference(surfaceOffsetStatement[2]);
+          if (sourceReference.referenceKind !== 'surfaceCurve') {
+            const error = new Error(`Surface offset requires a surface curve; $${sourceReference.name} is a patch boundary.`);
+            error.code = 'plainform_surface_curve_required'; throw error;
+          }
+          const owner = semanticSurfaceOwner(sourceReference.ownerEntityId);
+          const distance = finitePositive(length(surfaceOffsetStatement[3], scope, 'Surface offset distance'), 'Surface offset distance');
+          const name = boundaryReferenceKey(surfaceOffsetStatement[1]);
+          const curve = offsetSurfaceCurve({
+            owner, curve: sourceReference, distance, name, side: surfaceOffsetStatement[4]?.toLowerCase() ?? 'left',
+          });
+          semanticSurfaces.addCurve(curve);
+          interpretations.push(`Created surface-space offset curve $${name} ${distance} metres from $${sourceReference.name}.`);
+          continue;
+        }
+        const mirrorStatement = statement.match(/^create (.+?) as the mirror of (.+?) across the (x|y|z) centre plane(?: with id ([a-z0-9][a-z0-9._/-]*))?$/iu);
+        if (mirrorStatement) {
+          const targetName = clean(mirrorStatement[1]);
+          const sourceName = clean(mirrorStatement[2]);
+          const targetKey = key(targetName); const sourceKey = key(sourceName);
+          const axis = mirrorStatement[3].toLowerCase();
+          const profile = profiles.get(sourceKey);
+          const guide = guides.get(sourceKey);
+          if (profile) {
+            const points = profile.points.map(point => mirrorVector(point, axis));
+            profiles.set(targetKey, { ...structuredClone(profile), name: targetKey, points, sections: [] });
+          } else if (guide) {
+            guides.set(targetKey, { name: targetKey, points: guide.points.map(point => mirrorVector(point, axis)) });
+          } else if (semanticSurfaces.hasReference(sourceName)) {
+            const reference = semanticSurfaces.resolveReference(sourceName);
+            const owner = semanticSurfaceOwner(reference.ownerEntityId);
+            const seedPoints = reference.points.map(point => mirrorVector(point, axis));
+            const projected = projectSurfaceAnchors({ recipe: owner.recipe, matrix: owner.matrix, seedPoints, entityId: owner.entityId });
+            const mirrored = {
+              name: boundaryReferenceKey(targetName), ownerEntityId: owner.entityId,
+              coordinateSpace: 'design', closed: Boolean(reference.closed), anchorMode: 'nearestSurface',
+              authoredPoints: seedPoints.map(point => [...point]), points: projected.map(anchor => anchor.point),
+              normals: projected.map(anchor => anchor.normal), anchors: projected.map((anchor, index) => ({
+                seedPoint: [...seedPoints[index]], projectedPoint: [...anchor.point], normal: [...anchor.normal],
+                triangleIndex: anchor.triangleIndex, barycentric: [...anchor.barycentric],
+              })), projection: { kind: 'mirror', source: reference.name, axis },
+            };
+            if (reference.referenceKind === 'surfaceCurve') semanticSurfaces.addCurve(mirrored);
+            else boundaries.set(mirrored.name, mirrored);
+          } else {
+            const source = generatedEntity(sourceName);
+            if (!source) {
+              const error = new Error(`No profile, guide, surface reference, or generated object named “${sourceName}” can be mirrored.`);
+              error.code = 'plainform_mirror_source'; throw error;
+            }
+            const owner = boundaryOwner(source.id ?? source.entityId);
+            const mesh = realizeSurfaceTriangles({ recipe: owner.recipe, matrix: owner.matrix, entityId: owner.entityId });
+            const identity = composeTransformMatrix({ position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] });
+            addGeneratedSolid({
+              id: mirrorStatement[4] ?? `entity/${designSlug}/${slug(targetName)}`,
+              name: targetName,
+              recipe: mirrorEvaluatedSurface({ mesh, ownerMatrix: identity, axis }),
+              materialId: source.components?.mesh?.materialId ?? source.materialId,
+            });
+          }
+          interpretations.push(`Created “${targetName}” as the exact ${axis}-centre-plane mirror of “${sourceName}”.`);
           continue;
         }
         const betweenRegionStatement = statement.match(/^name the surface between (\$[a-z0-9][a-z0-9._/-]*) and (\$[a-z0-9][a-z0-9._/-]*) as (.+)$/iu);
@@ -969,6 +1095,28 @@ export class DesignPlainformCompiler {
           continue;
         }
 
+        const sweep = statement.match(/^sweep profile (.+?) along (?:guide )?(.+?) as a (?:watertight )?(?:solid )?called (.+?) with id ([a-z0-9][a-z0-9._/-]*)(?:,? scaling from (.+?) to (.+?))?(?:,? rotating by (.+?) along the path)?(?:,? using material ([a-z0-9][a-z0-9._/-]*))?$/iu);
+        if (sweep) {
+          const profile = profiles.get(key(sweep[1]));
+          const guide = guides.get(key(sweep[2]));
+          if (!profile) { const error = new Error(`Unknown profile “${sweep[1]}”.`); error.code = 'plainform_unknown_profile'; throw error; }
+          if (!guide) { const error = new Error(`Unknown guide curve “${sweep[2]}”.`); error.code = 'plainform_unknown_guide'; throw error; }
+          const scaleStart = sweep[5] ? finitePositive(scalar(sweep[5], scope, 'Sweep start scale'), 'Sweep start scale') : 1;
+          const scaleEnd = sweep[6] ? finitePositive(scalar(sweep[6], scope, 'Sweep end scale'), 'Sweep end scale') : 1;
+          const twist = sweep[7] ? angle(sweep[7], scope, 'Sweep twist') : 0;
+          addGeneratedSolid({
+            id: sweep[4], name: quoteName(sweep[3]),
+            recipe: sweepProfileAlongGuide({ profile, guide, scaleStart, scaleEnd, twist }),
+            materialId: sweep[8],
+          });
+          const generated = entities.find(entity => entity.id === sweep[4]);
+          generated.metadata.plainformDesign = {
+            primitive: 'sweep', profile: profile.name, guide: guide.name, scaleStart, scaleEnd, twist,
+          };
+          interpretations.push(`Swept profile “${profile.name}” along guide “${guide.name}” as ${sweep[4]}.`);
+          continue;
+        }
+
         const loft = statement.match(/^loft a (?:watertight )?(?:solid )?called (.+?) with id ([a-z0-9][a-z0-9._/-]*) through all sections of (.+?)(?:,? following (.+?))?(?:,? with (positional|tangent|curvature) continuity)?(?:,? using material ([a-z0-9][a-z0-9._/-]*))?$/iu);
         if (loft) {
           const profile = profiles.get(key(loft[3]));
@@ -1068,6 +1216,34 @@ export class DesignPlainformCompiler {
           continue;
         }
 
+        const boundaryBlend = statement.match(/^blend (\$[a-z0-9][a-z0-9._/-]*) into (\$[a-z0-9][a-z0-9._/-]*) over (.+?) as a surface called (.+?) with id ([a-z0-9][a-z0-9._/-]*)(?:,? with (tangent|curvature) continuity)?(?:,? using material ([a-z0-9][a-z0-9._/-]*))?$/iu);
+        if (boundaryBlend) {
+          const first = semanticSurfaces.resolveReference(boundaryBlend[1]);
+          const second = semanticSurfaces.resolveReference(boundaryBlend[2]);
+          if (!first.normals || !second.normals) {
+            const error = new Error('A boundary blend requires two surface-anchored references with recorded source normals.');
+            error.code = 'plainform_patch_tangency_requires_surface_anchors'; throw error;
+          }
+          const blendWidth = finitePositive(length(boundaryBlend[3], scope, 'Boundary blend width'), 'Boundary blend width');
+          const continuity = boundaryBlend[6]?.toLowerCase() ?? 'curvature';
+          const entityId = boundaryBlend[5];
+          const geometryId = `geometry/plainform-design/${designSlug}/${slug(boundaryBlend[4])}`;
+          if (occupied.has(entityId) || ids.has(entityId) || occupied.has(geometryId) || ids.has(geometryId)) {
+            const error = new Error(`Boundary blend ID ${entityId} or ${geometryId} already exists.`); error.code = 'plainform_id_conflict'; throw error;
+          }
+          ids.add(entityId); ids.add(geometryId);
+          const evaluated = buildConstrainedPatchSections({ first, second, continuity, sourceTangency: true });
+          surfacePatches.push({
+            entityId, geometryId, name: quoteName(boundaryBlend[4]), continuity,
+            materialId: boundaryBlend[7], sourceTangency: true, blendWidth,
+            boundaries: [first, second], endBoundaries: [],
+            sections: evaluated.sections, profileResolution: evaluated.profileResolution,
+          });
+          aliases[key(boundaryBlend[4])] = [entityId];
+          interpretations.push(`Created a bounded ${continuity} surface blend between $${first.name} and $${second.name} over ${blendWidth} metres.`);
+          continue;
+        }
+
         const crossBlend = statement.match(/^blend (.+?) into (.+?) with (positional|tangent|curvature) continuity$/iu);
         if (crossBlend) {
           const error = new Error(
@@ -1105,13 +1281,18 @@ export class DesignPlainformCompiler {
 
         const shellStatement = statement.match(/^shell (.+?) (inward|outward) by (.+)$/iu);
         if (shellStatement) {
-          if (/\bleaving\b.+\bopen$/iu.test(shellStatement[3])) {
-            const error = new Error('Shell openings require a genuine split topology boundary. Split the surface first; arbitrary interior intent curves cannot be treated as open mesh edges.');
-            error.code = 'plainform_shell_open_boundary_requires_split'; throw error;
-          }
           const owner = semanticDeformationOwner(shellStatement[1]);
           const direction = shellStatement[2].toLowerCase();
-          const thickness = finitePositive(length(shellStatement[3], scope, 'Shell thickness'), 'Shell thickness');
+          const openMatch = shellStatement[3].match(/^(.+?),? leaving (\$[a-z0-9][a-z0-9._/-]*) open$/iu);
+          if (/\bleaving\b.+\bopen$/iu.test(shellStatement[3]) && !openMatch) {
+            const error = new Error('Shell openings require an exact closed surface-curve reference that has already been opened into topology.');
+            error.code = 'plainform_shell_open_boundary_requires_split'; throw error;
+          }
+          if (openMatch && openedSurfaceCurves.get(owner.entityId) !== boundaryReferenceKey(openMatch[2])) {
+            const error = new Error(`Shell opening ${openMatch[2]} must first become actual topology with “Open ${owner.entityId} along ${openMatch[2]}.”`);
+            error.code = 'plainform_shell_open_boundary_requires_split'; throw error;
+          }
+          const thickness = finitePositive(length(openMatch?.[1] ?? shellStatement[3], scope, 'Shell thickness'), 'Shell thickness');
           const result = shellSurface({ owner, thickness, direction });
           owner.recipe = result.recipe;
           semanticSurfaces.addDeformation({
@@ -1119,6 +1300,49 @@ export class DesignPlainformCompiler {
             sourceVertexCount: result.sourceVertexCount, boundaryEdgeCount: result.boundaryEdgeCount,
           });
           interpretations.push(`Shelled ${owner.entityId} ${direction} by ${thickness} metres with ${result.boundaryEdgeCount} actual topology boundary edges closed.`);
+          continue;
+        }
+
+        const imprintStatement = statement.match(/^imprint (\$[a-z0-9][a-z0-9._/-]*) into (.+)$/iu);
+        if (imprintStatement) {
+          const curve = semanticSurfaces.resolveReference(imprintStatement[1]);
+          const owner = semanticSurfaceOwner(imprintStatement[2]);
+          if (curve.referenceKind !== 'surfaceCurve' || !curve.closed) {
+            const error = new Error(`Imprinting requires a closed surface curve; ${imprintStatement[1]} is not one.`);
+            error.code = 'plainform_surface_split_not_closed'; throw error;
+          }
+          if (curve.ownerEntityId !== owner.entityId) {
+            const error = new Error(`${imprintStatement[1]} belongs to ${curve.ownerEntityId}, not ${owner.entityId}.`);
+            error.code = 'plainform_surface_split_owner_mismatch'; throw error;
+          }
+          imprintedCurves.add(curve.name);
+          semanticSurfaces.addDeformation({ kind: 'imprint', ownerEntityId: owner.entityId, reference: curve.name });
+          interpretations.push(`Marked $${curve.name} as a bounded topology imprint on ${owner.entityId}.`);
+          continue;
+        }
+
+        const openStatement = statement.match(/^open (.+?) along (\$[a-z0-9][a-z0-9._/-]*)$/iu);
+        if (openStatement) {
+          const owner = semanticDeformationOwner(openStatement[1]);
+          const curve = semanticSurfaces.resolveReference(openStatement[2]);
+          if (curve.referenceKind !== 'surfaceCurve' || !curve.closed) {
+            const error = new Error(`Opening ${owner.entityId} requires a closed surface curve; ${openStatement[2]} is not one.`);
+            error.code = 'plainform_surface_split_not_closed'; throw error;
+          }
+          if (curve.ownerEntityId !== owner.entityId) {
+            const error = new Error(`${openStatement[2]} belongs to ${curve.ownerEntityId}, not ${owner.entityId}.`);
+            error.code = 'plainform_surface_split_owner_mismatch'; throw error;
+          }
+          const result = openSurfaceAlongCurve({ owner, curve });
+          owner.recipe = result.recipe;
+          imprintedCurves.add(curve.name);
+          openedSurfaceCurves.set(owner.entityId, curve.name);
+          semanticSurfaces.addDeformation({
+            kind: 'open', ownerEntityId: owner.entityId, reference: curve.name,
+            removedTriangleCount: result.removedTriangleCount, remainingTriangleCount: result.remainingTriangleCount,
+            boundaryEdgeCount: result.boundaryEdgeCount, imprinted: result.imprinted,
+          });
+          interpretations.push(`Opened ${owner.entityId} along $${curve.name}, creating ${result.boundaryEdgeCount} actual topology boundary edges.`);
           continue;
         }
 
@@ -1135,11 +1359,11 @@ export class DesignPlainformCompiler {
             error.code = 'plainform_surface_split_owner_mismatch'; throw error;
           }
           pendingSurfaceSplit = { owner, curve };
-          interpretations.push(`Will split ${owner.entityId} along the exact topology loop $${curve.name}.`);
+          interpretations.push(`Will split ${owner.entityId} along the bounded topology imprint $${curve.name}.`);
           continue;
         }
 
-        const callSplitStatement = statement.match(/^call the enclosed (?:surface|region) (.+?)(?: with id ([a-z0-9][a-z0-9._/-]*))?$/iu);
+        const callSplitStatement = statement.match(/^call the enclosed (?:surface|region) (.+?)(?: with id ([a-z0-9][a-z0-9._/-]*))?(?:,? using material ([a-z0-9][a-z0-9._/-]*))?$/iu);
         if (callSplitStatement) {
           if (!pendingSurfaceSplit) {
             const error = new Error('“Call the enclosed surface” must immediately follow a supported Split statement.');
@@ -1151,18 +1375,19 @@ export class DesignPlainformCompiler {
           const result = splitSurfaceAlongCurve({ owner, curve });
           owner.recipe = result.remainderRecipe;
           const generatedOwner = generatedEntity(owner.entityId);
-          const materialId = owner.meshComponent?.materialId ?? generatedOwner?.components?.mesh?.materialId;
+          const materialId = callSplitStatement[3] ?? owner.meshComponent?.materialId ?? generatedOwner?.components?.mesh?.materialId;
           addGeneratedSolid({ id, name, recipe: result.enclosedWorldRecipe, materialId });
           const enclosed = entities.find(entity => entity.id === id);
           enclosed.metadata.plainformDesign = {
             primitive: 'splitSurface', splitFrom: owner.entityId, boundaryReference: curve.name,
             enclosedTriangleCount: result.enclosedTriangleCount, boundaryEdgeCount: result.boundaryEdgeCount,
+            imprinted: result.imprinted,
           };
           semanticSurfaces.addDeformation({
             kind: 'split', ownerEntityId: owner.entityId, resultEntityId: id, reference: curve.name,
             enclosedTriangleCount: result.enclosedTriangleCount,
             remainderTriangleCount: result.remainderTriangleCount,
-            boundaryEdgeCount: result.boundaryEdgeCount,
+            boundaryEdgeCount: result.boundaryEdgeCount, imprinted: result.imprinted,
           });
           interpretations.push(`Split ${owner.entityId} into its remainder and enclosed surface ${id} along ${result.boundaryEdgeCount} exact topology edges.`);
           pendingSurfaceSplit = null;
@@ -1175,6 +1400,17 @@ export class DesignPlainformCompiler {
           const axis = symmetryConstraintStatement[2].toLowerCase();
           constraints.push({ kind: 'symmetry', entityId: owner.entityId, axis });
           interpretations.push(`Will keep ${owner.entityId} symmetric across its ${axis} centre plane or fail validation.`);
+          continue;
+        }
+
+        const uniformClearanceStatement = statement.match(/^maintain (.+?) uniform clearance between (\$[a-z0-9][a-z0-9._/-]*) and (\$[a-z0-9][a-z0-9._/-]*) within (.+?) tolerance$/iu);
+        if (uniformClearanceStatement) {
+          const target = finitePositive(length(uniformClearanceStatement[1], scope, 'Uniform clearance'), 'Uniform clearance');
+          const tolerance = finitePositive(length(uniformClearanceStatement[4], scope, 'Uniform clearance tolerance'), 'Uniform clearance tolerance');
+          const first = semanticSurfaces.resolveReference(uniformClearanceStatement[2]);
+          const second = semanticSurfaces.resolveReference(uniformClearanceStatement[3]);
+          constraints.push({ kind: 'uniformBoundaryClearance', firstReference: first.name, secondReference: second.name, target, tolerance });
+          interpretations.push(`Will keep $${first.name} and $${second.name} at ${target} metres uniform clearance within ${tolerance} metres.`);
           continue;
         }
 
@@ -1242,6 +1478,23 @@ export class DesignPlainformCompiler {
           continue;
         }
 
+        const relationalPlacement = statement.match(/^place (.+?) cent(?:er|r)ed at (.+?)(?:,? aligning its local (x|y|z) axis with (.+))?$/iu);
+        if (relationalPlacement) {
+          const generated = generatedEntity(relationalPlacement[1]);
+          if (!generated?.transform) {
+            const error = new Error(`Relational placement currently requires a generated solid or primitive; “${relationalPlacement[1]}” is not directly placeable.`);
+            error.code = 'plainform_placement_target'; throw error;
+          }
+          generated.transform.position = designVector(relationalPlacement[2], scope, 'length', 'Placement centre');
+          if (relationalPlacement[3]) {
+            const direction = designVector(relationalPlacement[4], scope, 'scalar', 'Placement direction');
+            const localAxis = { x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] }[relationalPlacement[3].toLowerCase()];
+            generated.transform.rotation = spatial.rotationAligningAxis(localAxis, direction);
+          }
+          interpretations.push(`Placed ${generated.id} from a named surface-reference frame.`);
+          continue;
+        }
+
         const ensureHeight = statement.match(/^ensure the design is exactly (.+?) high$/iu);
         if (ensureHeight) {
           const expected = length(ensureHeight[1], scope, 'Design height');
@@ -1306,6 +1559,17 @@ export class DesignPlainformCompiler {
           error.details = { ...constraint, actual };
           throw error;
         }
+      } else if (constraint.kind === 'uniformBoundaryClearance') {
+        const first = semanticSurfaces.resolveReference(constraint.firstReference);
+        const second = semanticSurfaces.resolveReference(constraint.secondReference);
+        const separation = surfaceReferenceSeparation(first, second);
+        const deviation = Math.max(Math.abs(separation.minimum - constraint.target), Math.abs(separation.maximum - constraint.target));
+        if (deviation > constraint.tolerance + 1e-9) {
+          const error = new Error(`Uniform boundary clearance failed: $${first.name} and $${second.name} deviate by ${deviation} metres from ${constraint.target} metres, exceeding ${constraint.tolerance} metres tolerance.`);
+          error.code = 'plainform_constraint_unsatisfied';
+          error.details = { ...constraint, separation, deviation };
+          throw error;
+        }
       }
     }
     if (entities.length + lofts.length + surfacePatches.length + semanticSurfaces.curves.size + semanticSurfaces.regions.size + constraints.length === 0) {
@@ -1336,6 +1600,7 @@ export class DesignPlainformCompiler {
             name: boundary.name, ownerEntityId: boundary.ownerEntityId,
           })),
           sourceTangency: patch.sourceTangency,
+          ...(patch.blendWidth ? { blendWidth: patch.blendWidth } : {}),
         } },
         recipe: {
           kind: 'loft',
@@ -1374,7 +1639,13 @@ export class DesignPlainformCompiler {
         const error = new Error(`Generated geometry ID ${resource.resource.id} already exists.`); error.code = 'plainform_id_conflict'; throw error;
       }
     }
-    const variableMetadata = Object.fromEntries([...variables].map(([name, value]) => [name, value]));
+    const variableMetadata = Object.fromEntries([
+      ...[...variables].map(([name, value]) => [name, value]),
+      ...[...vectorVariables].map(([name, value]) => [name, {
+        value: [...value.value], dimension: value.dimension, source: value.source, factor: value.factor,
+        ...(value.component ? { component: value.component } : {}),
+      }]),
+    ]);
     const allEntities = [...entities, ...lofts.map(loft => ({
       id: loft.entityId, kind: 'mesh', name: loft.name, parentId: rootId,
       components: { mesh: { geometryId: loft.geometryId, ...(loft.materialId ? { materialId: loft.materialId } : {}) } },
@@ -1388,6 +1659,7 @@ export class DesignPlainformCompiler {
       metadata: { plainformDesign: {
         primitive: 'surfacePatch', continuity: patch.continuity,
         sourceTangency: patch.sourceTangency,
+        ...(patch.blendWidth ? { blendWidth: patch.blendWidth } : {}),
         boundaryRefs: [...patch.boundaries, ...patch.endBoundaries].map(boundary => ({
           name: boundary.name, ownerEntityId: boundary.ownerEntityId,
         })),
@@ -1498,7 +1770,7 @@ export class DesignPlainformCompiler {
       language: 'plainform-v1', dialect: 'design', source,
       operations: Object.freeze(operations), interpretation: Object.freeze(interpretations),
       aliases: Object.freeze(aliases), requestedPreview,
-      design: Object.freeze({ rootId, entityCount: allEntities.length, resourceCount: resources.length, variableCount: variables.size }),
+      design: Object.freeze({ rootId, entityCount: allEntities.length, resourceCount: resources.length, variableCount: variables.size + vectorVariables.size }),
     });
   }
 }

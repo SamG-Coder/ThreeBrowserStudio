@@ -195,15 +195,15 @@ separate supported regional operation consumes them. A vague region such as
 `Name the region around $rail as shoulder` is rejected because it has no
 extent.
 
-Curve-distance and surface-radius regions can drive deterministic normal
-displacement without naming mesh elements. Use `Raise the surface along
-<curve> by <length> with a smooth falloff of <length>` (also `Lower`, `Inset`,
-`Bulge`, or `Pinch`) or `<verb> <region> by <length>, falling off smoothly over
-<length>`. The compiler internally realizes a bounded indexed result, keeps the
-owner entity ID and transform, and records the affected-vertex count as derived
-evidence. An explicit positive falloff is mandatory. Between-curves and
-enclosed regions remain valid intent for later projection/split operations but
-are rejected as deformation masks in the current stage.
+Curve-distance, surface-radius, between-curves, and enclosed-curve regions can
+drive deterministic normal displacement without naming mesh elements. Use
+`Raise the surface along <curve> by <length> with a smooth falloff of <length>`
+(also `Lower`, `Inset`, `Bulge`, or `Pinch`) or `<verb> <region> by <length>,
+falling off smoothly over <length>`. Surface-space offset curves create related
+lips and bands from anchored normals/tangents. The compiler internally realizes
+a bounded indexed result, keeps the owner entity ID and transform, and records
+the affected-vertex count as derived evidence. An explicit positive falloff is
+mandatory.
 
 Projection can turn a named profile or existing `$surface-reference` into a
 new anchored surface curve on another owner. Profile projection accepts an
@@ -218,11 +218,13 @@ half the smallest non-zero owner span is rejected conservatively. A requested
 open interior boundary is rejected until that curve has become real split
 topology.
 
-Design Plainform can feed evaluated surface measurements back into the same
-typed expression scope. Use `Let <name> be the width|height|depth of <owner>`,
+Design Plainform can feed evaluated surface measurements and reference frames
+back into the same typed scope. Use `Let <name> be the width|height|depth of <owner>`,
 `Let <name> be the width of <owner> at height <length>`, `Let <name> be the
 minimum distance between <owner> and <owner>`, or `Let <name> be the angle
-between $curve-a and $curve-b`. Dimensions and cross-sections are measured in
+between $curve-a and $curve-b`. `Let <name> be the point <percent> along
+$curve`, plus tangent/normal/outward variants, supplies bounded vectors for
+relational placement and axis alignment. Dimensions and cross-sections are measured in
 world space; minimum distance is the deterministic bidirectional
 vertex-to-triangle distance between the two evaluated surfaces. Height-specific
 cross-sections currently support width only and reject unsupported variants.
@@ -257,12 +259,17 @@ tractable without raising any safety budget.
 
 An existing owner can be divided after authoring with `Split <owner> along
 $closed-curve` immediately followed by `Call the enclosed surface <name> [with
-id <stable-id>]`. The current exact implementation requires the projected
-curve to coincide with a simple, separating, closed loop of existing topology
-edges. It then emits two non-overlapping indexed surfaces and preserves the
-owner ID for the remainder. A curve through triangle interiors rejects with
-`plainform_surface_split_requires_edge_loop`; Plainform does not approximate
-the cut or duplicate overlapping faces.
+id <stable-id>]`. Existing separating topology loops remain exact. When a
+projected curve crosses triangle interiors, the compiler performs a bounded
+evaluated-topology imprint before producing two non-overlapping indexed
+surfaces while preserving the owner ID for the remainder. `Imprint` records
+the intent, `Open <owner> along
+$curve` creates a genuine boundary, and shelling may preserve that explicitly
+opened reference. Empty/non-separating imprints reject. Surface-space offset
+curves plus correspondence-based uniform-clearance constraints cover lips,
+seals, and shut lines. Generic transported-frame sweeps, exact centre-plane
+mirroring, and source-tangent boundary blends cover repeated manufactured
+attachments without subject-specific primitives.
 
 When a complex result is weak, revise the authored profiles, section spacing,
 guide binding, dimensions, material, camera, and light before extending the

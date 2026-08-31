@@ -7,7 +7,7 @@ import {
 import { operationSchema } from '../src/mcp/tool-schemas.mjs';
 import {
   DesignExpressionError, PlainformCompiler, PlainformError,
-  evaluateDesignExpression, evaluatePlainformMath,
+  evaluateDesignExpression, evaluatePlainformMath, interpretShaderFeel,
 } from '../src/plainform/index.mjs';
 
 function projectFixture() {
@@ -412,7 +412,7 @@ Raise the surface along crown line by 5 centimetres with a smooth falloff of 60 
   assert.equal(compiled.design.entityCount, 0);
 });
 
-test('Design Plainform rejects dimensionally invalid, ambiguous, and unsupported regional deformation', () => {
+test('Design Plainform rejects dimensionally invalid or ambiguous regional deformation', () => {
   assert.throws(() => new PlainformCompiler().compile(`
 Design a shell study called Missing Falloff with id entity/missing-falloff.
 Create a cylinder called Shell with id entity/shell, with radius 1 metre and height 2 metres.
@@ -427,14 +427,6 @@ Create a surface curve called rail on Shell through surface points nearest to de
 Raise the surface along rail by 4 centimetres with a smooth falloff of 20 degrees.
 `, { project: projectFixture() }), error => error.code === 'plainform_dimension_mismatch');
 
-  assert.throws(() => new PlainformCompiler().compile(`
-Design a shell study called Unsupported Band with id entity/unsupported-band.
-Create a cylinder called Shell with id entity/shell, with radius 1 metre and height 2 metres.
-Create a surface curve called upper rail on Shell through surface points nearest to design points [-50 centimetres, 50 centimetres, 2 metres], [0 metres, 50 centimetres, 2 metres], [50 centimetres, 50 centimetres, 2 metres].
-Create a surface curve called lower rail on Shell through surface points nearest to design points [-50 centimetres, -50 centimetres, 2 metres], [0 metres, -50 centimetres, 2 metres], [50 centimetres, -50 centimetres, 2 metres].
-Name the surface between $upper-rail and $lower-rail as band.
-Bulge band by 4 centimetres, falling off smoothly over 20 centimetres.
-`, { project: projectFixture() }), error => error.code === 'plainform_surface_region_deformation_unsupported');
 });
 
 test('Design Plainform projects profiles and surface references as reusable anchored curves', () => {
@@ -573,14 +565,18 @@ Call the enclosed surface Front Panel with id entity/front-panel.
   assert.equal(panel.metadata.plainformDesign.boundaryReference, 'front-perimeter');
 });
 
-test('Design Plainform rejects a split curve that is not an exact topology edge loop', () => {
-  assert.throws(() => new PlainformCompiler().compile(`
+test('Design Plainform deterministically imprints and splits a curve through triangle interiors', () => {
+  const compiled = new PlainformCompiler().compile(`
 Design a panel study called Invalid Surface Split with id entity/invalid-surface-split.
 Create a box called Housing with id entity/split-housing, with width 2 metres, height 2 metres, and depth 2 metres.
 Create a closed surface curve called inset outline on Housing through surface points nearest to local points [-25 centimetres, -25 centimetres, 50 centimetres], [25 centimetres, -25 centimetres, 50 centimetres], [25 centimetres, 25 centimetres, 50 centimetres], [-25 centimetres, 25 centimetres, 50 centimetres].
 Split Housing along $inset-outline.
 Call the enclosed surface Inset Panel.
-`, { project: projectFixture() }), error => error.code === 'plainform_surface_split_requires_edge_loop');
+`, { project: projectFixture() });
+  const panel = compiled.operations.find(operation => operation.op === 'entity.createMany').items
+    .map(item => item.entity).find(entity => entity.name === 'Inset Panel');
+  assert.equal(panel.metadata.plainformDesign.imprinted, true);
+  assert.ok(panel.metadata.plainformDesign.boundaryEdgeCount >= 3);
 });
 
 test('Design Plainform attaches intersecting generated solids with honest positional continuity', () => {
@@ -721,6 +717,133 @@ Create a box called Part A with id entity/part-a, with width 1 metre, height 1 m
 Create a box called Part B with id entity/part-b, with width 1 metre, height 1 metre, and depth 1 metre.
 Blend Part A into Part B with curvature continuity.
 `, { project: projectFixture() }), error => error.code === 'plainform_continuity_unsupported');
+});
+
+test('Design Plainform deforms enclosed and between-curve regions with explicit bounded falloff', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a panel study called Actionable Regions with id entity/actionable-regions.
+Create a box called Panel with id entity/panel, with width 2 metres, height 2 metres, and depth 20 centimetres.
+Create a closed surface curve called inset outline on Panel through surface points nearest to local points [-50 centimetres, -50 centimetres, 10 centimetres], [50 centimetres, -50 centimetres, 10 centimetres], [50 centimetres, 50 centimetres, 10 centimetres], [-50 centimetres, 50 centimetres, 10 centimetres].
+Name the surface enclosed by $inset-outline as inset region.
+Inset inset region by 4 centimetres, falling off smoothly over 1 metre.
+Create a surface curve called upper rail on Panel through surface points nearest to local points [-80 centimetres, 40 centimetres, 10 centimetres], [80 centimetres, 40 centimetres, 10 centimetres].
+Create a surface curve called lower rail on Panel through surface points nearest to local points [-80 centimetres, -40 centimetres, 10 centimetres], [80 centimetres, -40 centimetres, 10 centimetres].
+Name the surface between $upper-rail and $lower-rail as centre band.
+Raise centre band by 2 centimetres, falling off smoothly over 1 metre.
+`, { project: projectFixture() });
+  const deformations = compiled.operations.find(operation => operation.op === 'entity.create').entity
+    .metadata.plainformDesign.surfaceDeformations;
+  assert.deepEqual(deformations.map(item => item.region), ['inset-region', 'centre-band']);
+  assert.ok(deformations.every(item => item.affectedVertexCount > 0));
+});
+
+test('Design Plainform creates surface-space offsets, mirrored references, and uniform-gap constraints', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a panel detail called Offset Band with id entity/offset-band.
+Create a box called Panel with id entity/panel, with width 4 metres, height 2 metres, and depth 20 centimetres.
+Create a surface curve called left rail on Panel through surface points nearest to local points [-25 centimetres, -40 centimetres, 50 centimetres], [-25 centimetres, 0 metres, 50 centimetres], [-25 centimetres, 40 centimetres, 50 centimetres].
+Create right rail as the mirror of left rail across the x centre plane.
+Create a surface offset curve called left rail offset from $left-rail by 10 centimetres to the left.
+Maintain 10 centimetres uniform clearance between $left-rail and $left-rail-offset within 3 centimetres tolerance.
+`, { project: projectFixture() });
+  const intent = compiled.operations.find(operation => operation.op === 'entity.create').entity.metadata.plainformDesign;
+  assert.deepEqual(intent.surfaceCurves.map(curve => curve.name), ['left-rail', 'right-rail', 'left-rail-offset']);
+  assert.equal(intent.surfaceCurves[1].projection.kind, 'mirror');
+  assert.equal(intent.surfaceCurves[2].projection.kind, 'surfaceOffset');
+  assert.equal(intent.constraints[0].kind, 'uniformBoundaryClearance');
+});
+
+test('Design Plainform derives points and frames from references for relational placement', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a mounted detail called Reference Placement with id entity/reference-placement.
+Create a box called Panel with id entity/panel, with width 2 metres, height 2 metres, and depth 20 centimetres.
+Create a surface curve called mount rail on Panel through surface points nearest to local points [-50 centimetres, 0 metres, 10 centimetres], [0 metres, 0 metres, 10 centimetres], [50 centimetres, 0 metres, 10 centimetres].
+Let mount point be the point 50 percent along $mount-rail.
+Let mount normal be the normal of $mount-rail at 50 percent.
+Create a cylinder called Pylon with id entity/pylon, with radius 5 centimetres and height 30 centimetres.
+Place Pylon centred at mount point, aligning its local y axis with mount normal.
+`, { project: projectFixture() });
+  const root = compiled.operations.find(operation => operation.op === 'entity.create').entity;
+  assert.equal(root.metadata.plainformDesign.variables['mount point'].dimension, 'length');
+  assert.equal(root.metadata.plainformDesign.variables['mount normal'].component, 'normal');
+  const pylon = compiled.operations.find(operation => operation.op === 'entity.createMany').items
+    .map(item => item.entity).find(entity => entity.id === 'entity/pylon');
+  assert.deepEqual(pylon.transform.position.map(value => Math.round(value * 1000) / 1000), [0, 0, 0.1]);
+  assert.ok(pylon.transform.rotation.some(value => Math.abs(value) > 0.1));
+});
+
+test('Design Plainform sweeps a profile along a guide and mirrors generated solids', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a structural detail called Swept Pair with id entity/swept-pair.
+Create a rectangular profile called pylon section with width 8 centimetres and depth 4 centimetres.
+Create a smooth guide curve called left path through [-30 centimetres, 0 metres, 0 metres], [-35 centimetres, 30 centimetres, 5 centimetres], [-40 centimetres, 60 centimetres, 15 centimetres].
+Sweep profile pylon section along guide left path as a solid called Left Pylon with id entity/left-pylon, scaling from 1 to 60 percent, rotating by 12 degrees along the path, using material material/leaf.
+Create Right Pylon as the mirror of Left Pylon across the x centre plane with id entity/right-pylon.
+`, { project: projectFixture() });
+  const resources = compiled.operations.find(operation => operation.op === 'resource.createMany').items.map(item => item.resource);
+  const entities = compiled.operations.find(operation => operation.op === 'entity.createMany').items.map(item => item.entity);
+  assert.equal(entities.find(entity => entity.id === 'entity/left-pylon').metadata.plainformDesign.primitive, 'sweep');
+  assert.ok(resources.filter(resource => resource.recipe.kind === 'indexedMesh').length >= 2);
+  assert.ok(entities.some(entity => entity.id === 'entity/right-pylon'));
+});
+
+test('Design Plainform opens an imprinted loop and shells the resulting genuine boundary', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a vented panel called Opened Shell with id entity/opened-shell.
+Create a box called Housing with id entity/housing, with width 2 metres, height 2 metres, and depth 40 centimetres.
+Create a closed surface curve called opening on Housing through surface points nearest to local points [-40 centimetres, -40 centimetres, 20 centimetres], [40 centimetres, -40 centimetres, 20 centimetres], [40 centimetres, 40 centimetres, 20 centimetres], [-40 centimetres, 40 centimetres, 20 centimetres].
+Imprint $opening into Housing.
+Open Housing along $opening.
+Shell Housing inward by 3 centimetres, leaving $opening open.
+`, { project: projectFixture() });
+  const intent = compiled.operations.find(operation => operation.op === 'entity.create').entity.metadata.plainformDesign;
+  assert.deepEqual(intent.surfaceDeformations.map(item => item.kind), ['imprint', 'open', 'shell']);
+  assert.ok(intent.surfaceDeformations[1].boundaryEdgeCount >= 3);
+  assert.ok(intent.surfaceDeformations[2].boundaryEdgeCount >= 3);
+});
+
+test('Design Plainform creates a bounded source-tangent boundary blend', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a fairing called Boundary Blend with id entity/boundary-blend.
+Create a box called Upper with id entity/upper, with width 2 metres, height 40 centimetres, and depth 1 metre, centred at [0 metres, 60 centimetres, 0 metres].
+Create a box called Lower with id entity/lower, with width 2 metres, height 40 centimetres, and depth 1 metre, centred at [0 metres, -60 centimetres, 0 metres].
+Create a surface curve called upper rail on Upper through surface points nearest to local points [-80 centimetres, -20 centimetres, 50 centimetres], [0 metres, -20 centimetres, 50 centimetres], [80 centimetres, -20 centimetres, 50 centimetres].
+Create a surface curve called lower rail on Lower through surface points nearest to local points [-80 centimetres, 20 centimetres, 50 centimetres], [0 metres, 20 centimetres, 50 centimetres], [80 centimetres, 20 centimetres, 50 centimetres].
+Blend $upper-rail into $lower-rail over 25 centimetres as a surface called Fairing Skin with id entity/fairing-skin, with curvature continuity, using material material/leaf.
+`, { project: projectFixture() });
+  const fairing = compiled.operations.find(operation => operation.op === 'entity.createMany').items
+    .map(item => item.entity).find(entity => entity.id === 'entity/fairing-skin');
+  assert.equal(fairing.metadata.plainformDesign.blendWidth, 0.25);
+  assert.equal(fairing.metadata.plainformDesign.sourceTangency, true);
+});
+
+test('Advanced semantic-surface grammar fails closed on invalid references, factors, openings, and uniform gaps', () => {
+  assert.throws(() => new PlainformCompiler().compile(`
+Design a bad mirror called Missing Mirror Source with id entity/missing-mirror-source.
+Create Right Part as the mirror of Missing Part across the x centre plane.
+`, { project: projectFixture() }), error => error.code === 'plainform_mirror_source');
+
+  assert.throws(() => new PlainformCompiler().compile(`
+Design a bad sample called Out Of Range Sample with id entity/out-of-range-sample.
+Create a box called Panel with id entity/panel, with width 2 metres, height 2 metres, and depth 20 centimetres.
+Create a surface curve called rail on Panel through surface points nearest to local points [-40 centimetres, 0 metres, 50 centimetres], [40 centimetres, 0 metres, 50 centimetres].
+Let impossible point be the point 120 percent along $rail.
+`, { project: projectFixture() }), error => error.code === 'plainform_surface_reference_factor');
+
+  assert.throws(() => new PlainformCompiler().compile(`
+Design a bad opening called Open Curve Opening with id entity/open-curve-opening.
+Create a box called Panel with id entity/panel, with width 2 metres, height 2 metres, and depth 20 centimetres.
+Create a surface curve called open rail on Panel through surface points nearest to local points [-40 centimetres, 0 metres, 50 centimetres], [40 centimetres, 0 metres, 50 centimetres].
+Open Panel along $open-rail.
+`, { project: projectFixture() }), error => error.code === 'plainform_surface_split_not_closed');
+
+  assert.throws(() => new PlainformCompiler().compile(`
+Design a bad gap called Uniform Gap Failure with id entity/uniform-gap-failure.
+Create a box called Panel with id entity/panel, with width 4 metres, height 2 metres, and depth 20 centimetres.
+Create a surface curve called first rail on Panel through surface points nearest to local points [-25 centimetres, -40 centimetres, 50 centimetres], [-25 centimetres, 40 centimetres, 50 centimetres].
+Create second rail as the mirror of first rail across the x centre plane.
+Maintain 10 centimetres uniform clearance between $first-rail and $second-rail within 1 millimetre tolerance.
+`, { project: projectFixture() }), error => error.code === 'plainform_constraint_unsatisfied');
 });
 
 test('Design Plainform binds exact scene distance measurements into parametric dimensions', () => {
@@ -1090,6 +1213,18 @@ test('Plainform fails closed on ambiguous or unsupported natural language', () =
     error => error instanceof PlainformError && error.code === 'plainform_unknown_statement'
       && error.details.statement === 1,
   );
+});
+
+test('Shader feel vocabulary covers automotive paint, glazing, carbon, rubber, and intake materials', () => {
+  const paint = interpretShaderFeel('saturated yellow automotive paint with orange peel and automotive clear coat');
+  assert.ok(paint.inputs.coatWeight > 0.8);
+  assert.ok(paint.inputs.coatRoughness < 0.1);
+  const glazing = interpretShaderFeel('dark smoked automotive glass');
+  assert.ok(glazing.inputs.transmissionWeight > 0.7);
+  assert.ok(glazing.inputs.alpha < 0.5);
+  assert.ok(interpretShaderFeel('satin carbon fibre').inputs.coatWeight > 0.2);
+  assert.ok(interpretShaderFeel('tyre rubber').inputs.roughness > 0.7);
+  assert.ok(interpretShaderFeel('black honeycomb').inputs.roughness > 0.5);
 });
 
 test('Shader Plainform composes descriptive feel words with typed trigonometric math chains', () => {

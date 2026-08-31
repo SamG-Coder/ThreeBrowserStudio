@@ -47,6 +47,39 @@ function closestCurveSample(point, curve) {
   return best;
 }
 
+function curveFrame(curve) {
+  const center = curve.points.reduce((sum, point) => add(sum, point), [0, 0, 0]).map(value => value / curve.points.length);
+  let normal = curve.normals?.reduce((sum, value) => add(sum, value), [0, 0, 0]);
+  if (!normal || Math.hypot(...normal) <= 1e-12) {
+    normal = [0, 0, 0];
+    for (let index = 0; index < curve.points.length; index += 1) {
+      normal = add(normal, cross(subtract(curve.points[index], center), subtract(curve.points[(index + 1) % curve.points.length], center)));
+    }
+  }
+  normal = normalize(normal);
+  const helper = Math.abs(normal[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+  const x = normalize(cross(helper, normal));
+  const y = normalize(cross(normal, x));
+  return { center, normal, x, y };
+}
+
+function flatten(point, frame) {
+  const relative = subtract(point, frame.center);
+  return [dot(relative, frame.x), dot(relative, frame.y)];
+}
+
+function pointInClosedCurve(point, curve) {
+  const frame = curveFrame(curve);
+  const polygon = curve.points.map(value => flatten(value, frame));
+  const [x, y] = flatten(point, frame);
+  let inside = false;
+  for (let first = 0, second = polygon.length - 1; first < polygon.length; second = first++) {
+    const [xi, yi] = polygon[first]; const [xj, yj] = polygon[second];
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
 function regionWeight(point, region, resolveReference, falloff) {
   if (region.definition.kind === 'surfaceRadius') {
     const distance = Math.hypot(...subtract(point, region.definition.center));
@@ -58,6 +91,23 @@ function regionWeight(point, region, resolveReference, falloff) {
     const distance = closestCurveSample(point, reference).distance;
     if (distance <= region.definition.distance) return 1;
     return 1 - smoothstep((distance - region.definition.distance) / falloff);
+  }
+  if (region.definition.kind === 'enclosedCurve') {
+    const reference = resolveReference(region.definition.reference.name);
+    const distance = closestCurveSample(point, reference).distance;
+    if (pointInClosedCurve(point, reference)) return 1;
+    return 1 - smoothstep(distance / falloff);
+  }
+  if (region.definition.kind === 'betweenCurves') {
+    const [first, second] = region.definition.references.map(reference => resolveReference(reference.name));
+    const firstDistance = closestCurveSample(point, first).distance;
+    const secondDistance = closestCurveSample(point, second).distance;
+    const separation = first.points.reduce((sum, value, index) => (
+      sum + Math.hypot(...subtract(value, second.points[Math.min(second.points.length - 1, Math.round(index / Math.max(1, first.points.length - 1) * (second.points.length - 1)))]))
+    ), 0) / first.points.length;
+    const combined = firstDistance + secondDistance;
+    if (combined <= separation + falloff * 0.25) return 1;
+    return 1 - smoothstep((combined - separation) / falloff);
   }
   const error = new Error(
     `Semantic deformation of region “${region.name}” is not implemented for ${region.definition.kind}. `

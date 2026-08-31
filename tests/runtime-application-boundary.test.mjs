@@ -1560,6 +1560,46 @@ test('three_studio_apply commits exact semantic surface splits through the kerne
   assert.equal(document.resources.geometries[panel.components.mesh.geometryId].recipe.kind, 'indexedMesh');
 });
 
+test('three_studio_apply commits advanced semantic-surface compatibility through the kernel', async (t) => {
+  const { application } = await applicationFixture(t);
+  const result = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1', sessionId: application.sessionId,
+    projectId: 'project/active', baseRevision: 0,
+    idempotencyKey: 'plainform-advanced-surface-0001', label: 'Compile advanced semantic surface design',
+    operations: null,
+    program: {
+      language: 'plainform-v1',
+      source: [
+        'Design a manufactured panel called Runtime Advanced Surface with id entity/runtime-advanced-surface.',
+        'Create a box called Housing with id entity/housing, with width 3 metres, height 2 metres, and depth 40 centimetres.',
+        'Create a closed surface curve called opening on Housing through surface points nearest to local points [-20 centimetres, -30 centimetres, 50 centimetres], [20 centimetres, -30 centimetres, 50 centimetres], [20 centimetres, 30 centimetres, 50 centimetres], [-20 centimetres, 30 centimetres, 50 centimetres].',
+        'Create mirrored opening as the mirror of opening across the x centre plane.',
+        'Create a surface offset curve called opening lip from $opening by 8 centimetres to the left.',
+        'Name the surface between $opening and $opening-lip as lip band.',
+        'Raise lip band by 1 centimetre, falling off smoothly over 2 metres.',
+        'Let mount point be the point 50 percent along $opening.',
+        'Let mount normal be the normal of $opening at 50 percent.',
+        'Create a box called Mount with id entity/mount, with width 8 centimetres, height 20 centimetres, and depth 8 centimetres.',
+        'Place Mount centred at mount point, aligning its local y axis with mount normal.',
+        'Imprint $opening into Housing.',
+        'Open Housing along $opening.',
+        'Shell Housing inward by 2 centimetres, leaving $opening open.',
+      ].join('\n'),
+    },
+  }).catch(error => assert.fail(`Advanced surface runtime application failed: ${JSON.stringify(error.details ?? error.message)}`));
+  assert.equal(result.success, true);
+  assert.equal(result.revision, 1);
+  const document = application.kernel.document;
+  const root = document.scenes['scene/main'].entities['entity/runtime-advanced-surface'];
+  assert.deepEqual(root.metadata.plainformDesign.surfaceDeformations.map(item => item.kind), [
+    'regionDisplacement', 'imprint', 'open', 'shell',
+  ]);
+  assert.equal(root.metadata.plainformDesign.surfaceCurves[1].projection.kind, 'mirror');
+  assert.equal(root.metadata.plainformDesign.surfaceCurves[2].projection.kind, 'surfaceOffset');
+  assert.equal(root.metadata.plainformDesign.variables['mount point'].dimension, 'length');
+  assert.equal(document.resources.geometries[document.scenes['scene/main'].entities['entity/housing'].components.mesh.geometryId].recipe.kind, 'indexedMesh');
+});
+
 test('three_studio_apply compiles Shader Plainform into a validated graph and material assignment', async (t) => {
   const { application } = await applicationFixture(t);
   const setup = await application.dispatch('three_studio_apply', {
