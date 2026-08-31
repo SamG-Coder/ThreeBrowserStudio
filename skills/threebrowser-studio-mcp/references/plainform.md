@@ -352,6 +352,11 @@ If a stored or newly declared constraint participates in the pending CSG
 target, the program fails with `plainform_constraint_validation_unavailable`.
 Author and verify the topology stage separately; Plainform never validates the
 pre-CSG operand and silently treats that as proof about the post-CSG result.
+Input triangle limits are not the only CSG guard. The runtime also caps
+intermediate BSP polygon tests, split vertices, and live polygons because a
+small curved input can split combinatorially. A `CSG BSP work` or `CSG
+intermediate` diagnostic means revise the authored attachment topology; the
+runtime deliberately aborts before memory growth can threaten Studio.
 
 Split one coherent surface along an existing semantic loop with two immediate
 statements:

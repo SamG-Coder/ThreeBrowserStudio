@@ -240,6 +240,10 @@ Constraints that participate in a pending CSG or attachment topology change
 fail with `plainform_constraint_validation_unavailable`; author and verify the
 topology stage separately because the compiler will not approve a constraint
 against the pre-CSG surface and imply it covers the evaluated result.
+CSG also enforces hard budgets on intermediate BSP polygon tests, generated
+split vertices, and live polygons. A low-triangle curved input can still be
+pathological; it now fails with a `CSG BSP work` or `CSG intermediate`
+diagnostic instead of exhausting the Studio process.
 
 An existing owner can be divided after authoring with `Split <owner> along
 $closed-curve` immediately followed by `Call the enclosed surface <name> [with

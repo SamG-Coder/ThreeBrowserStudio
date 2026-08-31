@@ -1,6 +1,36 @@
 const EPSILON = 1e-5;
 const MAX_INPUT_POLYGONS_PER_OPERAND = 512;
 const MAX_INPUT_POLYGONS_TOTAL = 1_024;
+const MAX_INTERMEDIATE_POLYGONS = 20_000;
+const MAX_BSP_POLYGON_TESTS = 100_000;
+const MAX_GENERATED_SPLIT_VERTICES = 250_000;
+
+class CsgBudget {
+  constructor() {
+    this.polygonTests = 0;
+    this.generatedSplitVertices = 0;
+  }
+
+  testPolygon() {
+    this.polygonTests += 1;
+    if (this.polygonTests > MAX_BSP_POLYGON_TESTS) {
+      throw new Error(`CSG BSP work exceeds the ${MAX_BSP_POLYGON_TESTS}-polygon-test safety limit.`);
+    }
+  }
+
+  generateSplitVertices(count) {
+    this.generatedSplitVertices += count;
+    if (this.generatedSplitVertices > MAX_GENERATED_SPLIT_VERTICES) {
+      throw new Error(`CSG intermediate splitting exceeds the ${MAX_GENERATED_SPLIT_VERTICES}-vertex safety limit.`);
+    }
+  }
+
+  observePolygonCount(count) {
+    if (count > MAX_INTERMEDIATE_POLYGONS) {
+      throw new Error(`CSG intermediate topology exceeds the ${MAX_INTERMEDIATE_POLYGONS}-polygon safety limit.`);
+    }
+  }
+}
 
 function vector(x = 0, y = 0, z = 0) {
   return {
@@ -44,7 +74,8 @@ function plane(normal, w) {
     normal, w,
     clone() { return plane(this.normal.clone(), this.w); },
     flip() { this.normal = this.normal.negated(); this.w = -this.w; },
-    splitPolygon(polygonValue, coplanarFront, coplanarBack, front, back) {
+    splitPolygon(polygonValue, coplanarFront, coplanarBack, front, back, budget) {
+      budget?.testPolygon();
       const COPLANAR = 0;
       const FRONT = 1;
       const BACK = 2;
@@ -82,6 +113,7 @@ function plane(normal, w) {
         }
         if (frontVertices.length >= 3) front.push(polygon(frontVertices));
         if (backVertices.length >= 3) back.push(polygon(backVertices));
+        budget?.generateSplitVertices(frontVertices.length + backVertices.length);
       }
     },
   };
@@ -97,7 +129,8 @@ function polygon(vertices) {
 }
 
 class BspNode {
-  constructor(polygons = []) {
+  constructor(polygons = [], budget = new CsgBudget()) {
+    this.budget = budget;
     this.plane = null;
     this.front = null;
     this.back = null;
@@ -106,14 +139,14 @@ class BspNode {
   }
 
   clone() {
-    const root = new BspNode();
+    const root = new BspNode([], this.budget);
     const pending = [[this, root]];
     while (pending.length > 0) {
       const [source, target] = pending.pop();
       target.plane = source.plane?.clone() ?? null;
       target.polygons = source.polygons.map(item => item.clone());
-      if (source.front) { target.front = new BspNode(); pending.push([source.front, target.front]); }
-      if (source.back) { target.back = new BspNode(); pending.push([source.back, target.back]); }
+      if (source.front) { target.front = new BspNode([], this.budget); pending.push([source.front, target.front]); }
+      if (source.back) { target.back = new BspNode([], this.budget); pending.push([source.back, target.back]); }
     }
     return root;
   }
@@ -139,7 +172,8 @@ class BspNode {
         if (!frame.node.plane) { completed = frame.polygons.slice(); pending.pop(); continue; }
         frame.front = [];
         frame.back = [];
-        frame.polygons.forEach(item => frame.node.plane.splitPolygon(item, frame.front, frame.back, frame.front, frame.back));
+        frame.polygons.forEach(item => frame.node.plane.splitPolygon(item, frame.front, frame.back, frame.front, frame.back, this.budget));
+        this.budget.observePolygonCount(frame.front.length + frame.back.length);
         frame.stage = 1;
         if (frame.node.front) { pending.push({ node: frame.node.front, polygons: frame.front, stage: 0 }); continue; }
         frame.frontResult = frame.front;
@@ -152,6 +186,7 @@ class BspNode {
       }
       if (frame.node.back && frame.backResult === undefined) frame.backResult = completed;
       completed = frame.frontResult.concat(frame.backResult);
+      this.budget.observePolygonCount(completed.length);
       pending.pop();
     }
     return completed;
@@ -162,6 +197,7 @@ class BspNode {
     while (pending.length > 0) {
       const node = pending.pop();
       node.polygons = other.clipPolygons(node.polygons);
+      this.budget.observePolygonCount(node.polygons.length);
       if (node.front) pending.push(node.front);
       if (node.back) pending.push(node.back);
     }
@@ -173,6 +209,7 @@ class BspNode {
     while (pending.length > 0) {
       const node = pending.pop();
       result.push(...node.polygons);
+      this.budget.observePolygonCount(result.length);
       if (node.back) pending.push(node.back);
       if (node.front) pending.push(node.front);
     }
@@ -187,13 +224,14 @@ class BspNode {
       node.plane ??= current[0].plane.clone();
       const front = [];
       const back = [];
-      current.forEach(item => node.plane.splitPolygon(item, node.polygons, node.polygons, front, back));
+      current.forEach(item => node.plane.splitPolygon(item, node.polygons, node.polygons, front, back, this.budget));
+      this.budget.observePolygonCount(node.polygons.length + front.length + back.length);
       if (back.length > 0) {
-        node.back ??= new BspNode();
+        node.back ??= new BspNode([], this.budget);
         pending.push({ node: node.back, polygons: back });
       }
       if (front.length > 0) {
-        node.front ??= new BspNode();
+        node.front ??= new BspNode([], this.budget);
         pending.push({ node: node.front, polygons: front });
       }
     }
@@ -201,22 +239,25 @@ class BspNode {
 }
 
 function union(left, right) {
-  const a = new BspNode(left.map(item => item.clone()));
-  const b = new BspNode(right.map(item => item.clone()));
+  const budget = new CsgBudget();
+  const a = new BspNode(left.map(item => item.clone()), budget);
+  const b = new BspNode(right.map(item => item.clone()), budget);
   a.clipTo(b); b.clipTo(a); b.invert(); b.clipTo(a); b.invert(); a.build(b.allPolygons());
   return a.allPolygons();
 }
 
 function subtract(left, right) {
-  const a = new BspNode(left.map(item => item.clone()));
-  const b = new BspNode(right.map(item => item.clone()));
+  const budget = new CsgBudget();
+  const a = new BspNode(left.map(item => item.clone()), budget);
+  const b = new BspNode(right.map(item => item.clone()), budget);
   a.invert(); a.clipTo(b); b.clipTo(a); b.invert(); b.clipTo(a); b.invert(); a.build(b.allPolygons()); a.invert();
   return a.allPolygons();
 }
 
 function intersect(left, right) {
-  const a = new BspNode(left.map(item => item.clone()));
-  const b = new BspNode(right.map(item => item.clone()));
+  const budget = new CsgBudget();
+  const a = new BspNode(left.map(item => item.clone()), budget);
+  const b = new BspNode(right.map(item => item.clone()), budget);
   a.invert(); b.clipTo(a); b.invert(); a.clipTo(b); b.clipTo(a); a.build(b.allPolygons()); a.invert();
   return a.allPolygons();
 }

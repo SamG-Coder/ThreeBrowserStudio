@@ -341,6 +341,34 @@ test('CSG rejects detailed curved loft operands before recursive work can exhaus
   }), /64-triangle curved-surface safety limit/u);
 });
 
+test('CSG bounds pathological intermediate BSP splitting below the input triangle limit', () => {
+  const profile = [[0, 0.62], [0.52, 0.3], [0.46, -0.42], [0, -0.62], [-0.46, -0.42], [-0.52, 0.3]];
+  const section = (height, widthScale, depthScale) => ({
+    points: profile.map(([x, z]) => [x * widthScale, height, z * depthScale]),
+  });
+  const head = {
+    kind: 'loft', closedProfile: true, capStart: true, capEnd: true,
+    profileResolution: 6, subdivisions: 0, continuity: 'positional',
+    sections: [
+      section(-0.9, 0.72, 0.7), section(-0.4, 1, 0.92),
+      section(0.35, 1.04, 0.98), section(1, 0.78, 0.76),
+    ],
+  };
+  const nose = {
+    kind: 'explicit',
+    positions: [-0.14,-0.24,-0.21, 0.14,-0.24,-0.21, 0.14,0.24,-0.21, -0.14,0.24,-0.21, -0.14,-0.24,0.21, 0.14,-0.24,0.21, 0.14,0.24,0.21, -0.14,0.24,0.21],
+    indices: [0,2,1,0,3,2,4,5,6,4,6,7,0,1,5,0,5,4,1,2,6,1,6,5,2,3,7,2,7,6,3,0,4,3,4,7],
+  };
+  const started = performance.now();
+  assert.throws(() => createGeometry(FAKE_THREE, {
+    kind: 'csg', operation: 'union', operands: [
+      { recipe: head },
+      { recipe: nose, transform: { position: [0, -0.05, 0.48] } },
+    ],
+  }), /CSG (?:BSP work|intermediate)/u);
+  assert.ok(performance.now() - started < 2_000, 'pathological CSG must fail before it can threaten process memory');
+});
+
 test('shape and extrude recipes build contours and holes with bounded options', () => {
   const recipe = {
     points: [[0, 0], [2, 0], [2, 2], [0, 2]],
