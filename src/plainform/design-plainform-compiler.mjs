@@ -10,6 +10,7 @@ import {
 import { SemanticSurfaceRegistry } from './semantic-surface.mjs';
 import { deformAlongSurfaceCurve, deformSurfaceRegion } from './semantic-surface-deformation.mjs';
 import { shellSurface } from './semantic-surface-shell.mjs';
+import { splitSurfaceAlongCurve } from './semantic-surface-split.mjs';
 import {
   angleBetweenSurfaceReferences,
   assertSurfaceSymmetry,
@@ -252,6 +253,7 @@ export class DesignPlainformCompiler {
     const booleanCommands = [];
     const semanticDeformationStates = new Map();
     const constraints = [];
+    let pendingSurfaceSplit = null;
     const ids = new Set([rootId]);
     let requestedPreview = false;
     let autoNumber = 0;
@@ -406,6 +408,10 @@ export class DesignPlainformCompiler {
           requestedPreview = true;
           interpretations.push('Will request a guarded dry-run preview.');
           continue;
+        }
+        if (pendingSurfaceSplit && !/^call the enclosed (?:surface|region) /iu.test(statement)) {
+          const error = new Error(`Split ${pendingSurfaceSplit.owner.entityId} along $${pendingSurfaceSplit.curve.name} must be followed immediately by “Call the enclosed surface <name>” so both results receive stable semantic identity.`);
+          error.code = 'plainform_surface_split_name_required'; throw error;
         }
         const minimumDistanceStatement = statement.match(/^let (.+?) be (?:the )?minimum distance between (.+?) and (.+)$/iu);
         if (minimumDistanceStatement) {
@@ -1116,6 +1122,53 @@ export class DesignPlainformCompiler {
           continue;
         }
 
+        const splitStatement = statement.match(/^split (.+?) along (\$[a-z0-9][a-z0-9._/-]*)$/iu);
+        if (splitStatement) {
+          const owner = semanticDeformationOwner(splitStatement[1]);
+          const curve = semanticSurfaces.resolveReference(splitStatement[2]);
+          if (curve.referenceKind !== 'surfaceCurve' || !curve.closed) {
+            const error = new Error(`Splitting ${owner.entityId} requires a closed surface curve; ${splitStatement[2]} is not one.`);
+            error.code = 'plainform_surface_split_not_closed'; throw error;
+          }
+          if (curve.ownerEntityId !== owner.entityId) {
+            const error = new Error(`${splitStatement[2]} belongs to ${curve.ownerEntityId}, not ${owner.entityId}.`);
+            error.code = 'plainform_surface_split_owner_mismatch'; throw error;
+          }
+          pendingSurfaceSplit = { owner, curve };
+          interpretations.push(`Will split ${owner.entityId} along the exact topology loop $${curve.name}.`);
+          continue;
+        }
+
+        const callSplitStatement = statement.match(/^call the enclosed (?:surface|region) (.+?)(?: with id ([a-z0-9][a-z0-9._/-]*))?$/iu);
+        if (callSplitStatement) {
+          if (!pendingSurfaceSplit) {
+            const error = new Error('“Call the enclosed surface” must immediately follow a supported Split statement.');
+            error.code = 'plainform_surface_split_missing'; throw error;
+          }
+          const name = clean(callSplitStatement[1]);
+          const id = callSplitStatement[2] ?? `entity/${slug(name)}`;
+          const { owner, curve } = pendingSurfaceSplit;
+          const result = splitSurfaceAlongCurve({ owner, curve });
+          owner.recipe = result.remainderRecipe;
+          const generatedOwner = generatedEntity(owner.entityId);
+          const materialId = owner.meshComponent?.materialId ?? generatedOwner?.components?.mesh?.materialId;
+          addGeneratedSolid({ id, name, recipe: result.enclosedWorldRecipe, materialId });
+          const enclosed = entities.find(entity => entity.id === id);
+          enclosed.metadata.plainformDesign = {
+            primitive: 'splitSurface', splitFrom: owner.entityId, boundaryReference: curve.name,
+            enclosedTriangleCount: result.enclosedTriangleCount, boundaryEdgeCount: result.boundaryEdgeCount,
+          };
+          semanticSurfaces.addDeformation({
+            kind: 'split', ownerEntityId: owner.entityId, resultEntityId: id, reference: curve.name,
+            enclosedTriangleCount: result.enclosedTriangleCount,
+            remainderTriangleCount: result.remainderTriangleCount,
+            boundaryEdgeCount: result.boundaryEdgeCount,
+          });
+          interpretations.push(`Split ${owner.entityId} into its remainder and enclosed surface ${id} along ${result.boundaryEdgeCount} exact topology edges.`);
+          pendingSurfaceSplit = null;
+          continue;
+        }
+
         const symmetryConstraintStatement = statement.match(/^keep (.+?) symmetric across (?:its |the )?(x|y|z) centre plane$/iu);
         if (symmetryConstraintStatement) {
           const owner = semanticSurfaceOwner(symmetryConstraintStatement[1]);
@@ -1156,6 +1209,39 @@ export class DesignPlainformCompiler {
           continue;
         }
 
+        const attachStatement = statement.match(/^attach (.+?) to (.+?) over (\$[a-z0-9][a-z0-9._/-]*), removing hidden intersecting surfaces, with (positional|tangent|curvature) continuity$/iu);
+        if (attachStatement) {
+          const tool = generatedEntity(attachStatement[1]);
+          const target = generatedEntity(attachStatement[2]);
+          if (!tool || !target) {
+            const error = new Error('Attach currently requires both solids to be generated earlier in the same Design Plainform program so the bounded topology result can be compiled atomically.');
+            error.code = 'plainform_attach_operand'; throw error;
+          }
+          const continuity = attachStatement[4].toLowerCase();
+          if (continuity !== 'positional') {
+            const error = new Error(`Attach with ${continuity} continuity requires a boundary-aware blend solver. Use positional continuity for intersecting solids; Plainform will not mislabel a CSG union as ${continuity} continuity.`);
+            error.code = 'plainform_attach_continuity_unsupported'; throw error;
+          }
+          const boundary = semanticSurfaces.resolveReference(attachStatement[3]);
+          if (![tool.id ?? tool.entityId, target.id ?? target.entityId].includes(boundary.ownerEntityId)) {
+            const error = new Error(`${attachStatement[3]} belongs to ${boundary.ownerEntityId}; an attachment boundary must belong to one of its two solids.`);
+            error.code = 'plainform_attach_boundary_owner'; throw error;
+          }
+          const toolBounds = surfaceBounds(boundaryOwner(tool.id ?? tool.entityId));
+          const targetBounds = surfaceBounds(boundaryOwner(target.id ?? target.entityId));
+          const overlap = toolBounds.max.map((value, axis) => Math.min(value, targetBounds.max[axis]) - Math.max(toolBounds.min[axis], targetBounds.min[axis]));
+          if (overlap.some(value => value <= 1e-9)) {
+            const error = new Error(`Attach requires intersecting solid bounds; ${tool.id ?? tool.entityId} and ${target.id ?? target.entityId} do not overlap in all three dimensions.`);
+            error.code = 'plainform_attach_no_intersection'; throw error;
+          }
+          booleanCommands.push({
+            operation: 'union', toolId: tool.id ?? tool.entityId, targetId: target.id ?? target.entityId,
+            attachment: { boundaryReference: boundary.name, continuity, removesHiddenIntersectingSurfaces: true },
+          });
+          interpretations.push(`Will attach ${tool.id ?? tool.entityId} to ${target.id ?? target.entityId} by bounded CSG union over $${boundary.name} with positional continuity.`);
+          continue;
+        }
+
         const ensureHeight = statement.match(/^ensure the design is exactly (.+?) high$/iu);
         if (ensureHeight) {
           const expected = length(ensureHeight[1], scope, 'Design height');
@@ -1182,6 +1268,10 @@ export class DesignPlainformCompiler {
     };
 
     execute(1, lines.length, variables);
+    if (pendingSurfaceSplit) {
+      const error = new Error(`Split ${pendingSurfaceSplit.owner.entityId} requires a following “Call the enclosed surface <name>” statement.`);
+      error.code = 'plainform_surface_split_name_required'; throw error;
+    }
     const inheritedConstraints = Object.values(scene.entities ?? {}).flatMap(entity => (
       Array.isArray(entity.metadata?.plainformDesign?.constraints) ? entity.metadata.plainformDesign.constraints : []
     ));
@@ -1350,7 +1440,8 @@ export class DesignPlainformCompiler {
         }
         target.components.mesh.geometryId = resultGeometryId;
         target.transform = { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] };
-        target.metadata.plainformDesign.boolean = { operation: command.operation, toolId: tool.id };
+        if (command.attachment) target.metadata.plainformDesign.attachment = { ...command.attachment, toolId: tool.id };
+        else target.metadata.plainformDesign.boolean = { operation: command.operation, toolId: tool.id };
         tool.visible = false;
         tool.metadata.plainformDesign.booleanToolFor = target.id;
       }

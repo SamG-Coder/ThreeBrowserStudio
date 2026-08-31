@@ -1495,6 +1495,32 @@ test('three_studio_apply persists constraints and rejects a later Plainform viol
   assert.equal(application.kernel.document.scenes['scene/main'].entities['entity/violating-refinement'], undefined);
 });
 
+test('three_studio_apply commits exact semantic surface splits through the kernel', async (t) => {
+  const { application } = await applicationFixture(t);
+  const result = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1', sessionId: application.sessionId,
+    projectId: 'project/active', baseRevision: 0,
+    idempotencyKey: 'plainform-split-attach-0001', label: 'Split and attach semantic surfaces',
+    operations: null,
+    program: {
+      language: 'plainform-v1',
+      source: [
+        'Design a manufactured assembly called Runtime Split Attach with id entity/runtime-split-attach.',
+        'Create a box called Housing with id entity/housing, with width 2 metres, height 2 metres, and depth 2 metres.',
+        'Create a closed surface curve called front perimeter on Housing through surface points nearest to local points [-50 centimetres, -50 centimetres, 50 centimetres], [50 centimetres, -50 centimetres, 50 centimetres], [50 centimetres, 50 centimetres, 50 centimetres], [-50 centimetres, 50 centimetres, 50 centimetres].',
+        'Split Housing along $front-perimeter.',
+        'Call the enclosed surface Front Panel with id entity/front-panel.',
+      ].join('\n'),
+    },
+  }).catch(error => assert.fail(`Split/attach runtime application failed: ${JSON.stringify(error.details ?? error.message)}`));
+  assert.equal(result.success, true);
+  const document = application.kernel.document;
+  const housing = document.scenes['scene/main'].entities['entity/housing'];
+  const panel = document.scenes['scene/main'].entities['entity/front-panel'];
+  assert.equal(document.resources.geometries[housing.components.mesh.geometryId].recipe.kind, 'indexedMesh');
+  assert.equal(document.resources.geometries[panel.components.mesh.geometryId].recipe.kind, 'indexedMesh');
+});
+
 test('three_studio_apply compiles Shader Plainform into a validated graph and material assignment', async (t) => {
   const { application } = await applicationFixture(t);
   const setup = await application.dispatch('three_studio_apply', {

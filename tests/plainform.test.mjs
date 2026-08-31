@@ -548,6 +548,64 @@ Maintain at least 50 centimetres clearance between First and Second.
 `, { project: projectFixture() }), error => error.code === 'plainform_constraint_unsatisfied' && error.details?.kind === 'minimumClearance');
 });
 
+test('Design Plainform splits an existing surface along an exact semantic edge loop', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a panel study called Exact Surface Split with id entity/exact-surface-split.
+Create a box called Housing with id entity/split-housing, with width 2 metres, height 2 metres, and depth 2 metres.
+Create a closed surface curve called front perimeter on Housing through surface points nearest to local points [-50 centimetres, -50 centimetres, 50 centimetres], [50 centimetres, -50 centimetres, 50 centimetres], [50 centimetres, 50 centimetres, 50 centimetres], [-50 centimetres, 50 centimetres, 50 centimetres].
+Split Housing along $front-perimeter.
+Call the enclosed surface Front Panel with id entity/front-panel.
+`, { project: projectFixture() });
+  const resources = compiled.operations.find(operation => operation.op === 'resource.createMany').items;
+  const housing = compiled.operations.find(operation => operation.op === 'entity.createMany').items
+    .map(item => item.entity).find(entity => entity.id === 'entity/split-housing');
+  const panel = compiled.operations.find(operation => operation.op === 'entity.createMany').items
+    .map(item => item.entity).find(entity => entity.id === 'entity/front-panel');
+  const housingRecipe = resources.find(item => item.resource.id === housing.components.mesh.geometryId).resource.recipe;
+  const panelRecipe = resources.find(item => item.resource.id === panel.components.mesh.geometryId).resource.recipe;
+  assert.equal(housingRecipe.kind, 'indexedMesh');
+  assert.equal(housingRecipe.indices.length / 3, 10);
+  assert.equal(panelRecipe.kind, 'indexedMesh');
+  assert.equal(panelRecipe.indices.length / 3, 2);
+  assert.equal(panel.metadata.plainformDesign.boundaryReference, 'front-perimeter');
+});
+
+test('Design Plainform rejects a split curve that is not an exact topology edge loop', () => {
+  assert.throws(() => new PlainformCompiler().compile(`
+Design a panel study called Invalid Surface Split with id entity/invalid-surface-split.
+Create a box called Housing with id entity/split-housing, with width 2 metres, height 2 metres, and depth 2 metres.
+Create a closed surface curve called inset outline on Housing through surface points nearest to local points [-25 centimetres, -25 centimetres, 50 centimetres], [25 centimetres, -25 centimetres, 50 centimetres], [25 centimetres, 25 centimetres, 50 centimetres], [-25 centimetres, 25 centimetres, 50 centimetres].
+Split Housing along $inset-outline.
+Call the enclosed surface Inset Panel.
+`, { project: projectFixture() }), error => error.code === 'plainform_surface_split_requires_edge_loop');
+});
+
+test('Design Plainform attaches intersecting generated solids with honest positional continuity', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a joined housing called Positional Attachment with id entity/positional-attachment.
+Create a box called Main Shell with id entity/main-shell, with width 2 metres, height 2 metres, and depth 2 metres.
+Create a box called Boss with id entity/boss, with width 1 metre, height 1 metre, and depth 1 metre, centred at [80 centimetres, 0 metres, 0 metres].
+Create a surface curve called join rail on Main Shell through surface points nearest to local points [50 centimetres, -25 centimetres, 50 centimetres], [50 centimetres, 25 centimetres, 50 centimetres].
+Attach Boss to Main Shell over $join-rail, removing hidden intersecting surfaces, with positional continuity.
+`, { project: projectFixture() });
+  const entities = compiled.operations.find(operation => operation.op === 'entity.createMany').items.map(item => item.entity);
+  const target = entities.find(entity => entity.id === 'entity/main-shell');
+  const tool = entities.find(entity => entity.id === 'entity/boss');
+  const resources = compiled.operations.find(operation => operation.op === 'resource.createMany').items;
+  assert.equal(resources.find(item => item.resource.id === target.components.mesh.geometryId).resource.recipe.kind, 'csg');
+  assert.equal(target.metadata.plainformDesign.attachment.continuity, 'positional');
+  assert.equal(target.metadata.plainformDesign.attachment.boundaryReference, 'join-rail');
+  assert.equal(tool.visible, false);
+
+  assert.throws(() => new PlainformCompiler().compile(`
+Design a joined housing called Unsupported Blend with id entity/unsupported-blend.
+Create a box called Main Shell with id entity/main-shell, with width 2 metres, height 2 metres, and depth 2 metres.
+Create a box called Boss with id entity/boss, with width 1 metre, height 1 metre, and depth 1 metre, centred at [80 centimetres, 0 metres, 0 metres].
+Create a surface curve called join rail on Main Shell through surface points nearest to local points [50 centimetres, -25 centimetres, 50 centimetres], [50 centimetres, 25 centimetres, 50 centimetres].
+Attach Boss to Main Shell over $join-rail, removing hidden intersecting surfaces, with curvature continuity.
+`, { project: projectFixture() }), error => error.code === 'plainform_attach_continuity_unsupported');
+});
+
 test('Design Plainform projects anchors against a generated curved loft owner', () => {
   const compiled = new PlainformCompiler().compile(`
 Design a head study called Loft Surface Owner with id entity/loft-surface-owner.

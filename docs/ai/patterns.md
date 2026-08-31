@@ -229,6 +229,23 @@ with `plainform_constraint_unsatisfied`. This is compile-time Design Plainform
 enforcement, not a claim that unrelated direct MCP operations participate in a
 background global constraint solver.
 
+Intersecting solids generated in the same Design program can be joined with
+`Attach <tool> to <target> over $boundary, removing hidden intersecting
+surfaces, with positional continuity`. This performs the same bounded,
+deterministic CSG topology union as an explicit union while retaining the
+semantic attachment reference. Non-intersecting bounds reject. Tangent and
+curvature continuity reject until a boundary-aware blend solver can actually
+satisfy them; they are never silently relabelled positional unions.
+
+An existing owner can be divided after authoring with `Split <owner> along
+$closed-curve` immediately followed by `Call the enclosed surface <name> [with
+id <stable-id>]`. The current exact implementation requires the projected
+curve to coincide with a simple, separating, closed loop of existing topology
+edges. It then emits two non-overlapping indexed surfaces and preserves the
+owner ID for the remainder. A curve through triangle interiors rejects with
+`plainform_surface_split_requires_edge_loop`; Plainform does not approximate
+the cut or duplicate overlapping faces.
+
 When a complex result is weak, revise the authored profiles, section spacing,
 guide binding, dimensions, material, camera, and light before extending the
 language. Add a new Plainform/runtime capability only after a required form

@@ -327,6 +327,44 @@ failure aborts the whole atomic apply with
 `plainform_constraint_unsatisfied`. This is deliberately not a hidden live
 solver and does not claim enforcement for unrelated direct MCP mutations.
 
+### Attach, trim, and exact surface splitting
+
+Join two intersecting solids created earlier in the same Design program with:
+
+```text
+Attach Mount Boss to Main Housing over $join-rail, removing hidden intersecting surfaces, with positional continuity.
+```
+
+The named boundary must belong to one attachment operand. Both solid bounds
+must overlap in all three dimensions. The compiler performs a bounded CSG
+union, removes hidden intersecting surfaces, keeps the target ID, hides the
+consumed tool, and records the attachment relationship. This stage supports
+`positional` continuity only. `with tangent continuity` and `with curvature
+continuity` fail with `plainform_attach_continuity_unsupported` because a CSG
+union cannot honestly guarantee either condition. Existing-scene operands
+also reject: both operands must currently be generated within the same atomic
+Design program.
+
+Split one coherent surface along an existing semantic loop with two immediate
+statements:
+
+```text
+Split Housing along $front-perimeter.
+Call the enclosed surface Front Panel with id entity/front-panel.
+```
+
+The first statement requires a closed surface curve owned by the surface being
+split. The second statement is mandatory and gives the enclosed result a
+stable semantic identity. The owner keeps its ID and becomes the remainder;
+the named result is a separate, non-overlapping indexed surface. The exact
+solver currently accepts only a simple closed curve whose anchors and segments
+coincide with existing topology vertices and edges and whose removal separates
+the owner into exactly two components. Curves crossing triangle interiors fail
+with `plainform_surface_split_requires_edge_loop`; open curves fail with
+`plainform_surface_split_not_closed`; non-separating loops fail with
+`plainform_surface_split_nonseparating_loop`. No approximate centroid cut,
+overlapping duplicate, or raw topology command is emitted.
+
 Arbitrary profiles can also become bevelled watertight extrusions:
 
 ```text
