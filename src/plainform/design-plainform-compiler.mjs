@@ -1284,6 +1284,17 @@ export class DesignPlainformCompiler {
         || modifiedEntityIds.has(constraint.secondEntityId)
       )),
     ];
+    const postValidationTopologyOwners = new Set(booleanCommands.map(command => command.targetId));
+    for (const constraint of constraintsToValidate) {
+      const participants = [constraint.entityId, constraint.firstEntityId, constraint.secondEntityId].filter(Boolean);
+      const unavailable = participants.find(entityId => postValidationTopologyOwners.has(entityId));
+      if (unavailable) {
+        const error = new Error(`Constraint validation for ${unavailable} cannot run before its pending CSG or attachment topology is evaluated. Split the topology change and constraint into verified stages; Plainform will not silently accept an unvalidated post-CSG constraint.`);
+        error.code = 'plainform_constraint_validation_unavailable';
+        error.details = { constraint: structuredClone(constraint), entityId: unavailable, reason: 'postCsgTopology' };
+        throw error;
+      }
+    }
     const constraintOwner = entityId => semanticSurfaceOwner(entityId);
     for (const constraint of constraintsToValidate) {
       if (constraint.kind === 'symmetry') assertSurfaceSymmetry(constraintOwner(constraint.entityId), constraint.axis);

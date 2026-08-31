@@ -236,6 +236,10 @@ deterministic CSG topology union as an explicit union while retaining the
 semantic attachment reference. Non-intersecting bounds reject. Tangent and
 curvature continuity reject until a boundary-aware blend solver can actually
 satisfy them; they are never silently relabelled positional unions.
+Constraints that participate in a pending CSG or attachment topology change
+fail with `plainform_constraint_validation_unavailable`; author and verify the
+topology stage separately because the compiler will not approve a constraint
+against the pre-CSG surface and imply it covers the evaluated result.
 
 An existing owner can be divided after authoring with `Split <owner> along
 $closed-curve` immediately followed by `Call the enclosed surface <name> [with

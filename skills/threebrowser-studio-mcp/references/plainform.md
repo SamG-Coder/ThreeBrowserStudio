@@ -344,6 +344,10 @@ continuity` fail with `plainform_attach_continuity_unsupported` because a CSG
 union cannot honestly guarantee either condition. Existing-scene operands
 also reject: both operands must currently be generated within the same atomic
 Design program.
+If a stored or newly declared constraint participates in the pending CSG
+target, the program fails with `plainform_constraint_validation_unavailable`.
+Author and verify the topology stage separately; Plainform never validates the
+pre-CSG operand and silently treats that as proof about the post-CSG result.
 
 Split one coherent surface along an existing semantic loop with two immediate
 statements:

@@ -604,6 +604,18 @@ Create a box called Boss with id entity/boss, with width 1 metre, height 1 metre
 Create a surface curve called join rail on Main Shell through surface points nearest to local points [50 centimetres, -25 centimetres, 50 centimetres], [50 centimetres, 25 centimetres, 50 centimetres].
 Attach Boss to Main Shell over $join-rail, removing hidden intersecting surfaces, with curvature continuity.
 `, { project: projectFixture() }), error => error.code === 'plainform_attach_continuity_unsupported');
+
+  assert.throws(() => new PlainformCompiler().compile(`
+Design a constrained joined housing called Unvalidated Attachment with id entity/unvalidated-attachment.
+Create a box called Main Shell with id entity/main-shell, with width 2 metres, height 2 metres, and depth 2 metres.
+Create a box called Boss with id entity/boss, with width 1 metre, height 1 metre, and depth 1 metre, centred at [80 centimetres, 0 metres, 0 metres].
+Create a surface curve called join rail on Main Shell through surface points nearest to local points [50 centimetres, -25 centimetres, 50 centimetres], [50 centimetres, 25 centimetres, 50 centimetres].
+Keep Main Shell symmetric across its x centre plane.
+Attach Boss to Main Shell over $join-rail, removing hidden intersecting surfaces, with positional continuity.
+`, { project: projectFixture() }), error => (
+    error.code === 'plainform_constraint_validation_unavailable'
+    && error.details?.reason === 'postCsgTopology'
+  ));
 });
 
 test('Design Plainform projects anchors against a generated curved loft owner', () => {
