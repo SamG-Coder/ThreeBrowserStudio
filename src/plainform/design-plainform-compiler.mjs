@@ -2,6 +2,11 @@ import { evaluateDesignExpression, evaluateDesignVector } from './design-express
 import { ProjectIndex } from '../core/indexes.mjs';
 import { PlainformSpatialResolver } from './spatial-relations.mjs';
 import { composeTransformMatrix, transformPointByMatrix } from '../core/transform-math.mjs';
+import {
+  buildConstrainedPatchSections,
+  matchBoundaryDirection,
+  projectSurfaceAnchors,
+} from './constrained-surface.mjs';
 
 const MAX_DESIGN_ENTITIES = 128;
 const MAX_LOOP_ITERATIONS = 128;
@@ -172,14 +177,6 @@ function endpointDistanceSquared(left, right) {
   return left.reduce((sum, value, axis) => sum + (value - right[axis]) ** 2, 0);
 }
 
-function matchBoundaryDirection(first, second) {
-  const same = endpointDistanceSquared(first[0], second[0])
-    + endpointDistanceSquared(first.at(-1), second.at(-1));
-  const reversed = endpointDistanceSquared(first[0], second.at(-1))
-    + endpointDistanceSquared(first.at(-1), second[0]);
-  return reversed < same ? [...second].reverse() : second;
-}
-
 function activeScene(project) {
   const sceneId = project.activeSceneId ?? project.sceneOrder?.[0] ?? Object.keys(project.scenes ?? {})[0];
   if (!sceneId || !project.scenes?.[sceneId]) {
@@ -273,13 +270,33 @@ export class DesignPlainformCompiler {
       return entities.find(entity => entity.id === generatedId)
         ?? lofts.find(loft => loft.entityId === generatedId);
     };
+    const unitRecipe = primitiveKind => primitiveKind === 'box'
+      ? { kind: 'box', width: 1, height: 1, depth: 1 }
+      : primitiveKind === 'cylinder'
+        ? { kind: 'cylinder', radiusTop: 1, radiusBottom: 1, height: 1, radialSegments: 32 }
+        : { kind: 'plane', width: 1, height: 1 };
+    const loftRecipe = loft => ({
+      kind: 'loft', sections: loft.profile.sections, closedProfile: true, capStart: true, capEnd: true,
+      profileResolution: loft.profile.points.length,
+      subdivisions: loft.continuity === 'positional' ? 0 : 3,
+      alignProfile: 'closest', continuity: loft.continuity,
+      guideCurves: loft.guideCurves, modifiers: loft.modifiers,
+    });
     const boundaryOwner = phrase => {
       const generated = generatedEntity(phrase);
       if (generated) {
-        const entity = generated.entityId
-          ? { id: generated.entityId, transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] } }
-          : generated;
-        return { entityId: entity.id, matrix: composeTransformMatrix(entity.transform) };
+        if (generated.entityId) return {
+          entityId: generated.entityId,
+          matrix: composeTransformMatrix({ position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] }),
+          recipe: loftRecipe(generated),
+        };
+        const geometryId = generated.components?.mesh?.geometryId;
+        const generatedResource = generatedResources.find(item => item.resource.id === geometryId)?.resource;
+        return {
+          entityId: generated.id,
+          matrix: composeTransformMatrix(generated.transform),
+          recipe: generatedResource?.recipe ?? unitRecipe(generated.metadata?.plainformDesign?.primitive),
+        };
       }
       const exactId = clean(phrase);
       const exact = projectIndex.entities.get(exactId);
@@ -288,7 +305,13 @@ export class DesignPlainformCompiler {
           const error = new Error(`Boundary owner ${exact.entity.id} belongs to ${exact.sceneId}, not the active scene ${scene.id}.`);
           error.code = 'plainform_cross_scene_boundary'; throw error;
         }
-        return { entityId: exact.entity.id, matrix: spatial.worldMatrix(exact) };
+        const geometryId = exact.entity.components?.mesh?.geometryId;
+        const resource = geometryId ? projectIndex.resources.get(geometryId)?.resource : null;
+        return {
+          entityId: exact.entity.id,
+          matrix: spatial.worldMatrix(exact),
+          recipe: resource?.recipe ?? resource?.parameters ?? resource,
+        };
       }
       const error = new Error(`Boundary owner “${phrase}” must be an exact entity ID or an object created earlier in this design.`);
       error.code = 'plainform_boundary_owner_not_found';
@@ -418,6 +441,53 @@ export class DesignPlainformCompiler {
           continue;
         }
         const boundaryStatement = statement.match(/^name a boundary called (.+?) on (.+?) through (local|design) points (.+)$/iu);
+        const surfaceBoundaryStatement = statement.match(/^name a (?:surface-anchored )?boundary called (.+?) on (.+?) through surface points nearest to (local|design) points (.+)$/iu);
+        if (surfaceBoundaryStatement) {
+          const name = boundaryReferenceKey(surfaceBoundaryStatement[1]);
+          if (boundaries.has(name)) {
+            const error = new Error(`Boundary “${name}” is already defined in this design.`);
+            error.code = 'plainform_boundary_exists'; throw error;
+          }
+          if (boundaries.size >= MAX_BOUNDARIES) {
+            const error = new Error(`Design Plainform supports at most ${MAX_BOUNDARIES} named boundaries.`);
+            error.code = 'plainform_boundary_limit'; throw error;
+          }
+          const owner = boundaryOwner(surfaceBoundaryStatement[2]);
+          if (!owner.recipe) {
+            const error = new Error(`Boundary owner ${owner.entityId} has no project-owned mesh geometry to anchor against.`);
+            error.code = 'plainform_surface_anchor_unavailable'; throw error;
+          }
+          const coordinateSpace = surfaceBoundaryStatement[3].toLowerCase();
+          const authoredPoints = parseVectorGroups(surfaceBoundaryStatement[4], scope, {
+            dimensions: 3, dimension: 'length', phrase: `Surface boundary ${name}`,
+          });
+          if (authoredPoints.length < 3 || authoredPoints.length > MAX_BOUNDARY_POINTS) {
+            const error = new Error(`Boundary “${name}” requires 3 to ${MAX_BOUNDARY_POINTS} points.`);
+            error.code = 'plainform_boundary_points'; throw error;
+          }
+          const seedPoints = coordinateSpace === 'local'
+            ? authoredPoints.map(point => transformPointByMatrix(owner.matrix, point))
+            : authoredPoints.map(point => [...point]);
+          const projected = projectSurfaceAnchors({
+            recipe: owner.recipe, matrix: owner.matrix, seedPoints, entityId: owner.entityId,
+          });
+          const points = projected.map(anchor => anchor.point);
+          if (new Set(points.map(point => point.map(value => value.toPrecision(12)).join('\u0000'))).size < 3) {
+            const error = new Error(`Boundary “${name}” projects to fewer than three distinct surface points.`);
+            error.code = 'plainform_boundary_points'; throw error;
+          }
+          boundaries.set(name, {
+            name, ownerEntityId: owner.entityId, coordinateSpace, anchorMode: 'nearestSurface',
+            authoredPoints: authoredPoints.map(point => [...point]),
+            points, normals: projected.map(anchor => anchor.normal),
+            anchors: projected.map((anchor, index) => ({
+              seedPoint: [...seedPoints[index]], projectedPoint: [...anchor.point], normal: [...anchor.normal],
+              triangleIndex: anchor.triangleIndex, barycentric: [...anchor.barycentric],
+            })),
+          });
+          interpretations.push(`Anchored boundary $${name} to the nearest surface of ${owner.entityId} at ${points.length} bounded samples.`);
+          continue;
+        }
         if (boundaryStatement) {
           const name = boundaryReferenceKey(boundaryStatement[1]);
           if (boundaries.has(name)) {
@@ -659,7 +729,7 @@ export class DesignPlainformCompiler {
           continue;
         }
 
-        const patch = statement.match(/^create a constrained surface patch called (.+?) with id ([a-z0-9][a-z0-9._/-]*) between (\$[a-z0-9][a-z0-9._/-]*) and (\$[a-z0-9][a-z0-9._/-]*)(?:,? with (positional|tangent|curvature) continuity)?(?:,? using material ([a-z0-9][a-z0-9._/-]*))?$/iu);
+        const patch = statement.match(/^create a constrained surface patch called (.+?) with id ([a-z0-9][a-z0-9._/-]*) between (\$[a-z0-9][a-z0-9._/-]*) and (\$[a-z0-9][a-z0-9._/-]*)(?:,? bounded by (\$[a-z0-9][a-z0-9._/-]*) and (\$[a-z0-9][a-z0-9._/-]*))?(,? meeting both owner surfaces tangentially)?(?:,? with (positional|tangent|curvature) continuity)?(?:,? using material ([a-z0-9][a-z0-9._/-]*))?$/iu);
         if (patch) {
           const firstName = boundaryReferenceKey(patch[3]);
           const secondName = boundaryReferenceKey(patch[4]);
@@ -692,13 +762,29 @@ export class DesignPlainformCompiler {
             const error = new Error('A constrained surface patch requires two spatially distinct boundaries.');
             error.code = 'plainform_degenerate_surface_patch'; throw error;
           }
-          const continuity = patch[5]?.toLowerCase() ?? 'positional';
+          const endNames = patch[5] && patch[6]
+            ? [boundaryReferenceKey(patch[5]), boundaryReferenceKey(patch[6])]
+            : [];
+          const endBoundaries = endNames.map(name => boundaries.get(name));
+          if (endBoundaries.some(boundary => !boundary)) {
+            const missing = endNames.filter((name, index) => !endBoundaries[index]).map(name => `$${name}`);
+            const error = new Error(`Unknown named boundary ${missing.join(' and ')}. Define each boundary before creating its patch.`);
+            error.code = 'plainform_unknown_boundary'; throw error;
+          }
+          const sourceTangency = Boolean(patch[7]);
+          const continuity = patch[8]?.toLowerCase() ?? 'positional';
+          const enhanced = sourceTangency || endBoundaries.length > 0;
+          const evaluated = enhanced ? buildConstrainedPatchSections({
+            first, second, ends: endBoundaries.length > 0 ? endBoundaries : null,
+            continuity, sourceTangency,
+          }) : null;
           surfacePatches.push({
-            entityId, geometryId, name: quoteName(patch[1]), continuity, materialId: patch[6],
-            boundaries: [first, { ...second, points: secondPoints }],
+            entityId, geometryId, name: quoteName(patch[1]), continuity, materialId: patch[9], sourceTangency,
+            boundaries: [first, { ...second, points: secondPoints }], endBoundaries,
+            ...(evaluated ? { sections: evaluated.sections, profileResolution: evaluated.profileResolution } : {}),
           });
           aliases[key(patch[1])] = [entityId];
-          interpretations.push(`Will span $${first.name} and $${second.name} with constrained patch “${quoteName(patch[1])}” using ${continuity} continuity.`);
+          interpretations.push(`Will span $${first.name} and $${second.name} with constrained patch “${quoteName(patch[1])}” using ${continuity} continuity${endBoundaries.length ? `, bounded by $${endBoundaries[0].name} and $${endBoundaries[1].name}` : ''}${sourceTangency ? ', tangent to both owner surfaces' : ''}.`);
           continue;
         }
 
@@ -806,12 +892,7 @@ export class DesignPlainformCompiler {
     for (const loft of lofts) resources.push({
       resourceType: 'geometries',
       resource: { id: loft.geometryId, recipe: {
-        kind: 'loft', sections: loft.profile.sections, closedProfile: true, capStart: true, capEnd: true,
-        profileResolution: loft.profile.points.length,
-        subdivisions: loft.continuity === 'positional' ? 0 : 3,
-        alignProfile: 'closest', continuity: loft.continuity,
-        guideCurves: loft.guideCurves,
-        modifiers: loft.modifiers,
+        ...loftRecipe(loft),
       } },
     });
     for (const patch of surfacePatches) resources.push({
@@ -820,23 +901,24 @@ export class DesignPlainformCompiler {
         id: patch.geometryId,
         metadata: { plainformDesign: {
           primitive: 'surfacePatch',
-          boundaryRefs: patch.boundaries.map(boundary => ({
+          boundaryRefs: [...patch.boundaries, ...patch.endBoundaries].map(boundary => ({
             name: boundary.name, ownerEntityId: boundary.ownerEntityId,
           })),
+          sourceTangency: patch.sourceTangency,
         } },
         recipe: {
           kind: 'loft',
-          sections: patch.boundaries.map(boundary => ({
+          sections: patch.sections ?? patch.boundaries.map(boundary => ({
             id: `boundary/${slug(boundary.name)}`,
             points: boundary.points.map(point => [...point]),
           })),
           closedProfile: false,
           capStart: false,
           capEnd: false,
-          profileResolution: Math.max(...patch.boundaries.map(boundary => boundary.points.length)),
-          subdivisions: patch.continuity === 'positional' ? 0 : 3,
+          profileResolution: patch.profileResolution ?? Math.max(...patch.boundaries.map(boundary => boundary.points.length)),
+          subdivisions: patch.sections ? 0 : (patch.continuity === 'positional' ? 0 : 3),
           alignProfile: 'authored',
-          continuity: patch.continuity,
+          continuity: patch.sections ? 'positional' : patch.continuity,
           guideCurves: [],
           modifiers: [],
         },
@@ -861,7 +943,8 @@ export class DesignPlainformCompiler {
       components: { mesh: { geometryId: patch.geometryId, ...(patch.materialId ? { materialId: patch.materialId } : {}) } },
       metadata: { plainformDesign: {
         primitive: 'surfacePatch', continuity: patch.continuity,
-        boundaryRefs: patch.boundaries.map(boundary => ({
+        sourceTangency: patch.sourceTangency,
+        boundaryRefs: [...patch.boundaries, ...patch.endBoundaries].map(boundary => ({
           name: boundary.name, ownerEntityId: boundary.ownerEntityId,
         })),
       } },
@@ -941,6 +1024,13 @@ export class DesignPlainformCompiler {
             ownerEntityId: boundary.ownerEntityId,
             coordinateSpace: boundary.coordinateSpace,
             authoredPoints: boundary.authoredPoints.map(point => [...point]),
+            ...(boundary.anchorMode ? {
+              anchorMode: boundary.anchorMode,
+              anchors: boundary.anchors.map(anchor => ({
+                seedPoint: [...anchor.seedPoint], projectedPoint: [...anchor.projectedPoint], normal: [...anchor.normal],
+                triangleIndex: anchor.triangleIndex, barycentric: [...anchor.barycentric],
+              })),
+            } : {}),
           })),
         } },
       } },

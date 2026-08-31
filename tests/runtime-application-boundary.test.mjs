@@ -1340,6 +1340,37 @@ test('three_studio_apply commits named cross-object boundaries as a constrained 
   assert.equal(document.scenes['scene/main'].entities['entity/connector-skin'].parentId, 'entity/runtime-patch');
 });
 
+test('three_studio_apply commits surface anchors, four boundary controls, and source tangency through the kernel', async (t) => {
+  const { application } = await applicationFixture(t);
+  const result = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1', sessionId: application.sessionId,
+    projectId: 'project/active', baseRevision: 0,
+    idempotencyKey: 'plainform-surface-constraints-0001', label: 'Create a surface-anchored four-sided patch',
+    operations: null,
+    program: {
+      language: 'plainform-v1',
+      source: [
+        'Design a connector called Runtime Surface Constraints with id entity/runtime-surface-constraints.',
+        'Create a box called Upper Shell with id entity/upper-shell, with width 2 metres, height 40 centimetres, and depth 1 metre, centred at [0 metres, 1 metre, 0 metres].',
+        'Create a box called Lower Shell with id entity/lower-shell, with width 1.6 metres, height 40 centimetres, and depth 80 centimetres, centred at [0 metres, 0 metres, 0 metres].',
+        'Name a surface-anchored boundary called upper rail on Upper Shell through surface points nearest to design points [-40 centimetres, 1 metre, 80 centimetres], [0 metres, 1 metre, 80 centimetres], [40 centimetres, 1 metre, 80 centimetres].',
+        'Name a surface-anchored boundary called lower rail on Lower Shell through surface points nearest to design points [-32 centimetres, 0 metres, 70 centimetres], [0 metres, 0 metres, 70 centimetres], [32 centimetres, 0 metres, 70 centimetres].',
+        'Create a constrained surface patch called Attached Skin with id entity/attached-skin between $upper-rail and $lower-rail, meeting both owner surfaces tangentially, with curvature continuity.',
+      ].join('\n'),
+    },
+  }).catch(error => assert.fail(`Surface-constraint runtime application failed: ${JSON.stringify(error.details ?? error.message)}`));
+  assert.equal(result.success, true);
+  assert.equal(result.revision, 1);
+  const document = application.kernel.document;
+  const root = document.scenes['scene/main'].entities['entity/runtime-surface-constraints'];
+  assert.equal(root.metadata.plainformDesign.boundaries[0].anchorMode, 'nearestSurface');
+  assert.equal(root.metadata.plainformDesign.boundaries[0].anchors.length, 3);
+  const patch = document.resources.geometries['geometry/plainform-design/runtime-surface-constraints/attached-skin'];
+  assert.equal(patch.metadata.plainformDesign.sourceTangency, true);
+  assert.equal(patch.recipe.sections.length, 4);
+  assert.equal(patch.recipe.continuity, 'positional');
+});
+
 test('three_studio_apply compiles Shader Plainform into a validated graph and material assignment', async (t) => {
   const { application } = await applicationFixture(t);
   const setup = await application.dispatch('three_studio_apply', {

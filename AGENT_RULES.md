@@ -312,8 +312,11 @@ operations.
   sections, guide curves, continuity, local form modifiers, extrusion, and
   bounded booleans before proposing another primitive. Use exact entity-owned
   named boundaries and constrained surface patches only for the remaining
-  cross-object attachment case. They are authored snapshots, not a live
-  constraint solver. Diagnose weak authored sections or incomplete
+  cross-object attachment case. Use surface-anchored boundaries when seed
+  points must be projected onto project-owned geometry; use named end
+  boundaries only when both patch corners require exact control; request
+  source tangency only from anchored rails with recorded normals. All are
+  authored snapshots, not a live constraint solver. Diagnose weak authored
   documentation first; extend the compiler/runtime only when the intended form
   cannot reasonably be expressed with those general capabilities.
 - Use graph parameters or material instances for shader variants.

@@ -167,8 +167,11 @@ primitives, arbitrary or symmetric smooth profiles, independently controlled
 loft sections, open guide curves, positional/tangent/curvature interpolation,
 bounded local bulge/pinch/offset shaping, bevelled profile extrusion, and
 deterministic union/subtract/intersect. For the remaining cross-object surface
-attachment case, it also supports exact entity-owned named boundaries and
-constrained open patches between two `$boundary` references. It emits shared
+attachment case, it also supports exact entity-owned named boundaries,
+bounded nearest-surface anchors, constrained open patches between two
+`$boundary` references, optional named end boundaries, and source-surface
+tangency derived from anchored normals. These are compile-time authored
+constraints rather than a hidden live solver. It emits shared
 geometry and batched entities, so repeated mathematical elements do not
 consume one operation per mesh. The design root retains the source, evaluated
 top-level parameters, and boundary declarations in metadata. Use the full

@@ -536,7 +536,7 @@ function alignedLoftProfile(previous, current, enabled) {
   return current.map((_, index) => current[(index + bestOffset) % current.length]);
 }
 
-function evaluatedLoftSections(recipe) {
+export function evaluateLoftSections(recipe) {
   if (!Array.isArray(recipe.sections) || recipe.sections.length < 2
       || recipe.sections.length > GEOMETRY_CONTROL_POINT_LIMITS.loftSections) {
     throw new Error(`Loft requires 2 to ${GEOMETRY_CONTROL_POINT_LIMITS.loftSections} sections.`);
@@ -640,7 +640,7 @@ function evaluatedLoftSections(recipe) {
 }
 
 function loftGeometry(THREE, recipe) {
-  const { sections, profileSize, closed } = evaluatedLoftSections(recipe);
+  const { sections, profileSize, closed } = evaluateLoftSections(recipe);
   const positions = sections.flat(2);
   const uvs = [];
   for (let section = 0; section < sections.length; section += 1) {

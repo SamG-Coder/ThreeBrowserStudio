@@ -15,8 +15,9 @@ authoritative.
 
 Read [references/plainform.md](references/plainform.md) before using
 `plainform-v1` for controlled-English object layouts, references, prefabs,
-face grids, iteration, transforms, Design solids, named boundary patches, or
-shader math. Use Plainform only through `three_studio_apply`; it is another
+face grids, iteration, transforms, Design solids, surface-anchored and
+four-boundary constrained patches, source-surface tangency, or shader math.
+Use Plainform only through `three_studio_apply`; it is another
 typed input mode, not a scripting escape hatch.
 
 ## Non-negotiable authoring boundary

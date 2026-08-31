@@ -255,6 +255,100 @@ Name a boundary called edge on Panel through design points [0 metres, 0 metres, 
 `, { project: projectFixture() }), error => error.code === 'plainform_boundary_points');
 });
 
+test('Design Plainform anchors boundary samples to source surfaces and derives tangent-plane patch controls', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a facial connector called Surface Anchors with id entity/surface-anchors.
+Create a cylinder called Brow Shell with id entity/brow-shell, with radius 1 metre and height 40 centimetres, centred at [0 metres, 1 metre, 0 metres].
+Create a cylinder called Eye Shell with id entity/eye-shell, with radius 80 centimetres and height 40 centimetres, centred at [0 metres, 0 metres, 0 metres].
+Name a surface-anchored boundary called brow rail on Brow Shell through surface points nearest to design points [-40 centimetres, 1 metre, 1.2 metres], [0 metres, 1 metre, 1.2 metres], [40 centimetres, 1 metre, 1.2 metres].
+Name a surface-anchored boundary called eye rail on Eye Shell through surface points nearest to design points [-32 centimetres, 0 metres, 1 metre], [0 metres, 0 metres, 1 metre], [32 centimetres, 0 metres, 1 metre].
+Create a constrained surface patch called Lid with id entity/lid between $brow-rail and $eye-rail, meeting both owner surfaces tangentially, with curvature continuity.
+`, { project: projectFixture() });
+  assert.ok(compiled.operations.every(operation => operationSchema.safeParse(operation).success));
+  const root = compiled.operations[1].entity;
+  assert.deepEqual(root.metadata.plainformDesign.boundaries.map(boundary => boundary.anchorMode), [
+    'nearestSurface', 'nearestSurface',
+  ]);
+  for (const boundary of root.metadata.plainformDesign.boundaries) {
+    assert.equal(boundary.anchors.length, 3);
+    assert.ok(boundary.anchors.every(anchor => Number.isInteger(anchor.triangleIndex)));
+    assert.ok(boundary.anchors.every(anchor => Math.abs(anchor.barycentric.reduce((sum, value) => sum + value, 0) - 1) < 1e-9));
+  }
+  const patchResource = compiled.operations[0].items
+    .find(item => item.resource.metadata?.plainformDesign?.primitive === 'surfacePatch').resource;
+  assert.equal(patchResource.metadata.plainformDesign.sourceTangency, true);
+  assert.equal(patchResource.recipe.sections.length, 4);
+  assert.equal(patchResource.recipe.continuity, 'positional');
+  assert.equal(patchResource.recipe.subdivisions, 0);
+  const first = patchResource.recipe.sections[0].points[1];
+  const firstHandle = patchResource.recipe.sections[1].points[1];
+  const normal = root.metadata.plainformDesign.boundaries[0].anchors[1].normal;
+  assert.ok(Math.hypot(...firstHandle.map((value, axis) => value - first[axis])) > 0.1);
+  assert.ok(Math.abs(firstHandle.reduce((sum, value, axis) => sum + (value - first[axis]) * normal[axis], 0)) < 1e-8);
+});
+
+test('Design Plainform projects anchors against a generated curved loft owner', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a head study called Loft Surface Owner with id entity/loft-surface-owner.
+Create a smooth profile called head section through [-50 centimetres, 0 metres], [-35 centimetres, 35 centimetres], [0 metres, 50 centimetres], [35 centimetres, 35 centimetres], [50 centimetres, 0 metres], [35 centimetres, -35 centimetres], [0 metres, -50 centimetres], [-35 centimetres, -35 centimetres].
+Add a controlled section of head section at height 0 metres, width 90 centimetres, depth 90 centimetres.
+Add a controlled section of head section at height 1 metre, width 1 metre, depth 1.1 metres.
+Add a controlled section of head section at height 2 metres, width 80 centimetres, depth 80 centimetres.
+Loft a watertight solid called Head Shell with id entity/head-shell through all sections of head section, with curvature continuity.
+Name a surface-anchored boundary called orbital rail on Head Shell through surface points nearest to design points [-25 centimetres, 1.1 metres, 80 centimetres], [0 metres, 1.2 metres, 90 centimetres], [25 centimetres, 1.1 metres, 80 centimetres].
+`, { project: projectFixture() });
+  const boundary = compiled.operations[1].entity.metadata.plainformDesign.boundaries[0];
+  assert.equal(boundary.anchorMode, 'nearestSurface');
+  assert.equal(boundary.anchors.length, 3);
+  assert.ok(boundary.anchors.every(anchor => anchor.projectedPoint[2] < anchor.seedPoint[2]));
+  assert.ok(boundary.anchors.every(anchor => Math.hypot(...anchor.normal) > 0.999));
+});
+
+test('Design Plainform creates a four-boundary constrained patch with exact controlled ends', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a generic connector called Four Sided Patch with id entity/four-sided-patch.
+Create a box called Owner with id entity/owner, with width 4 metres, height 4 metres, and depth 4 metres.
+Name a boundary called upper rail on Owner through design points [-1 metre, 1 metre, 0 metres], [0 metres, 1.2 metres, 20 centimetres], [1 metre, 1 metre, 0 metres].
+Name a boundary called lower rail on Owner through design points [-1 metre, -1 metre, 0 metres], [0 metres, -1.2 metres, 20 centimetres], [1 metre, -1 metre, 0 metres].
+Name a boundary called left end on Owner through design points [-1 metre, 1 metre, 0 metres], [-1.2 metres, 0 metres, 30 centimetres], [-1 metre, -1 metre, 0 metres].
+Name a boundary called right end on Owner through design points [1 metre, 1 metre, 0 metres], [1.2 metres, 0 metres, 30 centimetres], [1 metre, -1 metre, 0 metres].
+Create a constrained surface patch called Cheek with id entity/cheek between $upper-rail and $lower-rail, bounded by $left-end and $right-end, with curvature continuity.
+`, { project: projectFixture() });
+  const patchResource = compiled.operations[0].items
+    .find(item => item.resource.metadata?.plainformDesign?.primitive === 'surfacePatch').resource;
+  assert.equal(patchResource.recipe.sections.length, 5);
+  const rounded = point => point.map(value => Number(value.toFixed(9)));
+  assert.deepEqual(patchResource.recipe.sections.map(section => rounded(section.points[0])), [
+    [-1, 1, 0], [-1.1, 0.5, 0.15], [-1.2, 0, 0.3], [-1.1, -0.5, 0.15], [-1, -1, 0],
+  ]);
+  assert.deepEqual(patchResource.recipe.sections.map(section => rounded(section.points.at(-1))), [
+    [1, 1, 0], [1.1, 0.5, 0.15], [1.2, 0, 0.3], [1.1, -0.5, 0.15], [1, -1, 0],
+  ]);
+  assert.deepEqual(patchResource.metadata.plainformDesign.boundaryRefs.map(boundary => boundary.name), [
+    'upper-rail', 'lower-rail', 'left-end', 'right-end',
+  ]);
+});
+
+test('Design Plainform rejects surface tangency without anchored normals and mismatched patch corners', () => {
+  assert.throws(() => new PlainformCompiler().compile(`
+Design a connector called Missing Normals with id entity/missing-normals.
+Create a box called Owner with id entity/owner, with width 2 metres, height 2 metres, and depth 2 metres.
+Name a boundary called first on Owner through design points [-1 metre, 1 metre, 0 metres], [0 metres, 1 metre, 0 metres], [1 metre, 1 metre, 0 metres].
+Name a boundary called second on Owner through design points [-1 metre, -1 metre, 0 metres], [0 metres, -1 metre, 0 metres], [1 metre, -1 metre, 0 metres].
+Create a constrained surface patch called Broken with id entity/broken between $first and $second, meeting both owner surfaces tangentially.
+`, { project: projectFixture() }), error => error.code === 'plainform_patch_tangency_requires_surface_anchors');
+
+  assert.throws(() => new PlainformCompiler().compile(`
+Design a connector called Bad Corners with id entity/bad-corners.
+Create a box called Owner with id entity/owner, with width 2 metres, height 2 metres, and depth 2 metres.
+Name a boundary called first on Owner through design points [-1 metre, 1 metre, 0 metres], [0 metres, 1 metre, 0 metres], [1 metre, 1 metre, 0 metres].
+Name a boundary called second on Owner through design points [-1 metre, -1 metre, 0 metres], [0 metres, -1 metre, 0 metres], [1 metre, -1 metre, 0 metres].
+Name a boundary called wrong left on Owner through design points [5 metres, 5 metres, 0 metres], [5 metres, 0 metres, 0 metres], [5 metres, -5 metres, 0 metres].
+Name a boundary called wrong right on Owner through design points [6 metres, 5 metres, 0 metres], [6 metres, 0 metres, 0 metres], [6 metres, -5 metres, 0 metres].
+Create a constrained surface patch called Broken with id entity/broken between $first and $second, bounded by $wrong-left and $wrong-right.
+`, { project: projectFixture() }), error => error.code === 'plainform_patch_corner_mismatch');
+});
+
 test('Design Plainform extrudes arbitrary profiles and lowers deterministic boolean subtraction', () => {
   const compiled = new PlainformCompiler().compile(`
 Design a bracket called Boolean Bracket with id entity/boolean-bracket.

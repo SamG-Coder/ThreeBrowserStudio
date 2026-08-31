@@ -163,6 +163,46 @@ the patch; re-author the Design program when the source boundary changes. A
 shared parent transform remains coherent because the source objects and patch
 move together.
 
+When manually authored coordinates must actually lie on the owner's current
+compiled surface, request bounded nearest-surface anchors. The seed coordinates
+may be in design or owner-local space. Studio projects each seed onto a
+supported project-owned triangle surface and preserves the triangle,
+barycentric coordinates, projected point, and surface normal in the design
+metadata:
+
+```text
+Name a surface-anchored boundary called socket rail on Head Shell through surface points nearest to design points [-3 centimetres, 1.64 metres, 9 centimetres], [0 metres, 1.66 metres, 10 centimetres], [3 centimetres, 1.64 metres, 9 centimetres].
+```
+
+Surface anchoring is a bounded compile-time constraint, not a background
+solver. It supports boxes, planes, cylinders, spheres, lofts, indexed/explicit
+meshes, and editable meshes. Realize another procedural kind before projecting
+onto it. The compiler performs at most 1,000,000 point-triangle tests per
+boundary statement and fails explicitly instead of silently approximating an
+over-budget projection.
+
+Two rails leave the patch ends implicit. Name two additional connecting
+boundaries when both ends must be controlled. Each end boundary must begin on
+the first main rail and end on the second; the compiler may reverse and swap
+the two end boundaries to match corners, but rejects disconnected corners:
+
+```text
+Create a constrained surface patch called Eyelid with id entity/eyelid between $socket-rail and $cornea-rail, bounded by $inner-canthus and $outer-canthus, with curvature continuity, using material material/skin.
+```
+
+Use source-aware tangency only when both main rails are surface anchored. It
+derives bounded interior controls in each owner's tangent plane while
+preserving the exact rail positions and recorded source normals:
+
+```text
+Create a constrained surface patch called Fairing with id entity/fairing between $body-rail and $panel-rail, meeting both owner surfaces tangentially, with curvature continuity.
+```
+
+Four-boundary and source-tangent patches lower to explicit bounded loft
+sections. Their requested design continuity remains in metadata; the compiled
+loft uses positional interpolation over those already evaluated sections so a
+second implicit interpolation cannot move the constrained edges.
+
 Arbitrary profiles can also become bevelled watertight extrusions:
 
 ```text
