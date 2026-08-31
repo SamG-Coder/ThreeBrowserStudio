@@ -1,4 +1,6 @@
 const EPSILON = 1e-5;
+const MAX_INPUT_POLYGONS_PER_OPERAND = 512;
+const MAX_INPUT_POLYGONS_TOTAL = 1_024;
 
 function vector(x = 0, y = 0, z = 0) {
   return {
@@ -104,56 +106,96 @@ class BspNode {
   }
 
   clone() {
-    const copy = new BspNode();
-    copy.plane = this.plane?.clone() ?? null;
-    copy.front = this.front?.clone() ?? null;
-    copy.back = this.back?.clone() ?? null;
-    copy.polygons = this.polygons.map(item => item.clone());
-    return copy;
+    const root = new BspNode();
+    const pending = [[this, root]];
+    while (pending.length > 0) {
+      const [source, target] = pending.pop();
+      target.plane = source.plane?.clone() ?? null;
+      target.polygons = source.polygons.map(item => item.clone());
+      if (source.front) { target.front = new BspNode(); pending.push([source.front, target.front]); }
+      if (source.back) { target.back = new BspNode(); pending.push([source.back, target.back]); }
+    }
+    return root;
   }
 
   invert() {
-    this.polygons.forEach(item => item.flip());
-    this.plane?.flip();
-    this.front?.invert();
-    this.back?.invert();
-    [this.front, this.back] = [this.back, this.front];
+    const pending = [this];
+    while (pending.length > 0) {
+      const node = pending.pop();
+      node.polygons.forEach(item => item.flip());
+      node.plane?.flip();
+      [node.front, node.back] = [node.back, node.front];
+      if (node.front) pending.push(node.front);
+      if (node.back) pending.push(node.back);
+    }
   }
 
   clipPolygons(polygons) {
-    if (!this.plane) return polygons.slice();
-    let front = [];
-    let back = [];
-    polygons.forEach(item => this.plane.splitPolygon(item, front, back, front, back));
-    if (this.front) front = this.front.clipPolygons(front);
-    if (this.back) back = this.back.clipPolygons(back);
-    else back = [];
-    return front.concat(back);
+    const pending = [{ node: this, polygons, stage: 0 }];
+    let completed = [];
+    while (pending.length > 0) {
+      const frame = pending.at(-1);
+      if (frame.stage === 0) {
+        if (!frame.node.plane) { completed = frame.polygons.slice(); pending.pop(); continue; }
+        frame.front = [];
+        frame.back = [];
+        frame.polygons.forEach(item => frame.node.plane.splitPolygon(item, frame.front, frame.back, frame.front, frame.back));
+        frame.stage = 1;
+        if (frame.node.front) { pending.push({ node: frame.node.front, polygons: frame.front, stage: 0 }); continue; }
+        frame.frontResult = frame.front;
+      }
+      if (frame.stage === 1) {
+        if (frame.node.front && frame.frontResult === undefined) frame.frontResult = completed;
+        frame.stage = 2;
+        if (frame.node.back) { pending.push({ node: frame.node.back, polygons: frame.back, stage: 0 }); continue; }
+        frame.backResult = [];
+      }
+      if (frame.node.back && frame.backResult === undefined) frame.backResult = completed;
+      completed = frame.frontResult.concat(frame.backResult);
+      pending.pop();
+    }
+    return completed;
   }
 
   clipTo(other) {
-    this.polygons = other.clipPolygons(this.polygons);
-    this.front?.clipTo(other);
-    this.back?.clipTo(other);
+    const pending = [this];
+    while (pending.length > 0) {
+      const node = pending.pop();
+      node.polygons = other.clipPolygons(node.polygons);
+      if (node.front) pending.push(node.front);
+      if (node.back) pending.push(node.back);
+    }
   }
 
   allPolygons() {
-    return this.polygons.concat(this.front?.allPolygons() ?? [], this.back?.allPolygons() ?? []);
+    const result = [];
+    const pending = [this];
+    while (pending.length > 0) {
+      const node = pending.pop();
+      result.push(...node.polygons);
+      if (node.back) pending.push(node.back);
+      if (node.front) pending.push(node.front);
+    }
+    return result;
   }
 
   build(polygons) {
-    if (polygons.length === 0) return;
-    if (!this.plane) this.plane = polygons[0].plane.clone();
-    const front = [];
-    const back = [];
-    polygons.forEach(item => this.plane.splitPolygon(item, this.polygons, this.polygons, front, back));
-    if (front.length > 0) {
-      this.front ??= new BspNode();
-      this.front.build(front);
-    }
-    if (back.length > 0) {
-      this.back ??= new BspNode();
-      this.back.build(back);
+    const pending = [{ node: this, polygons }];
+    while (pending.length > 0) {
+      const { node, polygons: current } = pending.pop();
+      if (current.length === 0) continue;
+      node.plane ??= current[0].plane.clone();
+      const front = [];
+      const back = [];
+      current.forEach(item => node.plane.splitPolygon(item, node.polygons, node.polygons, front, back));
+      if (back.length > 0) {
+        node.back ??= new BspNode();
+        pending.push({ node: node.back, polygons: back });
+      }
+      if (front.length > 0) {
+        node.front ??= new BspNode();
+        pending.push({ node: node.front, polygons: front });
+      }
     }
   }
 }
@@ -231,9 +273,21 @@ export function createCsgGeometry(THREE, recipe, createOperandGeometry) {
   const operandPolygons = recipe.operands.map((operand, index) => {
     if (!operand?.recipe || operand.recipe.kind === 'csg') throw new Error(`CSG operand ${index} requires one non-CSG geometry recipe.`);
     const geometry = createOperandGeometry(operand.recipe);
-    try { return geometryPolygons(geometry, operand.transform); }
+    try {
+      const polygons = geometryPolygons(geometry, operand.transform);
+      if (operand.recipe.kind === 'loft' && polygons.length > 64) {
+        throw new Error('CSG loft operands exceed the 64-triangle curved-surface safety limit.');
+      }
+      if (polygons.length > MAX_INPUT_POLYGONS_PER_OPERAND) {
+        throw new Error(`CSG operand ${index} exceeds the ${MAX_INPUT_POLYGONS_PER_OPERAND}-triangle input safety limit.`);
+      }
+      return polygons;
+    }
     finally { geometry.dispose?.(); }
   });
+  if (operandPolygons.reduce((total, polygons) => total + polygons.length, 0) > MAX_INPUT_POLYGONS_TOTAL) {
+    throw new Error(`CSG operands exceed the ${MAX_INPUT_POLYGONS_TOTAL}-triangle aggregate input safety limit.`);
+  }
   let result = operandPolygons[0];
   for (let index = 1; index < operandPolygons.length; index += 1) {
     result = recipe.operation === 'union' ? union(result, operandPolygons[index])

@@ -141,7 +141,11 @@ Intersect Crop Volume with Detail Shell.
 Use booleans for real voids or fused silhouettes, not panel lines that can be
 expressed with an overlapping trim solid. Mixed boolean chains on the same
 target and nested imported CSG are deliberately rejected. A CSG recipe accepts
-2–32 non-CSG operands and has a 2,000,000-triangle output safety limit.
+2–32 non-CSG operands, at most 512 input triangles per operand and 1,024 across
+the operation, and has a 2,000,000-triangle output safety limit. Curved loft
+operands have a stricter 64-triangle cap because general BSP fragmentation can
+grow nonlinearly. For a denser shell, prefer surface overlays or realize and
+simplify only the boolean region.
 
 For a parametric envelope, define one profile, add transformed sections in a
 bounded loop, and loft them. Floor plates share one unit-box geometry even when

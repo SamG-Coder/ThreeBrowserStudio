@@ -321,6 +321,26 @@ test('CSG recipes deterministically subtract, union, and intersect authored soli
   }), /union, subtract, or intersect/u);
 });
 
+test('CSG rejects detailed curved loft operands before recursive work can exhaust memory', () => {
+  const cube = {
+    kind: 'explicit',
+    positions: [-1,-1,-1, 1,-1,-1, 1,1,-1, -1,1,-1, -1,-1,1, 1,-1,1, 1,1,1, -1,1,1],
+    indices: [0,2,1,0,3,2,4,5,6,4,6,7,0,1,5,0,5,4,1,2,6,1,6,5,2,3,7,2,7,6,3,0,4,3,4,7],
+  };
+  const detailedSections = Array.from({ length: 11 }, (_, index) => ({
+    points: Array.from({ length: 24 }, (_, pointIndex) => {
+      const angle = pointIndex / 24 * Math.PI * 2;
+      return [Math.cos(angle), index * 0.3, Math.sin(angle)];
+    }),
+  }));
+  assert.throws(() => createGeometry(FAKE_THREE, {
+    kind: 'csg', operation: 'subtract', operands: [
+      { recipe: { kind: 'loft', sections: detailedSections, profileResolution: 24, subdivisions: 3 } },
+      { recipe: cube },
+    ],
+  }), /64-triangle curved-surface safety limit/u);
+});
+
 test('shape and extrude recipes build contours and holes with bounded options', () => {
   const recipe = {
     points: [[0, 0], [2, 0], [2, 2], [0, 2]],
