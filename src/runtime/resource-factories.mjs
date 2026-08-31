@@ -1,6 +1,7 @@
 import { compileShaderGraph, isCompiledSurface } from './shader-graph-compiler.mjs';
 import { normalizeEditableMeshRecipe, triangulateEditableMesh } from '../core/editable-mesh.mjs';
 import { MAX_MATERIAL_SLOTS_PER_MESH } from '../core/constants.mjs';
+import { createCsgGeometry } from './csg-geometry.mjs';
 import {
   MATERIAL_TEXTURE_BINDINGS,
   MATERIAL_TEXTURE_MAP_AWARE_DEFAULTS,
@@ -47,6 +48,13 @@ export const GEOMETRY_PARAMETER_DEFAULTS = Object.freeze({
     profileResolution: null,
     subdivisions: 0,
     alignProfile: 'authored',
+    continuity: 'positional',
+    guideCurves: [],
+    modifiers: [],
+  },
+  csg: {
+    operation: 'union',
+    operands: [],
   },
   shape: {
     points: [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]],
@@ -96,6 +104,7 @@ const GEOMETRY_KIND_NOTES = Object.freeze({
   lathe: 'Revolve a bounded 2D profile around the local Y axis.',
   tube: 'Sweep a circular profile along a bounded 3D Catmull-Rom path.',
   loft: 'Connect equal-size 3D profile rings into one continuous shell.',
+  csg: 'Combine bounded procedural solids with deterministic BSP union, subtraction, or intersection.',
   shape: 'Triangulate one bounded 2D contour with optional holes.',
   extrude: 'Extrude one bounded 2D contour with optional holes and bevel.',
   explicit: 'Authored triangle soup with optional normals and UVs.',
@@ -220,6 +229,9 @@ function proceduralCountEstimate(recipe) {
         + (recipe.capEnd === false ? 0 : Math.max(0, profile - 2));
     return { vertices: evaluatedSections * profile, triangles: sideTriangles + capTriangles };
   }
+  if (recipe.kind === 'csg') {
+    return { vertices: MAX_RUNTIME_GEOMETRY_VERTICES, triangles: MAX_RUNTIME_GEOMETRY_TRIANGLES };
+  }
   if (recipe.kind === 'shape') return { vertices: pointCount, triangles: Math.max(0, pointCount * 2) };
   if (recipe.kind === 'extrude') {
     const layers = segment('steps') + 1 + (recipe.bevelEnabled ? 2 * (segment('bevelSegments', 3) + 1) : 0);
@@ -284,6 +296,26 @@ export function normalizeGeometryRecipe(resource = {}) {
       : integer(source.profileResolution, 8, 3, GEOMETRY_CONTROL_POINT_LIMITS.loftPointsPerSection);
     recipe.subdivisions = integer(source.subdivisions, defaults.subdivisions, 0, 32);
     recipe.alignProfile = source.alignProfile ?? defaults.alignProfile;
+    recipe.continuity = source.continuity ?? defaults.continuity;
+    recipe.guideCurves = Array.isArray(source.guideCurves)
+      ? source.guideCurves.map(guide => ({ ...guide, points: clonePoints(guide?.points) }))
+      : [];
+    recipe.modifiers = Array.isArray(source.modifiers)
+      ? source.modifiers.map(modifier => ({ ...modifier, center: clonePoints([modifier?.center])?.[0] }))
+      : [];
+  } else if (source.kind === 'csg') {
+    recipe.operation = source.operation ?? defaults.operation;
+    recipe.operands = Array.isArray(source.operands)
+      ? source.operands.map(operand => ({
+          recipe: normalizeGeometryRecipe(operand?.recipe ?? {}),
+          ...(operand?.transform ? { transform: {
+            ...operand.transform,
+            translation: clonePoints([operand.transform.translation ?? operand.transform.position])?.[0],
+            rotation: clonePoints([operand.transform.rotation])?.[0],
+            scale: clonePoints([operand.transform.scale])?.[0],
+          } } : {}),
+        }))
+      : source.operands;
   } else if (source.kind === 'shape' || source.kind === 'extrude') {
     recipe.points = clonePoints(source.points ?? source.contour ?? defaults.points);
     recipe.holes = cloneContours(recipe.holes);
@@ -525,18 +557,76 @@ function evaluatedLoftSections(recipe) {
   if (recipe.profileResolution == null && authored.some(section => section.length !== profileSize)) {
     throw new Error('Every loft section must contain the same number of profile points.');
   }
-  const sections = authored.map((section, index) => alignedLoftProfile(
+  let sections = authored.map((section, index) => alignedLoftProfile(
     index === 0 ? section : resampleLoftProfile(authored[index - 1], profileSize, closed),
     resampleLoftProfile(section, profileSize, closed),
     recipe.alignProfile === 'closest' && closed && index > 0,
   ));
   if (!['authored', 'closest'].includes(recipe.alignProfile)) throw new Error('Loft alignProfile must be authored or closest.');
+  if (!['positional', 'tangent', 'curvature'].includes(recipe.continuity)) {
+    throw new Error('Loft continuity must be positional, tangent, or curvature.');
+  }
+  if (!Array.isArray(recipe.guideCurves) || recipe.guideCurves.length > 32) {
+    throw new Error('Loft supports at most 32 guide curves.');
+  }
+  for (let guideIndex = 0; guideIndex < recipe.guideCurves.length; guideIndex += 1) {
+    const guide = recipe.guideCurves[guideIndex];
+    const points = validatedPoints(guide?.points, 3, 2, 256, `Loft guide ${guideIndex}`);
+    let profileIndex = guide?.profileIndex;
+    if (profileIndex === undefined) {
+      profileIndex = sections[0].reduce((best, point, index) => {
+        const distance = point.reduce((sum, value, axis) => sum + (value - points[0][axis]) ** 2, 0);
+        return distance < best.distance ? { index, distance } : best;
+      }, { index: 0, distance: Infinity }).index;
+    }
+    if (!Number.isInteger(profileIndex) || profileIndex < 0 || profileIndex >= profileSize) {
+      throw new Error(`Loft guide ${guideIndex} profileIndex must address the resampled profile.`);
+    }
+    sections = sections.map((section, sectionIndex) => {
+      const factor = sectionIndex / Math.max(1, sections.length - 1);
+      const scaled = factor * (points.length - 1);
+      const pointIndex = Math.min(points.length - 2, Math.floor(scaled));
+      const local = scaled - pointIndex;
+      const guided = points[pointIndex].map((value, axis) => value + (points[pointIndex + 1][axis] - value) * local);
+      const copy = section.map(point => [...point]);
+      copy[profileIndex] = guided;
+      return copy;
+    });
+  }
+  if (!Array.isArray(recipe.modifiers) || recipe.modifiers.length > 32) {
+    throw new Error('Loft supports at most 32 local form modifiers.');
+  }
+  for (const modifier of recipe.modifiers) {
+    if (!['bulge', 'pinch', 'offset'].includes(modifier?.kind)) throw new Error(`Unsupported loft modifier ${modifier?.kind}.`);
+    const amount = boundedFinite(modifier.amount, 0, -MAX_COORDINATE, MAX_COORDINATE, 'Loft modifier amount');
+    const center = pointCoordinates(modifier.center ?? [0, 0, 0], 3, 'Loft modifier center', 0);
+    const radius = modifier.kind === 'offset'
+      ? Infinity
+      : boundedFinite(modifier.radius, 1, Number.EPSILON, MAX_COORDINATE, 'Loft modifier radius');
+    const signedAmount = modifier.kind === 'pinch' ? -Math.abs(amount) : amount;
+    sections = sections.map((section) => {
+      const sectionCenter = section.reduce((sum, point) => sum.map((value, axis) => value + point[axis] / section.length), [0, 0, 0]);
+      return section.map((point) => {
+        const distance = Math.hypot(...point.map((value, axis) => value - center[axis]));
+        const falloff = radius === Infinity ? 1 : Math.max(0, 1 - distance / radius) ** 2;
+        if (falloff === 0) return point;
+        const radial = point.map((value, axis) => value - sectionCenter[axis]);
+        const radialLength = Math.hypot(...radial) || 1;
+        return point.map((value, axis) => value + radial[axis] / radialLength * signedAmount * falloff);
+      });
+    });
+  }
   const subdivisions = integer(recipe.subdivisions, 0, 0, 32);
   const evaluated = [];
   for (let section = 0; section < sections.length - 1; section += 1) {
     evaluated.push(sections[section]);
     for (let step = 1; step <= subdivisions; step += 1) {
-      const factor = step / (subdivisions + 1);
+      const rawFactor = step / (subdivisions + 1);
+      const factor = recipe.continuity === 'tangent'
+        ? rawFactor * rawFactor * (3 - 2 * rawFactor)
+        : recipe.continuity === 'curvature'
+          ? rawFactor ** 3 * (rawFactor * (rawFactor * 6 - 15) + 10)
+          : rawFactor;
       evaluated.push(sections[section].map((point, index) => point.map(
         (value, axis) => value + (sections[section + 1][index][axis] - value) * factor,
       )));
@@ -844,6 +934,7 @@ export function createGeometry(THREE, resource = {}) {
     case 'lathe': return latheGeometry(THREE, p);
     case 'tube': return tubeGeometry(THREE, p);
     case 'loft': return loftGeometry(THREE, p);
+    case 'csg': return createCsgGeometry(THREE, p, operand => createGeometry(THREE, operand));
     case 'shape': return shapeGeometry(THREE, p);
     case 'extrude': return extrudeGeometry(THREE, p);
     case 'explicit':

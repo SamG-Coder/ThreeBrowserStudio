@@ -2064,7 +2064,7 @@ export class StudioApplication {
           'perspectiveCamera', 'orthographicCamera', 'directionalLight',
           'pointLight', 'spotLight', 'ambientLight', 'areaLight', 'hemisphereLight',
         ],
-        geometryRecipes: ['box', 'plane', 'sphere', 'capsule', 'circle', 'cone', 'cylinder', 'torus', 'torusKnot', 'lathe', 'tube', 'loft', 'shape', 'extrude', 'explicit', 'indexedMesh', 'editableMesh'],
+        geometryRecipes: ['box', 'plane', 'sphere', 'capsule', 'circle', 'cone', 'cylinder', 'torus', 'torusKnot', 'lathe', 'tube', 'loft', 'shape', 'extrude', 'csg', 'explicit', 'indexedMesh', 'editableMesh'],
         geometryEditing: true,
         geometryEditCommands: [...GEOMETRY_EDIT_COMMAND_TYPES],
         editableMesh: {

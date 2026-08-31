@@ -1272,6 +1272,38 @@ test('three_studio_apply commits a Design Plainform model through batched canoni
     .filter(id => id.startsWith('entity/runtime-tower/floor-')).length, 4);
 });
 
+test('three_studio_apply commits guided curved lofts through the runtime boundary', async (t) => {
+  const { application } = await applicationFixture(t);
+  const result = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1', sessionId: application.sessionId,
+    projectId: 'project/active', baseRevision: 0,
+    idempotencyKey: 'plainform-guided-csg-0001', label: 'Build a guided manufactured shell',
+    operations: [],
+    program: {
+      language: 'plainform-v1',
+      source: [
+        'Design a shell called Runtime Shell with id entity/runtime-shell.',
+        'Create a symmetric smooth profile called body through [0 metres, 35 centimetres], [40 centimetres, 25 centimetres], [45 centimetres, -25 centimetres], [0 metres, -35 centimetres], mirrored across the z centreline.',
+        'Create a smooth guide curve called shoulder through [38 centimetres, 0 metres, 20 centimetres], [48 centimetres, 1 metre, 24 centimetres], [40 centimetres, 2 metres, 18 centimetres].',
+        'Add a controlled section of body at height 0 metres, width 82 centimetres, depth 68 centimetres.',
+        'Add a controlled section of body at height 1 metre, width 98 centimetres, depth 76 centimetres, offset vertically by 5 centimetres.',
+        'Add a controlled section of body at height 2 metres, width 86 centimetres, depth 64 centimetres.',
+        'Loft a watertight solid called Body with id entity/runtime-body through all sections of body, following shoulder, with curvature continuity.',
+        'Bulge Body outward around [0 metres, 1 metre, 20 centimetres] by 4 centimetres within 60 centimetres.',
+      ].join('\n'),
+    },
+  }).catch(error => assert.fail(`Guided loft runtime application failed: ${JSON.stringify(error.details ?? error.message)}`));
+  assert.equal(result.success, true);
+  assert.equal(result.revision, 1);
+  const document = application.kernel.document;
+  const bodyRecipe = Object.values(document.resources.geometries)
+    .find(resource => resource.recipe.kind === 'loft').recipe;
+  assert.equal(bodyRecipe.kind, 'loft');
+  assert.equal(bodyRecipe.continuity, 'curvature');
+  assert.equal(bodyRecipe.guideCurves.length, 1);
+  assert.equal(bodyRecipe.modifiers.length, 1);
+});
+
 test('three_studio_apply compiles Shader Plainform into a validated graph and material assignment', async (t) => {
   const { application } = await applicationFixture(t);
   const setup = await application.dispatch('three_studio_apply', {

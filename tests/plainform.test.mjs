@@ -168,6 +168,70 @@ End.
   );
 });
 
+test('Design Plainform compiles curved symmetric profiles, independent section controls, guides, continuity, and local form modifiers', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a manufactured shell called Guided Shell with id entity/guided-shell.
+Create a symmetric smooth profile called body section through [0 metres, 45 centimetres], [35 centimetres, 40 centimetres], [55 centimetres, 10 centimetres], [50 centimetres, -35 centimetres], [0 metres, -42 centimetres], mirrored across the z centreline.
+Create a guide curve called shoulder line through [42 centimetres, 0 metres, 30 centimetres], [50 centimetres, 1 metre, 34 centimetres], [44 centimetres, 2 metres, 28 centimetres].
+Add a controlled section of body section at height 0 metres, width 92 centimetres, depth 84 centimetres, offset by [0 metres, 0 metres, 0 metres], rotated by [0 degrees, 0 degrees, 0 degrees], and scaled locally by [0.8, 1, 0.9].
+Add a controlled section of body section at height 1 metre, width 1.10 metres, depth 92 centimetres, offset vertically by 8 centimetres, offset laterally by 5 centimetres.
+Add a controlled section of body section at height 2 metres, width 94 centimetres, depth 76 centimetres, offset by [0 metres, 2 centimetres, 0 metres].
+Loft a watertight solid called Guided Body with id entity/guided-body through all sections of body section, following shoulder line, with curvature continuity.
+Bulge Guided Body outward around [0 metres, 1 metre, 30 centimetres] by 6 centimetres within 70 centimetres.
+Offset the surface of Guided Body by 1 centimetre.
+Preview these changes.
+`, { project: projectFixture() });
+  const resource = compiled.operations[0].items.find(item => item.resource.recipe.kind === 'loft').resource;
+  assert.equal(resource.recipe.continuity, 'curvature');
+  assert.equal(resource.recipe.subdivisions, 3);
+  assert.equal(resource.recipe.guideCurves.length, 1);
+  assert.equal(resource.recipe.modifiers.length, 2);
+  assert.equal(resource.recipe.sections.length, 3);
+  assert.notEqual(resource.recipe.sections[0].transform.scale[0], resource.recipe.sections[0].transform.scale[2]);
+  assert.deepEqual(resource.recipe.sections[1].transform.translation, [0, 1.08, 0.05]);
+  assert.ok(compiled.operations.every(operation => operationSchema.safeParse(operation).success));
+});
+
+test('Design Plainform extrudes arbitrary profiles and lowers deterministic boolean subtraction', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a bracket called Boolean Bracket with id entity/boolean-bracket.
+Create a smooth profile called side plate through [-1 metre, -50 centimetres], [1 metre, -50 centimetres], [1 metre, 50 centimetres], [-1 metre, 50 centimetres].
+Extrude profile side plate by 40 centimetres as a solid called Plate with id entity/plate, centred at [0 metres, 0 metres, 0 metres].
+Create a cylinder called Clearance with id entity/clearance, with radius 20 centimetres and height 80 centimetres, centred at [0 metres, 0 metres, 0 metres], rotated by [90 degrees, 0 degrees, 0 degrees].
+Subtract Clearance from Plate.
+`, { project: projectFixture() });
+  const resources = compiled.operations[0].items;
+  const csg = resources.find(item => item.resource.id.endsWith('/plate')).resource.recipe;
+  assert.equal(csg.kind, 'csg');
+  assert.equal(csg.operation, 'subtract');
+  assert.deepEqual(csg.operands.map(operand => operand.recipe.kind), ['extrude', 'cylinder']);
+  const entities = compiled.operations[2].items.map(item => item.entity);
+  assert.equal(entities.find(entity => entity.id === 'entity/clearance').visible, false);
+  assert.deepEqual(entities.find(entity => entity.id === 'entity/plate').transform, {
+    position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1],
+  });
+  assert.ok(compiled.operations.every(operation => operationSchema.safeParse(operation).success));
+});
+
+test('Design Plainform rejects invalid curved geometry, dimensions, and unsupported cross-solid continuity', () => {
+  assert.throws(() => new PlainformCompiler().compile(`
+Design a shell called Broken Profile with id entity/broken-profile.
+Create a smooth profile called bad through [0 metres, 0 metres], [1 metre, 0 metres].
+Extrude profile bad by 1 metre as a solid called Bad with id entity/bad.
+`, { project: projectFixture() }), error => error.code === 'plainform_profile_points');
+  assert.throws(() => new PlainformCompiler().compile(`
+Design a shell called Broken Units with id entity/broken-units.
+Create a profile called bad through [0 metres, 0 degrees], [1 metre, 0 metres], [0 metres, 1 metre].
+Extrude profile bad by 1 metre as a solid called Bad with id entity/bad.
+`, { project: projectFixture() }), error => error.code === 'plainform_dimension_mismatch');
+  assert.throws(() => new PlainformCompiler().compile(`
+Design a shell called Broken Blend with id entity/broken-blend.
+Create a box called Part A with id entity/part-a, with width 1 metre, height 1 metre, and depth 1 metre.
+Create a box called Part B with id entity/part-b, with width 1 metre, height 1 metre, and depth 1 metre.
+Blend Part A into Part B with curvature continuity.
+`, { project: projectFixture() }), error => error.code === 'plainform_continuity_unsupported');
+});
+
 test('Design Plainform binds exact scene distance measurements into parametric dimensions', () => {
   const compiled = new PlainformCompiler().compile(`
 Design a bridge called Measured Bridge with id entity/measured-bridge.

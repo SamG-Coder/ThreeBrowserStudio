@@ -74,6 +74,93 @@ function rectangularPoints(width, depth, radius = 0) {
   return points;
 }
 
+function parseVectorGroups(source, variables, { dimensions = 3, dimension = 'length', phrase = 'Point list' } = {}) {
+  const groups = [...source.matchAll(/\[([^\[\]]+)\]/gu)];
+  if (groups.length === 0) {
+    const error = new Error(`${phrase} requires bracketed coordinate vectors.`);
+    error.code = 'plainform_profile_points';
+    throw error;
+  }
+  return groups.map((match, pointIndex) => {
+    const parts = match[1].split(',').map(value => value.trim()).filter(Boolean);
+    if (parts.length !== dimensions) {
+      const error = new Error(`${phrase} point ${pointIndex + 1} requires ${dimensions} coordinates.`);
+      error.code = 'plainform_profile_points';
+      throw error;
+    }
+    return parts.map((part) => expectDimension(evaluateDesignExpression(part, variables), dimension, phrase));
+  });
+}
+
+function profilePoints(source, variables, phrase = 'Profile') {
+  return parseVectorGroups(source, variables, { dimensions: 2, dimension: 'length', phrase })
+    .map(([x, z]) => [x, 0, z]);
+}
+
+function smoothClosedPoints(points, samples = Math.min(128, Math.max(12, points.length * 4))) {
+  if (points.length < 3) return points.map(point => [...point]);
+  const result = [];
+  for (let sample = 0; sample < samples; sample += 1) {
+    const scaled = sample / samples * points.length;
+    const index = Math.floor(scaled);
+    const t = scaled - index;
+    const p0 = points[(index - 1 + points.length) % points.length];
+    const p1 = points[index % points.length];
+    const p2 = points[(index + 1) % points.length];
+    const p3 = points[(index + 2) % points.length];
+    result.push(p1.map((value, axis) => 0.5 * (
+      2 * value
+      + (-p0[axis] + p2[axis]) * t
+      + (2 * p0[axis] - 5 * value + 4 * p2[axis] - p3[axis]) * t ** 2
+      + (-p0[axis] + 3 * value - 3 * p2[axis] + p3[axis]) * t ** 3
+    )));
+  }
+  return result;
+}
+
+function smoothOpenPoints(points, samples = Math.min(128, Math.max(8, points.length * 4))) {
+  if (points.length < 3) return points.map(point => [...point]);
+  const result = [];
+  const segmentCount = points.length - 1;
+  for (let sample = 0; sample < samples; sample += 1) {
+    const scaled = sample / (samples - 1) * segmentCount;
+    const index = Math.min(segmentCount - 1, Math.floor(scaled));
+    const t = scaled - index;
+    const p0 = points[Math.max(0, index - 1)];
+    const p1 = points[index];
+    const p2 = points[index + 1];
+    const p3 = points[Math.min(points.length - 1, index + 2)];
+    result.push(p1.map((value, axis) => 0.5 * (
+      2 * value
+      + (-p0[axis] + p2[axis]) * t
+      + (2 * p0[axis] - 5 * value + 4 * p2[axis] - p3[axis]) * t ** 2
+      + (-p0[axis] + 3 * value - 3 * p2[axis] + p3[axis]) * t ** 3
+    )));
+  }
+  return result;
+}
+
+function mirroredProfile(points, axis = 'z') {
+  const coordinate = axis === 'x' ? 0 : 2;
+  const mirrored = [...points].reverse().map(point => point.map((value, index) => index === coordinate ? -value : value));
+  const result = points.map(point => [...point]);
+  for (const point of mirrored) {
+    if (result.some(existing => existing.every((value, index) => Math.abs(value - point[index]) <= 1e-9))) continue;
+    result.push(point);
+  }
+  return result;
+}
+
+function profileBounds(points) {
+  const xs = points.map(point => point[0]);
+  const zs = points.map(point => point[2]);
+  return { width: Math.max(...xs) - Math.min(...xs), depth: Math.max(...zs) - Math.min(...zs) };
+}
+
+function splitNames(value) {
+  return value.split(/\s*(?:,|\band\b)\s*/iu).map(key).filter(Boolean);
+}
+
 function activeScene(project) {
   const sceneId = project.activeSceneId ?? project.sceneOrder?.[0] ?? Object.keys(project.scenes ?? {})[0];
   if (!sceneId || !project.scenes?.[sceneId]) {
@@ -126,11 +213,14 @@ export class DesignPlainformCompiler {
 
     const variables = new Map();
     const profiles = new Map();
+    const guides = new Map();
     const entities = [];
     const aliases = { [key(designName)]: [rootId] };
     const interpretations = [`Will create the ${designKind} design “${designName}” as ${rootId}.`];
     const geometryKinds = new Set();
     const lofts = [];
+    const generatedResources = [];
+    const booleanCommands = [];
     const ids = new Set([rootId]);
     let requestedPreview = false;
     let autoNumber = 0;
@@ -186,6 +276,29 @@ export class DesignPlainformCompiler {
       aliases[key(name)] = [id];
     };
 
+    const addGeneratedSolid = ({ id, name, recipe, position = [0, 0, 0], rotation = [0, 0, 0], materialId }) => {
+      if (entities.length >= MAX_DESIGN_ENTITIES) {
+        const error = new Error(`Design Plainform creates at most ${MAX_DESIGN_ENTITIES} entities per program.`);
+        error.code = 'plainform_design_entity_limit'; throw error;
+      }
+      if (occupied.has(id) || ids.has(id)) {
+        const error = new Error(`Generated entity ID ${id} already exists.`); error.code = 'plainform_id_conflict'; throw error;
+      }
+      const geometryId = `geometry/plainform-design/${designSlug}/${slug(name)}`;
+      if (occupied.has(geometryId) || ids.has(geometryId)) {
+        const error = new Error(`Generated geometry ID ${geometryId} already exists.`); error.code = 'plainform_id_conflict'; throw error;
+      }
+      ids.add(id); ids.add(geometryId);
+      generatedResources.push({ resourceType: 'geometries', resource: { id: geometryId, recipe } });
+      entities.push({
+        id, kind: 'mesh', name, parentId: rootId,
+        transform: { position, rotation, scale: [1, 1, 1] },
+        components: { mesh: { geometryId, ...(materialId ? { materialId } : {}) } },
+        metadata: { plainformDesign: { primitive: recipe.kind } },
+      });
+      aliases[key(name)] = [id];
+    };
+
     const execute = (start, end, scope) => {
       for (let lineIndex = start; lineIndex < end; lineIndex += 1) {
         const statement = clean(lines[lineIndex]);
@@ -222,6 +335,67 @@ export class DesignPlainformCompiler {
           interpretations.push(`Defined rectangular profile “${name}” at ${width} by ${depth} metres.`);
           continue;
         }
+        const curvedProfile = statement.match(/^create a (?:(symmetric)\s+)?(?:(smooth)\s+)?profile called (.+?) through (.+?)(?:,? mirrored across the?\s*(x|z)(?:\s+centreline)?)?$/iu);
+        if (curvedProfile) {
+          const name = key(curvedProfile[3]);
+          let points = profilePoints(curvedProfile[4], scope, `Profile ${name}`);
+          if (points.length < 3) {
+            const error = new Error(`Profile “${name}” requires at least three points.`);
+            error.code = 'plainform_profile_points'; throw error;
+          }
+          const mirrorAxis = curvedProfile[5] ?? (curvedProfile[1] ? 'z' : null);
+          if (mirrorAxis) points = mirroredProfile(points, mirrorAxis.toLowerCase());
+          if (curvedProfile[2]) points = smoothClosedPoints(points);
+          if (points.length > 256) {
+            const error = new Error('Profiles support at most 256 evaluated points.');
+            error.code = 'plainform_profile_points'; throw error;
+          }
+          const bounds = profileBounds(points);
+          profiles.set(name, { name, width: bounds.width, depth: bounds.depth, radius: 0, points, sections: [], smooth: Boolean(curvedProfile[2]) });
+          interpretations.push(`Defined ${curvedProfile[2] ? 'smooth ' : ''}${mirrorAxis ? `symmetric ${mirrorAxis}-mirrored ` : ''}profile “${name}” through ${points.length} evaluated points.`);
+          continue;
+        }
+        const guideStatement = statement.match(/^create a (?:(smooth)\s+)?guide curve called (.+?) through (.+)$/iu);
+        if (guideStatement) {
+          const name = key(guideStatement[2]);
+          let points = parseVectorGroups(guideStatement[3], scope, { dimensions: 3, dimension: 'length', phrase: `Guide ${name}` });
+          if (points.length < 2) {
+            const error = new Error(`Guide curve “${name}” requires at least two points.`); error.code = 'plainform_guide_points'; throw error;
+          }
+          if (guideStatement[1]) {
+            points = smoothOpenPoints(points);
+          }
+          guides.set(name, { name, points });
+          interpretations.push(`Defined guide curve “${name}” through ${points.length} evaluated points.`);
+          continue;
+        }
+        const smoothProfileStatement = statement.match(/^(?:smooth|round the transitions of) (?:profile )?(.+?)(?: with (\d+) samples)?$/iu);
+        if (smoothProfileStatement) {
+          const profile = profiles.get(key(smoothProfileStatement[1]));
+          if (!profile) { const error = new Error(`Unknown profile “${smoothProfileStatement[1]}”.`); error.code = 'plainform_unknown_profile'; throw error; }
+          const samples = smoothProfileStatement[2] ? Number(smoothProfileStatement[2]) : Math.min(128, Math.max(12, profile.points.length * 4));
+          if (!Number.isSafeInteger(samples) || samples < 3 || samples > 256) {
+            const error = new Error('Profile smoothing requires 3 to 256 samples.'); error.code = 'plainform_profile_points'; throw error;
+          }
+          profile.points = smoothClosedPoints(profile.points, samples);
+          Object.assign(profile, profileBounds(profile.points), { smooth: true });
+          interpretations.push(`Smoothed profile “${profile.name}” to ${samples} deterministic samples.`);
+          continue;
+        }
+        const moveProfilePoint = statement.match(/^move profile point (\d+) of (.+?) by (\[.+\])$/iu);
+        if (moveProfilePoint) {
+          const profile = profiles.get(key(moveProfilePoint[2]));
+          if (!profile) { const error = new Error(`Unknown profile “${moveProfilePoint[2]}”.`); error.code = 'plainform_unknown_profile'; throw error; }
+          const pointIndex = Number(moveProfilePoint[1]);
+          if (!Number.isSafeInteger(pointIndex) || pointIndex < 0 || pointIndex >= profile.points.length) {
+            const error = new Error(`Profile point ${pointIndex} is outside profile “${profile.name}”.`); error.code = 'plainform_profile_point_index'; throw error;
+          }
+          const offset = evaluateDesignVector(moveProfilePoint[3], scope, 'length');
+          profile.points[pointIndex] = profile.points[pointIndex].map((value, axis) => value + offset[axis]);
+          Object.assign(profile, profileBounds(profile.points));
+          interpretations.push(`Moved profile point ${pointIndex} of “${profile.name}” by ${offset.join(', ')} metres.`);
+          continue;
+        }
         const loop = statement.match(/^for every (?:floor|level|item)?\s*([a-z][a-z0-9_]*) from (.+?) through (.+)$/iu);
         if (loop) {
           let depth = 1;
@@ -252,6 +426,41 @@ export class DesignPlainformCompiler {
         }
         if (/^end$/iu.test(statement)) continue;
 
+        const controlledSection = statement.match(/^add a controlled section of (.+?) at height ([^,]+)(?:,\s*(.+))?$/iu);
+        if (controlledSection) {
+          const profile = profiles.get(key(controlledSection[1]));
+          if (!profile) { const error = new Error(`Unknown profile “${controlledSection[1]}”.`); error.code = 'plainform_unknown_profile'; throw error; }
+          const pathHeight = length(controlledSection[2], scope, 'Section path height');
+          const options = controlledSection[3] ?? '';
+          const widthMatch = options.match(/(?:set )?width (?:to )?([^,]+)/iu);
+          const depthMatch = options.match(/(?:set )?(?:depth|height) (?:to )?([^,]+)/iu);
+          const offsetMatch = options.match(/offset by (\[[^\]]+\])/iu);
+          const verticalMatch = options.match(/offset vertically by ([^,]+)/iu);
+          const lateralMatch = options.match(/offset laterally by ([^,]+)/iu);
+          const rotationMatch = options.match(/rotated by (\[[^\]]+\])/iu);
+          const scaleMatch = options.match(/scaled locally by (\[[^\]]+\])/iu);
+          const desiredWidth = widthMatch ? finitePositive(length(widthMatch[1], scope, 'Section width'), 'Section width') : profile.width;
+          const desiredDepth = depthMatch ? finitePositive(length(depthMatch[1], scope, 'Section depth'), 'Section depth') : profile.depth;
+          const independentScale = scaleMatch ? evaluateDesignVector(scaleMatch[1], scope, 'scalar') : [1, 1, 1];
+          if (independentScale.some(value => !Number.isFinite(value) || value <= 0)) {
+            const error = new Error('Local section scales must be greater than zero.'); error.code = 'plainform_design_dimension'; throw error;
+          }
+          const offset = offsetMatch ? evaluateDesignVector(offsetMatch[1], scope, 'length') : [0, 0, 0];
+          if (verticalMatch) offset[1] += length(verticalMatch[1], scope, 'Vertical section offset');
+          if (lateralMatch) offset[2] += length(lateralMatch[1], scope, 'Lateral section offset');
+          const rotation = rotationMatch ? evaluateDesignVector(rotationMatch[1], scope, 'angle') : [0, 0, 0];
+          profile.sections.push({
+            id: `section/${slug(profile.name)}-${String(profile.sections.length + 1).padStart(3, '0')}`,
+            points: profile.points.map(point => [...point]),
+            transform: {
+              translation: [offset[0], pathHeight + offset[1], offset[2]],
+              rotation,
+              scale: [desiredWidth / profile.width * independentScale[0], independentScale[1], desiredDepth / profile.depth * independentScale[2]],
+            },
+          });
+          continue;
+        }
+
         const section = statement.match(/^add a section of (.+?) at height (.+?)(?:,? rotated around y by (.+?))?(?:,? and scaled horizontally by (.+))?$/iu);
         if (section) {
           const profile = profiles.get(key(section[1]));
@@ -261,7 +470,7 @@ export class DesignPlainformCompiler {
           const scale = section[4] ? finitePositive(scalar(section[4], scope, 'Section scale'), 'Section scale') : 1;
           profile.sections.push({
             id: `section/${slug(profile.name)}-${String(profile.sections.length + 1).padStart(3, '0')}`,
-            points: profile.points,
+            points: profile.points.map(point => [...point]),
             transform: { translation: [0, height, 0], rotation: [0, rotation, 0], scale: [scale, 1, scale] },
           });
           continue;
@@ -302,7 +511,7 @@ export class DesignPlainformCompiler {
           continue;
         }
 
-        const cylinder = statement.match(/^create a cylinder called (.+?)(?: with id ([a-z0-9{}._/-]+))?,? with radius (.+?)(?=\s+and height)\s+and height (.+?)(?=,\s*cent(?:er|r)ed|,\s*using material|$)(?:,? cent(?:er|r)ed at (\[.+?\]))?(?:,? using material ([a-z0-9][a-z0-9._/-]*))?$/iu);
+        const cylinder = statement.match(/^create a cylinder called (.+?)(?: with id ([a-z0-9{}._/-]+))?,? with radius (.+?)(?=\s+and height)\s+and height (.+?)(?=,\s*cent(?:er|r)ed|,\s*rotated|,\s*using material|$)(?:,? cent(?:er|r)ed at (\[.+?\]))?(?:,? rotated by (\[.+?\]))?(?:,? using material ([a-z0-9][a-z0-9._/-]*))?$/iu);
         if (cylinder) {
           autoNumber += 1;
           const name = interpolate(quoteName(cylinder[1]), scope);
@@ -311,12 +520,35 @@ export class DesignPlainformCompiler {
             name, kind: 'cylinder',
             dimensions: { radius: length(cylinder[3], scope, 'Cylinder radius'), height: length(cylinder[4], scope, 'Cylinder height') },
             position: cylinder[5] ? evaluateDesignVector(cylinder[5], scope, 'length') : [0, 0, 0],
-            materialId: cylinder[6],
+            rotation: cylinder[6] ? evaluateDesignVector(cylinder[6], scope, 'angle') : [0, 0, 0],
+            materialId: cylinder[7],
           });
           continue;
         }
 
-        const loft = statement.match(/^loft a (?:watertight )?(?:solid )?called (.+?) with id ([a-z0-9][a-z0-9._/-]*) through all sections of (.+)$/iu);
+        const extrude = statement.match(/^extrude (?:the )?profile (.+?) by (.+?) as a (?:watertight )?(?:solid )?called (.+?) with id ([a-z0-9][a-z0-9._/-]*)(?:,? cent(?:er|r)ed at (\[.+?\]))?(?:,? rotated by (\[.+?\]))?(?:,? using material ([a-z0-9][a-z0-9._/-]*))?$/iu);
+        if (extrude) {
+          const profile = profiles.get(key(extrude[1]));
+          if (!profile) { const error = new Error(`Unknown profile “${extrude[1]}”.`); error.code = 'plainform_unknown_profile'; throw error; }
+          const depth = finitePositive(length(extrude[2], scope, 'Extrusion depth'), 'Extrusion depth');
+          const centre = extrude[5] ? evaluateDesignVector(extrude[5], scope, 'length') : [0, 0, 0];
+          const position = [centre[0], centre[1], centre[2] - depth / 2];
+          addGeneratedSolid({
+            id: extrude[4], name: quoteName(extrude[3]),
+            recipe: {
+              kind: 'extrude', points: profile.points.map(point => [point[0], point[2]]), holes: [], depth,
+              steps: 1, curveSegments: 24, bevelEnabled: true, bevelThickness: Math.min(depth * 0.04, 0.05),
+              bevelSize: Math.min(depth * 0.04, 0.05), bevelOffset: 0, bevelSegments: 4,
+            },
+            position,
+            rotation: extrude[6] ? evaluateDesignVector(extrude[6], scope, 'angle') : [0, 0, 0],
+            materialId: extrude[7],
+          });
+          interpretations.push(`Will extrude profile “${profile.name}” by ${depth} metres as ${extrude[4]}.`);
+          continue;
+        }
+
+        const loft = statement.match(/^loft a (?:watertight )?(?:solid )?called (.+?) with id ([a-z0-9][a-z0-9._/-]*) through all sections of (.+?)(?:,? following (.+?))?(?:,? with (positional|tangent|curvature) continuity)?$/iu);
         if (loft) {
           const profile = profiles.get(key(loft[3]));
           if (!profile || profile.sections.length < 2) {
@@ -328,8 +560,81 @@ export class DesignPlainformCompiler {
             const error = new Error(`Loft ID ${entityId} or ${geometryId} already exists.`); error.code = 'plainform_id_conflict'; throw error;
           }
           ids.add(entityId); ids.add(geometryId);
-          lofts.push({ entityId, geometryId, name: quoteName(loft[1]), profile });
+          const guideNames = loft[4] ? splitNames(loft[4]) : [];
+          const guideCurves = guideNames.map((name) => {
+            const guide = guides.get(name);
+            if (!guide) { const error = new Error(`Unknown guide curve “${name}”.`); error.code = 'plainform_unknown_guide'; throw error; }
+            return { name: guide.name, points: guide.points.map(point => [...point]) };
+          });
+          lofts.push({
+            entityId, geometryId, name: quoteName(loft[1]), profile,
+            guideCurves, continuity: loft[5]?.toLowerCase() ?? 'positional', modifiers: [],
+          });
           aliases[key(loft[1])] = [entityId];
+          interpretations.push(`Will loft “${quoteName(loft[1])}” with ${guideCurves.length} guide curves and ${loft[5]?.toLowerCase() ?? 'positional'} continuity.`);
+          continue;
+        }
+
+        const blendSections = statement.match(/^blend the sections of (.+?) with (positional|tangent|curvature) continuity$/iu);
+        if (blendSections) {
+          const entityId = aliases[key(blendSections[1])]?.[0];
+          const loft = lofts.find(item => item.entityId === entityId);
+          if (!loft) {
+            const error = new Error(`Continuity can only be applied to one generated loft; “${blendSections[1]}” is not such a loft.`);
+            error.code = 'plainform_continuity_unsupported'; throw error;
+          }
+          loft.continuity = blendSections[2].toLowerCase();
+          interpretations.push(`Will blend the sections of “${loft.name}” with ${loft.continuity} continuity.`);
+          continue;
+        }
+
+        const crossBlend = statement.match(/^blend (.+?) into (.+?) with (positional|tangent|curvature) continuity$/iu);
+        if (crossBlend) {
+          const error = new Error(
+            `Cross-solid ${crossBlend[3].toLowerCase()} continuity is not deterministic for unrelated solids. `
+            + 'Describe the transition as sections of one loft or use positional union.',
+          );
+          error.code = 'plainform_continuity_unsupported';
+          throw error;
+        }
+
+        const localModifier = statement.match(/^(bulge|pinch) (.+?) (?:outward|inward) around (\[[^\]]+\]) by (.+?) within (.+)$/iu);
+        if (localModifier) {
+          const entityId = aliases[key(localModifier[2])]?.[0];
+          const loft = lofts.find(item => item.entityId === entityId);
+          if (!loft) { const error = new Error(`Local form modifiers currently require a generated loft; “${localModifier[2]}” is not one.`); error.code = 'plainform_modifier_target'; throw error; }
+          loft.modifiers.push({
+            kind: localModifier[1].toLowerCase(),
+            center: evaluateDesignVector(localModifier[3], scope, 'length'),
+            amount: finitePositive(length(localModifier[4], scope, 'Modifier amount'), 'Modifier amount'),
+            radius: finitePositive(length(localModifier[5], scope, 'Modifier radius'), 'Modifier radius'),
+          });
+          interpretations.push(`Will ${localModifier[1].toLowerCase()} “${loft.name}” around a bounded local region.`);
+          continue;
+        }
+
+        const offsetSurface = statement.match(/^offset the surface of (.+?) by (.+)$/iu);
+        if (offsetSurface) {
+          const entityId = aliases[key(offsetSurface[1])]?.[0];
+          const loft = lofts.find(item => item.entityId === entityId);
+          if (!loft) { const error = new Error(`Surface offset currently requires a generated loft; “${offsetSurface[1]}” is not one.`); error.code = 'plainform_modifier_target'; throw error; }
+          loft.modifiers.push({ kind: 'offset', center: [0, 0, 0], amount: length(offsetSurface[2], scope, 'Surface offset') });
+          interpretations.push(`Will offset the surface of “${loft.name}” by ${loft.modifiers.at(-1).amount} metres.`);
+          continue;
+        }
+
+        const booleanStatement = statement.match(/^(subtract|union|intersect) (.+?) (?:from|with) (.+)$/iu);
+        if (booleanStatement) {
+          const operation = booleanStatement[1].toLowerCase();
+          const toolId = aliases[key(booleanStatement[2])]?.[0] ?? clean(booleanStatement[2]);
+          const targetId = aliases[key(booleanStatement[3])]?.[0] ?? clean(booleanStatement[3]);
+          if (!ids.has(toolId) || !ids.has(targetId)) {
+            const error = new Error(`Boolean operands must be generated solids in this design: ${toolId}, ${targetId}.`);
+            error.code = 'plainform_boolean_operand'; throw error;
+          }
+          if (toolId === targetId) { const error = new Error('A solid cannot be combined with itself.'); error.code = 'plainform_boolean_operand'; throw error; }
+          booleanCommands.push({ operation, toolId, targetId });
+          interpretations.push(`Will ${operation} ${toolId} ${operation === 'subtract' ? 'from' : 'with'} ${targetId}.`);
           continue;
         }
 
@@ -375,9 +680,14 @@ export class DesignPlainformCompiler {
       resourceType: 'geometries',
       resource: { id: loft.geometryId, recipe: {
         kind: 'loft', sections: loft.profile.sections, closedProfile: true, capStart: true, capEnd: true,
-        profileResolution: loft.profile.points.length, subdivisions: 0, alignProfile: 'closest',
+        profileResolution: loft.profile.points.length,
+        subdivisions: loft.continuity === 'positional' ? 0 : 3,
+        alignProfile: 'closest', continuity: loft.continuity,
+        guideCurves: loft.guideCurves,
+        modifiers: loft.modifiers,
       } },
     });
+    resources.push(...generatedResources);
     for (const resource of resources) {
       if (occupied.has(resource.resource.id)) {
         const error = new Error(`Generated geometry ID ${resource.resource.id} already exists.`); error.code = 'plainform_id_conflict'; throw error;
@@ -387,8 +697,70 @@ export class DesignPlainformCompiler {
     const allEntities = [...entities, ...lofts.map(loft => ({
       id: loft.entityId, kind: 'mesh', name: loft.name, parentId: rootId,
       components: { mesh: { geometryId: loft.geometryId } },
-      metadata: { plainformDesign: { primitive: 'loft', profile: loft.profile.name } },
+      metadata: { plainformDesign: {
+        primitive: 'loft', profile: loft.profile.name, continuity: loft.continuity,
+        guides: loft.guideCurves.map(guide => guide.name), modifiers: loft.modifiers,
+      } },
     }))];
+    if (booleanCommands.length > 0) {
+      const resourceById = new Map(resources.map(item => [item.resource.id, item]));
+      const entityById = new Map(allEntities.map(entity => [entity.id, entity]));
+      const usageCount = geometryId => allEntities.filter(entity => entity.components?.mesh?.geometryId === geometryId).length;
+      for (const command of booleanCommands) {
+        const target = entityById.get(command.targetId);
+        const tool = entityById.get(command.toolId);
+        if (!target?.components?.mesh?.geometryId || !tool?.components?.mesh?.geometryId) {
+          const error = new Error('Boolean operands must resolve to generated mesh solids.'); error.code = 'plainform_boolean_operand'; throw error;
+        }
+        const targetResource = resourceById.get(target.components.mesh.geometryId);
+        const toolResource = resourceById.get(tool.components.mesh.geometryId);
+        if (!targetResource?.resource?.recipe || !toolResource?.resource?.recipe) {
+          const error = new Error('Boolean operands require generated procedural geometry recipes.'); error.code = 'plainform_boolean_operand'; throw error;
+        }
+        if (toolResource.resource.recipe.kind === 'csg') {
+          const error = new Error('A consumed boolean tool cannot be reused as another boolean operand.'); error.code = 'plainform_boolean_operand'; throw error;
+        }
+        const targetRecipe = targetResource.resource.recipe;
+        const targetTransform = target.transform ?? { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] };
+        const toolTransform = tool.transform ?? { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] };
+        let operands;
+        if (targetRecipe.kind === 'csg') {
+          if (targetRecipe.operation !== command.operation) {
+            const error = new Error('Mixed boolean chains require an explicit intermediate design solid.'); error.code = 'plainform_boolean_chain'; throw error;
+          }
+          operands = [...targetRecipe.operands, { recipe: toolResource.resource.recipe, transform: toolTransform }];
+        } else {
+          operands = [
+            { recipe: targetRecipe, transform: targetTransform },
+            { recipe: toolResource.resource.recipe, transform: toolTransform },
+          ];
+        }
+        const sharedTarget = usageCount(target.components.mesh.geometryId) > 1;
+        const resultGeometryId = sharedTarget
+          ? `geometry/plainform-design/${designSlug}/${slug(target.name)}-boolean`
+          : target.components.mesh.geometryId;
+        const resultResource = { resourceType: 'geometries', resource: {
+          id: resultGeometryId,
+          recipe: { kind: 'csg', operation: command.operation, operands },
+        } };
+        if (sharedTarget) {
+          if (resourceById.has(resultGeometryId)) {
+            const error = new Error(`Generated boolean geometry ID ${resultGeometryId} already exists.`); error.code = 'plainform_id_conflict'; throw error;
+          }
+          resources.push(resultResource);
+          resourceById.set(resultGeometryId, resultResource);
+        } else {
+          const resourceIndex = resources.indexOf(targetResource);
+          resources[resourceIndex] = resultResource;
+          resourceById.set(resultGeometryId, resultResource);
+        }
+        target.components.mesh.geometryId = resultGeometryId;
+        target.transform = { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] };
+        target.metadata.plainformDesign.boolean = { operation: command.operation, toolId: tool.id };
+        tool.visible = false;
+        tool.metadata.plainformDesign.booleanToolFor = target.id;
+      }
+    }
     if (allEntities.length > MAX_DESIGN_ENTITIES) {
       const error = new Error(`Design Plainform creates at most ${MAX_DESIGN_ENTITIES} entities per program.`);
       error.code = 'plainform_design_entity_limit';

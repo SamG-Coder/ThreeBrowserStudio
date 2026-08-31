@@ -275,6 +275,52 @@ test('loft v2 resamples named transformed rings, interpolates sections, and emit
   assert.ok(Math.max(...loft.attributes.position.array.filter((_, index) => index % 3 === 2)) >= 3);
 });
 
+test('guided lofts apply deterministic rails, local form modifiers, and continuity interpolation', () => {
+  const baseSections = [
+    [[-1, 0, -1], [1, 0, -1], [1, 0, 1], [-1, 0, 1]],
+    [[-1, 1, -1], [1, 1, -1], [1, 1, 1], [-1, 1, 1]],
+    [[-1, 2, -1], [1, 2, -1], [1, 2, 1], [-1, 2, 1]],
+  ];
+  const loft = createGeometry(FAKE_THREE, {
+    kind: 'loft', sections: baseSections, profileResolution: 4, subdivisions: 2,
+    continuity: 'curvature',
+    guideCurves: [{ profileIndex: 2, points: [[1, 0, 1], [1.35, 1, 1.2], [1.1, 2, 1]] }],
+    modifiers: [{ kind: 'bulge', center: [1.35, 1, 1.2], amount: 0.15, radius: 1 }],
+  });
+  assert.equal(loft.attributes.position.count, 28);
+  const positions = loft.attributes.position.array;
+  assert.ok(Math.max(...positions.filter((_, index) => index % 3 === 0)) > 1.35);
+  assert.throws(() => createGeometry(FAKE_THREE, {
+    kind: 'loft', sections: baseSections, continuity: 'curvature-ish',
+  }), /continuity/u);
+});
+
+test('CSG recipes deterministically subtract, union, and intersect authored solids', () => {
+  const cube = (centreX, size = 2) => {
+    const half = size / 2;
+    const positions = [
+      -half,-half,-half, half,-half,-half, half,half,-half, -half,half,-half,
+      -half,-half,half, half,-half,half, half,half,half, -half,half,half,
+    ].map((value, index) => index % 3 === 0 ? value + centreX : value);
+    return {
+      kind: 'explicit', positions,
+      indices: [0,2,1,0,3,2,4,5,6,4,6,7,0,1,5,0,5,4,1,2,6,1,6,5,2,3,7,2,7,6,3,0,4,3,4,7],
+    };
+  };
+  for (const operation of ['subtract', 'union', 'intersect']) {
+    const geometry = createGeometry(FAKE_THREE, {
+      kind: 'csg', operation,
+      operands: [{ recipe: cube(0) }, { recipe: cube(0.75) }],
+    });
+    assert.ok(geometry.attributes.position.count >= 3, operation);
+    assert.equal(geometry.normalsComputed, true);
+    assert.equal(geometry.boundingBoxComputed, true);
+  }
+  assert.throws(() => createGeometry(FAKE_THREE, {
+    kind: 'csg', operation: 'xor', operands: [{ recipe: cube(0) }, { recipe: cube(1) }],
+  }), /union, subtract, or intersect/u);
+});
+
 test('shape and extrude recipes build contours and holes with bounded options', () => {
   const recipe = {
     points: [[0, 0], [2, 0], [2, 2], [0, 2]],
