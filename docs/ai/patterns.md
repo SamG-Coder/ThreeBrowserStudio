@@ -177,6 +177,10 @@ When a complex result is weak, revise the authored profiles, section spacing,
 guide binding, dimensions, material, camera, and light before extending the
 language. Add a new Plainform/runtime capability only after a required form
 cannot reasonably be expressed with the existing general-purpose operations.
+Remember that controlled sections preserve one base profile's topology: author
+silhouette landmarks in that profile, use separate guides for their longitudinal
+paths, and state mirrored local modifiers on both sides. Prove booleans first on
+a low-complexity representative part such as a cylinder annulus.
 
 Face-grid orientation is explicit and independent from placement. Append one
 of these phrases when the default local-Z-to-face-normal behavior is not the

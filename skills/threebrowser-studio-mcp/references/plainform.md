@@ -99,6 +99,13 @@ Add a controlled section of body section at height 0 metres, width 1.72 metres, 
 Add a controlled section of body section at height 1.4 metres, width 1.90 metres, depth 1.08 metres, offset vertically by 6 centimetres, offset laterally by 2 centimetres, rotated by [0 degrees, 1 degree, 0 degrees], and scaled locally by [1, 1, 0.96].
 ```
 
+Every section keeps the same profile topology. More sections improve the
+longitudinal transition, but they do not invent rocker, shoulder, beltline,
+roof, hood, or deck landmarks. Put those landmarks in the base profile and use
+spatially distinct guides to control them. Local modifiers are not mirrored
+implicitly: author matching positive- and negative-Z bulges or pinches when the
+form must remain bilateral.
+
 Guide curves are open curves in loft-local XYZ. A guide binds to the closest
 point on the first section and pulls the corresponding point across the loft.
 Use spatially distinct first points for multiple rails:
@@ -136,6 +143,15 @@ the same kind form one deterministic bounded chain:
 Subtract Front Clearance from Body Shell.
 Union Reinforcement with Chassis.
 Intersect Crop Volume with Detail Shell.
+```
+
+A wheel or arch annulus is a useful bounded boolean test before attempting a
+larger assembly:
+
+```text
+Create a cylinder called Outer Ring with id entity/outer-ring, with radius 54 centimetres and height 7 centimetres, centred at [0 metres, 0 metres, 0 metres], rotated by [90 degrees, 0 degrees, 0 degrees], using material material/carbon.
+Create a cylinder called Inner Ring with id entity/inner-ring, with radius 47 centimetres and height 10 centimetres, centred at [0 metres, 0 metres, 0 metres], rotated by [90 degrees, 0 degrees, 0 degrees].
+Subtract Inner Ring from Outer Ring.
 ```
 
 Use booleans for real voids or fused silhouettes, not panel lines that can be
@@ -187,3 +203,9 @@ Fix the authored section placement, guide binding, dimensions, or camera first.
 Extend Plainform/runtime only when the required shape cannot reasonably be
 expressed with arbitrary profiles, controlled sections, guide curves, local
 modifiers, extrusions, primitives, and bounded booleans.
+
+Design profiles loft along local Y. When a complete manufactured assembly must
+lie along another world axis, keep the modelling program internally consistent,
+then use Object Plainform to name and orient the generated root group. This is
+composition, not a reason to duplicate the Design grammar with world-axis
+variants.
