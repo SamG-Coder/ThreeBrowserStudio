@@ -257,6 +257,12 @@ Every deformation requires an explicit falloff. For example, `Raise the
 surface along shoulder line by 8 millimetres` fails with
 `plainform_surface_deformation_falloff_required`. A falloff that reaches no
 evaluated surface vertices fails instead of silently producing no change.
+Deformation operates on the evaluated source vertices; it does not secretly
+remesh. A feature whose radius is much smaller than the source spacing may
+therefore affect no vertex, while a very broad falloff on a sparse panel may
+look nearly uniform. Add meaningful profile or section resolution in the
+authored source when the silhouette needs local detail. Smooth shading changes
+normal interpolation, not the underlying silhouette.
 Curve deformation requires a `surface curve`, not an ordinary patch boundary.
 This stage accepts curve-distance and surface-radius regions as deformation
 masks. Between-curves and enclosed regions remain valid named intent for later
@@ -278,7 +284,9 @@ nearest-surface projection. A `$reference` projection reprojects the already
 evaluated world points and preserves whether a source surface curve is closed.
 The resulting curve can be named as a region or consumed by later supported
 surface operations. Projection records its source intent and all resolved
-anchors; it does not create a floating duplicate mesh.
+anchors; it does not create a floating duplicate mesh or visible pixels by
+itself. A beauty render changes only after a supported geometry operation
+consumes the projected curve or its region.
 
 Create actual thickness with:
 
@@ -361,6 +369,11 @@ Within those fixed budgets, the runtime chooses from a bounded set of BSP
 splitter candidates to minimize polygon splitting and tree imbalance. Retry a
 small curved attachment after reducing operand topology; never raise the guard
 or assume triangle count alone predicts boolean cost.
+An accepted positional union proves intersecting topology was joined, not that
+the authored silhouettes form an attractive blend. Use the same measured or
+named references to place both operands; avoid independently guessed world
+coordinates. Tangent or curvature continuity remains an explicit rejection,
+not an implied property of a successful positional union.
 
 Split one coherent surface along an existing semantic loop with two immediate
 statements:

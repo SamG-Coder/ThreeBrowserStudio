@@ -204,7 +204,10 @@ are rejected as deformation masks in the current stage.
 Projection can turn a named profile or existing `$surface-reference` into a
 new anchored surface curve on another owner. Profile projection accepts an
 explicit design-space centre and optional rotation; reference projection uses
-the already evaluated world points. `Shell <owner> inward|outward by <length>`
+the already evaluated world points. Projection is design intent, not visible
+surface detail by itself: a render changes only after a supported deformation,
+split, or other geometry operation consumes the projected curve or region.
+`Shell <owner> inward|outward by <length>`
 creates a bounded indexed result with duplicated offset skin, reversed inner
 winding, and walls on genuine topology boundary edges. Thickness at or above
 half the smallest non-zero owner span is rejected conservatively. A requested
@@ -261,6 +264,13 @@ When a complex result is weak, revise the authored profiles, section spacing,
 guide binding, dimensions, material, camera, and light before extending the
 language. Add a new Plainform/runtime capability only after a required form
 cannot reasonably be expressed with the existing general-purpose operations.
+Regional deformation moves the evaluated vertices already present in the
+source surface. A tiny mask on a coarse four-corner panel may therefore reject
+with no affected vertices, while a broad mask can read as an almost uniform
+offset. Author enough section/profile resolution for the intended feature;
+smooth shading can soften lighting across faces but cannot repair a coarse
+silhouette. Prefer named relationships and measured placement over unrelated
+guessed world coordinates when parts must remain visually attached.
 Remember that controlled sections preserve one base profile's topology: author
 silhouette landmarks in that profile, use separate guides for their longitudinal
 paths, and state mirrored local modifiers on both sides. Prove booleans first on
