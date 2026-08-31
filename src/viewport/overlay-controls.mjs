@@ -214,7 +214,9 @@ export class OverlayHost extends Control {
 
   invalidateRect(rect) {
     if (rectEmpty(rect)) return;
-    absorbRect(this.#rects, rect);
+    const bounded = intersectRect(rect, this.absoluteBounds);
+    if (rectEmpty(bounded)) return;
+    absorbRect(this.#rects, bounded);
     if (this.#scheduled) return;
     this.#scheduled = true;
     this.#schedulePaint(() => {
@@ -743,6 +745,7 @@ export class VirtualList extends Control {
     scrollIndex = 0,
     paintItem,
     onActivate,
+    reusePixels = true,
     ...rest
   } = {}) {
     super({ backColor: rest.backColor ?? 'rgba(8, 13, 22, 0.92)', ...rest });
@@ -751,6 +754,7 @@ export class VirtualList extends Control {
     this.scrollIndex = scrollIndex;
     this.paintItem = paintItem;
     this.onActivate = onActivate;
+    this.reusePixels = reusePixels !== false;
   }
 
   get capacity() {
@@ -788,7 +792,7 @@ export class VirtualList extends Control {
     if (next === this.scrollIndex) return false;
     const steps = next - this.scrollIndex;
     this.scrollIndex = next;
-    if (!this.#scrollExistingRows(steps)) this.invalidate();
+    if (!this.reusePixels || !this.#scrollExistingRows(steps)) this.invalidate();
     if (notify) this.onScroll?.(this.scrollIndex);
     return true;
   }
@@ -798,7 +802,10 @@ export class VirtualList extends Control {
     const host = this.host;
     const bounds = this.absoluteBounds;
     const distance = steps * this.itemHeight;
-    const keepHeight = this.height - Math.abs(distance);
+    // Only full painted rows may be copied. The list can have a fractional
+    // remainder when its viewport is not an exact multiple of itemHeight.
+    const paintedHeight = Math.min(this.height, this.capacity * this.itemHeight);
+    const keepHeight = paintedHeight - Math.abs(distance);
     if (!host?.copyRect || keepHeight <= 0 || bounds.width <= 0) return false;
     const from = steps > 0
       ? createRect(bounds.x, bounds.y + distance, bounds.width, keepHeight)

@@ -29,7 +29,10 @@ const PANEL_WIDTH = 380;
 const ROW_HEIGHT = 40;
 const EXPANDED_ROW_HEIGHT = 64;
 const LOG_TOOLBAR_HEIGHT = 28;
+const PLAINFORM_TOOLBAR_HEIGHT = 30;
 const EXPLORER_ROW_HEIGHT = 22;
+const PLAINFORM_ROW_HEIGHT = 22;
+const PLAINFORM_WRAP_COLUMNS = 48;
 const HEADER_HEIGHT = 48;
 const TAB_HEIGHT = 30;
 const SCROLL_WIDTH = 10;
@@ -220,6 +223,63 @@ function logLine(entry, now, { expanded = false } = {}) {
   };
 }
 
+function wrapPlainformText(value, columns = PLAINFORM_WRAP_COLUMNS) {
+  const text = String(value ?? '');
+  if (!text) return [''];
+  const words = text.split(/\s+/u);
+  const rows = [];
+  let row = '';
+  for (const word of words) {
+    if (!row) {
+      row = word;
+      continue;
+    }
+    if ([...row, ' ', ...word].length <= columns) row += ` ${word}`;
+    else {
+      rows.push(row);
+      row = word;
+    }
+  }
+  if (row) rows.push(row);
+  return rows.length > 0 ? rows : [''];
+}
+
+function flattenPlainformRows(entries) {
+  const rows = [];
+  for (const entry of entries) {
+    const source = entry?.plainform?.sourceLines;
+    if (!Array.isArray(source)) continue;
+    rows.push(Object.freeze({
+      kind: 'header',
+      text: `${entry.timestamp ?? '--:--:--.---'}  PLAINFORM`,
+    }));
+    source.forEach((line, lineIndex) => {
+      wrapPlainformText(line).forEach((part, partIndex) => rows.push(Object.freeze({
+        kind: 'source',
+        prefix: partIndex === 0 ? `${String(lineIndex + 1).padStart(3, ' ')}  ` : '     ',
+        text: part,
+      })));
+    });
+  }
+  return Object.freeze(rows);
+}
+
+function plainformSnapshots(entries) {
+  return entries.filter(entry => entry?.plainform).map(entry => entry.plainform);
+}
+
+function completePlainformText(entries) {
+  return entries
+    .map(entry => entry?.plainform?.sourceLines)
+    .filter(lines => Array.isArray(lines) && lines.length > 0)
+    .map(lines => lines.join('\n'))
+    .join('\n\n');
+}
+
+function sameReferences(left, right) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
 /**
  * Side panel composited through CanvasTexture. Controls are retained and
  * only the invalidated update region is painted.
@@ -248,6 +308,12 @@ export function createMcpLiveFeedWebGpuHud({
   onImportProject,
   onRtxSettingsChange,
   onDlss5SettingsChange,
+  writeClipboardText = value => {
+    if (typeof globalThis.navigator?.clipboard?.writeText !== 'function') {
+      throw new Error('Clipboard writing is unavailable.');
+    }
+    return globalThis.navigator.clipboard.writeText(value);
+  },
 } = {}) {
   const document = suppliedDocument ?? globalThis.document;
   const keyboard = eventTarget ?? globalThis;
@@ -275,6 +341,15 @@ export function createMcpLiveFeedWebGpuHud({
     typeface,
   });
   const texture = new THREE.CanvasTexture(canvas);
+  const nativeOverlayPresentation = globalThis.__threeBrowserNativeRuntime === true &&
+    typeof canvas._scheduleOverlayPresent === 'function';
+  if (nativeOverlayPresentation) {
+    canvas.style.position = 'fixed';
+    canvas.style.pointerEvents = 'none';
+    canvas.style.zIndex = '1000';
+    canvas.style.display = 'block';
+    document.body?.appendChild?.(canvas);
+  }
   if (THREE.SRGBColorSpace !== undefined) texture.colorSpace = THREE.SRGBColorSpace;
   const applyTextureFilter = ratio => {
     const nearest = Number.isInteger(ratio) && THREE.NearestFilter !== undefined;
@@ -303,7 +378,8 @@ export function createMcpLiveFeedWebGpuHud({
   sprite.frustumCulled = false;
   sprite.renderOrder = 2_147_483_000;
   sprite.center?.set?.(0.5, 0.5);
-  targetScene.add(sprite);
+  if (!nativeOverlayPresentation) targetScene.add(sprite);
+  else sprite.visible = false;
   const localPosition = new THREE.Vector3();
 
   let viewportWidth = 1;
@@ -318,6 +394,8 @@ export function createMcpLiveFeedWebGpuHud({
   let captured = null;
   let tab = 'log';
   let logExpanded = false;
+  let plainformRows = Object.freeze([]);
+  let retainedPlainformSnapshots = Object.freeze([]);
   let explorerOutline = Object.freeze({
     revision: 0,
     sceneId: null,
@@ -354,7 +432,7 @@ export function createMcpLiveFeedWebGpuHud({
     ...(schedulePaint ? { schedulePaint } : {}),
     backColor: PANEL_BACKGROUND,
     onPainted() {
-      texture.needsUpdate = true;
+      if (!nativeOverlayPresentation) texture.needsUpdate = true;
     },
   });
 
@@ -380,6 +458,7 @@ export function createMcpLiveFeedWebGpuHud({
   }));
   const tabItems = [
     { id: 'log', label: 'Log' },
+    { id: 'plainform', label: 'Plainform' },
     { id: 'explorer', label: 'Explorer' },
     { id: 'settings', label: 'Settings' },
   ];
@@ -391,6 +470,7 @@ export function createMcpLiveFeedWebGpuHud({
     onChange(id) {
       tab = id;
       logPage.setVisible(id === 'log');
+      plainformPage.setVisible(id === 'plainform');
       explorerPage.setVisible(id === 'explorer');
       settingsPage.setVisible(id === 'settings');
       promptPage?.setVisible(id === 'prompt');
@@ -414,6 +494,7 @@ export function createMcpLiveFeedWebGpuHud({
     name: 'log-list',
     backColor: PANEL_LAYER_TRANSPARENT,
     itemHeight: ROW_HEIGHT,
+    reusePixels: false,
     paintItem(drawContext, drawFonts, { index, bounds }) {
       const entry = latest[index];
       if (!entry) return;
@@ -450,6 +531,43 @@ export function createMcpLiveFeedWebGpuHud({
   list.onScroll = value => {
     scrollBar.setScroll(value, { notify: false });
   };
+
+  const plainformPage = host.add(new Control({
+    name: 'plainform-page', visible: false, backColor: PANEL_LAYER_TRANSPARENT,
+  }));
+  const plainformToolbar = plainformPage.add(new Control({
+    name: 'plainform-toolbar', backColor: PANEL_LAYER_TRANSPARENT,
+  }));
+  const plainformCopyButton = plainformToolbar.add(new Button({
+    name: 'plainform-copy-all',
+    text: 'Copy all',
+    onClick() { void copyAllPlainform(); },
+  }));
+  const plainformList = plainformPage.add(new VirtualList({
+    name: 'plainform-list',
+    backColor: PANEL_LAYER_TRANSPARENT,
+    itemHeight: PLAINFORM_ROW_HEIGHT,
+    // Canvas getImageData/putImageData stalls the native render thread on
+    // long text streams; cached glyph repainting is considerably cheaper.
+    reusePixels: false,
+    paintItem(drawContext, drawFonts, { index, bounds }) {
+      const row = plainformRows[index];
+      if (!row) return;
+      if (row.kind === 'header') {
+        drawContext.fillStyle = 'rgba(93, 143, 202, 0.18)';
+        drawContext.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+      }
+      const color = row.kind === 'source' ? '#dce8f7' : '#8eb4dc';
+      drawFonts.blit(drawContext, `${row.prefix ?? ''}${row.text}`, bounds.x + 8, bounds.y + 15, {
+        font: MONO_FONT, fillStyle: color, maxWidth: bounds.width - 14,
+      });
+    },
+  }));
+  const plainformScroll = plainformPage.add(new ScrollBar({
+    name: 'plainform-scroll',
+    onScroll(value) { plainformList.setScrollIndex(value, { notify: false }); },
+  }));
+  plainformList.onScroll = value => plainformScroll.setScroll(value, { notify: false });
 
   const explorerPage = host.add(new Control({
     name: 'explorer-page',
@@ -845,6 +963,7 @@ export function createMcpLiveFeedWebGpuHud({
     modeButton.setBounds(host.width - 118, 10, 108, 28);
     tabs.setBounds(0, HEADER_HEIGHT, host.width, TAB_HEIGHT);
     logPage.setBounds(0, contentY, host.width, contentHeight);
+    plainformPage.setBounds(0, contentY, host.width, contentHeight);
     explorerPage.setBounds(0, contentY, host.width, contentHeight);
     settingsPage.setBounds(0, contentY, host.width, contentHeight);
     promptPage?.setBounds(0, contentY, host.width, contentHeight);
@@ -856,6 +975,20 @@ export function createMcpLiveFeedWebGpuHud({
       LOG_TOOLBAR_HEIGHT,
       SCROLL_WIDTH,
       Math.max(20, logPage.height - LOG_TOOLBAR_HEIGHT),
+    );
+    plainformToolbar.setBounds(0, 0, plainformPage.width, PLAINFORM_TOOLBAR_HEIGHT);
+    plainformCopyButton.setBounds(Math.max(4, plainformToolbar.width - 92), 2, 88, 26);
+    plainformList.setBounds(
+      0,
+      PLAINFORM_TOOLBAR_HEIGHT,
+      Math.max(40, plainformPage.width - SCROLL_WIDTH),
+      Math.max(20, plainformPage.height - PLAINFORM_TOOLBAR_HEIGHT),
+    );
+    plainformScroll.setBounds(
+      plainformPage.width - SCROLL_WIDTH,
+      PLAINFORM_TOOLBAR_HEIGHT,
+      SCROLL_WIDTH,
+      Math.max(20, plainformPage.height - PLAINFORM_TOOLBAR_HEIGHT),
     );
     explorerList.setBounds(0, 0, Math.max(40, explorerPage.width - SCROLL_WIDTH), explorerPage.height);
     explorerScroll.setBounds(explorerPage.width - SCROLL_WIDTH, 0, SCROLL_WIDTH, explorerPage.height);
@@ -940,6 +1073,30 @@ export function createMcpLiveFeedWebGpuHud({
     explorerScroll.setVisible(explorerList.maxScroll > 0);
   }
 
+  function syncPlainformScroll() {
+    plainformList.setItems(plainformRows.length, { followTail: plainformList.scrollIndex >= plainformList.maxScroll });
+    plainformScroll.minimum = 0;
+    plainformScroll.maximum = plainformList.maxScroll;
+    plainformScroll.viewportSize = plainformList.capacity;
+    plainformScroll.setScroll(plainformList.scrollIndex, { notify: false });
+    plainformScroll.setVisible(plainformList.maxScroll > 0);
+  }
+
+  async function copyAllPlainform() {
+    const text = completePlainformText(latest);
+    if (!text) return false;
+    try {
+      await writeClipboardText(text);
+      plainformCopyButton.text = 'Copied';
+      plainformCopyButton.invalidate();
+      return true;
+    } catch {
+      plainformCopyButton.text = 'Copy failed';
+      plainformCopyButton.invalidate();
+      return false;
+    }
+  }
+
   function syncSettingsScroll() {
     settingsScroll.minimum = 0;
     settingsScroll.maximum = settingsViewport.maxScroll;
@@ -950,6 +1107,7 @@ export function createMcpLiveFeedWebGpuHud({
 
   function syncScroll() {
     syncLogScroll();
+    syncPlainformScroll();
     syncExplorerScroll();
     syncSettingsScroll();
   }
@@ -1153,8 +1311,14 @@ export function createMcpLiveFeedWebGpuHud({
       ? Math.min(explorerRows.length, explorerList.scrollIndex + explorerList.capacity)
       : 0;
     const objectCount = Object.keys(explorerOutline.entities ?? {}).length;
+    const plainformFirst = plainformRows.length > 0 ? plainformList.scrollIndex + 1 : 0;
+    const plainformLast = plainformRows.length > 0
+      ? Math.min(plainformRows.length, plainformList.scrollIndex + plainformList.capacity)
+      : 0;
     const nextText = tab === 'log'
       ? `${activeCount > 0 ? `${activeCount} ACTIVE` : 'IDLE'}  ·  ${latest.length} events  ·  ${first}–${last}`
+      : tab === 'plainform'
+        ? `Plainform stream  ·  ${plainformRows.length} lines  ·  ${plainformFirst}–${plainformLast}`
       : tab === 'explorer'
         ? `Explorer  ·  ${objectCount} objects  ·  ${explorerFirst}–${explorerLast}`
         : tab === 'prompt'
@@ -1175,10 +1339,15 @@ export function createMcpLiveFeedWebGpuHud({
       settingsDetailToggle.setSelected(next);
       return;
     }
+    const wasAtTail = list.scrollIndex >= list.maxScroll;
+    const anchoredIndex = list.scrollIndex;
     logExpanded = next;
     list.itemHeight = next ? EXPANDED_ROW_HEIGHT : ROW_HEIGHT;
+    list.scrollIndex = wasAtTail ? list.maxScroll : Math.min(anchoredIndex, list.maxScroll);
     logDetailToggle.setSelected(next);
     settingsDetailToggle.setSelected(next);
+    // Row geometry changed, so no pixels from the previous compact/expanded
+    // layout are safe to recycle through the virtual-list scroll fast path.
     list.invalidate();
     syncLogScroll();
     syncStatus();
@@ -1233,26 +1402,37 @@ export function createMcpLiveFeedWebGpuHud({
     layoutPages();
   };
 
-  const panelWidth = PANEL_WIDTH;
-  const panelHeight = HEADER_HEIGHT + TAB_HEIGHT + (ROW_HEIGHT * rowLimit);
-  const backingRatio = clamp(finite(pixelRatio, 1), 1, 2);
+  const idealPanelHeight = HEADER_HEIGHT + TAB_HEIGHT + LOG_TOOLBAR_HEIGHT + (ROW_HEIGHT * rowLimit);
+  let backingRatio = clamp(finite(pixelRatio, 1), 1, 2);
 
-  const resize = (nextWidth, nextHeight) => {
+  const resize = (nextWidth, nextHeight, nextPixelRatio = backingRatio) => {
     if (disposed) return;
     viewportWidth = Math.max(1, Math.round(finite(nextWidth, viewportWidth)));
     viewportHeight = Math.max(1, Math.round(finite(nextHeight, viewportHeight)));
+    backingRatio = clamp(finite(nextPixelRatio, backingRatio), 1, 2);
     originLeft = PANEL_MARGIN;
     originTop = PANEL_MARGIN;
+    const availableWidth = Math.max(1, viewportWidth - (PANEL_MARGIN * 2));
+    const availableHeight = Math.max(1, viewportHeight - (PANEL_MARGIN * 2));
+    const panelWidth = Math.min(PANEL_WIDTH, availableWidth);
+    const panelHeight = Math.min(idealPanelHeight, availableHeight);
     if (host.width === panelWidth && host.height === panelHeight && host.backingRatio === backingRatio) {
       return;
     }
     applyTextureFilter(backingRatio);
     host.setBacking(panelWidth, panelHeight, backingRatio);
+    if (nativeOverlayPresentation) {
+      canvas.style.left = `${originLeft}px`;
+      canvas.style.top = `${originTop}px`;
+      canvas.style.width = `${host.width}px`;
+      canvas.style.height = `${host.height}px`;
+    }
     syncStatus();
   };
 
   const updateCamera = renderCamera => {
     if (disposed || !renderCamera) return false;
+    if (nativeOverlayPresentation) return false;
     const aspect = viewportWidth / Math.max(1, viewportHeight);
     const zoom = Math.max(0.0001, finite(renderCamera.zoom, 1));
     let viewWidth;
@@ -1297,7 +1477,8 @@ export function createMcpLiveFeedWebGpuHud({
   const show = () => {
     if (disposed || visible) return;
     visible = true;
-    sprite.visible = true;
+    sprite.visible = !nativeOverlayPresentation;
+    if (nativeOverlayPresentation) canvas.style.display = 'block';
     host.visible = true;
     host.invalidate();
     syncTimer();
@@ -1308,6 +1489,7 @@ export function createMcpLiveFeedWebGpuHud({
     if (disposed || !visible) return;
     visible = false;
     sprite.visible = false;
+    if (nativeOverlayPresentation) canvas.style.display = 'none';
     host.visible = false;
     stopTimer();
     onVisibilityChange?.(false);
@@ -1394,6 +1576,7 @@ export function createMcpLiveFeedWebGpuHud({
     }
     handled = handled
       || (tab === 'log' && list.onWheel(event, { delta }))
+      || (tab === 'plainform' && plainformList.onWheel(event, { delta }))
       || (tab === 'explorer' && explorerList.onWheel(event, { delta }))
       || (tab === 'settings' && settingsViewport.onWheel(event, { delta }));
     if (handled) {
@@ -1406,15 +1589,33 @@ export function createMcpLiveFeedWebGpuHud({
 
   const acceptSnapshot = entries => {
     latest = boundedEntries(entries);
-    syncScroll();
+    const nextPlainformSnapshots = plainformSnapshots(latest);
+    const plainformChanged = !sameReferences(retainedPlainformSnapshots, nextPlainformSnapshots);
+    if (plainformChanged) {
+      retainedPlainformSnapshots = Object.freeze(nextPlainformSnapshots);
+      plainformRows = flattenPlainformRows(latest);
+      plainformCopyButton.text = 'Copy all';
+      plainformCopyButton.invalidate();
+    }
+    syncLogScroll();
+    if (plainformChanged) syncPlainformScroll();
+    syncExplorerScroll();
+    syncSettingsScroll();
+    // Lifecycle upserts can change text without changing item counts. Repaint
+    // the visible log regions so completed/failed rows never retain started
+    // glyphs underneath their replacement text.
+    list.invalidate();
+    if (plainformChanged) plainformList.invalidate();
     syncStatus();
     syncTimer();
   };
 
   syncGraphicsControls();
   latest = boundedEntries(safeSnapshot(source));
+  retainedPlainformSnapshots = Object.freeze(plainformSnapshots(latest));
+  plainformRows = flattenPlainformRows(latest);
   resize(width, height, pixelRatio);
-  sprite.visible = true;
+  sprite.visible = !nativeOverlayPresentation;
   let unsubscribe = () => {};
   try {
     unsubscribe = source.subscribe(acceptSnapshot) ?? unsubscribe;
@@ -1448,6 +1649,7 @@ export function createMcpLiveFeedWebGpuHud({
     keyboard?.removeEventListener?.('wheel', onWheel, { capture: true });
     onVisibilityChange?.(false);
     targetScene.remove(sprite);
+    if (nativeOverlayPresentation) canvas.remove?.();
     material.dispose?.();
     texture.dispose?.();
     fonts.clear();
@@ -1482,8 +1684,10 @@ export function createMcpLiveFeedWebGpuHud({
     get logExpanded() { return logExpanded; },
     get viewMode() { return viewMode; },
     get visible() { return visible; },
+    get webGpuPresentation() { return !nativeOverlayPresentation; },
     get drawRevision() { return host.paintGeneration; },
     get scrollIndex() { return list.scrollIndex; },
+    get plainformScrollIndex() { return plainformList.scrollIndex; },
     get settingsScrollOffset() { return settingsViewport.value; },
     get settingsMaxScroll() { return settingsViewport.maxScroll; },
     get graphicsSettingsState() {
@@ -1493,6 +1697,14 @@ export function createMcpLiveFeedWebGpuHud({
       });
     },
     get visibleRowCount() { return Math.min(list.capacity, latest.length); },
+    get visiblePlainformText() {
+      return plainformRows
+        .slice(plainformList.scrollIndex, plainformList.scrollIndex + plainformList.capacity)
+        .map(row => `${row.prefix ?? ''}${row.text}`)
+        .join('\n');
+    },
+    get completePlainformText() { return completePlainformText(latest); },
+    copyAllPlainform,
     get visibleLogText() {
       return latest.slice(list.scrollIndex, list.scrollIndex + list.capacity).map(entry => {
         const line = logLine(entry, timeNow(), { expanded: logExpanded });

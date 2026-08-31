@@ -32,11 +32,14 @@ and live `three_studio_status` stay authoritative.
 2. Call `three_studio_status` first. Treat its capabilities, limits, revision,
    project identity, and tool schemas as authoritative.
 3. If a requested capability is false or missing, state the boundary and build
-   the best honest supported result. Never claim RTX, scripting, physics,
-   export, or gameplay when status does not expose it.
+   the best honest supported result. Never claim RTX, scripting, physics, or
+   gameplay when status does not expose it. Claim glTF/GLB export only while
+   `jobKinds` includes `sceneExport`.
 4. Create or open the intended project with `three_studio_project`. For a new
-   live build, use a fresh meaningful project path so the viewport begins from
-   an honest empty/starter state.
+   live build, use a fresh meaningful project path and `template: "blank"` so
+   the viewport starts empty. Pass `template: "starter"` only when you want the
+   lit primitive stage. To wipe the current scene in place, inspect `sceneHash`
+   and apply `scene.clear`.
 5. Inspect the active scene, current revision, and only the bounded catalog or
    resources needed for the next decision.
 

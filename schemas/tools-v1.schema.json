@@ -712,6 +712,26 @@
                   "properties": {
                     "op": {
                       "type": "string",
+                      "const": "scene.clear"
+                    },
+                    "sceneId": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                    },
+                    "expectedSceneHash": {
+                      "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
+                    }
+                  },
+                  "required": [
+                    "op",
+                    "sceneId"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "op": {
+                      "type": "string",
                       "const": "scene.setActive"
                     },
                     "sceneId": {
@@ -7228,7 +7248,10 @@
           },
           "action": {
             "type": "string",
-            "const": "textureBake"
+            "enum": [
+              "textureBake",
+              "sceneExport"
+            ]
           },
           "projectId": {
             "$ref": "#/$defs/toolSchemas/three_studio_job/$defs/__schema0"
@@ -7257,6 +7280,19 @@
               "maximum": 512
             }
           },
+          "sceneId": {
+            "$ref": "#/$defs/toolSchemas/three_studio_job/$defs/__schema0"
+          },
+          "entityId": {
+            "$ref": "#/$defs/toolSchemas/three_studio_job/$defs/__schema0"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "glb",
+              "gltf"
+            ]
+          },
           "name": {
             "type": "string",
             "minLength": 1,
@@ -7282,10 +7318,6 @@
         "required": [
           "action",
           "projectId",
-          "graphId",
-          "textureId",
-          "output",
-          "resolution",
           "baseRevision",
           "idempotencyKey",
           "label"
@@ -7340,7 +7372,10 @@
           },
           "template": {
             "type": "string",
-            "const": "starter"
+            "enum": [
+              "blank",
+              "starter"
+            ]
           },
           "baseRevision": {
             "type": "integer",

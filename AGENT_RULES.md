@@ -40,7 +40,9 @@ authority. In the current lean slice:
   globally reserved Escape key stops and restores authored state; and
 - asset import, script authoring/execution, layout modes beyond the live
   linear/grid/radial/seeded-scatter patterns, diagnostic passes beyond beauty
-  and object-id, export, and behavior simulation are not available.
+  and object-id, and behavior simulation are not available. Scene or subtree
+  glTF/GLB export is available only while `status.capabilities.jobKinds`
+  includes `sceneExport`.
 
 Do not attempt a reserved pipeline because it appears in the design document.
 Use it only after both status and the current tool schema expose it.
@@ -150,10 +152,13 @@ Use it only after both status and the current tool schema expose it.
   properties in `params`. Query the Blender inventory and executable graph
   catalog instead of guessing RNA IDs or port names.
 - Procedural texture CPU baking and bounded inline `dataTexture` binding are
-  deterministic. External image-file decoding/import and file-producing bake
-  jobs remain unavailable through MCP.
-- Once export/bake jobs exist, bake node materials to PBR maps before
-  interchange export.
+  deterministic. External image-file decoding/import remains unavailable.
+- `three_studio_job` `sceneExport` writes a Three.js-loadable glTF/GLB of the
+  active scene or an exact entity subtree. Shader-graph looks export as authored
+  PBR factors (and a bound albedo map when present), not compiled TSL.
+- Create with `template: "blank"` for an empty scene. Use `scene.clear` with
+  the inspected `sceneHash` to wipe the current scene without the starter
+  composition. `template: "starter"` remains the optional lit primitive stage.
 
 ## JavaScript game-code rules (future behaviour capability)
 

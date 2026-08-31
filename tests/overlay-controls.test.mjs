@@ -106,6 +106,15 @@ test('update regions union and only the dirty clip is painted', () => {
   assert.ok(clip.y >= 80);
 });
 
+test('dirty regions are clipped to the control bitmap before scheduling paint', () => {
+  const { host } = hostFixture();
+  host.paintedRects = [];
+
+  host.invalidateRect({ x: -500, y: -500, width: 1000, height: 1000 });
+
+  assert.deepEqual(host.paintedRects.at(-1), { x: 0, y: 0, width: 200, height: 160 });
+});
+
 test('list scroll copies existing rows and paints only the exposed strip', () => {
   const { host } = hostFixture();
   const painted = [];

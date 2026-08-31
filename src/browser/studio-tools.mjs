@@ -58,13 +58,13 @@ export const STUDIO_BROWSER_TOOLS = Object.freeze([
   Object.freeze({
     name: 'three_studio_job',
     title: 'Three Studio Jobs (Reserved)',
-    description: 'Reserved nine-tool slot. Invoking this tool returns job_not_implemented until jobs are enabled.',
+    description: 'Bake a procedural graph output into a texture, or export a scene or entity subtree as glTF/GLB.',
     inputSchema: GENERIC_ARGUMENTS,
   }),
   Object.freeze({
     name: 'three_studio_project',
     title: 'Three Studio Project',
-    description: 'List, create, open, or atomically save Studio projects. Only the optional starter template is implemented.',
+    description: 'List, create, open, or atomically save Studio projects. Create with template blank for an empty scene, or starter for the lit primitive stage.',
     inputSchema: GENERIC_ARGUMENTS,
   }),
   Object.freeze({

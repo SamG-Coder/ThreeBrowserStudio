@@ -229,7 +229,7 @@ export const inspectSchema = z.object({
 });
 
 export const OPERATION_TYPES = Object.freeze([
-  'scene.create', 'scene.patch', 'scene.delete', 'scene.setActive',
+  'scene.create', 'scene.patch', 'scene.delete', 'scene.clear', 'scene.setActive',
   'scene.settings.patch', 'scene.rtx.patch', 'scene.setActiveCamera',
   'entity.create', 'entity.createMany', 'entity.patch', 'entity.patchMany', 'entity.transformMany',
   'entity.group', 'entity.ungroup', 'entity.duplicate', 'entity.duplicateMany', 'entity.reparent', 'entity.delete',
@@ -1257,6 +1257,7 @@ const directOperations = [
   operation('scene.create', { scene: jsonObjectSchema, alias: alias.optional(), index: insertionIndex.optional() }),
   operation('scene.patch', { sceneId: reference, patch: jsonObjectSchema }),
   operation('scene.delete', { sceneId: reference, expectedSceneHash: hash.optional() }),
+  operation('scene.clear', { sceneId: reference, expectedSceneHash: hash.optional() }),
   operation('scene.setActive', { sceneId: reference }),
   operation('scene.settings.patch', { sceneId: reference, patch: jsonObjectSchema }),
   operation('scene.rtx.patch', { sceneId: reference, patch: rtxPatchSchema }),
@@ -1410,8 +1411,8 @@ export const applySchema = z.object({
     source: z.string().min(1).max(65_536),
   }).strict().optional(),
 }).strict().superRefine((value, context) => {
-  if ((value.operations === undefined) === (value.program === undefined)) {
-    context.addIssue({ code: 'custom', path: ['operations'], message: 'Provide exactly one of operations or program.' });
+  if (value.operations === undefined && value.program === undefined) {
+    context.addIssue({ code: 'custom', path: ['operations'], message: 'Provide operations, a program, or both.' });
   }
 }).refine(value => value.previewEvidence === undefined || value.dryRun === true, {
   message: 'previewEvidence requires dryRun true.',
@@ -1473,27 +1474,43 @@ export const historySchema = z.object({
 
 export const JOB_KINDS = Object.freeze([
   'assetImport', 'textureBake', 'meshBake', 'imageToGeometry', 'lightmap',
-  'projectExport', 'applicationExport',
+  'sceneExport', 'projectExport', 'applicationExport',
 ]);
+export const PROJECT_TEMPLATES = Object.freeze(['blank', 'starter']);
+export const SCENE_EXPORT_FORMATS = Object.freeze(['glb', 'gltf']);
 
 export const jobSchema = z.object({
   ...connectionFields,
-  action: z.literal('textureBake'),
+  action: z.enum(['textureBake', 'sceneExport']),
   projectId: identifier,
-  graphId: identifier,
-  textureId: identifier,
-  output: z.enum(['albedo', 'roughness', 'normal']),
-  resolution: fixedArray(z.number().int().min(1).max(512), 2),
+  graphId: identifier.optional(),
+  textureId: identifier.optional(),
+  output: z.enum(['albedo', 'roughness', 'normal']).optional(),
+  resolution: fixedArray(z.number().int().min(1).max(512), 2).optional(),
+  sceneId: identifier.optional(),
+  entityId: identifier.optional(),
+  format: z.enum(SCENE_EXPORT_FORMATS).optional(),
   name: z.string().min(1).max(160).optional(),
   baseRevision: nonNegativeInteger,
   idempotencyKey,
   label,
-}).strict().refine(value => {
-  const channels = value.output === 'roughness' ? 1 : 4;
-  return value.resolution[0] * value.resolution[1] * channels <= DATA_TEXTURE_LIMITS.maxEncodedBytes;
-}, {
-  message: 'Texture bake decoded output exceeds the canonical encoded-source byte budget.',
-  path: ['resolution'],
+}).strict().superRefine((value, context) => {
+  if (value.action !== 'textureBake') return;
+  for (const field of ['graphId', 'textureId', 'output', 'resolution']) {
+    if (value[field] === undefined) {
+      context.addIssue({ code: 'custom', path: [field], message: `${field} is required for textureBake.` });
+    }
+  }
+  if (value.resolution && value.output) {
+    const channels = value.output === 'roughness' ? 1 : 4;
+    if (value.resolution[0] * value.resolution[1] * channels > DATA_TEXTURE_LIMITS.maxEncodedBytes) {
+      context.addIssue({
+        code: 'custom',
+        path: ['resolution'],
+        message: 'Texture bake decoded output exceeds the canonical encoded-source byte budget.',
+      });
+    }
+  }
 });
 
 export const projectSchema = z.object({
@@ -1502,7 +1519,7 @@ export const projectSchema = z.object({
   projectId: identifier.optional(),
   path: z.string().min(1).max(1024).optional(),
   name: z.string().min(1).max(160).optional(),
-  template: z.literal('starter').optional(),
+  template: z.enum(PROJECT_TEMPLATES).optional(),
   baseRevision: nonNegativeInteger.optional(),
   idempotencyKey: idempotencyKey.optional(),
   label: label.optional(),
@@ -1627,6 +1644,9 @@ const TOOL_CONTRACT_FEATURES = Object.freeze({
   objectIdPass: true,
   materialDiagnosticPasses: Object.freeze(['raster', 'albedo', 'roughness', 'normal', 'uv']),
   proceduralTextureBakeJob: true,
+  blankProjectTemplate: true,
+  sceneClear: true,
+  sceneExportJob: true,
   dryRunCandidateEvidence: true,
   beautyProbeEntityId: true,
   projectVisibility: true,

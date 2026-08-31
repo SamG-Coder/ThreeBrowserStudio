@@ -4,6 +4,8 @@ import { PlainformReferenceContext } from './reference-context.mjs';
 import { PlainformSpatialResolver } from './spatial-relations.mjs';
 import { PlainformAnchorResolver } from './anchor-resolver.mjs';
 import { PlainformGrowthPlanner } from './growth-planner.mjs';
+import { PlainformPrefabContext } from './prefab-context.mjs';
+import { ShaderPlainformCompiler } from './shader-plainform-compiler.mjs';
 
 const TAU = Math.PI * 2;
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
@@ -305,6 +307,7 @@ function cardinalAxis(sign, name) {
 export class PlainformCompiler {
   compile(source, { project }) {
     if (typeof source !== 'string' || source.trim().length === 0) fail('plainform_empty', 'Plainform source is empty.');
+    if (ShaderPlainformCompiler.canCompile(source)) return new ShaderPlainformCompiler().compile(source);
     if (!project) fail('plainform_project_required', 'Plainform compilation requires the canonical project document.');
     const statements = source.split(/\r?\n/u).map(cleanStatement).filter(Boolean);
     if (statements.length > MAX_STATEMENTS) fail('plainform_statement_limit', `Plainform accepts at most ${MAX_STATEMENTS} statements.`);
@@ -313,6 +316,7 @@ export class PlainformCompiler {
     const context = new PlainformReferenceContext({ index, resolveEntity: resolveEntityReference, fail });
     const anchors = new PlainformAnchorResolver({ project, spatial, fail });
     const growth = new PlainformGrowthPlanner({ anchors, fail });
+    const prefabs = new PlainformPrefabContext({ project, index, references: context, fail });
     const operations = [];
     const interpretation = [];
     let requestedPreview = false;
@@ -357,6 +361,67 @@ export class PlainformCompiler {
           context.nameSelection(key, pendingSelection);
           interpretation.push(`Named that selection “${key}”.`);
           pendingSelection = null;
+          continue;
+        }
+        const prefab = statement.match(/^(?:convert (.+?) into|name (.+?) as) a?\s*prefab called (\$?[a-z][a-z0-9_-]*)$/iu);
+        if (prefab) {
+          const record = context.one(prefab[1] ?? prefab[2], { positionOf: item => spatial.position(item) });
+          const defined = prefabs.define(record, prefab[3]);
+          for (const operation of defined.operations) push(operation);
+          interpretation.push(`Converted ${record.entity.id} into ${defined.prefabId} and named it ${defined.name}.`);
+          continue;
+        }
+        const grid = statement.match(/^lay out (?:a )?(.+?) by (.+?) grid of (?:copies of )?(.+?) over the (front|back|rear|left|right|top|bottom) face of (.+?),? spaced (.+?) horizontally and (.+?) vertically(?:,? (?:offset|set) (.+?) outward)?$/iu);
+        if (grid) {
+          const columns = /^\d+$/u.test(grid[1]) ? Number(grid[1]) : wordsNumber(grid[1]);
+          const rows = /^\d+$/u.test(grid[2]) ? Number(grid[2]) : wordsNumber(grid[2]);
+          if (!Number.isSafeInteger(columns) || !Number.isSafeInteger(rows) || columns < 1 || rows < 1 || columns * rows > 8192) {
+            fail('plainform_grid_count', 'A face grid requires positive integer dimensions and at most 8192 cells.');
+          }
+          const template = grid[3].trim().startsWith('$')
+            ? prefabs.resolve(grid[3])
+            : context.one(grid[3], { positionOf: item => spatial.position(item) });
+          const reference = context.one(grid[5], { positionOf: item => spatial.position(item) });
+          const horizontal = evaluatePlainformMath(grid[6]);
+          const vertical = evaluatePlainformMath(grid[7]);
+          if (horizontal.dimension !== 'length' || vertical.dimension !== 'length' || horizontal.value <= 0 || vertical.value <= 0) {
+            fail('plainform_grid_spacing', 'Grid spacing requires two positive lengths.');
+          }
+          if (reference.entity.transform.quaternion) fail('plainform_grid_rotation', 'Face grids currently require an Euler-authored reference transform.');
+          const face = grid[4].toLowerCase() === 'rear' ? 'back' : grid[4].toLowerCase();
+          const outward = grid[8] === undefined ? { value: 0, dimension: 'length' } : evaluatePlainformMath(grid[8]);
+          if (outward.dimension !== 'length' || outward.value < 0) {
+            fail('plainform_grid_offset', 'A face-grid outward offset must be a non-negative length.');
+          }
+          const transform = cloneTransform(template.entity);
+          const faceRotation = {
+            front: [0, 0, 0], back: [0, Math.PI, 0], left: [0, -Math.PI / 2, 0], right: [0, Math.PI / 2, 0],
+            top: [-Math.PI / 2, 0, 0], bottom: [Math.PI / 2, 0, 0],
+          }[face];
+          transform.rotation = reference.entity.transform.rotation.map((value, axis) => value + faceRotation[axis]);
+          delete transform.quaternion;
+          const origin = anchors.gridOriginOnFace(
+            reference,
+            face,
+            columns,
+            rows,
+            horizontal.value,
+            vertical.value,
+            outward.value,
+            { patternRecord: template, patternTransform: transform },
+          );
+          transform.position = anchors.placeNamedAnchorAtWorld(template, 'center', origin, transform);
+          // Pattern translations are local to the rotated source object. Keep
+          // the grid in local XY for every face; the face rotation maps local
+          // horizontal/vertical axes into the requested world-space plane.
+          const counts = [columns, rows, 1];
+          const spacing = [horizontal.value, vertical.value, 0];
+          push({ op: 'entity.patch', entityId: template.entity.id, patch: { transform } });
+          push({
+            op: 'layout.pattern', entityId: template.entity.id,
+            pattern: { id: `modifier/plainform-grid-${slug(template.entity.id)}-${face}`, mode: 'grid', counts, spacing },
+          });
+          interpretation.push(`Laid out a centered ${columns} by ${rows} grid of ${template.entity.id} over the ${face} face of ${reference.entity.id}${outward.value > 0 ? `, offset ${outward.value} metres outward` : ''}.`);
           continue;
         }
         const group = statement.match(/^put (?:the\s+)?(.+?) (?:into|inside) a group called (?:(?:"([^"]+)")|(.+?)) with id ([a-z0-9][a-z0-9._/-]*)$/iu);
@@ -587,6 +652,43 @@ export class PlainformCompiler {
               if (moveIt) {
                 const offset = vectorExpression(moveIt[1], variables, 'length');
                 transform.position = transform.position.map((component, axis) => component + offset[axis]);
+                variables.set('x', quantity(transform.position[0], 'length'));
+                variables.set('y', quantity(transform.position[1], 'length'));
+                variables.set('z', quantity(transform.position[2], 'length'));
+                changed = true; continue;
+              }
+              const centerOn = line.match(/^(?:center|centre|align) it (?:on|with) (.+)$/iu);
+              if (centerOn) {
+                const reference = context.one(centerOn[1], { current: record, positionOf: item => spatial.position(item) });
+                transform.position = anchors.alignNamedAnchors(record, 'center', reference, 'center', transform);
+                variables.set('x', quantity(transform.position[0], 'length'));
+                variables.set('y', quantity(transform.position[1], 'length'));
+                variables.set('z', quantity(transform.position[2], 'length'));
+                changed = true; continue;
+              }
+              const centerOnFace = line.match(/^place it cent(?:er|re)ed on the (front|back|rear|left|right|top|bottom) face of (.+)$/iu);
+              if (centerOnFace) {
+                const face = centerOnFace[1].toLowerCase() === 'rear' ? 'back' : centerOnFace[1].toLowerCase();
+                const reference = context.one(centerOnFace[2], { current: record, positionOf: item => spatial.position(item) });
+                transform.position = anchors.alignNamedAnchors(record, 'center', reference, face, transform);
+                variables.set('x', quantity(transform.position[0], 'length'));
+                variables.set('y', quantity(transform.position[1], 'length'));
+                variables.set('z', quantity(transform.position[2], 'length'));
+                changed = true; continue;
+              }
+              const centeredOnTop = line.match(/^place it cent(?:er|re)ed on top of (.+)$/iu);
+              if (centeredOnTop) {
+                const reference = context.one(centeredOnTop[1], { current: record, positionOf: item => spatial.position(item) });
+                transform.position = anchors.alignNamedAnchors(record, 'bottom', reference, 'top', transform);
+                variables.set('x', quantity(transform.position[0], 'length'));
+                variables.set('y', quantity(transform.position[1], 'length'));
+                variables.set('z', quantity(transform.position[2], 'length'));
+                changed = true; continue;
+              }
+              const alignAnchors = line.match(/^align its (center|centre|left|right|top|bottom|base|front|back|rear) with the (center|centre|left|right|top|bottom|base|front|back|rear) of (.+)$/iu);
+              if (alignAnchors) {
+                const reference = context.one(alignAnchors[3], { current: record, positionOf: item => spatial.position(item) });
+                transform.position = anchors.alignNamedAnchors(record, alignAnchors[1], reference, alignAnchors[2], transform);
                 variables.set('x', quantity(transform.position[0], 'length'));
                 variables.set('y', quantity(transform.position[1], 'length'));
                 variables.set('z', quantity(transform.position[2], 'length'));

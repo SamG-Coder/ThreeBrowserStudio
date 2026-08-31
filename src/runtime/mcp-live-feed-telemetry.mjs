@@ -9,7 +9,7 @@ const PIXEL_FORECASTS = Object.freeze({
   unknown: 'pixel change unknown',
 });
 const PUBLIC_OPERATION_TYPES = new Set([
-  'scene.create', 'scene.patch', 'scene.delete', 'scene.setActive',
+  'scene.create', 'scene.patch', 'scene.delete', 'scene.clear', 'scene.setActive',
   'scene.settings.patch', 'scene.rtx.patch', 'scene.setActiveCamera',
   'entity.create', 'entity.createMany', 'entity.patch', 'entity.patchMany', 'entity.transformMany',
   'entity.group', 'entity.ungroup', 'entity.duplicate', 'entity.duplicateMany', 'entity.reparent', 'entity.delete',
@@ -39,6 +39,7 @@ export const STUDIO_LIVE_FEED_METHODS = Object.freeze([
 const METHOD_SET = new Set(STUDIO_LIVE_FEED_METHODS);
 const BIDI_AND_DIRECTION_CONTROLS = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu;
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/gu;
+const PLAINFORM_CONTROL_CHARACTERS = /[\u0000-\u0009\u000b\u000c\u000e-\u001f\u007f-\u009f]/gu;
 const HTML_DELIMITERS = Object.freeze({ '<': '\u2039', '>': '\u203a', '&': '\uff06' });
 
 const PROJECT_ACTIONS = Object.freeze({
@@ -140,6 +141,21 @@ export function sanitizeLiveFeedText(value, { maximum = 160, fallback = '' } = {
     .trim();
   if (!text) return fallback;
   return truncateCodePoints(text, limit);
+}
+
+function plainformLines(value, { maximumCharacters = 65_536, maximumLines = 512 } = {}) {
+  if (typeof value !== 'string') return Object.freeze([]);
+  const bounded = [...value].slice(0, maximumCharacters).join('');
+  const lines = bounded.replace(/\r\n?/gu, '\n').split('\n').slice(0, maximumLines).map(line => (
+    truncateCodePoints(line
+      .normalize('NFKC')
+      .replace(PLAINFORM_CONTROL_CHARACTERS, ' ')
+      .replace(BIDI_AND_DIRECTION_CONTROLS, '')
+      .replace(/[<>&]/gu, character => HTML_DELIMITERS[character])
+      .replace(/[\t ]+/gu, ' ')
+      .trim(), 512)
+  ));
+  return Object.freeze(lines);
 }
 
 export function emptyStudioCommandMetrics() {
@@ -420,6 +436,11 @@ export function createStudioCommandTelemetry({
   };
   const toolTotals = new Map();
 
+  const resetTotals = () => {
+    for (const key of Object.keys(totals)) totals[key] = 0;
+    toolTotals.clear();
+  };
+
   const snapshot = () => Object.freeze(order
     .filter(id => entries.has(id))
     .map(id => entries.get(id)));
@@ -482,6 +503,11 @@ export function createStudioCommandTelemetry({
       promotedCandidate: false,
       captureCount: 0,
       imageBytes: 0,
+      plainform: readField(readField(params, 'program'), 'language') === 'plainform-v1'
+        ? Object.freeze({
+            sourceLines: plainformLines(readField(readField(params, 'program'), 'source')),
+          })
+        : null,
     });
     entries.set(id, current);
     order.push(id);
@@ -499,6 +525,9 @@ export function createStudioCommandTelemetry({
         : 0;
       const phaseTimingsMs = readField(authoring, 'timingsMs');
       const promotedCandidate = readField(authoring, 'promotedCandidate') === true;
+      const resetsProjectFeed = stage === 'completed'
+        && method === 'three_studio_project'
+        && ['create', 'open'].includes(readField(params, 'action'));
       current = Object.freeze({
         ...current,
         stage,
@@ -520,7 +549,15 @@ export function createStudioCommandTelemetry({
         promotedCandidate,
         captureCount: captures.captureCount,
         imageBytes: captures.imageBytes,
+        plainform: (() => {
+          const response = stage === 'completed' ? readField(result, 'plainform') : null;
+          const existing = current.plainform;
+          if (existing?.sourceLines?.length > 0) return existing;
+          if (!response) return null;
+          return Object.freeze({ sourceLines: plainformLines(readField(response, 'source')) });
+        })(),
       });
+      if (resetsProjectFeed) resetTotals();
       totals.commands += 1;
       totals[stage === 'completed' ? 'successfulCommands' : 'failedCommands'] += 1;
       totals.applyOperations += current.operationCount;
@@ -537,7 +574,12 @@ export function createStudioCommandTelemetry({
       tool.elapsedMs += current.elapsedMs;
       if (stage !== 'completed') tool.failures += 1;
       toolTotals.set(method, tool);
-      entries.set(id, current);
+      if (resetsProjectFeed) {
+        entries.clear();
+        order.splice(0, order.length);
+        entries.set(id, current);
+        order.push(id);
+      } else entries.set(id, current);
       prune();
       if (entries.has(id)) publish(current);
       return current;

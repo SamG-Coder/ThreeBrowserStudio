@@ -474,6 +474,17 @@ export function createScriptDocument(input = {}) {
   };
 }
 
+/** Empty authored project: one scene, no starter composition or resources. */
+export function createBlankProjectDocument(options = {}) {
+  return createProjectDocument({
+    ...options,
+    metadata: {
+      description: 'Empty Studio scene. No starter composition is included.',
+      ...options.metadata,
+    },
+  });
+}
+
 export function createProjectDocument(options = {}) {
   const projectId = assertStableId(options.projectId ?? options.id ?? 'project/main', 'projectId');
   const timestamp = options.timestamp ?? nowIso(options.clock);

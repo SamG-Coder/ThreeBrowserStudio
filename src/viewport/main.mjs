@@ -491,7 +491,7 @@ async function main() {
             width: Math.max(1, Number(innerWidth) || 1),
             height: Math.max(1, Number(innerHeight) || 1),
           },
-          visible: liveFeed.visible,
+          visible: liveFeed.webGpuPresentation && liveFeed.visible,
         },
       });
       if (!renderedWithRtx) renderer.render(scene, activeCamera);

@@ -1208,6 +1208,44 @@ test('three_studio_apply compiles a Plainform English program through the ordina
   );
 });
 
+test('three_studio_apply compiles Shader Plainform into a validated graph and material assignment', async (t) => {
+  const { application } = await applicationFixture(t);
+  const setup = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1', sessionId: application.sessionId,
+    projectId: 'project/active', baseRevision: 0,
+    idempotencyKey: 'shader-plainform-setup-0001', label: 'Create shader target material',
+    operations: [{
+      op: 'resource.create', resourceType: 'materials', resource: {
+        id: 'material/shader-plainform-target', kind: 'material', name: 'Shader Plainform Target',
+        recipe: { kind: 'physical', color: '#69785f', roughness: 0.6 },
+      },
+    }],
+  });
+  assert.equal(setup.success, true);
+
+  const result = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1', sessionId: application.sessionId,
+    projectId: 'project/active', baseRevision: 1,
+    idempotencyKey: 'shader-plainform-apply-0001', label: 'Create a living moss shader',
+    program: {
+      language: 'plainform-v1',
+      source: [
+        'Create a shader graph called Living Moss with id graph/living-moss.',
+        'Describe it as mossy, wet, ancient and softly glowing.',
+        'Let pulse be the sine of time times 2 plus the cosine of time divided by 3.',
+        'Set roughness to 0.68 plus pulse times 0.08.',
+        'Apply it to material/shader-plainform-target.',
+      ].join('\n'),
+    },
+  });
+  assert.equal(result.success, true);
+  assert.equal(result.plainform.dialect, 'shader');
+  assert.equal(application.kernel.document.resources.materials['material/shader-plainform-target'].graphId, 'graph/living-moss');
+  const graph = application.kernel.document.resources.graphs['graph/living-moss'].graph;
+  assert.equal(graph.outputs.surface.nodeId, 'principled-surface');
+  assert.ok(graph.nodes.some(node => node.type === 'blender.math' && node.params.operation === 'SINE'));
+});
+
 test('batched texture strokes lower to one cumulative texture patch', async (t) => {
   const { application } = await applicationFixture(t);
   const strokes = Array.from({ length: 7 }, (_, index) => ({
@@ -1461,6 +1499,9 @@ test('a project switch compile failure preserves the active project and live sce
   assert.equal(status.capabilities.modifierAuthoring.atomicStackEditing, true);
   assert.equal(status.capabilities.modifierAuthoring.renderEnableFlag, 'authored-only-no-render-parity-claim');
   assert.equal(status.capabilities.implementedOperations.includes('layout.pattern'), true);
+  assert.equal(status.capabilities.implementedOperations.includes('scene.clear'), true);
+  assert.deepEqual(status.capabilities.jobKinds, ['textureBake', 'sceneExport']);
+  assert.deepEqual(status.capabilities.projectTemplates, ['blank', 'starter']);
   assert.equal(status.capabilities.implementedOperations.includes('modifier.stack.edit'), true);
   assert.equal(status.capabilities.geometryEditing, true);
   assert.deepEqual(status.capabilities.geometryEditCommands, [
@@ -1854,4 +1895,92 @@ test('host Settings applies active-scene RTX controls through the canonical kern
     error => error instanceof StudioError && error.code === 'unknown_property',
   );
   assert.equal(application.kernel.revision, 1);
+});
+
+test('project create can start from a blank scene instead of the starter template', async (t) => {
+  const { application } = await applicationFixture(t);
+  const created = await application.dispatch('three_studio_project', {
+    action: 'create',
+    sessionId: application.sessionId,
+    path: 'empty-stage',
+    name: 'Empty Stage',
+    template: 'blank',
+    idempotencyKey: 'create-blank-stage-0001',
+    label: 'Create an empty scene',
+  });
+  assert.equal(created.success, true);
+  assert.equal(created.projectId, 'project/empty-stage');
+  const scene = application.kernel.document.scenes[application.kernel.document.activeSceneId];
+  assert.equal(Object.keys(scene.entities).length, 0);
+  assert.equal(Object.keys(application.kernel.document.resources.geometries).length, 0);
+});
+
+test('sceneExport job writes a Three.js-loadable GLB for an authored subtree', async (t) => {
+  const { application, studioRoot } = await applicationFixture(t);
+  const authored = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1',
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    baseRevision: 0,
+    idempotencyKey: 'export-triangle-0001',
+    label: 'Author an exportable triangle',
+    operations: [
+      {
+        op: 'resource.create',
+        resourceType: 'geometries',
+        resource: {
+          id: 'geometry/export-tri',
+          kind: 'geometry',
+          recipe: { kind: 'indexedMesh', positions: [0, 0, 0, 1, 0, 0, 0, 1, 0], indices: [0, 1, 2] },
+        },
+      },
+      {
+        op: 'resource.create',
+        resourceType: 'materials',
+        resource: {
+          id: 'material/export-paint',
+          kind: 'material',
+          recipe: { kind: 'standard', baseColor: [0.2, 0.4, 0.8], roughness: 0.4, metalness: 0.1 },
+        },
+      },
+      {
+        op: 'entity.create',
+        sceneId: 'scene/main',
+        entity: {
+          id: 'entity/export-group',
+          kind: 'group',
+          name: 'Export Group',
+        },
+      },
+      {
+        op: 'entity.create',
+        sceneId: 'scene/main',
+        entity: {
+          id: 'entity/export-mesh',
+          kind: 'mesh',
+          name: 'Export Mesh',
+          parentId: 'entity/export-group',
+          components: { mesh: { geometryId: 'geometry/export-tri', materialId: 'material/export-paint' } },
+        },
+      },
+    ],
+  });
+  assert.equal(authored.success, true);
+  const exported = await application.dispatch('three_studio_job', {
+    action: 'sceneExport',
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    entityId: 'entity/export-group',
+    format: 'glb',
+    baseRevision: authored.revision,
+    idempotencyKey: 'export-triangle-job-0001',
+    label: 'Export the triangle group',
+  });
+  assert.equal(exported.success, true);
+  assert.equal(exported.job.action, 'sceneExport');
+  assert.equal(exported.job.meshes, 1);
+  assert.equal(exported.job.format, 'glb');
+  assert.equal(exported.job.path.startsWith(path.join(studioRoot, 'artifacts')), true);
+  const bytes = await readFile(exported.job.path);
+  assert.equal(bytes.readUInt32LE(0), 0x46546C67);
 });

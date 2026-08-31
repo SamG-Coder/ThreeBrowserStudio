@@ -23,6 +23,7 @@ export * from './operations.mjs';
 export * from './persistence.mjs';
 export * from './rtx-settings.mjs';
 export * from './response-projection.mjs';
+export * from './scene-export.mjs';
 export * from './stroke-authoring.mjs';
 export * from './transform-math.mjs';
 export { cloneJson, contentHash, mergePatch, stableStringify } from './util.mjs';

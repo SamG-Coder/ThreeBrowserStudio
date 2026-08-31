@@ -13,7 +13,7 @@ const VISUAL_OPERATIONS = new Set([
   'entity.patch', 'entity.patchMany', 'entity.transformMany', 'entity.group', 'entity.ungroup',
   'geometry.edit',
   'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
-  'scene.create', 'scene.delete', 'scene.setActive', 'scene.settings.patch', 'scene.rtx.patch',
+  'scene.create', 'scene.delete', 'scene.clear', 'scene.setActive', 'scene.settings.patch', 'scene.rtx.patch',
   'scene.setActiveCamera',
   'camera.frame', 'layout.pattern',
   'resource.create', 'resource.createMany', 'resource.delete',

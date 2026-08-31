@@ -132,7 +132,7 @@ test('tool annotations reflect read-only versus stateful live effects', () => {
     assert.equal(TOOL_DEFINITIONS[name].annotations.readOnlyHint, false, name);
   }
   assert.equal(TOOL_DEFINITIONS.three_studio_job.annotations.readOnlyHint, false);
-  assert.match(TOOL_DEFINITIONS.three_studio_job.title, /Texture/);
+  assert.match(TOOL_DEFINITIONS.three_studio_job.title, /Jobs/);
   assert.match(TOOL_DEFINITIONS.three_studio_play.description, /do not execute/);
 });
 
@@ -263,7 +263,7 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
     'operationCatalog', 'geometryCatalog', 'lookCatalog', 'lightingDigest',
   ]);
   assert.deepEqual(OPERATION_TYPES, [
-    'scene.create', 'scene.patch', 'scene.delete', 'scene.setActive',
+    'scene.create', 'scene.patch', 'scene.delete', 'scene.clear', 'scene.setActive',
     'scene.settings.patch', 'scene.rtx.patch', 'scene.setActiveCamera',
     'entity.create', 'entity.createMany', 'entity.patch', 'entity.patchMany', 'entity.transformMany',
     'entity.group', 'entity.ungroup', 'entity.duplicate', 'entity.duplicateMany', 'entity.reparent', 'entity.delete',
@@ -400,6 +400,10 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
   assert.equal(applySchema.safeParse({
     ...mutation,
     operations: [{ op: 'scene.delete', sceneId: 'scene/old', expectedSceneHash: 'a'.repeat(64) }],
+  }).success, true);
+  assert.equal(applySchema.safeParse({
+    ...mutation,
+    operations: [{ op: 'scene.clear', sceneId: 'scene/old', expectedSceneHash: 'a'.repeat(64) }],
   }).success, true);
   assert.equal(applySchema.safeParse({
     ...mutation,
@@ -551,6 +555,10 @@ test('project, play, and history mutation actions require correlation metadata',
   assert.equal(projectSchema.safeParse({ action: 'checkpoint' }).success, false);
   assert.equal(projectSchema.safeParse({ action: 'close' }).success, false);
   assert.equal(projectSchema.safeParse({ action: 'create', template: 'unknown' }).success, false);
+  assert.equal(projectSchema.safeParse({
+    action: 'create', sessionId: 'live-session', path: 'empty-stage', template: 'blank',
+    idempotencyKey: 'create-blank-0001', label: 'Create empty scene',
+  }).success, true);
   assert.equal(playSchema.safeParse({ action: 'query', projectId: 'project/test' }).success, true);
   assert.equal(playSchema.safeParse({ action: 'query', query: ['door/open'] }).success, false);
   assert.equal(playSchema.safeParse({ action: 'inject', inputAction: 'door/open' }).success, false);
@@ -568,6 +576,15 @@ test('project, play, and history mutation actions require correlation metadata',
     action: 'textureBake', projectId: 'project/demo', graphId: 'graph/skin', textureId: 'texture/skin',
     output: 'albedo', resolution: [512, 512], baseRevision: 0,
     idempotencyKey: 'bake-skin-large', label: 'Bake skin',
+  }).success, false);
+  assert.equal(jobSchema.safeParse({
+    action: 'sceneExport', projectId: 'project/demo', format: 'glb', baseRevision: 4,
+    idempotencyKey: 'export-car-0001', label: 'Export car group',
+    entityId: 'entity/sf90',
+  }).success, true);
+  assert.equal(jobSchema.safeParse({
+    action: 'sceneExport', projectId: 'project/demo', format: 'fbx', baseRevision: 4,
+    idempotencyKey: 'export-car-0002', label: 'Export unsupported',
   }).success, false);
 });
 

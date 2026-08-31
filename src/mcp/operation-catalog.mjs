@@ -1,7 +1,7 @@
 import { OPERATION_TYPES } from './tool-schemas.mjs';
 
 const FAMILY_SUMMARIES = Object.freeze({
-  scene: 'Create or configure scene-owned state.',
+  scene: 'Create, clear, or configure scene-owned state.',
   entity: 'Manage exact scene entities and their authored transforms.',
   collection: 'Manage independent many-to-many scene organization.',
   camera: 'Compose and persist an authored camera shot.',

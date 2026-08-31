@@ -230,6 +230,7 @@ function fixture({
   onImportProject,
   onRtxSettingsChange,
   onDlss5SettingsChange,
+  writeClipboardText,
 } = {}) {
   const document = new FakeDocument();
   const eventTarget = new FakeEventTarget();
@@ -243,6 +244,7 @@ function fixture({
     onImportProject,
     onRtxSettingsChange,
     onDlss5SettingsChange,
+    writeClipboardText,
     setIntervalFn: timers.setIntervalFn,
     clearIntervalFn: timers.clearIntervalFn,
     schedulePaint: callback => callback(),
@@ -363,6 +365,60 @@ test('expanded log toggle shows whitelisted operation types and stays redacted',
   assert.equal(hud.logExpanded, false);
   tabs.setSelected('log');
   assert.doesNotMatch(hud.visibleLogText, /entity\.create mesh/);
+});
+
+test('expanded log reflows every visible item and preserves a followed tail', () => {
+  const { hud, telemetry } = fixture({ height: 360, maxVisibleRows: 10 });
+  for (let index = 0; index < 18; index += 1) {
+    telemetry.begin('three_studio_status', {}).complete({ revision: index });
+  }
+  const compactMax = findControl(hud.host, 'log-list').maxScroll;
+  assert.equal(hud.scrollIndex, compactMax);
+  findControl(hud.host, 'log-expanded').onPointerDown();
+  const expandedList = findControl(hud.host, 'log-list');
+  assert.equal(hud.scrollIndex, expandedList.maxScroll);
+  assert.equal(hud.visibleRowCount, expandedList.capacity);
+  assert.match(hud.visibleLogText, /three_studio_status/u);
+});
+
+test('Plainform tab is a complete wrapped source stream', () => {
+  const { hud, telemetry } = fixture({ height: 460 });
+  const lifecycle = telemetry.begin('three_studio_apply', {
+    baseRevision: 2,
+    program: {
+      language: 'plainform-v1',
+      source: 'Use entity/tower as the tower.\nLay out a 4 by 8 grid over the front face of the tower.',
+    },
+  });
+  lifecycle.complete({
+    revision: 3,
+    plainform: { interpretation: ['Will use the tower.', 'Laid out a centered grid.'] },
+  });
+  findControl(hud.host, 'tabs').setSelected('plainform');
+  assert.equal(hud.tab, 'plainform');
+  assert.match(hud.visiblePlainformText, /Use entity\/tower as the tower\./u);
+  assert.match(hud.visiblePlainformText, /Lay out a 4 by 8 grid/u);
+  assert.doesNotMatch(hud.visiblePlainformText, /UNDERSTOOD|Laid out a centered grid\./u);
+});
+
+test('Plainform Copy all writes the complete unwrapped retained source stream', async () => {
+  const writes = [];
+  const { hud, telemetry } = fixture({
+    height: 260,
+    writeClipboardText(value) { writes.push(value); },
+  });
+  telemetry.begin('three_studio_apply', {
+    program: { language: 'plainform-v1', source: 'First precise sentence.\nSecond precise sentence.' },
+  }).complete({ revision: 1 });
+  telemetry.begin('three_studio_apply', {
+    program: { language: 'plainform-v1', source: 'Third sentence from another change.' },
+  }).complete({ revision: 2 });
+
+  assert.equal(hud.completePlainformText,
+    'First precise sentence.\nSecond precise sentence.\n\nThird sentence from another change.');
+  assert.equal(await hud.copyAllPlainform(), true);
+  assert.deepEqual(writes, [hud.completePlainformText]);
+  assert.equal(findControl(hud.host, 'plainform-copy-all').text, 'Copied');
 });
 
 test('wheel scrolling is virtualized, pointer-bounded, and shows a scrollbar', () => {
@@ -738,10 +794,11 @@ test('exact shortcut and disposal update GPU presentation state safely', () => {
   const beforeResize = hud.drawRevision;
   const beforeBounds = { ...hud.panelBounds };
   hud.resize(1600, 900, 2.5);
-  assert.equal(hud.drawRevision, beforeResize, 'window size must not rebuild the HUD bitmap');
+  assert.ok(hud.drawRevision > beforeResize, 'viewport-aware sizing repaints the HUD bitmap');
   assert.equal(hud.panelBounds.width, beforeBounds.width);
-  assert.equal(hud.panelBounds.height, beforeBounds.height);
-  assert.equal(hud.panelBounds.pixelRatio, beforeBounds.pixelRatio);
+  assert.ok(hud.panelBounds.height >= beforeBounds.height);
+  assert.equal(hud.panelBounds.pixelRatio, 2);
+  assert.ok(hud.panelBounds.top + hud.panelBounds.height <= 900 - 12);
 
   hud.dispose();
   hud.dispose();
@@ -756,16 +813,30 @@ test('exact shortcut and disposal update GPU presentation state safely', () => {
   assert.equal(eventTarget.listeners.get('wheel').size, 0);
 });
 
+test('HUD backing bitmap never exceeds the visible control or window bounds', () => {
+  const { hud } = fixture({ width: 220, height: 180, pixelRatio: 2 });
+  const bounds = hud.panelBounds;
+
+  assert.ok(bounds.left + bounds.width <= 220 - 12);
+  assert.ok(bounds.top + bounds.height <= 180 - 12);
+  assert.equal(hud.canvas.width, Math.round(bounds.width * bounds.pixelRatio));
+  assert.equal(hud.canvas.height, Math.round(bounds.height * bounds.pixelRatio));
+  assert.ok(hud.canvas.width <= Math.round((220 - 24) * bounds.pixelRatio));
+  assert.ok(hud.canvas.height <= Math.round((180 - 24) * bounds.pixelRatio));
+
+  hud.dispose();
+});
+
 test('Prompt tab is browser-only and does not appear on the native HUD', () => {
   const native = fixture();
   const nativeTabs = native.hud.host.children.find(child => child.name === 'tabs');
-  assert.deepEqual(nativeTabs.tabs.map(tab => tab.id), ['log', 'explorer', 'settings']);
+  assert.deepEqual(nativeTabs.tabs.map(tab => tab.id), ['log', 'plainform', 'explorer', 'settings']);
   assert.equal(native.hud.host.children.some(child => child.name === 'prompt-page'), false);
   native.hud.dispose();
 
   const browser = fixture({ promptTab: true });
   const browserTabs = browser.hud.host.children.find(child => child.name === 'tabs');
-  assert.deepEqual(browserTabs.tabs.map(tab => tab.id), ['log', 'explorer', 'settings', 'prompt']);
+  assert.deepEqual(browserTabs.tabs.map(tab => tab.id), ['log', 'plainform', 'explorer', 'settings', 'prompt']);
   browserTabs.setSelected('prompt');
   assert.equal(browser.hud.tab, 'prompt');
   const promptPage = browser.hud.host.children.find(child => child.name === 'prompt-page');

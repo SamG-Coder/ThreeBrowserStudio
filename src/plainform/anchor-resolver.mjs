@@ -41,6 +41,19 @@ function rawDimensions(recipe) {
   }
 }
 
+const NAMED_ANCHORS = Object.freeze({
+  center: Object.freeze([0, 0, 0]),
+  centre: Object.freeze([0, 0, 0]),
+  left: Object.freeze([-1, 0, 0]),
+  right: Object.freeze([1, 0, 0]),
+  bottom: Object.freeze([0, -1, 0]),
+  base: Object.freeze([0, -1, 0]),
+  top: Object.freeze([0, 1, 0]),
+  back: Object.freeze([0, 0, -1]),
+  rear: Object.freeze([0, 0, -1]),
+  front: Object.freeze([0, 0, 1]),
+});
+
 /** Geometry-aware base/tip anchors and bounded analytic surface attachment. */
 export class PlainformAnchorResolver {
   constructor({ project, spatial, fail }) {
@@ -71,6 +84,78 @@ export class PlainformAnchorResolver {
 
   worldAnchor(record, axis, anchor, transform = record.entity.transform) {
     return transformPointByMatrix(this.spatial.worldMatrix(record, transform), this.localAnchor(record, axis, anchor));
+  }
+
+  namedDirection(name) {
+    const direction = NAMED_ANCHORS[String(name).toLowerCase()];
+    if (!direction) this.fail('plainform_unknown_anchor', `“${name}” is not a supported object anchor.`);
+    return [...direction];
+  }
+
+  localNamedAnchor(record, name) {
+    const direction = this.namedDirection(name);
+    if (direction.every(value => value === 0)) return [0, 0, 0];
+    const { raw } = this.dimensions(record, direction);
+    return direction.map((value, index) => value * raw.size[index] * 0.5);
+  }
+
+  worldNamedAnchor(record, name, transform = record.entity.transform) {
+    return transformPointByMatrix(this.spatial.worldMatrix(record, transform), this.localNamedAnchor(record, name));
+  }
+
+  placeNamedAnchorAtWorld(record, name, worldTarget, transform) {
+    const target = this.parentSpacePoint(record, worldTarget);
+    const offsetMatrix = composeTransformMatrix({ ...transform, position: [0, 0, 0] });
+    const anchorOffset = transformPointByMatrix(offsetMatrix, this.localNamedAnchor(record, name));
+    return target.map((value, index) => value - anchorOffset[index]);
+  }
+
+  alignNamedAnchors(record, ownName, reference, referenceName, transform) {
+    const target = this.worldNamedAnchor(reference, referenceName);
+    return this.placeNamedAnchorAtWorld(record, ownName, target, transform);
+  }
+
+  gridOriginOnFace(
+    reference,
+    face,
+    columns,
+    rows,
+    horizontalSpacing,
+    verticalSpacing,
+    outwardOffset = 0,
+    { patternRecord, patternTransform } = {},
+  ) {
+    const direction = this.namedDirection(face);
+    if (direction.every(value => value === 0)) this.fail('plainform_face_required', 'A grid requires a front, back, left, right, top, or bottom face.');
+    if (!patternRecord || !patternTransform) {
+      this.fail('plainform_grid_basis_required', 'A face grid requires the final transformed pattern source so its origin and repetitions share one local basis.');
+    }
+    const world = this.spatial.worldMatrix(reference);
+    const centre = this.worldNamedAnchor(reference, face);
+    const worldOrigin = transformPointByMatrix(world, [0, 0, 0]);
+    const patternWorld = this.spatial.worldMatrix(patternRecord, {
+      ...patternTransform,
+      position: [0, 0, 0],
+    });
+    const patternOrigin = transformPointByMatrix(patternWorld, [0, 0, 0]);
+    const patternDirection = localAxis => {
+      const point = [0, 0, 0];
+      point[localAxis] = 1;
+      const transformed = transformPointByMatrix(patternWorld, point);
+      const vector = transformed.map((value, index) => value - patternOrigin[index]);
+      const length = Math.hypot(...vector) || 1;
+      return vector.map(value => value / length);
+    };
+    const horizontal = patternDirection(0);
+    const vertical = patternDirection(1);
+    const outward = centre.map((value, index) => value - worldOrigin[index]);
+    const outwardLength = Math.hypot(...outward) || 1;
+    return centre.map((value, index) => (
+      value
+      - horizontal[index] * (columns - 1) * horizontalSpacing * 0.5
+      - vertical[index] * (rows - 1) * verticalSpacing * 0.5
+      + outward[index] / outwardLength * outwardOffset
+    ));
   }
 
   surfacePoint(reference, towardWorld) {

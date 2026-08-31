@@ -1,4 +1,4 @@
-import { lstat, readFile, readdir, rm, stat } from 'node:fs/promises';
+import { lstat, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
   AtomicProjectStore,
@@ -19,8 +19,10 @@ import {
   buildModifierDigest,
   contentHash,
   createEntityDocument,
+  createBlankProjectDocument,
   createProjectDocument,
   createResourceDocument,
+  exportSceneInterchange,
   DATA_TEXTURE_LIMITS,
   dataTextureGpuByteLength,
   hashExactEntitySet,
@@ -94,7 +96,13 @@ import { buildExplorerOutline } from '../viewport/scene-explorer.mjs';
 import { LAYOUT_PATTERN_MODES } from '../core/layout-patterns.mjs';
 import { RTX_SCENE_LIMITS } from './rtx-scene-collector.mjs';
 import { materialLookResource, queryLookCatalog } from './material-looks.mjs';
-import { normalizeGeometryRecipe, queryGeometryCatalog, realizeGeometryRecipe } from './resource-factories.mjs';
+import {
+  createGeometry,
+  indexedMeshRecipeFromBufferGeometry,
+  normalizeGeometryRecipe,
+  queryGeometryCatalog,
+  realizeGeometryRecipe,
+} from './resource-factories.mjs';
 import { createTransactionId } from '../core/util.mjs';
 
 export { materialLookResource, queryLookCatalog } from './material-looks.mjs';
@@ -1902,7 +1910,7 @@ export class StudioApplication {
         const templateStore = new AtomicProjectStore(path.join(this.studioRoot, 'templates', 'starter-project'));
         const loaded = await templateStore.load();
         created = createProjectDocument({ ...loaded.document, projectId, name, revision: 0, savedRevision: 0 });
-      } else created = createProjectDocument({ projectId, name });
+      } else created = createBlankProjectDocument({ projectId, name });
       const saved = await store.save(created);
       kernel = new AuthoringKernel(saved.document, { store, prepare: (document, context) => this.#prepare(document, context) });
     }
@@ -2048,7 +2056,8 @@ export class StudioApplication {
         timelineGeometryMaxSamples: GEOMETRY_MODIFIER_LIMITS.maxOceanTimelineSamples,
         dynamicRtxGeometry: 'excluded-from-static-scene',
         jobs: true,
-        jobKinds: ['textureBake'],
+        jobKinds: ['textureBake', 'sceneExport'],
+        projectTemplates: ['blank', 'starter'],
         graphDomains: ['shader', 'texture', 'blueprint'],
         entityKinds: [
           'scene', 'group', 'empty', 'gameObject', 'mesh', 'instancedMesh',
@@ -2218,6 +2227,7 @@ export class StudioApplication {
 
   async #job(params, context = {}) {
     this.#assertTarget(params, { requireActiveScene: false });
+    if (params.action === 'sceneExport') return this.#exportScene(params);
     if (params.action !== 'textureBake') throw new StudioError('job_not_implemented', `Job ${params.action} is not enabled.`);
     const resource = this.#kernel.document.resources?.graphs?.[params.graphId];
     if (!resource) throw new StudioError('not_found', `Graph ${params.graphId} does not exist.`, { id: params.graphId, kind: 'graph' });
@@ -2278,6 +2288,67 @@ export class StudioApplication {
     };
   }
 
+  async #exportScene(params) {
+    if (params.baseRevision !== this.#kernel.revision) {
+      throw new StudioError('revision_conflict', `Base revision ${params.baseRevision} does not match ${this.#kernel.revision}.`);
+    }
+    const document = this.#kernel.document;
+    const sceneId = params.sceneId ?? document.activeSceneId;
+    const scene = document.scenes?.[sceneId];
+    if (!scene) throw new StudioError('scene_not_found', `Scene ${sceneId} does not exist.`, { sceneId });
+    if (params.entityId && !scene.entities[params.entityId]) {
+      throw new StudioError('not_found', `Entity ${params.entityId} does not exist.`, { id: params.entityId, kind: 'entity' });
+    }
+    const exported = exportSceneInterchange(document, {
+      sceneId,
+      entityId: params.entityId ?? null,
+      format: params.format ?? 'glb',
+      tessellate: (resource) => {
+        try {
+          const geometry = createGeometry(this.#THREE, resource);
+          try {
+            return indexedMeshRecipeFromBufferGeometry(geometry);
+          } finally {
+            geometry.dispose?.();
+          }
+        } catch {
+          return null;
+        }
+      },
+    });
+    const slug = String(params.name ?? scene.name ?? document.name ?? 'scene')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 48) || 'scene';
+    const extension = exported.format === 'gltf' ? 'gltf' : 'glb';
+    const artifactsDir = path.join(this.studioRoot, 'artifacts');
+    await mkdir(artifactsDir, { recursive: true });
+    const filePath = path.join(artifactsDir, `studio-${Date.now()}-${slug}.${extension}`);
+    await writeFile(filePath, exported.format === 'gltf' ? exported.bytes : Buffer.from(exported.bytes));
+    return {
+      success: true,
+      revision: document.revision,
+      projectId: document.projectId,
+      dirty: this.#kernel.status().dirty,
+      job: {
+        action: 'sceneExport',
+        sceneId,
+        entityId: params.entityId ?? null,
+        format: exported.format,
+        mimeType: exported.mimeType,
+        path: filePath,
+        byteLength: exported.stats.byteLength,
+        nodes: exported.stats.nodes,
+        meshes: exported.stats.meshes,
+        materials: exported.stats.materials,
+        cameras: exported.stats.cameras,
+        lights: exported.stats.lights,
+        skipped: exported.skipped,
+      },
+    };
+  }
+
   async #project(params) {
     if (params.action === 'list') {
       const entries = await readdir(this.projectsRoot, { withFileTypes: true }).catch(error => error.code === 'ENOENT' ? [] : Promise.reject(error));
@@ -2293,7 +2364,7 @@ export class StudioApplication {
         projects,
       };
     }
-    if (params.action === 'create' && params.template && params.template !== 'starter') {
+    if (params.action === 'create' && params.template && params.template !== 'starter' && params.template !== 'blank') {
       throw new StudioError('template_not_found', `Unknown project template ${params.template}.`);
     }
     if (params.action === 'create') return {
@@ -2302,7 +2373,7 @@ export class StudioApplication {
         create: true,
         mustBeNew: true,
         name: params.name,
-        template: params.template === 'starter' ? 'starter' : null,
+        template: params.template === 'starter' ? 'starter' : 'blank',
       })),
     };
     if (params.action === 'open') {
@@ -2677,7 +2748,7 @@ export class StudioApplication {
     const plainform = params.program
       ? new PlainformCompiler().compile(params.program.source, { project: document })
       : null;
-    const authoredOperations = plainform
+    const plainformOperations = plainform
       ? plainform.operations.map((operation, index) => {
           const parsed = operationSchema.safeParse(operation);
           if (!parsed.success) throw new StudioError(
@@ -2687,7 +2758,11 @@ export class StudioApplication {
           );
           return parsed.data;
         })
-      : params.operations;
+      : [];
+    // A live MCP client may retain the older operations-required transport
+    // shape while Studio refreshes its tool contract. Combining both inputs
+    // keeps every supplied mutation explicit and preserves Plainform telemetry.
+    const authoredOperations = [...(params.operations ?? []), ...plainformOperations];
     const dryRun = params.dryRun === true || plainform?.requestedPreview === true;
     const translationDocument = structuredClone(document);
     const operations = [];
@@ -2813,9 +2888,12 @@ export class StudioApplication {
       ...(dryRun ? { candidateToken } : {}),
       ...(plainform ? { plainform: {
         language: plainform.language,
+        source: params.program.source,
+        ...(plainform.dialect ? { dialect: plainform.dialect } : {}),
         interpretation: plainform.interpretation,
         aliases: plainform.aliases,
         requestedPreview: plainform.requestedPreview,
+        ...(plainform.shader ? { shader: plainform.shader } : {}),
       } } : {}),
       authoring: {
         authoredOperationCount: authoredOperations.length,

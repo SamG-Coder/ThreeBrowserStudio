@@ -147,6 +147,45 @@ test('failed lifecycle entries do not retain error messages, stacks, paths, or t
   assert.doesNotMatch(serialized, /private|token|render\.mjs/i);
 });
 
+test('Plainform telemetry preserves sanitized source lines without compiler state', () => {
+  const telemetry = createStudioCommandTelemetry();
+  const lifecycle = telemetry.begin('three_studio_apply', {
+    program: { language: 'plainform-v1', source: 'Use ‹tower›.\nMove it up by 2 metres.' },
+  });
+  assert.deepEqual(telemetry.snapshot()[0].plainform.sourceLines, ['Use ‹tower›.', 'Move it up by 2 metres.']);
+  lifecycle.complete({
+    revision: 1,
+    plainform: { source: 'Use ‹tower›.\nMove it up by 2 metres.', interpretation: ['Will use tower.', 'Moved it up.'] },
+  });
+  assert.equal('interpretationLines' in telemetry.snapshot()[0].plainform, false);
+});
+
+test('Plainform telemetry recovers source from the completed compiler response', () => {
+  const telemetry = createStudioCommandTelemetry();
+  const lifecycle = telemetry.begin('three_studio_apply', { dryRun: true });
+  lifecycle.complete({
+    revision: 0,
+    plainform: { source: 'Use entity/tower as the tower.', interpretation: ['Will use the tower.'] },
+  });
+  assert.deepEqual(telemetry.snapshot()[0].plainform.sourceLines, ['Use entity/tower as the tower.']);
+  assert.equal('interpretationLines' in telemetry.snapshot()[0].plainform, false);
+});
+
+test('creating or opening a project clears prior command and Plainform streams', () => {
+  const telemetry = createStudioCommandTelemetry();
+  telemetry.begin('three_studio_apply', {
+    program: { language: 'plainform-v1', source: 'Use entity/old as the old scene.' },
+  }).complete({ revision: 4 });
+  telemetry.begin('three_studio_status', {}).complete({ revision: 4 });
+  assert.equal(telemetry.snapshot().length, 2);
+  const opened = telemetry.begin('three_studio_project', { action: 'open' });
+  opened.complete({ revision: 0, projectId: 'project/new' });
+  assert.equal(telemetry.snapshot().length, 1);
+  assert.equal(telemetry.snapshot()[0].tool, 'three_studio_project');
+  assert.equal(telemetry.snapshot()[0].plainform, null);
+  assert.equal(telemetry.metrics().cumulative.commands, 1);
+});
+
 test('empty command metrics match a live feed with no commands', () => {
   const telemetry = createStudioCommandTelemetry();
   assert.deepEqual(telemetry.metrics(), emptyStudioCommandMetrics());

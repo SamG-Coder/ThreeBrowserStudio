@@ -111,6 +111,7 @@ const OPERATION_KEYS = new Map([
   ['scene.create', new Set(['type', 'op', 'scene', 'alias', 'index'])],
   ['scene.patch', new Set(['type', 'op', 'sceneId', 'patch'])],
   ['scene.delete', new Set(['type', 'op', 'sceneId', 'expectedSceneHash'])],
+  ['scene.clear', new Set(['type', 'op', 'sceneId', 'expectedSceneHash'])],
   ['scene.setActive', new Set(['type', 'op', 'sceneId'])],
   ['scene.settings.patch', new Set(['type', 'op', 'sceneId', 'patch'])],
   ['scene.rtx.patch', new Set(['type', 'op', 'sceneId', 'patch'])],
@@ -464,6 +465,51 @@ function applySceneDelete(draft, operation, aliases) {
       type: '_scene.restore', sceneId, snapshot: cloneJson(scene), index, activeSceneId,
       restoreActive: activeSceneId === sceneId,
       expectedCurrentHash: null,
+    },
+  };
+}
+
+function applySceneClear(draft, operation, aliases) {
+  const sceneId = resolveId(operation.sceneId, aliases, 'sceneId');
+  const scene = buildProjectIndex(draft).getScene(sceneId);
+  const populated = Object.keys(scene.entities).length > 0
+    || Object.keys(scene.collections).length > 0
+    || (scene.scriptIds?.length ?? 0) > 0;
+  if (populated) {
+    studioAssert(operation.expectedSceneHash === contentHash(scene), 'guard_failed', 'Clearing a non-empty scene requires its exact expectedSceneHash', {
+      expectedSceneHash: operation.expectedSceneHash,
+      actualSceneHash: contentHash(scene),
+    });
+  }
+  const snapshot = cloneJson(scene);
+  const cleared = createSceneDocument({
+    id: scene.id,
+    name: scene.name,
+    entities: [],
+    collections: [],
+    rootEntityIds: [],
+    rootCollectionIds: [],
+    settings: {
+      ...cloneJson(scene.settings),
+      activeCameraId: null,
+    },
+    scriptIds: [],
+    metadata: cloneJson(scene.metadata),
+  });
+  draft.scenes[sceneId] = cleared;
+  return {
+    resolved: {
+      type: 'scene.clear',
+      sceneId,
+      ...(operation.expectedSceneHash ? { expectedSceneHash: operation.expectedSceneHash } : {}),
+    },
+    inverse: {
+      type: '_scene.restore',
+      sceneId,
+      snapshot,
+      index: draft.sceneOrder.indexOf(sceneId),
+      restoreActive: false,
+      expectedCurrentHash: contentHash(cleared),
     },
   };
 }
@@ -1809,6 +1855,7 @@ function applyOne(draft, operation, aliases, resolvedIds, allowInternal) {
     case 'scene.create': return applySceneCreate(draft, operation, aliases, resolvedIds);
     case 'scene.patch': return applyScenePatch(draft, operation, aliases);
     case 'scene.delete': return applySceneDelete(draft, operation, aliases);
+    case 'scene.clear': return applySceneClear(draft, operation, aliases);
     case 'scene.setActive': return applySceneSetActive(draft, operation, aliases);
     case 'scene.settings.patch': return applySceneSettings(draft, operation, aliases);
     case 'scene.rtx.patch': return applySceneRtxPatch(draft, operation, aliases);

@@ -46,13 +46,13 @@ export const TOOL_DEFINITIONS = Object.freeze({
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   },
   three_studio_job: {
-    title: 'Three Studio Texture Jobs',
-    description: 'Bake one deterministic procedural graph output into a canonical texture resource through the guarded authoring kernel.',
+    title: 'Three Studio Jobs',
+    description: 'Run a capability-gated job: bake one procedural graph output into a texture, or export a scene or entity subtree as glTF/GLB for Three.js and WebGPU loaders.',
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   },
   three_studio_project: {
     title: 'Three Studio Project',
-    description: 'List, create, open, or atomically save Studio projects while keeping the viewport alive. Only the optional starter template is implemented; checkpoint/snapshot, close, export, duplication, rename, and deletion are not exposed.',
+    description: 'List, create, open, or atomically save Studio projects while keeping the viewport alive. Create with template blank for an empty scene, or starter for the lit primitive stage. Checkpoint/snapshot, close, duplication, rename, and deletion are not exposed.',
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   },
   three_studio_play: {

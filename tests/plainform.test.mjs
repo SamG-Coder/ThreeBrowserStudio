@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createProjectDocument } from '../src/core/documents.mjs';
+import { composeTransformMatrix, transformPointByMatrix } from '../src/core/transform-math.mjs';
 import { operationSchema } from '../src/mcp/tool-schemas.mjs';
 import { PlainformCompiler, PlainformError, evaluatePlainformMath } from '../src/plainform/index.mjs';
 
@@ -168,6 +169,97 @@ Move each working form by [0, 0, 1 centimetre].
   assert.match(compiled.interpretation.join('\n'), /Extended “working forms” with 1 descendants/u);
 });
 
+test('Plainform names a canonical prefab with $ context and lays out a centered grid over an object face', () => {
+  const compiled = new PlainformCompiler().compile(`
+Use entity/leaf-a as the window module.
+Use entity/trunk as the tower volume.
+Convert the window module into a prefab called $window-bay.
+Lay out a 3 by 4 grid of copies of $window-bay over the front face of the tower volume, spaced 50 centimetres horizontally and 1 metre vertically, offset 8 centimetres outward.
+`, { project: projectFixture() });
+  assert.deepEqual(compiled.operations.map(operation => operation.op), [
+    'resource.create', 'entity.patch', 'entity.patch', 'layout.pattern',
+  ]);
+  assert.equal(compiled.operations[0].resourceType, 'prefabs');
+  assert.equal(compiled.operations[0].resource.id, 'prefab/window-bay');
+  assert.equal(compiled.operations[0].resource.sourceEntityId, 'entity/leaf-a');
+  assert.equal(compiled.operations[1].patch.components.prefab.prefabId, 'prefab/window-bay');
+  assert.deepEqual(compiled.operations[3].pattern.counts, [3, 4, 1]);
+  assert.deepEqual(compiled.operations[3].pattern.spacing, [0.5, 1, 0]);
+  assert.ok(compiled.operations[2].patch.transform.position[0] > -2);
+  assert.ok(compiled.operations[2].patch.transform.position[1] > -2);
+  assert.ok(compiled.operations[2].patch.transform.position[2] > 0.5);
+  assert.ok(compiled.operations.every(operation => operationSchema.safeParse(operation).success));
+  assert.deepEqual(compiled.aliases['$window-bay'], ['entity/leaf-a']);
+});
+
+test('Plainform centers face grids in the same rotated local basis used by layout.pattern', () => {
+  const expectedCentres = {
+    front: [0, 2, 0.68],
+    back: [0, 2, -0.68],
+    left: [-0.68, 2, 0],
+    right: [0.68, 2, 0],
+    top: [0, 4.08, 0],
+    bottom: [0, -0.08, 0],
+  };
+
+  for (const [face, expectedCentre] of Object.entries(expectedCentres)) {
+    const compiled = new PlainformCompiler().compile(`
+Use entity/leaf-a as the panel.
+Use entity/trunk as the volume.
+Lay out a 3 by 4 grid of copies of the panel over the ${face} face of the volume, spaced 50 centimetres horizontally and 1 metre vertically, offset 8 centimetres outward.
+`, { project: projectFixture() });
+    const patch = compiled.operations.find(operation => operation.op === 'entity.patch');
+    const pattern = compiled.operations.find(operation => operation.op === 'layout.pattern');
+    const matrix = composeTransformMatrix(patch.patch.transform);
+    const origin = transformPointByMatrix(matrix, [0, 0, 0]);
+    const localX = transformPointByMatrix(matrix, [1, 0, 0]).map((value, index) => value - origin[index]);
+    const localY = transformPointByMatrix(matrix, [0, 1, 0]).map((value, index) => value - origin[index]);
+    const gridCentre = origin.map((value, index) => (
+      value
+      + localX[index] * (pattern.pattern.counts[0] - 1) * pattern.pattern.spacing[0] * 0.5
+      + localY[index] * (pattern.pattern.counts[1] - 1) * pattern.pattern.spacing[1] * 0.5
+    ));
+
+    assert.deepEqual(pattern.pattern.counts, [3, 4, 1], `${face} counts`);
+    assert.deepEqual(pattern.pattern.spacing, [0.5, 1, 0], `${face} spacing`);
+    gridCentre.forEach((value, axis) => {
+      assert.ok(Math.abs(value - expectedCentre[axis]) < 1e-9, `${face} centre axis ${axis}: ${value}`);
+    });
+  }
+});
+
+test('Plainform restores durable $ prefab references from canonical project resources', () => {
+  const project = projectFixture();
+  project.resources.prefabs['prefab/window-bay'] = {
+    id: 'prefab/window-bay', kind: 'prefab', name: 'window bay', sourceEntityId: 'entity/leaf-a',
+    sourceSubtreeHash: '0'.repeat(64),
+    template: { sceneId: 'scene/main', rootEntityId: 'entity/leaf-a', entities: [] },
+    metadata: { plainform: { name: '$window-bay', snapshotHash: '1'.repeat(64) } },
+  };
+  const compiled = new PlainformCompiler().compile(`
+Use entity/trunk as the tower volume.
+Lay out a 2 by 2 grid of copies of $window-bay over the front face of the tower volume, spaced 1 metre horizontally and 1 metre vertically, offset 5 centimetres outward.
+`, { project });
+  assert.deepEqual(compiled.operations.map(operation => operation.op), ['entity.patch', 'layout.pattern']);
+  assert.deepEqual(compiled.aliases['$window-bay'], ['entity/leaf-a']);
+});
+
+test('Plainform centers and aligns geometry-aware anchors inside relational loops', () => {
+  const compiled = new PlainformCompiler().compile(`
+Find every visible mesh beneath entity/tree that is tagged "leaf".
+Call them the panels.
+Use entity/trunk as the tower volume.
+For each panel in the panels.
+Place it centered on the front face of the tower volume.
+Align its bottom with the top of the tower volume.
+End.
+`, { project: projectFixture() });
+  const patches = compiled.operations.filter(operation => operation.op === 'entity.patch');
+  assert.equal(patches.length, 3);
+  assert.ok(patches.every(operation => operationSchema.safeParse(operation).success));
+  assert.ok(patches.every(operation => operation.patch.transform.position[1] > 3));
+});
+
 test('Plainform faces away from context, moves in the resulting local frame, and exposes relational math', () => {
   const compiled = new PlainformCompiler().compile(`
 Use entity/tree as the centre.
@@ -275,5 +367,80 @@ test('Plainform fails closed on ambiguous or unsupported natural language', () =
     () => new PlainformCompiler().compile('Make the tree nicer.', { project: projectFixture() }),
     error => error instanceof PlainformError && error.code === 'plainform_unknown_statement'
       && error.details.statement === 1,
+  );
+});
+
+test('Shader Plainform composes descriptive feel words with typed trigonometric math chains', () => {
+  const source = [
+    'Create a shader graph called "Living Rain" with id graph/living-rain.',
+    'Describe it as very wet, ancient, mossy and softly glowing.',
+    'Let slow pulse be sin(time * 2 + cos(time * 0.5)).',
+    'Let shaped pulse be smoothstep(0.2, 0.8, slow pulse).',
+    'Set roughness to clamp(0.72 + shaped pulse * 0.12, 0, 1).',
+    'Set emission strength to saturate(shaped pulse * 2).',
+    'Apply it to material/tree-bark.',
+  ].join('\n');
+  const compiled = new PlainformCompiler().compile(source, { project: projectFixture() });
+  assert.equal(compiled.dialect, 'shader');
+  assert.equal(compiled.requestedPreview, false);
+  assert.deepEqual(compiled.operations.map(operation => operation.op), ['resource.create', 'resource.patch']);
+  assert.ok(compiled.operations.every(operation => operationSchema.safeParse(operation).success));
+  const graph = compiled.operations[0].resource.graph;
+  assert.equal(graph.outputs.surface.nodeId, 'principled-surface');
+  assert.ok(graph.nodes.some(node => node.type === 'input.time'));
+  assert.ok(graph.nodes.some(node => node.type === 'blender.math' && node.params.operation === 'SINE'));
+  assert.ok(graph.nodes.some(node => node.type === 'blender.math' && node.params.operation === 'COSINE'));
+  assert.ok(graph.edges.some(edge => edge.to.nodeId === 'principled-surface' && edge.to.port === 'roughness'));
+  assert.ok(graph.edges.some(edge => edge.to.nodeId === 'principled-surface' && edge.to.port === 'emissionStrength'));
+  assert.ok(compiled.shader.descriptors.includes('wet'));
+  assert.ok(compiled.shader.descriptors.includes('mossy'));
+  assert.equal(compiled.operations[1].patch.graphId, 'graph/living-rain');
+});
+
+test('Shader Plainform accepts mathematician-style English expressions and procedural chains', () => {
+  const compiled = new PlainformCompiler().compile([
+    'Create a shader graph called Harmonic Stone.',
+    'Describe it as weathered, rough and cold.',
+    'Let harmonic be the sine of time times 2 plus the cosine of time divided by 3.',
+    'Let grain be fbm(harmonic).',
+    'Set roughness to remap(grain, 0, 1, 0.55, 0.92).',
+  ].join('\n'), { project: projectFixture() });
+  const graph = compiled.operations[0].resource.graph;
+  assert.ok(graph.nodes.some(node => node.type === 'noise.fbm'));
+  assert.ok(graph.nodes.some(node => node.type === 'blender.math' && node.params.operation === 'SINE'));
+  assert.ok(graph.nodes.some(node => node.type === 'blender.math' && node.params.operation === 'COSINE'));
+  assert.ok(graph.nodes.some(node => node.type === 'blender.math' && node.params.operation === 'DIVIDE'));
+  assert.ok(graph.edges.some(edge => edge.to.nodeId === 'principled-surface' && edge.to.port === 'roughness'));
+});
+
+test('Shader Plainform preserves open-ended aesthetic language while known terms produce Principled values', () => {
+  const compiled = new PlainformCompiler().compile([
+    'Create a material graph called Dream Bark.',
+    'Make it feel hand-painted, whimsical, velvety and moon-kissed.',
+    'Set base color to #526b3f.',
+    'Set coat roughness to 0.18.',
+  ].join('\n'), { project: projectFixture() });
+  const resource = compiled.operations[0].resource;
+  const surface = resource.graph.nodes.find(node => node.id === 'principled-surface');
+  assert.deepEqual(surface.inputs.baseColor, [82 / 255, 107 / 255, 63 / 255, 1]);
+  assert.ok(surface.inputs.sheenWeight > 0);
+  assert.ok(resource.metadata.plainform.openDescriptors.includes('moon-kissed'));
+  assert.ok(resource.metadata.plainform.descriptors.includes('hand-painted'));
+});
+
+test('Shader Plainform rejects unknown functions and incompatible colour assignments', () => {
+  assert.throws(
+    () => new PlainformCompiler().compile([
+      'Create a shader graph called Unsafe.',
+      'Set roughness to mystery(time).',
+    ].join('\n'), { project: projectFixture() }),
+    error => error.code === 'plainform_shader_unknown_function',
+  );
+  assert.throws(
+    () => new PlainformCompiler().compile([
+      'Create a shader graph called Wrong Type.',
+      'Set roughness to #ffffff.',
+    ].join('\n'), { project: projectFixture() }),
+    error => error.code === 'plainform_shader_type_mismatch',
   );
 });
