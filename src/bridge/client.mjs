@@ -11,6 +11,7 @@ import {
   encodeNdjson,
 } from './protocol.mjs';
 import { readSessionMarker } from './session.mjs';
+import { WIRE_FORMAT_CONFIGURE_METHOD, WireFormatSession } from './wire-format-session.mjs';
 
 export class LiveBridgeClient {
   constructor(options = {}) {
@@ -23,6 +24,7 @@ export class LiveBridgeClient {
     this.timeoutMs = options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     this.connectTimeoutMs = options.connectTimeoutMs ?? Math.min(this.timeoutMs, 5_000);
     this.maxMessageBytes = options.maxMessageBytes ?? MAX_MESSAGE_BYTES;
+    this.wireFormats = new WireFormatSession();
     this._socket = undefined;
     this._connectPromise = undefined;
     this._pending = new Map();
@@ -95,7 +97,13 @@ export class LiveBridgeClient {
     if (!pending) return;
     clearTimeout(pending.timer);
     this._pending.delete(response.id);
-    if (response.ok) pending.resolve(response.result);
+    if (response.ok) {
+      try {
+        pending.resolve(pending.wireBypass ? response.result : this.wireFormats.decodeOutput(response.result));
+      } catch (error) {
+        pending.reject(error);
+      }
+    }
     else pending.reject(new RpcError(response.error.code, response.error.message, response.error.data));
   }
 
@@ -122,12 +130,13 @@ export class LiveBridgeClient {
     const id = options.id ?? randomUUID();
     if (this._pending.has(id)) throw new RpcError('duplicate_request', `Request id ${id} is already active.`);
 
+    const wireBypass = options.wireBypass === true;
     const encoded = encodeNdjson({
       protocolVersion: this.protocolVersion,
       token: this.token,
       id,
       method,
-      params,
+      params: wireBypass ? params : this.wireFormats.encodeInput(params),
       timeoutMs,
     }, this.maxMessageBytes);
 
@@ -151,7 +160,7 @@ export class LiveBridgeClient {
         options.signal?.removeEventListener('abort', onAbort);
         callback(value);
       };
-      this._pending.set(id, { resolve: settle(resolve), reject: settle(reject), timer });
+      this._pending.set(id, { resolve: settle(resolve), reject: settle(reject), timer, wireBypass });
       options.signal?.addEventListener('abort', onAbort, { once: true });
       this._socket.write(encoded, (error) => {
         if (!error) return;
@@ -169,7 +178,13 @@ export class LiveBridgeClient {
   }
 
   ping(options) {
-    return this.request('ping', {}, options);
+    return this.request('ping', {}, { ...options, wireBypass: true });
+  }
+
+  async configureWireFormats(options = {}) {
+    const result = await this.request(WIRE_FORMAT_CONFIGURE_METHOD, options, { wireBypass: true });
+    this.wireFormats.configure({ inputMode: result.inputMode, outputMode: result.outputMode });
+    return result;
   }
 
   async close() {

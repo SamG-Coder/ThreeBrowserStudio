@@ -17,6 +17,7 @@ import {
 import { LAYOUT_PATTERN_MODES } from '../src/core/layout-patterns.mjs';
 import { TOOL_CONTRACT, TOOL_CONTRACT_SUMMARY } from '../src/mcp/tool-schemas.mjs';
 import { createProjectPack, parseProjectPack } from '../src/core/project-pack.mjs';
+import { decodeDataTexturePixels } from '../src/core/image-texture.mjs';
 import { StudioApplication, buildResourceDigest } from '../src/runtime/studio-application.mjs';
 import { emptyStudioCommandMetrics } from '../src/runtime/mcp-live-feed-telemetry.mjs';
 
@@ -1156,6 +1157,94 @@ test('high-level resources may depend on resources created earlier in the same a
   assert.deepEqual(application.kernel.document.resources.materials['material/variant'].recipe, {
     kind: 'physical', color: '#334455', roughness: 0.1, metalness: 0.8,
   });
+});
+
+test('three_studio_apply compiles a Plainform English program through the ordinary guarded kernel path', async (t) => {
+  const { application } = await applicationFixture(t);
+  const setup = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1', sessionId: application.sessionId,
+    projectId: 'project/active', baseRevision: 0,
+    idempotencyKey: 'plainform-setup-0001', label: 'Create a tiny tree selection',
+    operations: [{
+      op: 'resource.create', resourceType: 'geometries', resource: { id: 'geometry/plainform-leaf', recipe: { kind: 'box' } },
+    }, {
+      op: 'resource.create', resourceType: 'materials', resource: { id: 'material/plainform-leaf', recipe: { kind: 'standard', color: '#4f7a3a' } },
+    }, {
+      op: 'entity.create', sceneId: 'scene/main', entity: { id: 'entity/plainform-tree', kind: 'group', name: 'Plainform Tree' },
+    }, {
+      op: 'entity.create', sceneId: 'scene/main', entity: {
+        id: 'entity/plainform-leaf-a', kind: 'mesh', name: 'Leaf A', parentId: 'entity/plainform-tree', tags: ['leaf'],
+        components: { mesh: { geometryId: 'geometry/plainform-leaf', materialId: 'material/plainform-leaf' } },
+      },
+    }, {
+      op: 'entity.create', sceneId: 'scene/main', entity: {
+        id: 'entity/plainform-leaf-b', kind: 'mesh', name: 'Leaf B', parentId: 'entity/plainform-tree', tags: ['leaf'],
+        components: { mesh: { geometryId: 'geometry/plainform-leaf', materialId: 'material/plainform-leaf' } },
+      },
+    }],
+  }).catch(error => assert.fail(`Plainform fixture setup failed: ${JSON.stringify(error.details ?? error.message)}`));
+  assert.equal(setup.success, true);
+
+  const result = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1', sessionId: application.sessionId,
+    projectId: 'project/active', baseRevision: 1,
+    idempotencyKey: 'plainform-apply-0001', label: 'Move the leaves using natural English',
+    program: {
+      language: 'plainform-v1',
+      source: [
+        'Find every visible mesh beneath entity/plainform-tree that is tagged "leaf".',
+        'Call them the tree leaves.',
+        'Move each tree leaf by [10 centimetres, 0, 0].',
+      ].join('\n'),
+    },
+  });
+  assert.equal(result.success, true);
+  assert.equal(result.revision, 2);
+  assert.equal(result.authoring.authoredOperationCount, 1);
+  assert.deepEqual(result.plainform.aliases['tree leaves'], ['entity/plainform-leaf-a', 'entity/plainform-leaf-b']);
+  assert.deepEqual(
+    application.kernel.document.scenes['scene/main'].entities['entity/plainform-leaf-a'].transform.position,
+    [0.1, 0, 0],
+  );
+});
+
+test('batched texture strokes lower to one cumulative texture patch', async (t) => {
+  const { application } = await applicationFixture(t);
+  const strokes = Array.from({ length: 7 }, (_, index) => ({
+    op: 'stroke.apply',
+    stroke: {
+      space: 'uv', defaultRadius: 0.08,
+      points: [{ position: [0.12 + index * 0.12, 0.5, 0] }],
+    },
+    target: { kind: 'texture', textureId: 'texture/batched-paint', color: [1, 0.2, 0.05, 1] },
+  }));
+  const result = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1', sessionId: application.sessionId,
+    projectId: 'project/active', baseRevision: 0,
+    idempotencyKey: 'batched-texture-strokes-0001', label: 'Paint seven marks atomically',
+    operations: [{
+      op: 'resource.create', resourceType: 'textures', resource: {
+        id: 'texture/batched-paint', recipe: {
+          kind: 'dataTexture', width: 64, height: 64, channels: 4,
+          data: Buffer.alloc(64 * 64 * 4).toString('base64'), colorSpace: 'srgb',
+        },
+      },
+    }, ...strokes],
+  });
+  assert.equal(result.success, true);
+  assert.equal(result.authoring.authoredOperationCount, 8);
+  assert.equal(result.authoring.loweredOperationCount, 2);
+  assert.deepEqual(result.authoring.loweredOperationTypes, [
+    { type: 'resource.create', count: 1 },
+    { type: 'resource.patch', count: 1 },
+  ]);
+  const recipe = application.kernel.document.resources.textures['texture/batched-paint'].recipe;
+  const bytes = decodeDataTexturePixels(recipe);
+  for (let index = 0; index < 7; index += 1) {
+    const x = Math.floor((0.12 + index * 0.12) * 64);
+    const offset = (32 * 64 + x) * 4;
+    assert.ok(bytes[offset] > 0, `stroke ${index + 1} should remain in the cumulative texture`);
+  }
 });
 
 test('geometry.realize turns a procedural resource into editable vertices in the same apply', async (t) => {

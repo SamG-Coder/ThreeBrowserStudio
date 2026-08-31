@@ -1404,8 +1404,16 @@ export const applySchema = z.object({
       x1: z.number().int().min(0).max(4095), y1: z.number().int().min(0).max(4095),
     }).strict().optional(),
   }).strict().optional(),
-  operations: z.array(operationSchema).min(1).max(128),
-}).strict().refine(value => value.previewEvidence === undefined || value.dryRun === true, {
+  operations: z.array(operationSchema).min(1).max(128).optional(),
+  program: z.object({
+    language: z.literal('plainform-v1'),
+    source: z.string().min(1).max(65_536),
+  }).strict().optional(),
+}).strict().superRefine((value, context) => {
+  if ((value.operations === undefined) === (value.program === undefined)) {
+    context.addIssue({ code: 'custom', path: ['operations'], message: 'Provide exactly one of operations or program.' });
+  }
+}).refine(value => value.previewEvidence === undefined || value.dryRun === true, {
   message: 'previewEvidence requires dryRun true.',
   path: ['previewEvidence'],
 }).refine(value => value.candidateToken === undefined || value.dryRun !== true, {

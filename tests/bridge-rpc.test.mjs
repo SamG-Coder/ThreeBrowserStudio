@@ -10,6 +10,7 @@ import { promisify } from 'node:util';
 import {
   LiveBridgeClient,
   MAX_MESSAGE_BYTES,
+  PathwireCodec,
   PROTOCOL_VERSION,
   RpcError,
   assertLiveSessionIdentity,
@@ -24,6 +25,20 @@ import {
 import { resolveLiveConnectionOptions } from '../src/mcp/server.mjs';
 
 const execFileAsync = promisify(execFile);
+
+test('Pathwire round-trips arbitrary JSON-shaped values as grep-friendly pointer lines', () => {
+  const codec = new PathwireCodec();
+  const value = {
+    projectId: 'project/tree', baseRevision: 12,
+    operations: [{ op: 'stroke.apply', target: { kind: 'texture', textureId: 'texture/tree' } }],
+    'escaped/key~': { empty: [], enabled: true },
+  };
+  const source = codec.format(value);
+  assert.match(source, /^\$\t@object$/mu);
+  assert.match(source, /^\/operations\/0\/op\t"stroke\.apply"$/mu);
+  assert.match(source, /^\/escaped~1key~0\/empty\t@array$/mu);
+  assert.deepEqual(codec.parse(source), value);
+});
 
 async function fixture(t, dispatch, options = {}) {
   const credentials = createSessionCredentials();
@@ -55,6 +70,26 @@ test('authenticated NDJSON RPC correlates concurrent requests and has a built-in
   const ping = await client.ping();
   assert.equal(ping.protocolVersion, PROTOCOL_VERSION);
   assert.equal(typeof ping.pid, 'number');
+});
+
+test('a bridge connection independently negotiates Pathwire input and output modes', async (t) => {
+  let observed;
+  const { client } = await fixture(t, async (_method, params, context) => {
+    observed = { params, wireFormats: context.wireFormats };
+    return { revision: 14, nested: { ok: true }, rows: ['a', 'b'] };
+  });
+  const configured = await client.configureWireFormats({ inputMode: 'pathwire-v1', outputMode: 'pathwire-v1' });
+  assert.deepEqual(configured, {
+    inputMode: 'pathwire-v1', outputMode: 'pathwire-v1', availableModes: ['json', 'pathwire-v1'],
+  });
+  const result = await client.request('echo', { projectId: 'project/tree', values: [1, 2, 3] });
+  assert.deepEqual(observed, {
+    params: { projectId: 'project/tree', values: [1, 2, 3] },
+    wireFormats: { inputMode: 'pathwire-v1', outputMode: 'pathwire-v1' },
+  });
+  assert.deepEqual(result, { revision: 14, nested: { ok: true }, rows: ['a', 'b'] });
+  const ping = await client.ping();
+  assert.equal(ping.protocolVersion, PROTOCOL_VERSION);
 });
 
 test('bridge ping exposes bounded native server information', async (t) => {

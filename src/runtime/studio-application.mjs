@@ -77,10 +77,12 @@ import { BLENDER_CATALOG_SUMMARY, queryBlenderCatalog } from '../blender/index.m
 import {
   GEOMETRY_EDIT_COMMAND_TYPES,
   OPERATION_TYPES,
+  operationSchema,
   TOOL_CONTRACT,
   TOOL_CONTRACT_SUMMARY,
   TOOL_SCHEMAS,
 } from '../mcp/tool-schemas.mjs';
+import { PlainformCompiler } from '../plainform/index.mjs';
 import { queryOperationCatalog } from '../mcp/operation-catalog.mjs';
 import { emptyStudioCommandMetrics } from './mcp-live-feed-telemetry.mjs';
 import { compileSceneDocument } from './scene-compiler.mjs';
@@ -428,6 +430,8 @@ function localStrokeForEntity(strokeValue, document, entityId) {
   return projectLocalStrokeToSurface(local, geometry.recipe ?? geometry, entityId);
 }
 
+const TEXTURE_PAINT_RECIPE_PATCH = Symbol('texturePaintRecipePatch');
+
 function translateStrokeOperation(operation, document) {
   const stroke = strokeFromOperation(operation, document);
   const target = operation.target;
@@ -481,7 +485,9 @@ function translateStrokeOperation(operation, document) {
     const resource = new ProjectIndex(document).getResource(textureId, 'textures').resource;
     const recipe = paintDataTextureStroke(resource, stroke, target);
     delete recipe.pixels;
-    lowered.push({ type: 'resource.patch', resourceType: 'textures', resourceId: textureId, patch: { recipe } });
+    const patchOperation = { type: 'resource.patch', resourceType: 'textures', resourceId: textureId, patch: { recipe } };
+    Object.defineProperty(patchOperation, TEXTURE_PAINT_RECIPE_PATCH, { value: true });
+    lowered.push(patchOperation);
   } else if (target.kind === 'curve') {
     const prepared = prepareStroke(stroke);
     if (prepared.points.length < 2) throw new StudioError('invalid_stroke_curve', 'Curve strokes require at least two points.');
@@ -668,6 +674,43 @@ export function translateToolOperation(operation, document) {
     default:
       throw new StudioError('operation_not_implemented', `${operation.op} is not in the lean v1 authoring slice yet.`, { operation: operation.op });
   }
+}
+
+function compactTextureRecipePatches(operations) {
+  const lastRecipePatchByTexture = new Map();
+  for (let index = 0; index < operations.length; index += 1) {
+    const operation = operations[index];
+    const type = operation.type ?? operation.op;
+    const patchKeys = operation.patch && typeof operation.patch === 'object'
+      ? Object.keys(operation.patch)
+      : [];
+    if (
+      operation[TEXTURE_PAINT_RECIPE_PATCH] === true
+      && type === 'resource.patch'
+      && operation.resourceType === 'textures'
+      && typeof operation.resourceId === 'string'
+      && patchKeys.length === 1
+      && patchKeys[0] === 'recipe'
+    ) {
+      lastRecipePatchByTexture.set(operation.resourceId, index);
+    }
+  }
+  if (lastRecipePatchByTexture.size === 0) return operations;
+  return operations.filter((operation, index) => {
+    const type = operation.type ?? operation.op;
+    const patchKeys = operation.patch && typeof operation.patch === 'object'
+      ? Object.keys(operation.patch)
+      : [];
+    if (
+      operation[TEXTURE_PAINT_RECIPE_PATCH] !== true
+      || type !== 'resource.patch'
+      || operation.resourceType !== 'textures'
+      || typeof operation.resourceId !== 'string'
+      || patchKeys.length !== 1
+      || patchKeys[0] !== 'recipe'
+    ) return true;
+    return lastRecipePatchByTexture.get(operation.resourceId) === index;
+  });
 }
 
 function materializeGeometryRealizeOperation(operation, { document, THREE }) {
@@ -2631,9 +2674,24 @@ export class StudioApplication {
     this.#activeApplyMetrics = applyMetrics;
     try {
     const document = this.#kernel.document;
+    const plainform = params.program
+      ? new PlainformCompiler().compile(params.program.source, { project: document })
+      : null;
+    const authoredOperations = plainform
+      ? plainform.operations.map((operation, index) => {
+          const parsed = operationSchema.safeParse(operation);
+          if (!parsed.success) throw new StudioError(
+            'plainform_compile_invalid',
+            `Plainform generated an invalid operation at index ${index}.`,
+            { index, diagnostics: parsed.error.issues },
+          );
+          return parsed.data;
+        })
+      : params.operations;
+    const dryRun = params.dryRun === true || plainform?.requestedPreview === true;
     const translationDocument = structuredClone(document);
     const operations = [];
-    for (const operation of params.operations) {
+    for (const operation of authoredOperations) {
       const translated = operation.op === 'geometry.realize'
         ? materializeGeometryRealizeOperation(operation, { document: translationDocument, THREE: this.#THREE })
         : operation.op === 'geometry.loft.edit'
@@ -2672,12 +2730,13 @@ export class StudioApplication {
         }
       }
     }
+    operations.splice(0, operations.length, ...compactTextureRecipePatches(operations));
     const loweringFinished = monotonicMilliseconds();
     const pixelForecast = forecastPixelImpact({ before: document, operations });
     const candidateToken = contentHash({
       projectId: params.projectId,
       baseRevision: params.baseRevision,
-      operations: params.operations,
+      authoring: params.program ?? params.operations,
     });
     if (params.candidateToken && params.candidateToken !== candidateToken) {
       throw new StudioError('candidate_token_mismatch', 'candidateToken does not match this project revision and operation batch.');
@@ -2685,7 +2744,7 @@ export class StudioApplication {
     if (params.candidateToken && this.#dryRunCandidate?.token !== params.candidateToken) {
       throw new StudioError('candidate_not_available', 'The compiled dry-run candidate is no longer available for promotion. Run the dry run again.');
     }
-    this.#pendingCandidateToken = params.dryRun === true ? candidateToken : (params.candidateToken ?? null);
+    this.#pendingCandidateToken = dryRun ? candidateToken : (params.candidateToken ?? null);
     let response;
     const kernelStarted = monotonicMilliseconds();
     try {
@@ -2695,7 +2754,7 @@ export class StudioApplication {
         label: params.label,
         baseRevision: params.baseRevision,
         idempotencyKey: params.idempotencyKey,
-        dryRun: params.dryRun ?? false,
+        dryRun,
         operations,
       }, { signal: context.signal });
     } catch (error) {
@@ -2741,7 +2800,7 @@ export class StudioApplication {
         scene.fog = previousFog;
       }
     }
-    if (response.success && params.dryRun !== true && operationsSnapFollowShot(operations)) {
+    if (response.success && !dryRun && operationsSnapFollowShot(operations)) {
       this.#viewport.followShot?.();
     }
     const finished = monotonicMilliseconds();
@@ -2751,11 +2810,17 @@ export class StudioApplication {
       projectId: this.#kernel.projectId,
       evidenceRequested: params.evidence === true,
       pixelForecast,
-      ...(params.dryRun === true ? { candidateToken } : {}),
+      ...(dryRun ? { candidateToken } : {}),
+      ...(plainform ? { plainform: {
+        language: plainform.language,
+        interpretation: plainform.interpretation,
+        aliases: plainform.aliases,
+        requestedPreview: plainform.requestedPreview,
+      } } : {}),
       authoring: {
-        authoredOperationCount: params.operations.length,
+        authoredOperationCount: authoredOperations.length,
         loweredOperationCount: operations.length,
-        authoredOperationTypes: summarizeOperationTypes(params.operations),
+        authoredOperationTypes: summarizeOperationTypes(authoredOperations),
         loweredOperationTypes: summarizeOperationTypes(operations),
         compileCount: applyMetrics.compileCount,
         promotedCandidate: applyMetrics.promotedCandidate === true,

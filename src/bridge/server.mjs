@@ -11,6 +11,7 @@ import {
   secureTokenEquals,
 } from './protocol.mjs';
 import { createSessionCredentials } from './session.mjs';
+import { WIRE_FORMAT_CONFIGURE_METHOD, WireFormatSession } from './wire-format-session.mjs';
 
 export const DEFAULT_PREAUTH_TIMEOUT_MS = 5_000;
 export const DEFAULT_MAX_SOCKETS = 8;
@@ -112,6 +113,7 @@ export class LiveBridgeServer {
     socket.setNoDelay(true);
     this._sockets.add(socket);
     const pending = new Map();
+    const wireFormats = new WireFormatSession();
     let authenticated = false;
     let connectionFailed = false;
     const preAuthTimer = setTimeout(() => {
@@ -196,10 +198,21 @@ export class LiveBridgeServer {
           state.timer.unref?.();
         });
 
+        let dispatchParams = request.params;
+        const isConnectionConfigure = request.method === WIRE_FORMAT_CONFIGURE_METHOD;
+        try {
+          if (!isConnectionConfigure && request.method !== 'ping') dispatchParams = wireFormats.decodeInput(request.params);
+        } catch (error) {
+          clearTimeout(state.timer);
+          pending.delete(request.id);
+          writeError(request.id, error, 'invalid_message');
+          return;
+        }
+
         let lifecycle = null;
-        if (request.method !== 'ping' && this.beginCommand) {
+        if (!isConnectionConfigure && request.method !== 'ping' && this.beginCommand) {
           try {
-            lifecycle = this.beginCommand(request.method, request.params);
+            lifecycle = this.beginCommand(request.method, dispatchParams);
           } catch (error) {
             try {
               this.onError(error);
@@ -218,19 +231,25 @@ export class LiveBridgeServer {
                 heartbeat: new Date().toISOString(),
                 serverInfo: this.serverInfo,
               })
-            : Promise.resolve(this.dispatch(request.method, request.params, {
+            : isConnectionConfigure
+              ? Promise.resolve(wireFormats.configure(dispatchParams))
+              : Promise.resolve(this.dispatch(request.method, dispatchParams, {
               id: request.id,
               method: request.method,
               protocolVersion: this.protocolVersion,
               sessionId: this.sessionId,
               signal: controller.signal,
+              wireFormats: { inputMode: wireFormats.inputMode, outputMode: wireFormats.outputMode },
             }));
           const result = await Promise.race([
             invocation,
             timeout,
           ]);
           callLifecycle(lifecycle, 'complete', result, this.onError);
-          write({ protocolVersion: this.protocolVersion, id: request.id, ok: true, result: result ?? null });
+          const wireResult = request.method === 'ping' || isConnectionConfigure
+            ? result ?? null
+            : wireFormats.encodeOutput(result ?? null);
+          write({ protocolVersion: this.protocolVersion, id: request.id, ok: true, result: wireResult });
         } catch (error) {
           callLifecycle(lifecycle, 'fail', error, this.onError);
           writeError(request.id, error);

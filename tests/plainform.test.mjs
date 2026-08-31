@@ -1,0 +1,279 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { createProjectDocument } from '../src/core/documents.mjs';
+import { operationSchema } from '../src/mcp/tool-schemas.mjs';
+import { PlainformCompiler, PlainformError, evaluatePlainformMath } from '../src/plainform/index.mjs';
+
+function projectFixture() {
+  return createProjectDocument({
+    projectId: 'project/plainform',
+    resources: {
+      geometries: [
+        { id: 'geometry/leaf', recipe: { kind: 'box' } },
+        { id: 'geometry/branch', recipe: { kind: 'cylinder', radiusTop: 0.1, radiusBottom: 0.2, height: 2 } },
+        { id: 'geometry/twig', recipe: { kind: 'cylinder', radiusTop: 0.02, radiusBottom: 0.05, height: 1 } },
+        { id: 'geometry/trunk', recipe: { kind: 'cylinder', radiusTop: 0.4, radiusBottom: 0.6, height: 4 } },
+      ],
+      materials: [{ id: 'material/leaf', recipe: { kind: 'physical', color: '#4f7a3a' } }],
+    },
+    scenes: [{
+      id: 'scene/main', rootEntityIds: ['entity/tree'],
+      entities: [{
+        id: 'entity/tree', kind: 'group', name: 'Tree', children: ['entity/leaf-a', 'entity/leaf-b', 'entity/leaf-duplicate', 'entity/branch', 'entity/trunk'],
+      }, {
+        id: 'entity/leaf-a', kind: 'mesh', name: 'Leaf A', parentId: 'entity/tree', tags: ['leaf'],
+        transform: { position: [0, 1, 0] },
+        components: { mesh: { geometryId: 'geometry/leaf', materialId: 'material/leaf' } },
+      }, {
+        id: 'entity/leaf-b', kind: 'mesh', name: 'Leaf B', parentId: 'entity/tree', tags: ['leaf'],
+        transform: { position: [1, 1, 0] },
+        components: { mesh: { geometryId: 'geometry/leaf', materialId: 'material/leaf' } },
+      }, {
+        id: 'entity/leaf-duplicate', kind: 'mesh', name: 'Leaf Duplicate', parentId: 'entity/tree', tags: ['leaf'],
+        transform: { position: [0.0005, 1, 0] },
+        components: { mesh: { geometryId: 'geometry/leaf', materialId: 'material/leaf' } },
+      }, {
+        id: 'entity/branch', kind: 'mesh', name: 'Branch', parentId: 'entity/tree', children: ['entity/twig-a'], tags: ['limb'],
+        transform: { position: [1, 2, 0] },
+        components: { mesh: { geometryId: 'geometry/branch', materialId: 'material/leaf' } },
+      }, {
+        id: 'entity/twig-a', kind: 'mesh', name: 'Twig A', parentId: 'entity/branch', tags: ['twig'],
+        transform: { position: [0, 1, 0] },
+        components: { mesh: { geometryId: 'geometry/twig', materialId: 'material/leaf' } },
+      }, {
+        id: 'entity/trunk', kind: 'mesh', name: 'Trunk', parentId: 'entity/tree', tags: ['centre'],
+        transform: { position: [0, 2, 0] },
+        components: { mesh: { geometryId: 'geometry/trunk', materialId: 'material/leaf' } },
+      }],
+    }],
+  });
+}
+
+test('Plainform mathematical English preserves units, constants, variables, and deterministic noise', () => {
+  const variables = new Map([
+    ['number', { value: 3, dimension: 'scalar' }],
+    ['count', { value: 12, dimension: 'scalar' }],
+  ]);
+  const angle = evaluatePlainformMath(
+    'its number divided by the total number of leaves multiplied by one full turn',
+    variables,
+  );
+  assert.equal(angle.dimension, 'angle');
+  assert.ok(Math.abs(angle.value - Math.PI / 2) < 1e-9);
+  const radius = evaluatePlainformMath('2 metres plus 30 centimetres');
+  assert.deepEqual(radius, { value: 2.3, dimension: 'length' });
+  assert.deepEqual(
+    evaluatePlainformMath('seeded noise of its number using seed 42', variables),
+    evaluatePlainformMath('seeded noise of its number using seed 42', variables),
+  );
+  assert.throws(
+    () => evaluatePlainformMath('2 metres plus 20 degrees'),
+    error => error instanceof PlainformError && error.code === 'plainform_dimension_mismatch',
+  );
+});
+
+test('Plainform compiles natural selection, grouping, iteration, and mathematical transforms', () => {
+  const compiled = new PlainformCompiler().compile(`
+Find every visible mesh beneath entity/tree that is tagged "leaf".
+Call them the canopy leaves.
+Put the canopy leaves into a group called "Canopy" with id entity/tree/canopy.
+For each leaf in the canopy leaves.
+  Let angle be its number divided by the total number of leaves multiplied by one full turn.
+  Move it by [cosine of angle times 20 centimetres, 0, sine of angle times 20 centimetres].
+  Rotate it around y by golden angle.
+End.
+`, { project: projectFixture() });
+  assert.equal(compiled.language, 'plainform-v1');
+  assert.deepEqual(compiled.aliases['canopy leaves'], [
+    'entity/leaf-a', 'entity/leaf-b', 'entity/leaf-duplicate',
+  ]);
+  assert.equal(compiled.operations[0].op, 'entity.group');
+  assert.equal(compiled.operations.filter(operation => operation.op === 'entity.patch').length, 3);
+  assert.ok(compiled.operations.every(operation => operationSchema.safeParse(operation).success));
+  assert.match(compiled.interpretation.join('\n'), /run 3 instructions for each of 3 entities/u);
+});
+
+test('Plainform removes guarded spatial duplicates while keeping the lowest stable ID', () => {
+  const compiled = new PlainformCompiler().compile(`
+Find every visible mesh beneath entity/tree that is tagged "leaf".
+Call them the canopy leaves.
+Remove duplicates from the canopy leaves when they use the same geometry and material and are within 1 millimetre of each other, keeping the lowest ID.
+`, { project: projectFixture() });
+  assert.deepEqual(compiled.operations.map(operation => operation.entityId), ['entity/leaf-duplicate']);
+  assert.match(compiled.operations[0].expectedSubtreeHash, /^[a-f0-9]{64}$/u);
+  assert.equal(operationSchema.safeParse(compiled.operations[0]).success, true);
+});
+
+test('Plainform reconciles an aliased set to an exact count and iterates over generated entities', () => {
+  const compiled = new PlainformCompiler().compile(`
+Find every visible mesh beneath entity/tree that is tagged "leaf".
+Call them the canopy leaves.
+Make sure there are exactly five canopy leaves, using entity/leaf-a as the template and keeping the lowest IDs.
+For each item in the canopy leaf.
+  Set its scale uniformly to 0.8 plus seeded noise of its number using seed 7 times 0.1.
+End.
+`, { project: projectFixture() });
+  const duplicate = compiled.operations.find(operation => operation.op === 'entity.duplicateMany');
+  assert.equal(duplicate.items.length, 2);
+  assert.deepEqual(duplicate.items.map(item => item.newId), [
+    'entity/plainform/canopy-leaves-001', 'entity/plainform/canopy-leaves-002',
+  ]);
+  assert.equal(compiled.operations.filter(operation => operation.op === 'entity.patch').length, 5);
+  assert.ok(compiled.operations.every(operation => operationSchema.safeParse(operation).success));
+  assert.match(compiled.interpretation.join('\n'), /exactly 5: create 2, remove 0/u);
+});
+
+test('Plainform resolves named context and filters selections by reference distance', () => {
+  const compiled = new PlainformCompiler().compile(`
+Use entity/leaf-a as the anchor.
+Find every visible mesh within 2 millimetres of the anchor whose name contains "Leaf".
+Call them nearby forms.
+Move each nearby form by [0, 1 centimetre, 0].
+`, { project: projectFixture() });
+  assert.deepEqual(compiled.aliases['nearby forms'], ['entity/leaf-a', 'entity/leaf-duplicate']);
+  assert.equal(compiled.operations[0].op, 'entity.transformMany');
+  assert.deepEqual(compiled.operations[0].transform.position, [0, 0.01, 0]);
+  assert.match(compiled.interpretation.join('\n'), /use entity\/leaf-a as “anchor”/u);
+  assert.equal(operationSchema.safeParse(compiled.operations[0]).success, true);
+});
+
+test('Plainform extends and subtracts named selections without domain-specific nouns', () => {
+  const compiled = new PlainformCompiler().compile(`
+Find every visible mesh whose name contains "Leaf A".
+Call them blocked forms.
+Find every visible mesh whose name contains "Leaf".
+Call them working forms.
+Extend working forms with descendants of entity/branch.
+Exclude blocked forms from working forms.
+Move each working form by [1 centimetre, 0, 0].
+`, { project: projectFixture() });
+  assert.deepEqual(compiled.aliases['working forms'], [
+    'entity/leaf-b', 'entity/leaf-duplicate', 'entity/twig-a',
+  ]);
+  assert.deepEqual(compiled.operations[0].entityIds, [
+    'entity/leaf-b', 'entity/leaf-duplicate', 'entity/twig-a',
+  ]);
+  assert.match(compiled.interpretation.join('\n'), /Extended “working forms” with 1 descendants/u);
+  assert.match(compiled.interpretation.join('\n'), /Excluded 1 entities/u);
+});
+
+test('Plainform accepts the inverse add-to wording for contextual expansion', () => {
+  const compiled = new PlainformCompiler().compile(`
+Find every visible mesh whose name contains "Leaf A".
+Call them working forms.
+Add descendants of entity/branch to working forms.
+Move each working form by [0, 0, 1 centimetre].
+`, { project: projectFixture() });
+  assert.deepEqual(compiled.aliases['working forms'], ['entity/leaf-a', 'entity/twig-a']);
+  assert.match(compiled.interpretation.join('\n'), /Extended “working forms” with 1 descendants/u);
+});
+
+test('Plainform faces away from context, moves in the resulting local frame, and exposes relational math', () => {
+  const compiled = new PlainformCompiler().compile(`
+Use entity/tree as the centre.
+Find every visible mesh whose name contains "Leaf A".
+Call them forms.
+For each form in the forms.
+  Face it away from the centre.
+  Move it forward by 10 centimetres in its local frame.
+  Let separation be its distance from the centre.
+  Set its scale uniformly to separation divided by 2 metres.
+End.
+`, { project: projectFixture() });
+  const patch = compiled.operations[0].patch.transform;
+  assert.ok(Math.abs(patch.position[1] - 1.1) < 1e-9);
+  assert.ok(Math.abs(patch.scale[0] - 0.5) < 1e-9);
+  assert.deepEqual(patch.scale, [patch.scale[0], patch.scale[0], patch.scale[0]]);
+  assert.notDeepEqual(patch.rotation, [0, 0, 0]);
+  assert.equal(operationSchema.safeParse(compiled.operations[0]).success, true);
+});
+
+test('Plainform resolves nearest members and comparative scale against contextual parents', () => {
+  const compiled = new PlainformCompiler().compile(`
+Find every visible mesh that is tagged "leaf".
+Call them targets.
+Find every visible mesh that is tagged "twig".
+Call them movers.
+For each mover in the movers.
+  Face it toward the nearest object in targets.
+  Move it toward the nearest object in targets by 20 centimetres.
+  Make it 25 percent smaller than its parent.
+End.
+`, { project: projectFixture() });
+  const patch = compiled.operations[0].patch.transform;
+  assert.deepEqual(patch.scale, [0.75, 0.75, 0.75]);
+  assert.notDeepEqual(patch.position, [0, 1, 0]);
+  assert.ok(compiled.operations.every(operation => operationSchema.safeParse(operation).success));
+});
+
+test('Plainform aligns an explicit growth axis and attaches its base to an analytic surface', () => {
+  const compiled = new PlainformCompiler().compile(`
+Use entity/trunk as the centre.
+Find every visible mesh that is tagged "limb".
+Call them primary forms.
+Use positive y as the growth axis for primary forms.
+For each form in the primary forms.
+  Set its position to [1 metre, 2 metres, 0].
+  Point its growth axis away from the centre.
+  Attach its base to the surface of the centre with an inset of 5 centimetres.
+End.
+`, { project: projectFixture() });
+  const transform = compiled.operations[0].patch.transform;
+  assert.ok(transform.position[0] > 1.35 && transform.position[0] < 1.5);
+  assert.ok(Math.abs(transform.position[1] - 2) < 1e-9);
+  assert.notDeepEqual(transform.rotation, [0, 0, 0]);
+  assert.equal(operationSchema.safeParse(compiled.operations[0]).success, true);
+});
+
+test('Plainform grows attached child hierarchy with sibling context and inherited taper', () => {
+  const compiled = new PlainformCompiler().compile(`
+Find every visible mesh that is tagged "limb".
+Call them primary forms.
+Use positive y as the growth axis for primary forms.
+Grow exactly two children from each primary form using entity/twig-a as the template and call them secondary forms.
+Use positive y as the growth axis for secondary forms.
+Use entity/trunk as the centre.
+For each form in the secondary forms.
+  Make it 60 percent as long and 40 percent as thick as its parent.
+  Set its position to [0, 0, 0].
+  Point its growth axis away from the centre.
+  Let placement be 30 percent plus its sibling number divided by the total number of siblings times 50 percent.
+  Attach its base to its parent at placement from base to tip.
+End.
+`, { project: projectFixture() });
+  const duplicate = compiled.operations[0];
+  const patches = compiled.operations.slice(1);
+  assert.equal(duplicate.op, 'entity.duplicateMany');
+  assert.deepEqual(duplicate.items.map(item => item.parentId), ['entity/branch', 'entity/branch']);
+  for (const patch of patches) {
+    assert.ok(Math.abs(patch.patch.transform.scale[0] - 1.6) < 1e-9);
+    assert.ok(Math.abs(patch.patch.transform.scale[1] - 1.2) < 1e-9);
+    assert.ok(Math.abs(patch.patch.transform.scale[2] - 1.6) < 1e-9);
+  }
+  assert.notDeepEqual(patches[0].patch.transform.position, patches[1].patch.transform.position);
+  assert.ok(compiled.operations.every(operation => operationSchema.safeParse(operation).success));
+  assert.match(compiled.interpretation.join('\n'), /grow 2 children from each of 1 parents/u);
+});
+
+test('Plainform fails closed when a spatial relation names a non-singular selection', () => {
+  assert.throws(
+    () => new PlainformCompiler().compile(`
+Find every visible mesh that is tagged "leaf".
+Call them targets.
+Find every visible mesh that is tagged "twig".
+Call them movers.
+For each mover in the movers.
+  Face it away from targets.
+End.
+`, { project: projectFixture() }),
+    error => error instanceof PlainformError && error.code === 'plainform_reference_not_singular',
+  );
+});
+
+test('Plainform fails closed on ambiguous or unsupported natural language', () => {
+  assert.throws(
+    () => new PlainformCompiler().compile('Make the tree nicer.', { project: projectFixture() }),
+    error => error instanceof PlainformError && error.code === 'plainform_unknown_statement'
+      && error.details.statement === 1,
+  );
+});

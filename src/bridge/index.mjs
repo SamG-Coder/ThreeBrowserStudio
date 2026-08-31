@@ -37,3 +37,5 @@ export {
   createLiveBridgeServer,
 } from './server.mjs';
 export { LiveBridgeClient, createLiveBridgeClient } from './client.mjs';
+export { PathwireCodec } from './pathwire-codec.mjs';
+export { WIRE_FORMAT_CONFIGURE_METHOD, WireFormatSession } from './wire-format-session.mjs';

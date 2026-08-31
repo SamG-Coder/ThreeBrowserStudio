@@ -2881,6 +2881,25 @@
                 }
               ]
             }
+          },
+          "program": {
+            "type": "object",
+            "properties": {
+              "language": {
+                "type": "string",
+                "const": "plainform-v1"
+              },
+              "source": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 65536
+              }
+            },
+            "required": [
+              "language",
+              "source"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
@@ -2889,8 +2908,7 @@
           "projectId",
           "baseRevision",
           "idempotencyKey",
-          "label",
-          "operations"
+          "label"
         ],
         "additionalProperties": false,
         "$defs": {
