@@ -251,6 +251,29 @@ Subdivide the surface region cheek detail locally by 1 level, then relax it for 
   const metadata = compiled.operations[1].entity.metadata.plainformDesign;
   assert.equal(metadata.surfaceDeformations.at(-1).kind, 'localRefinement');
   assert.ok(metadata.surfaceDeformations.at(-1).refinedFaceCount > 0);
+  assert.ok(metadata.surfaceDeformations.at(-1).transitionFaceCount > 0);
+  assert.ok(metadata.surfaceDeformations.at(-1).constrainedBoundaryVertexCount > 0);
+  assert.equal(metadata.surfaceDeformations.at(-1).quality.manifold, true);
+  assert.equal(metadata.surfaceDeformations.at(-1).quality.windingConsistent, true);
+});
+
+test('Design Plainform exposes conforming refinement and boundary-preserving relaxation as separate natural steps', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a study called Conforming Study with id entity/conforming-study.
+Create a sphere called Study Head with id entity/study-head, with radius 1 metre.
+Name the surface on Study Head around [0 metres, 0 metres, 1 metre] within 60 centimetres as crown detail.
+Subdivide the surface region crown detail twice with a conforming transition.
+Relax the surface region crown detail for 3 passes while preserving its boundary and volume.
+`, { project: projectFixture() });
+  const metadata = compiled.operations[1].entity.metadata.plainformDesign;
+  assert.deepEqual(metadata.surfaceDeformations.map(item => item.kind), ['localRefinement', 'localRelaxation']);
+  const refinement = metadata.surfaceDeformations[0];
+  assert.ok(refinement.transitionFaceCount > 0);
+  assert.ok(refinement.semanticFaceSet.faceCount > 0);
+  assert.match(refinement.semanticFaceSet.faceIndicesHash, /^[a-f0-9]{64}$/u);
+  assert.ok(refinement.semanticFaceSet.boundaryLoops.length > 0);
+  assert.deepEqual(refinement.anchorDrift, { status: 'boundary-constrained', maximumDistance: 0 });
+  assert.equal(metadata.surfaceDeformations[1].quality.manifold, true);
 });
 
 test('Design Plainform compiles curved symmetric profiles, independent section controls, guides, continuity, and local form modifiers', () => {

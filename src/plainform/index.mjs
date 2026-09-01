@@ -23,3 +23,11 @@ export {
   expandPlainformDesignOperation,
   normalizePlainformDesignResource,
 } from './plainform-design-resource.mjs';
+export {
+  collapseTriangleEdge,
+  conformingSubdivideTriangles,
+  flipTriangleEdge,
+  relaxConformingRegion,
+  splitTriangleEdge,
+  validateConformingTriangleMesh,
+} from './conforming-remesh.mjs';

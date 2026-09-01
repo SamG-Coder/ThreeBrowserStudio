@@ -881,9 +881,43 @@ export class DesignPlainformCompiler {
             kind: 'localRefinement', ownerEntityId: owner.entityId, region: region.name,
             levels, relaxIterations, relaxStrength,
             refinedFaceCount: result.refinedFaceCount, refinedVertexCount: result.refinedVertexCount,
+            transitionFaceCount: result.transitionFaceCount,
+            boundaryLoopCount: result.boundaryLoopCount,
+            constrainedBoundaryVertexCount: result.constrainedBoundaryVertexCount,
+            maximumProjectionDistance: result.maximumProjectionDistance,
+            quality: result.quality,
+            semanticFaceSet: result.semanticFaceSet,
+            anchorDrift: result.anchorDrift,
           };
           semanticSurfaces.addDeformation(intent);
           interpretations.push(`Subdivided surface region “${region.name}” by ${levels} levels and relaxed it for ${relaxIterations} iterations.`);
+          continue;
+        }
+        const conformingRefineStatement = statement.match(/^subdivide (?:the )?(?:surface )?region (.+?) (once|twice|\d+ times?) with a conforming transition$/iu);
+        if (conformingRefineStatement) {
+          const region = semanticSurfaces.resolveRegion(conformingRefineStatement[1]);
+          const owner = semanticDeformationOwner(region.ownerEntityId);
+          const levels = conformingRefineStatement[2].toLowerCase() === 'once' ? 1
+            : conformingRefineStatement[2].toLowerCase() === 'twice' ? 2 : Number.parseInt(conformingRefineStatement[2], 10);
+          const result = refineSurfaceRegion({ owner, region, levels, resolveReference: name => semanticSurfaces.resolveReference(name) });
+          owner.recipe = result.recipe;
+          const metrics = { ...result }; delete metrics.recipe;
+          semanticSurfaces.addDeformation({
+            kind: 'localRefinement', ownerEntityId: owner.entityId, region: region.name, levels,
+            relaxIterations: 0, relaxStrength: 0.5, ...metrics,
+          });
+          interpretations.push(`Subdivided surface region “${region.name}” by ${levels} levels with a conforming transition.`);
+          continue;
+        }
+        const relaxRegionStatement = statement.match(/^relax (?:the )?(?:surface )?region (.+?) for (\d+) (?:passes|iterations)(?: with strength (.+?))?(?: while preserving (?:its )?boundary and volume)?$/iu);
+        if (relaxRegionStatement) {
+          const region = semanticSurfaces.resolveRegion(relaxRegionStatement[1]); const owner = semanticDeformationOwner(region.ownerEntityId);
+          const relaxIterations = Number(relaxRegionStatement[2]); const relaxStrength = relaxRegionStatement[3] ? scalar(relaxRegionStatement[3], scope, 'Surface relaxation strength') : 0.5;
+          const result = refineSurfaceRegion({ owner, region, levels: 0, relaxIterations, relaxStrength, resolveReference: name => semanticSurfaces.resolveReference(name) });
+          owner.recipe = result.recipe;
+          const metrics = { ...result }; delete metrics.recipe;
+          semanticSurfaces.addDeformation({ kind: 'localRelaxation', ownerEntityId: owner.entityId, region: region.name, levels: 0, relaxIterations, relaxStrength, ...metrics });
+          interpretations.push(`Relaxed surface region “${region.name}” for ${relaxIterations} passes while preserving its boundary and source surface.`);
           continue;
         }
         const mirrorStatement = statement.match(/^create (.+?) as the mirror of (.+?) across the (x|y|z|right|up|forward) centre plane(?: with id ([a-z0-9][a-z0-9._/-]*))?$/iu);

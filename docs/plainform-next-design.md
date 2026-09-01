@@ -2,14 +2,19 @@
 
 Status: proposed contributor design
 
-Implementation progress: Stages 0–2 are live. Studio tokenizes
+Implementation progress: Stages 0–3 are live. Studio tokenizes
 exact source spans, classifies a representative typed AST through a statement
 registry, exposes `plainformCatalog` and `plainformAst` through the existing
 inspect tool, and explicitly marks unmigrated sentences as legacy fallbacks.
 Versioned `plainformDesign` assets now retain source, AST, parameters,
 dependencies, output hashes, ownership, and lowering-plan identity. Guarded
 create, patch, regenerate, detach, and conflict-resolution operations lower
-atomically through the existing apply tool. Later stages remain proposals.
+atomically through the existing apply tool. Local semantic-region refinement
+now creates deterministic conforming transition triangles, preserves and
+remaps vertex/detail attributes, constrains region boundaries, tangentially
+relaxes and reprojects to the source surface, and records manifold, winding,
+triangle-quality, face-set, and anchor-drift evidence. Later stages remain
+proposals.
 
 This document defines a staged extension of Plainform. It is not a statement
 that every capability described here is already available. Live
