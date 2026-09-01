@@ -871,6 +871,11 @@ guardrails, not claims about the maximum hardware capability.
 
 ## Implementation phases
 
+The staged proposal for evolving Plainform into persistent, regenerable design
+data is documented in
+[`docs/plainform-next-design.md`](docs/plainform-next-design.md). It remains a
+proposal until live schemas, catalogs, and status expose each capability.
+
 ### Phase 1: authoring kernel
 
 - schemas and normalized document;

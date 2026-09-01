@@ -25,6 +25,12 @@ Operating rules that stay authoritative:
 - [`AGENT_RULES.md`](../AGENT_RULES.md) — capability boundary and hard rules
 - [`skills/threebrowser-studio-mcp/SKILL.md`](../skills/threebrowser-studio-mcp/SKILL.md) — authoring skill
 
+Contributor design proposals:
+
+- [Plainform next: persistent natural-language design](./plainform-next-design.md)
+  — staged architecture for editable designs, robust geometry, botanical
+  growth, semantic materials, game events, and presentation.
+
 If a guide and a live `three_studio_status` result disagree, **status wins**.
 Do not infer a capability from this documentation or from an earlier session.
 
