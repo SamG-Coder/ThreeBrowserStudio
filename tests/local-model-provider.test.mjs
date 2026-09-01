@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeLocalModelCompletion, createLocalModelProvider } from '../src/browser/local-model-provider.mjs';
+import {
+  compactLocalModelConversation,
+  createLocalModelResponseFormat,
+  normalizeLocalModelCompletion,
+  createLocalModelProvider,
+} from '../src/browser/local-model-provider.mjs';
 import { createLocalModelManager } from '../src/browser/local-model-manager.mjs';
 import { createLocalModelDirectWorker } from '../src/browser/local-model-direct-worker.mjs';
 import { installNativeCacheStorage } from '../src/browser/native-cache-storage.mjs';
@@ -37,6 +42,21 @@ test('local model completion normalizes constrained tool and final envelopes', (
   assert.equal(invalid.message.content, 'Here is an example tree.');
 });
 
+test('4K conversation compaction preserves the request, live status, and newest round', () => {
+  const messages = [
+    { role: 'user', content: 'Create a tree.' },
+    { role: 'user', content: 'TOOL_RESULT three_studio_status: {"revision":4}' },
+    { role: 'assistant', content: 'old'.repeat(2_000) },
+    { role: 'user', content: 'TOOL_RESULT three_studio_inspect: ' + 'x'.repeat(2_000) },
+    { role: 'user', content: 'PROTOCOL_CORRECTION: call apply now.' },
+  ];
+  const compact = compactLocalModelConversation(messages, 1_000);
+  assert.equal(compact.some(message => message.content === 'Create a tree.'), true);
+  assert.equal(compact.some(message => message.content.startsWith('TOOL_RESULT three_studio_status:')), true);
+  assert.equal(compact.at(-1).content, 'PROTOCOL_CORRECTION: call apply now.');
+  assert.equal(compact.some(message => message.content.startsWith('oldold')), false);
+});
+
 test('worker-backed provider initializes and emits Studio tool calls', async () => {
   const worker = new FakeWorker();
   const provider = createLocalModelProvider({
@@ -58,9 +78,15 @@ test('worker-backed provider initializes and emits Studio tool calls', async () 
   assert.equal(sent[0].role, 'system');
   assert.match(sent[0].content, /Studio rules/);
   assert.match(sent[0].content, /three_studio_status:/);
-  assert.match(sent[0].content, /Plain text, Markdown, code fences, examples, and ASCII art are invalid/);
+  assert.match(sent[0].content, /JSON ONLY/);
   assert.equal(sent.filter(message => message.role === 'system').length, 1);
   assert.match(sent.at(-1).content, /^TOOL_RESULT three_studio_status:/);
+  const request = worker.requests.findLast(item => item.command === 'complete').payload;
+  assert.deepEqual(request.responseFormat, createLocalModelResponseFormat([{ name: 'three_studio_status' }]));
+  assert.deepEqual(JSON.parse(request.responseFormat.schema).oneOf[0].properties.name.enum, ['three_studio_status']);
+  assert.equal(request.temperature, 0);
+  assert.equal(request.maxTokens, 512);
+  assert.equal(request.seed, 7);
   provider.dispose();
   assert.equal(worker.terminated, true);
 });
@@ -85,6 +111,7 @@ test('direct adapter runs WebLLM on a host main surface with WebGPU', async () =
   const previousNavigator = globalThis.navigator;
   const progress = [];
   let unloaded = false;
+  let completionRequest = null;
   Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { gpu: {} } });
   try {
     const worker = createLocalModelDirectWorker({
@@ -93,7 +120,7 @@ test('direct adapter runs WebLLM on a host main surface with WebGPU', async () =
           async CreateMLCEngine(modelId, options) {
             options.initProgressCallback({ text: 'Loading', progress: 0.5 });
             return {
-              chat: { completions: { async create() { return { choices: [{ message: { content: '{"type":"final","text":"Ready"}' } }] }; } } },
+              chat: { completions: { async create(request) { completionRequest = request; return { choices: [{ message: { content: '{"type":"final","text":"Ready"}' } }] }; } } },
               async unload() { unloaded = true; },
             };
           },
@@ -109,6 +136,10 @@ test('direct adapter runs WebLLM on a host main surface with WebGPU', async () =
     const completion = await provider.complete({ messages: [{ role: 'user', content: 'Ready?' }] });
     assert.equal(progress[0].progress, 0.5);
     assert.equal(completion.message.content, 'Ready');
+    assert.equal(completionRequest.response_format.type, 'json_object');
+    assert.equal(completionRequest.temperature, 0);
+    assert.equal(completionRequest.max_tokens, 512);
+    assert.equal(completionRequest.seed, 7);
     provider.dispose();
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(unloaded, true);

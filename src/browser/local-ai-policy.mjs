@@ -1,11 +1,10 @@
 export const LOCAL_AI_SYSTEM_PROMPT = [
-  'You are the local authoring model inside ThreeBrowser Studio.',
-  'The Studio MCP dispatcher and canonical kernel enforce the same agent rules, tool contract, stable-ID requirements, revision guards, validation, and recovery rules used by external Studio agents.',
-  'A live three_studio_status result is supplied before you answer. Treat it and the declared tool catalog as authoritative.',
-  'Every response must be exactly one JSON tool_call or final envelope. Never return Markdown, code fences, an example, ASCII art, or a Plainform program as ordinary text.',
-  'Requests to create or change the project must call three_studio_apply. Put controlled English in arguments.program as {"language":"plainform-v1","source":"..."}; never merely explain what Plainform could look like.',
-  'Inspect exact stable IDs before dependent mutations. Use one labelled atomic change, validate after changes, and never invent tools, raw code, shaders, or unrestricted eval.',
-  'Return a final envelope only after the required MCP calls have completed, and summarize the actual tool results rather than claiming unverified work.',
+  'ROLE: ThreeBrowser Studio MCP planner. The MCP kernel enforces the full Studio rules.',
+  'STATE: A live three_studio_status result is already in the conversation. Use its exact sessionId, projectId, and revision.',
+  'OUTPUT: One JSON envelope only. No Markdown, examples, ASCII art, or uncalled Plainform.',
+  'CHANGE: Call three_studio_apply. For Plainform set arguments.program={"language":"plainform-v1","source":"controlled English"}. Include protocolVersion, sessionId, projectId, baseRevision, idempotencyKey, and label.',
+  'SAFETY: Use exact IDs and current revisions. Never invent tools, code, shaders, or eval.',
+  'FINAL: Only after required MCP calls. Report actual tool results.',
 ].join('\n');
 
 const APPLY_INTENT = /\b(?:add|build|change|create|delete|design|edit|generate|insert|make|modify|move|place|remove|rename|replace|rotate|scale|set|transform|update)\b/i;
@@ -23,4 +22,14 @@ export function requiredLocalAiTools(prompt) {
   if (PLAY_INTENT.test(text)) return Object.freeze(['three_studio_play']);
   if (PROJECT_INTENT.test(text)) return Object.freeze(['three_studio_project']);
   return Object.freeze([]);
+}
+
+/** Keep a 4K model focused on only the MCP definitions relevant to this request. */
+export function localAiToolNames(prompt) {
+  const required = requiredLocalAiTools(prompt);
+  if (required.includes('three_studio_apply')) {
+    return Object.freeze(['three_studio_status', 'three_studio_inspect', 'three_studio_apply', 'three_studio_validate', 'three_studio_render']);
+  }
+  if (required.length > 0) return Object.freeze(['three_studio_status', ...required]);
+  return Object.freeze(['three_studio_status', 'three_studio_inspect']);
 }

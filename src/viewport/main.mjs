@@ -26,7 +26,7 @@ import { LOCAL_MODEL_CATALOG } from '../browser/local-model-catalog.mjs';
 import { createLocalModelManager } from '../browser/local-model-manager.mjs';
 import { createBrowserMcpHarness } from '../browser/mcp-harness.mjs';
 import { createLocalModelDirectWorker } from '../browser/local-model-direct-worker.mjs';
-import { LOCAL_AI_SYSTEM_PROMPT, requiredLocalAiTools } from '../browser/local-ai-policy.mjs';
+import { LOCAL_AI_SYSTEM_PROMPT, localAiToolNames, requiredLocalAiTools } from '../browser/local-ai-policy.mjs';
 
 const NATIVE_WEBLLM_RUNTIME_URL = new URL('../../node_modules/@mlc-ai/web-llm/lib/index.js', import.meta.url).href;
 const LOCAL_PROMPT_ENABLED_KEY = 'three-browser-studio.local-prompt.enabled';
@@ -222,7 +222,9 @@ async function main() {
           onEvent,
           requiredFirstTool: 'three_studio_status',
           requiredToolNames: requiredLocalAiTools(prompt),
+          availableToolNames: localAiToolNames(prompt),
           strictEnvelopes: true,
+          maxModelToolResultChars: 6_000,
         });
       } finally {
         localAiBusy = false;

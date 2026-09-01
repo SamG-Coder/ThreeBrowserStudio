@@ -1,18 +1,77 @@
 import { StudioError } from '../core/errors.mjs';
 
 const TOOL_PROTOCOL = [
-  'Every response must be only one JSON object. To call a Studio MCP tool, output:',
-  '{"type":"tool_call","name":"three_studio_status","arguments":{}}',
-  'Only after required tools complete, output {"type":"final","text":"..."}.',
-  'Plain text, Markdown, code fences, examples, and ASCII art are invalid responses.',
-  'For Plainform authoring call three_studio_apply with arguments.program.language="plainform-v1" and arguments.program.source containing the controlled-English program.',
-  'Never print a Plainform program instead of calling three_studio_apply.',
+  'JSON ONLY.',
+  'Call: {"type":"tool_call","name":"three_studio_apply","arguments":{...}}.',
+  'Finish: {"type":"final","text":"actual result"}.',
+  'A change is never a final until its required tool ran.',
 ].join(' ');
+
+export function createLocalModelResponseFormat(tools = []) {
+  const toolNames = [...new Set(tools.map(tool => String(tool?.name ?? '')).filter(Boolean))];
+  const choices = [
+    ...(toolNames.length > 0 ? [
+      {
+        type: 'object',
+        properties: {
+          type: { const: 'tool_call' },
+          name: { enum: toolNames },
+          arguments: { type: 'object' },
+        },
+        required: ['type', 'name', 'arguments'],
+        additionalProperties: false,
+      },
+    ] : []),
+      {
+        type: 'object',
+        properties: {
+          type: { const: 'final' },
+          text: { type: 'string' },
+        },
+        required: ['type', 'text'],
+        additionalProperties: false,
+      },
+  ];
+  return Object.freeze({
+    type: 'json_object',
+    schema: JSON.stringify(choices.length === 1 ? choices[0] : { oneOf: choices }),
+  });
+}
 
 function stripFence(text) {
   const trimmed = String(text ?? '').trim();
   const match = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
   return match ? match[1].trim() : trimmed;
+}
+
+function messageChars(message) {
+  return String(message?.content ?? '').length + 24;
+}
+
+/** Preserve the request, live status, and newest rounds inside a small model's input budget. */
+export function compactLocalModelConversation(messages, maximumChars) {
+  const source = Array.isArray(messages) ? messages : [];
+  const limit = Math.max(1_000, Number(maximumChars) || 1_000);
+  if (source.reduce((total, message) => total + messageChars(message), 0) <= limit) return source;
+
+  const anchors = new Set();
+  const originalUser = source.findIndex(message => message.role === 'user'
+    && !String(message.content ?? '').startsWith('PROTOCOL_CORRECTION:')
+    && !String(message.content ?? '').startsWith('TOOL_RESULT '));
+  if (originalUser >= 0) anchors.add(originalUser);
+  const statusResult = source.findIndex(message => String(message.content ?? '').startsWith('TOOL_RESULT three_studio_status:'));
+  if (statusResult >= 0) anchors.add(statusResult);
+
+  let used = [...anchors].reduce((total, index) => total + messageChars(source[index]), 0);
+  const selected = new Set(anchors);
+  for (let index = source.length - 1; index >= 0; index -= 1) {
+    if (selected.has(index)) continue;
+    const size = messageChars(source[index]);
+    if (used + size > limit && selected.size > 0) continue;
+    selected.add(index);
+    used += size;
+  }
+  return [...selected].sort((left, right) => left - right).map(index => source[index]);
 }
 
 export function normalizeLocalModelCompletion(payload) {
@@ -86,8 +145,8 @@ export function createLocalModelProvider({ model, worker, onProgress } = {}) {
     },
     async complete({ messages = [], tools = [], signal } = {}) {
       if (!initialized) await this.initialize({ signal });
-      const toolCatalog = tools.map(tool => `${tool.name}: ${tool.description ?? 'Use the live Studio tool contract.'}`).join('\n');
-      const protocol = `${TOOL_PROTOCOL}\nDeclared Studio MCP tools:\n${toolCatalog}`;
+      const toolCatalog = tools.map(tool => `${tool.name}: ${tool.description ?? ''}`).join('\n');
+      const protocol = `${TOOL_PROTOCOL}\nTOOLS:\n${toolCatalog}`;
       // WebLLM accepts at most one system message and requires it to be first.
       // Merge Studio's tool protocol with the caller's system rules instead of
       // prepending a second system entry on every harness round.
@@ -100,11 +159,21 @@ export function createLocalModelProvider({ model, worker, onProgress } = {}) {
         .map(message => message.role === 'tool'
           ? { role: 'user', content: `TOOL_RESULT ${message.name ?? ''}: ${String(message.content ?? '')}` }
           : { role: message.role, content: String(message.content ?? '') });
+      const combinedSystem = [protocol, ...systemRules].join('\n\n');
+      const contextTokens = Math.max(2_048, Number(model.contextTokens) || 4_096);
+      const maximumInputChars = Math.max(4_000, (contextTokens - 640) * 3);
+      const compactConversation = compactLocalModelConversation(conversation, maximumInputChars - combinedSystem.length);
       const nextMessages = [
-        { role: 'system', content: [protocol, ...systemRules].join('\n\n') },
-        ...conversation,
+        { role: 'system', content: combinedSystem },
+        ...compactConversation,
       ];
-      return normalizeLocalModelCompletion(await request('complete', { messages: nextMessages }, signal));
+      return normalizeLocalModelCompletion(await request('complete', {
+        messages: nextMessages,
+        responseFormat: createLocalModelResponseFormat(tools),
+        temperature: 0,
+        maxTokens: 512,
+        seed: 7,
+      }, signal));
     },
     async testConnection({ signal } = {}) {
       await this.initialize({ signal });

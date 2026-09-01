@@ -72,6 +72,8 @@ export function createBrowserMcpHarness({
       requiredToolNames = [],
       strictEnvelopes = false,
       maxProtocolRepairs = 2,
+      availableToolNames = null,
+      maxModelToolResultChars = Number.POSITIVE_INFINITY,
     } = {}) {
       if (!provider || typeof provider.complete !== 'function') {
         throw new StudioError('provider_required', 'A chat provider with complete() is required.');
@@ -83,6 +85,9 @@ export function createBrowserMcpHarness({
       const toolTrace = [];
       const modelToolNames = new Set();
       let protocolRepairs = 0;
+      const completionTools = Array.isArray(availableToolNames)
+        ? catalog.filter(tool => availableToolNames.includes(tool.name))
+        : catalog;
 
       const callAndRecord = async (call, round) => {
         assertNotAborted(signal);
@@ -98,13 +103,16 @@ export function createBrowserMcpHarness({
             : new StudioError('dispatch_error', caught?.message ?? String(caught), { cause: caught });
           result = { success: false, error: error.toJSON() };
         }
-        const serialized = (() => {
+        let serialized = (() => {
           try {
             return JSON.stringify(result);
           } catch {
             return '{"success":false,"error":{"code":"dispatch_error","message":"Tool result was not JSON serializable."}}';
           }
         })();
+        if (serialized.length > maxModelToolResultChars) {
+          serialized = `${serialized.slice(0, Math.max(0, maxModelToolResultChars - 32))}\n[tool result truncated]`;
+        }
         toolTrace.push(Object.freeze({
           id: callId,
           name: call.name,
@@ -148,23 +156,22 @@ export function createBrowserMcpHarness({
         emit(onEvent, { type: 'model', round });
         const completion = await provider.complete({
           messages: thread,
-          tools: catalog,
+          tools: completionTools,
           signal,
         });
         const content = completion?.message?.content ?? '';
         const toolCalls = Array.isArray(completion?.toolCalls) ? completion.toolCalls : [];
         if (completion?.finishReason === 'invalid_envelope') {
-          thread.push({ role: 'assistant', content, toolCalls: [] });
           requestCorrection(round, 'Your previous response was not a valid Studio tool envelope.');
           continue;
         }
         if (toolCalls.length === 0 || completion?.finishReason === 'stop') {
           const missing = requiredToolNames.filter(name => !modelToolNames.has(name));
-          thread.push({ role: 'assistant', content, toolCalls: [] });
           if (missing.length > 0) {
             requestCorrection(round, `This request requires ${missing.join(', ')} before a final response.`);
             continue;
           }
+          thread.push({ role: 'assistant', content, toolCalls: [] });
           if (content) emit(onEvent, { type: 'text', round, text: content });
           return Object.freeze({
             messages: Object.freeze(thread.map(item => Object.freeze({ ...item }))),

@@ -69,9 +69,10 @@ test('strict local harness routes through status and refuses completion until th
     },
   });
   const provider = {
-    async complete({ messages }) {
+    async complete({ messages, tools }) {
       round += 1;
       assert.equal(messages.some(message => message.role === 'tool' && message.name === 'three_studio_status'), true);
+      assert.deepEqual(tools.map(tool => tool.name), ['three_studio_status', 'three_studio_apply']);
       if (round === 1) {
         return {
           finishReason: 'invalid_envelope',
@@ -118,6 +119,7 @@ test('strict local harness routes through status and refuses completion until th
     messages: [{ role: 'user', content: 'Create a tree using Plainform.' }],
     requiredFirstTool: 'three_studio_status',
     requiredToolNames: ['three_studio_apply'],
+    availableToolNames: ['three_studio_status', 'three_studio_apply'],
     strictEnvelopes: true,
     onEvent: event => events.push(event.type),
   });
@@ -127,6 +129,38 @@ test('strict local harness routes through status and refuses completion until th
   assert.equal(result.rounds, 4);
   assert.deepEqual(result.toolTrace.map(item => item.name), ['three_studio_status', 'three_studio_apply']);
   assert.equal(events.filter(type => type === 'protocol-retry').length, 2);
+});
+
+test('local harness bounds large MCP results before the next 4K model round', async () => {
+  let round = 0;
+  const harness = createBrowserMcpHarness({
+    dispatch: async name => name === 'three_studio_status'
+      ? { projectId: 'project/test', sessionId: 'session/test', revision: 1 }
+      : { success: true, payload: 'x'.repeat(2_000) },
+  });
+  const provider = {
+    async complete({ messages }) {
+      round += 1;
+      if (round === 1) {
+        return {
+          finishReason: 'tool_calls',
+          message: { role: 'assistant', content: '' },
+          toolCalls: [{ id: 'inspect', name: 'three_studio_inspect', arguments: {} }],
+        };
+      }
+      const result = messages.findLast(message => message.role === 'tool');
+      assert.ok(result.content.length <= 240);
+      assert.match(result.content, /\[tool result truncated\]$/);
+      return { finishReason: 'stop', message: { role: 'assistant', content: 'Done.' }, toolCalls: [] };
+    },
+  };
+  const result = await harness.run({
+    provider,
+    messages: [{ role: 'user', content: 'Inspect.' }],
+    requiredFirstTool: 'three_studio_status',
+    maxModelToolResultChars: 240,
+  });
+  assert.equal(result.text, 'Done.');
 });
 
 test('strict local harness fails closed when a model keeps returning prose', async () => {

@@ -67,8 +67,10 @@ export function createLocalModelDirectWorker({ importModule = url => import(url)
       return engine.chat.completions.create({
         model: activeModelId,
         messages: payload.messages,
-        temperature: payload.temperature ?? 0.1,
-        max_tokens: payload.maxTokens ?? 700,
+        temperature: payload.temperature ?? 0,
+        max_tokens: payload.maxTokens ?? 512,
+        seed: payload.seed ?? 7,
+        ...(payload.responseFormat ? { response_format: payload.responseFormat } : {}),
       });
     }
     if (command === 'remove') {
