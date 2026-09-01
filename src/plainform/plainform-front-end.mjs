@@ -348,6 +348,20 @@ const DEFINITIONS = Object.freeze([
     semanticKey: match => `event.${semanticPart(match[1])}.message.${semanticPart(match[2])}`, fields: match => ({ subject: match[1], message: match[2], minimumStrength: Number(match[3]), increment: Number(match[4]), state: match[5], animation: match[6], thresholdState: match[7], threshold: match[8] ? Number(match[8]) : undefined, emitOnce: match[9] }),
   }),
   definition({
+    id: 'form.window.inventory', dialect: 'form', domain: 'form', kind: 'form.inventoryWindow', priority: 900,
+    pattern: /^create an? (.+?) window with a two-column layout, an item tree on the left, details on the right, and (.+?) and (.+?) buttons along the bottom$/iu,
+    summary: 'Create a canonical two-column retained inventory window.', inputs: ['name', 'primaryButton', 'closeButton'], outputs: ['form', 'eventSheet'],
+    examples: ['Create an Inventory window with a two-column layout, an item tree on the left, details on the right, and Use and Close buttons along the bottom.'],
+    semanticKey: match => `form.${semanticPart(match[1])}`, fields: match => ({ name: match[1], primaryButton: match[2], closeButton: match[3] }),
+  }),
+  definition({
+    id: 'form.dialog.save', dialect: 'form', domain: 'form', kind: 'form.saveDialog', priority: 900,
+    pattern: /^create a modal (.+?) dialog with a multiline (.+?) box(?:\. enter adds a line; control\+enter confirms only when a slot is selected)?$/iu,
+    summary: 'Create a modal retained save dialog with focus-safe multiline input.', inputs: ['name', 'notesField'], outputs: ['form', 'eventSheet'],
+    examples: ['Create a modal Save Game dialog with a multiline notes box. Enter adds a line; Control+Enter confirms only when a slot is selected.'],
+    semanticKey: match => `form.${semanticPart(match[1])}`, fields: match => ({ name: match[1], notesField: match[2] }),
+  }),
+  definition({
     id: 'shader.property.set', dialect: 'shader', domain: 'shader', kind: 'shader.setProperty',
     pattern: /^(?:set|drive) (?:the )?(.+?) (?:to|with) (.+)$/iu,
     summary: 'Drive one supported shader property with a typed value or expression.',
@@ -362,6 +376,7 @@ function inferDialect(source) {
   if (/^\s*(?:create (?:a |an )?(?:shader|material) graph|edit (?:the )?(?:shader|material) graph|in .+?,)/imu.test(source)) return 'shader';
   if (/^\s*(?:begin\s+)?design\b/iu.test(source)) return 'design';
   if (/^\s*(?:for .+?,\s*when |when (?:the )?.+? (?:collides|receives|is destroyed))/imu.test(source)) return 'event';
+  if (/^\s*create (?:an? .+? window|a modal .+? dialog)\b/imu.test(source)) return 'form';
   return 'object';
 }
 

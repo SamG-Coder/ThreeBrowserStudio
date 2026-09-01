@@ -6,6 +6,7 @@ export { PlainformGrowthPlanner } from './growth-planner.mjs';
 export { PlainformPrefabContext } from './prefab-context.mjs';
 export { ShaderPlainformCompiler, ShaderPlainformError } from './shader-plainform-compiler.mjs';
 export { EventPlainformCompiler } from './event-plainform-compiler.mjs';
+export { FormPlainformCompiler } from './form-plainform-compiler.mjs';
 export { interpretShaderFeel, SHADER_FEEL_VOCABULARY } from './shader-feel-vocabulary.mjs';
 export { DesignPlainformCompiler } from './design-plainform-compiler.mjs';
 export { DesignExpressionError, evaluateDesignExpression, evaluateDesignVector } from './design-expression.mjs';
