@@ -14,6 +14,7 @@ import {
   ScrollPanel,
   TabStrip,
   TextInput,
+  ToolWindow,
   ToggleOption,
   VirtualList,
   WrappedLabel,
@@ -22,6 +23,7 @@ import {
   isStudioOverlayEvent,
 } from './overlay-controls.mjs';
 import { defaultExpandedIds, flattenExplorerRows } from './scene-explorer.mjs';
+import { addGameLogicNode, patchGameLogicNode, removeGameLogicNode } from './game-logic-workspace.mjs';
 import { VIEW_MODE_FOLLOW_SHOT, VIEW_MODE_REVIEW } from './view-mode.mjs';
 
 const ACTIVE_REFRESH_MS = 250;
@@ -37,6 +39,7 @@ const PLAINFORM_TOOLBAR_HEIGHT = 30;
 const EXPLORER_ROW_HEIGHT = 22;
 const EXPLORER_TOOLBAR_HEIGHT = 30;
 const COMPONENT_PANEL_WIDTH = 350;
+const LOGIC_PANEL_WIDTH = 430;
 const COMPONENT_ACTION_WIDTH = 72;
 const PLAINFORM_ROW_HEIGHT = 22;
 const PLAINFORM_WRAP_COLUMNS = 48;
@@ -320,6 +323,9 @@ export function createMcpLiveFeedWebGpuHud({
   onPlayToggle,
   onExplorerEntitySelect,
   onExplorerComponentsApply,
+  onGameLogicOpen,
+  onGameLogicCreate,
+  onGameLogicApply,
   onLocalModelActivate,
   onLocalModelRemove,
   onPromptEnabledChange,
@@ -441,6 +447,12 @@ export function createMcpLiveFeedWebGpuHud({
   let componentStaged = {};
   let selectedComponentId = null;
   let componentBusy = false;
+  let logicWorkspace = null;
+  let selectedLogicGraphId = null;
+  let stagedLogicGraph = null;
+  let selectedLogicNodeId = null;
+  let selectedLogicCatalogType = null;
+  let logicBusy = false;
   let viewportLayerState = Object.freeze({
     mode: 'scene',
     gridVisible: true,
@@ -781,19 +793,14 @@ export function createMcpLiveFeedWebGpuHud({
     explorerScroll.setScroll(value, { notify: false });
   };
 
-  const componentPanel = explorerPage.add(new Control({
-    name: 'component-tool-window', visible: false, clipChildren: true, backColor: 'rgba(11, 19, 30, 0.98)',
+  const componentPanel = explorerPage.add(new ToolWindow({
+    name: 'component-tool-window', title: 'Object components', visible: false,
+    onClose() { closeComponentWorkspace(); },
   }));
-  const componentTitle = componentPanel.add(new Label({
-    name: 'component-title', text: 'Object components', color: '#dce8f7', font: UI_FONT_BOLD,
-  }));
-  const componentClose = componentPanel.add(new Button({
-    name: 'component-close', text: 'Close', centered: true, onClick() { closeComponentWorkspace(); },
-  }));
-  const componentCatalogLabel = componentPanel.add(new Label({
+  const componentCatalogLabel = componentPanel.content.add(new Label({
     name: 'component-catalog-label', text: 'Predefined components', color: '#8eb4dc', font: UI_FONT_BOLD,
   }));
-  const componentCatalogList = componentPanel.add(new VirtualList({
+  const componentCatalogList = componentPanel.content.add(new VirtualList({
     name: 'component-catalog-list', itemHeight: 34, reusePixels: false,
     paintItem(drawContext, drawFonts, { index, bounds }) {
       const item = componentWorkspace?.catalog?.[index];
@@ -816,21 +823,133 @@ export function createMcpLiveFeedWebGpuHud({
     },
     onActivate(index) { selectComponent(componentWorkspace?.catalog?.[index]?.id); },
   }));
-  const componentPropertyLabel = componentPanel.add(new Label({
+  const componentPropertyLabel = componentPanel.content.add(new Label({
     name: 'component-property-label', text: 'Settings', color: '#8eb4dc', font: UI_FONT_BOLD,
   }));
-  const componentPropertyInput = componentPanel.add(new TextInput({
+  const componentPropertyInput = componentPanel.content.add(new TextInput({
     name: 'component-property-input', multiline: true, maximumLength: 12_000,
     placeholder: 'Select a predefined component.', readClipboardText, writeClipboardText,
   }));
-  const componentToggleButton = componentPanel.add(new Button({
+  const componentToggleButton = componentPanel.content.add(new Button({
     name: 'component-toggle', text: 'Add component', centered: true, onClick() { toggleSelectedComponent(); },
   }));
-  const componentApplyButton = componentPanel.add(new Button({
+  const componentApplyButton = componentPanel.content.add(new Button({
     name: 'component-apply', text: 'Apply', centered: true, onClick() { void applyComponentChanges(); },
   }));
-  const componentStatus = componentPanel.add(new WrappedLabel({
+  const componentLogicButton = componentPanel.content.add(new Button({
+    name: 'component-edit-logic', text: 'Open logic', centered: true, visible: false,
+    onClick() { void openGameLogicWorkspace(); },
+  }));
+  const componentStatus = componentPanel.content.add(new WrappedLabel({
     name: 'component-status', text: 'Select an object.', color: '#9fc6f2', maxLines: 2, lineHeight: 14,
+  }));
+
+  const logicPanel = explorerPage.add(new ToolWindow({
+    name: 'game-logic-tool-window', title: 'GameMaker Logic', visible: false,
+    onClose() { closeGameLogicWorkspace(); },
+  }));
+  const logicGraphLabel = logicPanel.content.add(new Label({
+    name: 'logic-graph-label', text: 'Attached blueprints', color: '#8eb4dc', font: UI_FONT_BOLD,
+  }));
+  const logicNewGraphButton = logicPanel.content.add(new Button({
+    name: 'logic-new-graph', text: 'New event sheet', centered: true, onClick() { void createGameLogicSheet(); },
+  }));
+  const logicGraphList = logicPanel.content.add(new VirtualList({
+    name: 'logic-graph-list', itemHeight: 30, reusePixels: false,
+    paintItem(drawContext, drawFonts, { index, bounds }) {
+      const graph = logicWorkspace?.graphs?.[index];
+      if (!graph) return;
+      if (graph.id === selectedLogicGraphId) {
+        drawContext.fillStyle = 'rgba(70, 110, 160, 0.52)';
+        drawContext.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+      }
+      drawFonts.blit(drawContext, graph.name, bounds.x + 8, bounds.y + 14, {
+        font: UI_FONT_BOLD, fillStyle: '#dce8f7', maxWidth: bounds.width - 82,
+      });
+      drawFonts.blit(drawContext, graph.valid ? 'Valid' : 'Needs fixes', bounds.x + bounds.width - 74, bounds.y + 14, {
+        font: '11px "Segoe UI", Arial, sans-serif', fillStyle: graph.valid ? '#77d7a3' : '#ffadba', maxWidth: 68,
+      });
+      drawFonts.blit(drawContext, `${graph.graph.nodes.length} nodes`, bounds.x + 8, bounds.y + 27, {
+        font: '11px "Segoe UI", Arial, sans-serif', fillStyle: '#7f94ad', maxWidth: bounds.width - 16,
+      });
+    },
+    onActivate(index) { selectLogicGraph(logicWorkspace?.graphs?.[index]?.id); },
+  }));
+  const logicCatalogLabel = logicPanel.content.add(new Label({
+    name: 'logic-catalog-label', text: 'Events, conditions & actions', color: '#8eb4dc', font: UI_FONT_BOLD,
+  }));
+  const logicCatalogList = logicPanel.content.add(new VirtualList({
+    name: 'logic-node-catalog', itemHeight: 32, reusePixels: false,
+    paintItem(drawContext, drawFonts, { index, bounds }) {
+      const item = logicWorkspace?.catalog?.[index];
+      if (!item) return;
+      if (item.type === selectedLogicCatalogType) {
+        drawContext.fillStyle = 'rgba(70, 110, 160, 0.48)';
+        drawContext.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+      }
+      const badge = item.event ? 'EVENT' : item.category === 'flow' || item.category === 'logic' ? 'CONDITION' : 'ACTION';
+      drawFonts.blit(drawContext, badge, bounds.x + 6, bounds.y + 12, {
+        font: '600 9px "Segoe UI", Arial, sans-serif',
+        fillStyle: item.event ? '#f2b45c' : badge === 'CONDITION' ? '#c9a6ff' : '#77d7a3', maxWidth: 58,
+      });
+      drawFonts.blit(drawContext, item.label, bounds.x + 66, bounds.y + 14, {
+        font: UI_FONT, fillStyle: '#dce8f7', maxWidth: bounds.width - 72,
+      });
+      drawFonts.blit(drawContext, item.category, bounds.x + 66, bounds.y + 28, {
+        font: '10px "Segoe UI", Arial, sans-serif', fillStyle: '#6d8299', maxWidth: bounds.width - 72,
+      });
+    },
+    onActivate(index) {
+      selectedLogicCatalogType = logicWorkspace?.catalog?.[index]?.type ?? null;
+      logicCatalogList.invalidate();
+    },
+  }));
+  const logicSequenceLabel = logicPanel.content.add(new Label({
+    name: 'logic-sequence-label', text: 'Event sheet', color: '#8eb4dc', font: UI_FONT_BOLD,
+  }));
+  const logicSequenceList = logicPanel.content.add(new VirtualList({
+    name: 'logic-sequence-list', itemHeight: 38, reusePixels: false,
+    paintItem(drawContext, drawFonts, { index, bounds }) {
+      const node = stagedLogicGraph?.nodes?.[index];
+      if (!node) return;
+      const definition = logicWorkspace?.catalog?.find(item => item.type === node.type);
+      const selected = node.id === selectedLogicNodeId;
+      if (selected) {
+        drawContext.fillStyle = 'rgba(70, 110, 160, 0.52)';
+        drawContext.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+      }
+      const badge = definition?.event ? 'EVENT' : definition?.category === 'flow' || definition?.category === 'logic' ? 'CONDITION' : 'ACTION';
+      drawFonts.blit(drawContext, badge, bounds.x + 7, bounds.y + 14, {
+        font: '600 9px "Segoe UI", Arial, sans-serif',
+        fillStyle: definition?.event ? '#f2b45c' : badge === 'CONDITION' ? '#c9a6ff' : '#77d7a3', maxWidth: 58,
+      });
+      drawFonts.blit(drawContext, definition?.label ?? node.type, bounds.x + 66, bounds.y + 15, {
+        font: UI_FONT_BOLD, fillStyle: '#dce8f7', maxWidth: bounds.width - 72,
+      });
+      drawFonts.blit(drawContext, node.id, bounds.x + 66, bounds.y + 31, {
+        font: '10px "Cascadia Mono", Consolas, monospace', fillStyle: '#7f94ad', maxWidth: bounds.width - 72,
+      });
+    },
+    onActivate(index) { selectLogicNode(stagedLogicGraph?.nodes?.[index]?.id); },
+  }));
+  const logicAddNodeButton = logicPanel.content.add(new Button({
+    name: 'logic-add-node', text: 'Add selected', centered: true, onClick() { addSelectedLogicNode(); },
+  }));
+  const logicRemoveNodeButton = logicPanel.content.add(new Button({
+    name: 'logic-remove-node', text: 'Remove node', centered: true, onClick() { removeSelectedLogicNode(); },
+  }));
+  const logicNodeSettingsLabel = logicPanel.content.add(new Label({
+    name: 'logic-node-settings-label', text: 'Node settings', color: '#8eb4dc', font: UI_FONT_BOLD,
+  }));
+  const logicNodeSettingsInput = logicPanel.content.add(new TextInput({
+    name: 'logic-node-settings-input', multiline: true, maximumLength: 16_000,
+    placeholder: 'Select an event, condition, or action node.', readClipboardText, writeClipboardText,
+  }));
+  const logicApplyButton = logicPanel.content.add(new Button({
+    name: 'logic-apply', text: 'Compile & apply', centered: true, onClick() { void applyGameLogicChanges(); },
+  }));
+  const logicStatus = logicPanel.content.add(new WrappedLabel({
+    name: 'logic-status', text: 'Open Logic from an attached Logic component.', color: '#9fc6f2', maxLines: 2, lineHeight: 14,
   }));
 
   const layersPage = host.add(new Control({
@@ -1504,6 +1623,10 @@ export function createMcpLiveFeedWebGpuHud({
     componentToggleButton.setEnabled(Boolean(item?.compatible && (attached || item.requirementsMet)) && !componentBusy);
     componentToggleButton.invalidate();
     componentApplyButton.setEnabled(Boolean(componentWorkspace) && !componentBusy);
+    componentLogicButton.text = attached ? 'Open logic' : 'Create logic';
+    componentLogicButton.setVisible(item?.id === 'logic');
+    componentLogicButton.setEnabled(Boolean(item?.id === 'logic' && item.compatible) && !componentBusy);
+    componentLogicButton.invalidate();
     componentCatalogList.invalidate();
   }
 
@@ -1511,13 +1634,17 @@ export function createMcpLiveFeedWebGpuHud({
     if (!componentId || componentId === selectedComponentId) return;
     if (!commitSelectedComponentText()) return;
     selectedComponentId = componentId;
+    if (componentId !== 'logic' && logicWorkspace) closeGameLogicWorkspace();
     syncSelectedComponent();
   }
 
   function toggleSelectedComponent() {
     const item = componentWorkspace?.catalog?.find(entry => entry.id === selectedComponentId);
     if (!item || !item.compatible) return;
-    if (componentStaged[item.id] !== undefined) delete componentStaged[item.id];
+    if (componentStaged[item.id] !== undefined) {
+      delete componentStaged[item.id];
+      if (item.id === 'logic' && logicWorkspace) closeGameLogicWorkspace();
+    }
     else if (item.requirementsMet) componentStaged[item.id] = structuredClone(item.suggestedValue);
     syncSelectedComponent();
     componentStatus.setText(`${item.label} change is staged. Apply to compile and commit it.`);
@@ -1536,7 +1663,7 @@ export function createMcpLiveFeedWebGpuHud({
         ?? workspace.catalog.find(item => item.compatible && item.requirementsMet)?.id
         ?? workspace.catalog[0]?.id
         ?? null;
-      componentTitle.setText(`${workspace.entity.name} · Components`);
+      componentPanel.setTitle(`${workspace.entity.name} · Components`);
       componentCatalogList.setItems(workspace.catalog.length);
       componentPanel.setVisible(true);
       componentStatus.setText(`${Object.keys(componentStaged).length} attached · edits use the canonical Studio operation path.`);
@@ -1552,6 +1679,7 @@ export function createMcpLiveFeedWebGpuHud({
   }
 
   function closeComponentWorkspace() {
+    if (logicWorkspace) closeGameLogicWorkspace();
     componentPropertyInput.setFocused(false);
     componentWorkspace = null;
     componentStaged = {};
@@ -1582,6 +1710,169 @@ export function createMcpLiveFeedWebGpuHud({
     }
   }
 
+  function commitLogicNodeText() {
+    if (!stagedLogicGraph || !selectedLogicNodeId) return true;
+    try {
+      const value = JSON.parse(logicNodeSettingsInput.text || '{}');
+      const result = patchGameLogicNode(stagedLogicGraph, selectedLogicNodeId, value);
+      stagedLogicGraph = result.graph;
+      return true;
+    } catch (error) {
+      logicStatus.setText(`Invalid node settings · ${error?.message ?? String(error)}`);
+      return false;
+    }
+  }
+
+  function selectedLogicGraph() {
+    return logicWorkspace?.graphs?.find(graph => graph.id === selectedLogicGraphId) ?? null;
+  }
+
+  function syncLogicNodeEditor() {
+    const node = stagedLogicGraph?.nodes?.find(entry => entry.id === selectedLogicNodeId) ?? null;
+    const definition = node ? logicWorkspace?.catalog?.find(item => item.type === node.type) : null;
+    logicNodeSettingsLabel.setText(definition ? `${definition.label} settings` : 'Node settings');
+    logicNodeSettingsInput.setText(node ? JSON.stringify({ params: node.params ?? {}, inputs: node.inputs ?? {} }, null, 2) : '');
+    logicNodeSettingsInput.setEnabled(Boolean(node));
+    logicRemoveNodeButton.setEnabled(Boolean(node) && !logicBusy);
+    logicAddNodeButton.setEnabled(Boolean(stagedLogicGraph && selectedLogicCatalogType) && !logicBusy);
+    logicApplyButton.setEnabled(Boolean(stagedLogicGraph) && !logicBusy);
+    logicSequenceList.setItems(stagedLogicGraph?.nodes?.length ?? 0);
+    logicSequenceList.invalidate();
+  }
+
+  function selectLogicGraph(graphId) {
+    if (!graphId || graphId === selectedLogicGraphId) return;
+    if (!commitLogicNodeText()) return;
+    const graph = logicWorkspace?.graphs?.find(entry => entry.id === graphId);
+    if (!graph) return;
+    selectedLogicGraphId = graph.id;
+    stagedLogicGraph = structuredClone(graph.graph);
+    selectedLogicNodeId = stagedLogicGraph.nodes[0]?.id ?? null;
+    logicPanel.setTitle(`${graph.name} · GameMaker Logic`);
+    syncLogicNodeEditor();
+    logicGraphList.invalidate();
+    logicStatus.setText(graph.valid
+      ? `${stagedLogicGraph.nodes.length} nodes · choose an event, condition, or action to extend the sheet.`
+      : graph.errors[0]?.message ?? 'This blueprint needs fixes.');
+  }
+
+  function selectLogicNode(nodeId) {
+    if (!nodeId || nodeId === selectedLogicNodeId) return;
+    if (!commitLogicNodeText()) return;
+    selectedLogicNodeId = nodeId;
+    syncLogicNodeEditor();
+  }
+
+  function addSelectedLogicNode() {
+    if (!stagedLogicGraph || !selectedLogicCatalogType || !componentWorkspace?.entity?.id) return;
+    if (!commitLogicNodeText()) return;
+    try {
+      const result = addGameLogicNode(stagedLogicGraph, selectedLogicCatalogType, { entityId: componentWorkspace.entity.id });
+      stagedLogicGraph = result.graph;
+      selectedLogicNodeId = result.nodeId;
+      syncLogicNodeEditor();
+      logicStatus.setText(result.validation.valid
+        ? 'Node added to the staged event sheet.'
+        : result.validation.errors[0]?.message ?? 'Node added; complete its required settings.');
+    } catch (error) {
+      logicStatus.setText(error?.message ?? String(error));
+    }
+  }
+
+  function removeSelectedLogicNode() {
+    if (!stagedLogicGraph || !selectedLogicNodeId) return;
+    const result = removeGameLogicNode(stagedLogicGraph, selectedLogicNodeId);
+    stagedLogicGraph = result.graph;
+    selectedLogicNodeId = stagedLogicGraph.nodes[0]?.id ?? null;
+    syncLogicNodeEditor();
+    logicStatus.setText(result.validation.valid
+      ? 'Node removed from the staged event sheet.'
+      : result.validation.errors[0]?.message ?? 'The staged sheet needs another event or setting.');
+  }
+
+  async function openGameLogicWorkspace() {
+    if (!componentWorkspace?.entity?.id || logicBusy || typeof onGameLogicOpen !== 'function') return;
+    logicBusy = true;
+    try {
+      logicWorkspace = await onGameLogicOpen(componentWorkspace.entity.id);
+      if (!logicWorkspace?.entity || !Array.isArray(logicWorkspace.catalog)) throw new Error('Game Logic is unavailable for this object.');
+      logicGraphList.setItems(logicWorkspace.graphs.length);
+      logicCatalogList.setItems(logicWorkspace.catalog.length);
+      selectedLogicCatalogType = logicWorkspace.catalog.find(item => item.event)?.type ?? logicWorkspace.catalog[0]?.type ?? null;
+      selectedLogicGraphId = null;
+      stagedLogicGraph = null;
+      selectedLogicNodeId = null;
+      logicPanel.open();
+      const first = logicWorkspace.graphs[0];
+      if (first) selectLogicGraph(first.id);
+      else logicStatus.setText('No attached event sheet. Create one to start with On Start.');
+      resize(viewportWidth, viewportHeight, backingRatio);
+    } catch (error) {
+      logicStatus.setText(error?.message ?? String(error));
+    } finally {
+      logicBusy = false;
+      syncLogicNodeEditor();
+    }
+  }
+
+  function closeGameLogicWorkspace() {
+    logicNodeSettingsInput.setFocused(false);
+    logicWorkspace = null;
+    selectedLogicGraphId = null;
+    stagedLogicGraph = null;
+    selectedLogicNodeId = null;
+    logicPanel.setVisible(false);
+    resize(viewportWidth, viewportHeight, backingRatio);
+  }
+
+  async function createGameLogicSheet() {
+    if (!componentWorkspace?.entity?.id || logicBusy || typeof onGameLogicCreate !== 'function') return;
+    logicBusy = true;
+    logicStatus.setText('Creating an On Start event sheet…');
+    try {
+      logicWorkspace = await onGameLogicCreate(componentWorkspace.entity.id);
+      if (typeof onExplorerEntitySelect === 'function') {
+        const refreshed = await onExplorerEntitySelect(componentWorkspace.entity.id);
+        if (refreshed?.entity) {
+          componentWorkspace = refreshed;
+          componentStaged = structuredClone(refreshed.components ?? {});
+          syncSelectedComponent();
+          refreshExplorer();
+        }
+      }
+      logicGraphList.setItems(logicWorkspace.graphs.length);
+      const newest = logicWorkspace.graphs.at(-1);
+      selectedLogicGraphId = null;
+      if (newest) selectLogicGraph(newest.id);
+    } catch (error) {
+      logicStatus.setText(error?.message ?? String(error));
+    } finally {
+      logicBusy = false;
+      syncLogicNodeEditor();
+    }
+  }
+
+  async function applyGameLogicChanges() {
+    if (!componentWorkspace?.entity?.id || !selectedLogicGraphId || !stagedLogicGraph || logicBusy || typeof onGameLogicApply !== 'function') return;
+    if (!commitLogicNodeText()) return;
+    logicBusy = true;
+    syncLogicNodeEditor();
+    logicStatus.setText('Validating, compiling, and applying the event sheet…');
+    const graphId = selectedLogicGraphId;
+    try {
+      logicWorkspace = await onGameLogicApply(componentWorkspace.entity.id, graphId, structuredClone(stagedLogicGraph));
+      logicGraphList.setItems(logicWorkspace.graphs.length);
+      selectedLogicGraphId = null;
+      selectLogicGraph(graphId);
+      logicStatus.setText(`Event sheet committed at revision ${logicWorkspace.revision}.`);
+    } catch (error) {
+      logicStatus.setText(error?.message ?? String(error));
+    } finally {
+      logicBusy = false;
+      syncLogicNodeEditor();
+    }
+  }
+
   function syncPanelCollapsedVisibility() {
     const expanded = !panelCollapsed;
     for (const control of [
@@ -1606,6 +1897,7 @@ export function createMcpLiveFeedWebGpuHud({
     plainformPage.setVisible(expanded && tab === 'plainform');
     explorerPage.setVisible(expanded && tab === 'explorer');
     componentPanel.setVisible(expanded && tab === 'explorer' && Boolean(componentWorkspace));
+    logicPanel.setVisible(expanded && tab === 'explorer' && Boolean(logicWorkspace));
     layersPage.setVisible(expanded && tab === 'layers');
     settingsPage.setVisible(expanded && tab === 'settings');
     llmPage?.setVisible(expanded && tab === 'llm');
@@ -1675,25 +1967,46 @@ export function createMcpLiveFeedWebGpuHud({
       SCROLL_WIDTH,
       Math.max(20, plainformPage.height - PLAINFORM_TOOLBAR_HEIGHT),
     );
-    const componentWidth = componentWorkspace ? Math.min(COMPONENT_PANEL_WIDTH, Math.max(240, explorerPage.width - 260)) : 0;
-    const explorerWidth = Math.max(180, explorerPage.width - componentWidth);
+    const logicWidth = logicWorkspace ? Math.min(LOGIC_PANEL_WIDTH, Math.max(300, explorerPage.width - 520)) : 0;
+    const componentWidth = componentWorkspace
+      ? Math.min(COMPONENT_PANEL_WIDTH, Math.max(240, explorerPage.width - logicWidth - 260))
+      : 0;
+    const explorerWidth = Math.max(180, explorerPage.width - componentWidth - logicWidth);
     explorerToolbar.setBounds(0, 0, explorerWidth, EXPLORER_TOOLBAR_HEIGHT);
     explorerComponentsFilter.setBounds(4, 1, Math.max(100, explorerWidth - COMPONENT_ACTION_WIDTH - 8), 28);
     explorerComponentColumnLabel.setBounds(explorerWidth - COMPONENT_ACTION_WIDTH, 7, COMPONENT_ACTION_WIDTH - 6, 18);
     explorerList.setBounds(0, EXPLORER_TOOLBAR_HEIGHT, Math.max(40, explorerWidth - SCROLL_WIDTH), Math.max(20, explorerPage.height - EXPLORER_TOOLBAR_HEIGHT));
     explorerScroll.setBounds(explorerWidth - SCROLL_WIDTH, EXPLORER_TOOLBAR_HEIGHT, SCROLL_WIDTH, Math.max(20, explorerPage.height - EXPLORER_TOOLBAR_HEIGHT));
     componentPanel.setBounds(explorerWidth, 0, componentWidth, explorerPage.height);
-    componentTitle.setBounds(10, 8, Math.max(80, componentWidth - 78), 20);
-    componentClose.setBounds(Math.max(4, componentWidth - 62), 4, 56, 26);
-    componentCatalogLabel.setBounds(10, 38, Math.max(80, componentWidth - 20), 20);
-    componentCatalogList.setBounds(8, 60, Math.max(80, componentWidth - 16), 204);
-    componentPropertyLabel.setBounds(10, 274, Math.max(80, componentWidth - 20), 20);
-    componentPropertyInput.setBounds(8, 296, Math.max(80, componentWidth - 16), Math.max(70, componentPanel.height - 404));
-    const componentButtonY = Math.max(372, componentPanel.height - 102);
-    const componentButtonWidth = Math.max(80, Math.floor((componentWidth - 24) / 2));
+    componentCatalogLabel.setBounds(10, 4, Math.max(80, componentWidth - 20), 20);
+    componentCatalogList.setBounds(8, 26, Math.max(80, componentWidth - 16), 204);
+    componentPropertyLabel.setBounds(10, 240, Math.max(80, componentWidth - 20), 20);
+    componentPropertyInput.setBounds(8, 262, Math.max(80, componentWidth - 16), Math.max(70, componentPanel.content.height - 370));
+    const componentButtonY = Math.max(338, componentPanel.content.height - 102);
+    const componentButtonWidth = Math.max(70, Math.floor((componentWidth - 32) / 3));
     componentToggleButton.setBounds(8, componentButtonY, componentButtonWidth, 30);
-    componentApplyButton.setBounds(16 + componentButtonWidth, componentButtonY, Math.max(70, componentWidth - 24 - componentButtonWidth), 30);
+    componentLogicButton.setBounds(12 + componentButtonWidth, componentButtonY, componentButtonWidth, 30);
+    componentApplyButton.setBounds(16 + (componentButtonWidth * 2), componentButtonY, Math.max(64, componentWidth - 24 - (componentButtonWidth * 2)), 30);
     componentStatus.setBounds(10, componentButtonY + 38, Math.max(80, componentWidth - 20), 54);
+    logicPanel.setBounds(explorerWidth + componentWidth, 0, logicWidth, explorerPage.height);
+    logicGraphLabel.setBounds(10, 4, Math.max(80, logicWidth - 150), 20);
+    logicNewGraphButton.setBounds(Math.max(8, logicWidth - 136), 0, 128, 28);
+    logicGraphList.setBounds(8, 28, Math.max(80, logicWidth - 16), 76);
+    const logicColumnGap = 8;
+    const logicLeftWidth = Math.max(140, Math.floor((logicWidth - 24) * 0.48));
+    const logicRightX = 8 + logicLeftWidth + logicColumnGap;
+    const logicRightWidth = Math.max(140, logicWidth - logicRightX - 8);
+    logicCatalogLabel.setBounds(10, 112, logicLeftWidth - 4, 20);
+    logicSequenceLabel.setBounds(logicRightX + 2, 112, logicRightWidth - 4, 20);
+    logicCatalogList.setBounds(8, 134, logicLeftWidth, 176);
+    logicSequenceList.setBounds(logicRightX, 134, logicRightWidth, 176);
+    logicAddNodeButton.setBounds(8, 316, logicLeftWidth, 28);
+    logicRemoveNodeButton.setBounds(logicRightX, 316, logicRightWidth, 28);
+    logicNodeSettingsLabel.setBounds(10, 352, Math.max(80, logicWidth - 20), 20);
+    logicNodeSettingsInput.setBounds(8, 374, Math.max(80, logicWidth - 16), Math.max(64, logicPanel.content.height - 470));
+    const logicApplyY = Math.max(444, logicPanel.content.height - 88);
+    logicApplyButton.setBounds(8, logicApplyY, Math.max(80, logicWidth - 16), 30);
+    logicStatus.setBounds(10, logicApplyY + 36, Math.max(80, logicWidth - 20), 48);
     layersLabel.setBounds(12, 12, layersPage.width - 24, 20);
     sceneLayerOption.setBounds(8, 40, layersPage.width - 16, 30);
     previewLayerOption.setBounds(8, 72, layersPage.width - 16, 30);
@@ -2201,7 +2514,7 @@ export function createMcpLiveFeedWebGpuHud({
     const availableWidth = Math.max(1, viewportWidth - (PANEL_MARGIN * 2));
     const availableHeight = Math.max(1, viewportHeight - (PANEL_MARGIN * 2));
     const requestedPanelWidth = componentWorkspace && tab === 'explorer'
-      ? PANEL_WIDTH + COMPONENT_PANEL_WIDTH
+      ? PANEL_WIDTH + COMPONENT_PANEL_WIDTH + (logicWorkspace ? LOGIC_PANEL_WIDTH : 0)
       : PANEL_WIDTH;
     const panelWidth = Math.min(panelCollapsed ? COLLAPSED_PANEL_WIDTH : requestedPanelWidth, availableWidth);
     const panelHeight = Math.min(panelCollapsed ? COLLAPSED_PANEL_HEIGHT : idealPanelHeight, availableHeight);
@@ -2278,6 +2591,7 @@ export function createMcpLiveFeedWebGpuHud({
     if (disposed || !visible) return;
     llmPromptInput?.setFocused(false);
     componentPropertyInput.setFocused(false);
+    logicNodeSettingsInput.setFocused(false);
     visible = false;
     sprite.visible = false;
     if (nativeOverlayPresentation) canvas.style.display = 'none';
@@ -2307,7 +2621,7 @@ export function createMcpLiveFeedWebGpuHud({
     });
   };
 
-  const focusedTextInput = () => [llmPromptInput, componentPropertyInput].find(input => input?.focused) ?? null;
+  const focusedTextInput = () => [llmPromptInput, componentPropertyInput, logicNodeSettingsInput].find(input => input?.focused) ?? null;
 
   const onKeyDown = event => {
     if (disposed) return;
@@ -2376,6 +2690,7 @@ export function createMcpLiveFeedWebGpuHud({
     const hit = host.hitTest(point.x, point.y);
     if (llmPromptInput?.focused && hit !== llmPromptInput) llmPromptInput.setFocused(false);
     if (componentPropertyInput.focused && hit !== componentPropertyInput) componentPropertyInput.setFocused(false);
+    if (logicNodeSettingsInput.focused && hit !== logicNodeSettingsInput) logicNodeSettingsInput.setFocused(false);
     captured = hit;
     hit?.onPointerDown?.(event, point);
     stealEvent(event);

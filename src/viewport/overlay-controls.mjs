@@ -457,6 +457,82 @@ export class Button extends Control {
   }
 }
 
+/**
+ * Retained tool window/dialog chrome shared by the native and browser hosts.
+ * It deliberately mirrors a small WinForms Form surface: title bar, close
+ * action, client area, modal state, and an explicit close result.
+ */
+export class ToolWindow extends Control {
+  constructor({ title = 'Window', closable = true, modal = false, onClose, ...rest } = {}) {
+    super({
+      backColor: rest.backColor ?? 'rgba(11, 19, 30, 0.98)',
+      clipChildren: true,
+      ...rest,
+    });
+    this.title = String(title);
+    this.closable = closable !== false;
+    this.modal = modal === true;
+    this.onClose = onClose;
+    this.dialogResult = null;
+    this.titleLabel = this.add(new Label({
+      name: `${this.name}-title`, text: this.title, color: '#dce8f7', font: '600 13px "Segoe UI", Arial, sans-serif',
+    }));
+    this.closeButton = this.add(new Button({
+      name: `${this.name}-close`, text: 'Close', centered: true,
+      visible: this.closable,
+      onClick: () => this.close('cancel'),
+    }));
+    this.content = this.add(new Control({
+      name: `${this.name}-content`, backColor: 'rgba(0, 0, 0, 0)', clipChildren: true,
+    }));
+  }
+
+  setTitle(title) {
+    const next = String(title ?? 'Window');
+    if (next === this.title) return false;
+    this.title = next;
+    this.titleLabel.setText(next);
+    return true;
+  }
+
+  open({ modal = this.modal } = {}) {
+    this.modal = modal === true;
+    this.dialogResult = null;
+    this.setVisible(true);
+    return this;
+  }
+
+  showDialog() { return this.open({ modal: true }); }
+
+  close(result = 'cancel') {
+    if (!this.visible) return false;
+    this.dialogResult = result;
+    this.setVisible(false);
+    this.onClose?.(result, this);
+    return true;
+  }
+
+  performLayout() {
+    const titleHeight = 34;
+    this.titleLabel?.setBounds(10, 8, Math.max(20, this.width - (this.closable ? 78 : 20)), 20);
+    this.closeButton?.setBounds(Math.max(4, this.width - 62), 4, 56, 26);
+    this.closeButton?.setVisible(this.closable);
+    this.content?.setBounds(0, titleHeight, this.width, Math.max(0, this.height - titleHeight));
+    this.content?.performLayout();
+  }
+
+  onPaint(context, fonts, clip, bounds) {
+    super.onPaint(context, fonts, clip, bounds);
+    context.fillStyle = 'rgba(41, 65, 94, 0.96)';
+    context.fillRect(bounds.x, bounds.y, bounds.width, 34);
+    context.fillStyle = 'rgba(135, 176, 224, 0.42)';
+    context.fillRect(bounds.x, bounds.y, bounds.width, 1);
+    context.fillRect(bounds.x, bounds.y + bounds.height - 1, bounds.width, 1);
+    context.fillRect(bounds.x, bounds.y, 1, bounds.height);
+    context.fillRect(bounds.x + bounds.width - 1, bounds.y, 1, bounds.height);
+  }
+}
+
 export class TextInput extends Control {
   constructor({
     text = '',

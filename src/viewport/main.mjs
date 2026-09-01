@@ -30,6 +30,11 @@ import { LOCAL_AI_SYSTEM_PROMPT, localAiToolNames, requiredLocalAiTools } from '
 import { createProjectWorkspaceActions } from './project-workspace-actions.mjs';
 import { applyComponentWorkspace, readComponentWorkspace } from './component-workspace.mjs';
 import { createTransactionId } from '../core/util.mjs';
+import {
+  applyGameLogicGraph,
+  createGameLogicGraph,
+  readGameLogicWorkspace,
+} from './game-logic-workspace.mjs';
 
 const NATIVE_WEBLLM_RUNTIME_URL = new URL('../../node_modules/@mlc-ai/web-llm/lib/index.js', import.meta.url).href;
 const LOCAL_PROMPT_ENABLED_KEY = 'three-browser-studio.local-prompt.enabled';
@@ -214,6 +219,15 @@ async function main() {
     },
     onExplorerComponentsApply(entityId, components) {
       return applyComponentWorkspace(application, entityId, components);
+    },
+    onGameLogicOpen(entityId) {
+      return readGameLogicWorkspace(application?.document, entityId);
+    },
+    onGameLogicCreate(entityId) {
+      return createGameLogicGraph(application, entityId);
+    },
+    onGameLogicApply(entityId, graphId, graph) {
+      return applyGameLogicGraph(application, entityId, graphId, graph);
     },
     async onLocalModelActivate(modelId) {
       localAiBusy = true;

@@ -10,6 +10,7 @@ import {
   RangeOption,
   ScrollPanel,
   TextInput,
+  ToolWindow,
   VirtualList,
   WrappedLabel,
   claimStudioViewportFocus,
@@ -226,6 +227,23 @@ test('virtual list pointer down activates the visible row', () => {
   assert.equal(list.onPointerDown({}, { y: 55 }), true);
   assert.equal(activated, 2);
   assert.equal(list.onPointerDown({}, { y: 200 }), false);
+});
+
+test('retained tool windows provide shared Form-like chrome and dialog results', () => {
+  const closed = [];
+  const window = new ToolWindow({ name: 'properties', title: 'Properties', visible: false, onClose(result) { closed.push(result); } });
+  window.setBounds(4, 5, 320, 240);
+  assert.equal(window.content.y, 34);
+  assert.equal(window.content.height, 206);
+  window.showDialog();
+  assert.equal(window.visible, true);
+  assert.equal(window.modal, true);
+  window.setTitle('Game Object');
+  assert.equal(window.titleLabel.text, 'Game Object');
+  window.close('ok');
+  assert.equal(window.visible, false);
+  assert.equal(window.dialogResult, 'ok');
+  assert.deepEqual(closed, ['ok']);
 });
 
 test('button click only invalidates the button bounds', () => {

@@ -234,6 +234,9 @@ function fixture({
   onPlayToggle,
   onExplorerEntitySelect,
   onExplorerComponentsApply,
+  onGameLogicOpen,
+  onGameLogicCreate,
+  onGameLogicApply,
   onExportProject,
   onImportProject,
   onRtxSettingsChange,
@@ -255,6 +258,9 @@ function fixture({
     onPlayToggle,
     onExplorerEntitySelect,
     onExplorerComponentsApply,
+    onGameLogicOpen,
+    onGameLogicCreate,
+    onGameLogicApply,
     onExportProject,
     onImportProject,
     onRtxSettingsChange,
@@ -595,6 +601,67 @@ test('retained Play button is shared host chrome', async () => {
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(play.text, 'Play');
   assert.deepEqual(calls, ['author', 'play']);
+  hud.dispose();
+});
+
+test('Logic component opens the shared GameMaker event and action window', async () => {
+  const applied = [];
+  const graph = {
+    formatVersion: 1, id: 'blueprint/player', domain: 'blueprint',
+    nodes: [{ id: 'event/start', type: 'event.onStart', params: {} }], edges: [], outputs: {},
+  };
+  const logicWorkspace = {
+    revision: 4,
+    entity: { id: 'entity/player', name: 'Player', kind: 'gameObject' },
+    graphs: [{ id: graph.id, name: 'Player Logic', graph, valid: true, errors: [], warnings: [] }],
+    catalog: [
+      { type: 'event.onStart', label: 'On Start', category: 'event', event: true },
+      { type: 'physics.addForce', label: 'Add Force', category: 'physics', event: false },
+    ],
+  };
+  const componentWorkspace = {
+    revision: 4,
+    entity: { id: 'entity/player', name: 'Player', kind: 'gameObject' },
+    components: { logic: { enabled: true, graphIds: [graph.id] } },
+    catalog: [{
+      id: 'logic', label: 'Logic', description: 'GameMaker logic', compatible: true,
+      requirementsMet: true, suggestedValue: { enabled: true, graphIds: [graph.id] },
+    }],
+  };
+  const { hud } = fixture({
+    width: 1400, height: 760, pixelRatio: 1,
+    onExplorerEntitySelect() { return componentWorkspace; },
+    onGameLogicOpen() { return logicWorkspace; },
+    onGameLogicApply(entityId, graphId, staged) {
+      applied.push({ entityId, graphId, staged });
+      return { ...logicWorkspace, revision: 5, graphs: [{ ...logicWorkspace.graphs[0], graph: staged }] };
+    },
+  });
+  hud.setExplorerOutline(buildExplorerOutline(createProjectDocument({
+    projectId: 'project/logic-hud', scenes: [{
+      id: 'scene/main', rootEntityIds: ['entity/player'],
+      entities: [{ id: 'entity/player', kind: 'gameObject', name: 'Player', components: { logic: { graphIds: [graph.id] } } }],
+    }], resources: { graphs: [{ id: graph.id, kind: 'graph', graph }] },
+  })));
+  findControl(hud.host, 'tabs').setSelected('explorer');
+  const explorerList = findControl(hud.host, 'explorer-list');
+  const playerIndex = hud.visibleExplorerText.split('\n').findIndex(line => line.includes('Player'));
+  explorerList.onActivate(playerIndex, { x: explorerList.absoluteBounds.x + explorerList.width - 2 });
+  await new Promise(resolve => setImmediate(resolve));
+  const logicButton = findControl(hud.host, 'component-edit-logic');
+  assert.equal(logicButton.visible, true);
+  logicButton.onClick();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(findControl(hud.host, 'game-logic-tool-window').visible, true);
+  assert.equal(hud.panelBounds.width, 1240);
+  findControl(hud.host, 'logic-node-catalog').onActivate(1);
+  findControl(hud.host, 'logic-add-node').onClick();
+  assert.equal(findControl(hud.host, 'logic-sequence-list').itemCount, 2);
+  findControl(hud.host, 'logic-apply').onClick();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(applied.length, 1);
+  assert.equal(applied[0].staged.nodes[1].type, 'physics.addForce');
+  assert.equal(applied[0].staged.edges[0].from.nodeId, 'event/start');
   hud.dispose();
 });
 

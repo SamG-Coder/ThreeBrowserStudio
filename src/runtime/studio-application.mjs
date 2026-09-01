@@ -1531,6 +1531,7 @@ export class StudioApplication {
   get sessionId() { return this.#credentials.sessionId; }
   get markerPath() { return this.#markerPath; }
   get kernel() { return this.#kernel; }
+  get document() { return this.#kernel?.document ?? null; }
 
   getControllerStatus() {
     return this.#logicController?.status ?? Object.freeze({

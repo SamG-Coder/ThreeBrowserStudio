@@ -341,6 +341,12 @@ function rejectsWithCode(code) {
   };
 }
 
+test('native application exposes the canonical document to shared retained UI', async (t) => {
+  const { application } = await applicationFixture(t);
+  assert.deepEqual(application.document, application.kernel.document);
+  assert.equal(application.document.projectId, 'project/active');
+});
+
 test('controller camera activation switches the visible viewport from Review to Follow Shot', async (t) => {
   const { application, viewport } = await applicationFixture(t);
   const graphId = 'graph/game-camera';
