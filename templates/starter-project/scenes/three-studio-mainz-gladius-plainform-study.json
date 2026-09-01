@@ -1,0 +1,2484 @@
+{
+  "kind": "ThreeStudioProjectPack",
+  "protocolVersion": "three-studio/1",
+  "formatVersion": 1,
+  "exportedAt": "2026-09-01T21:52:41.000Z",
+  "document": {
+    "kind": "ThreeStudioProject",
+    "protocolVersion": "three-studio/1",
+    "formatVersion": 1,
+    "projectId": "project/mainz-gladius-plainform-study-20260902",
+    "name": "Mainz Gladius Plainform Study",
+    "revision": 9,
+    "savedRevision": 9,
+    "activeSceneId": "scene/main",
+    "sceneOrder": [
+      "scene/main"
+    ],
+    "scenes": {
+      "scene/main": {
+        "id": "scene/main",
+        "name": "Main Scene",
+        "rootEntityIds": [
+          "entity/mainz-gladius",
+          "entity/mainz-gladius-hilt",
+          "entity/mainz-gladius-blade-details",
+          "entity/mainz-gladius-display",
+          "camera/mainz-gladius-hero",
+          "entity/mainz-gladius-lighting",
+          "entity/mainz-gladius-planar-hilt"
+        ],
+        "entities": {
+          "camera/mainz-gladius-hero": {
+            "id": "camera/mainz-gladius-hero",
+            "kind": "perspectiveCamera",
+            "name": "Mainz Gladius Museum Camera",
+            "parentId": null,
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0.07083860216308617,
+                1.325164232180343,
+                0.07956298720472282
+              ],
+              "rotation": [
+                -1.316014253669251,
+                0.05630025335692379,
+                0.21278692705498176
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "camera": {
+                "aspect": 1,
+                "far": 10.348103282408687,
+                "fov": 38,
+                "framing": {
+                  "aspect": 1,
+                  "bounds": {
+                    "max": [
+                      0.11999999731779099,
+                      0.15268000105023383,
+                      0.1605620086193085
+                    ],
+                    "min": [
+                      -0.11999999731779099,
+                      0.06500000067055225,
+                      -0.6349999856948852
+                    ]
+                  },
+                  "direction": [
+                    -0.05627051541099439,
+                    -0.9661849516127342,
+                    -0.25163518905844595
+                  ],
+                  "distance": 1.2588937855942475,
+                  "fit": "contain",
+                  "lockPreviewAspect": true,
+                  "padding": 1.09,
+                  "radius": 0.45539525159278066,
+                  "targetIds": [
+                    "entity/mainz-gladius",
+                    "entity/mainz-gladius-planar-hilt",
+                    "entity/mainz-gladius-blade-details",
+                    "entity/mainz-gladius-display"
+                  ]
+                },
+                "near": 0.34810328240868615,
+                "presentationAspect": 1
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/mainz-gladius": {
+            "id": "entity/mainz-gladius",
+            "kind": "group",
+            "name": "Mainz Gladius",
+            "parentId": null,
+            "children": [
+              "entity/mainz-gladius/blade"
+            ],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                -1.5707963267948966,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {},
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "boundaries": [],
+                "constraints": [],
+                "designFrame": {
+                  "internalLoftAxes": {
+                    "forward": "-Y",
+                    "right": "+X",
+                    "up": "+Z"
+                  },
+                  "name": "right-up-forward",
+                  "worldAxes": {
+                    "forward": "+Z",
+                    "right": "+X",
+                    "up": "+Y"
+                  }
+                },
+                "kind": "weapon",
+                "source": "Design a weapon called Mainz Gladius with id entity/mainz-gladius using the right-up-forward design frame.\nCreate a symmetric profile called blade outline through [0 centimetres right, 0 centimetres up], [3.4 centimetres right, 0 centimetres up], [3.2 centimetres right, 4 centimetres up], [2.8 centimetres right, 19 centimetres up], [3.15 centimetres right, 34 centimetres up], [3 centimetres right, 36.5 centimetres up], [0 centimetres right, 52.5 centimetres up], mirrored across the up centreline.\nExtrude profile blade outline by 5 millimetres as a solid called Waisted Blade with id entity/mainz-gladius/blade, centred at [0 centimetres right, 13 centimetres up, 0 centimetres forward], using material material/gladius-steel.\nPreview these changes",
+                "surfaceCurves": [],
+                "surfaceDeformations": [],
+                "surfaceRegions": [],
+                "variables": {},
+                "version": 1
+              }
+            }
+          },
+          "entity/mainz-gladius-blade-details": {
+            "id": "entity/mainz-gladius-blade-details",
+            "kind": "group",
+            "name": "Mainz Gladius Blade Details",
+            "parentId": null,
+            "children": [
+              "entity/mainz-gladius-blade-details/midrib"
+            ],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                -1.5707963267948966,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {},
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "boundaries": [],
+                "constraints": [],
+                "designFrame": {
+                  "internalLoftAxes": {
+                    "forward": "-Y",
+                    "right": "+X",
+                    "up": "+Z"
+                  },
+                  "name": "right-up-forward",
+                  "worldAxes": {
+                    "forward": "+Z",
+                    "right": "+X",
+                    "up": "+Y"
+                  }
+                },
+                "kind": "blade details",
+                "source": "Design blade details called Mainz Gladius Blade Details with id entity/mainz-gladius-blade-details using the right-up-forward design frame.\nCreate a symmetric profile called ridge outline through [0 centimetres right, 1 centimetre up], [1.05 centimetres right, 1.5 centimetres up], [0.9 centimetres right, 19 centimetres up], [0.75 centimetres right, 34 centimetres up], [0 centimetres right, 51.5 centimetres up], mirrored across the up centreline.\nExtrude profile ridge outline by 2 millimetres as a solid called Raised Midrib with id entity/mainz-gladius-blade-details/midrib, centred at [0 centimetres right, 13 centimetres up, 3 millimetres forward], using material material/gladius-steel.\nCreate a profile called right fuller outline through [1.05 centimetres right, 3 centimetres up], [2.55 centimetres right, 4 centimetres up], [2.3 centimetres right, 19 centimetres up], [2.55 centimetres right, 32 centimetres up], [1.3 centimetres right, 34 centimetres up], [1 centimetre right, 33 centimetres up], [1.8 centimetres right, 19 centimetres up], [1 centimetre right, 4 centimetres up].\nExtrude profile right fuller outline by 0.8 millimetres as a solid called Right Fuller with id entity/mainz-gladius-blade-details/fuller-right, centred at [0 centimetres right, 13 centimetres up, 4.1 millimetres forward], using material material/gladius-dark-steel.\nCreate a profile called left fuller outline through [1.05 centimetres left, 3 centimetres up], [1 centimetre left, 4 centimetres up], [1.8 centimetres left, 19 centimetres up], [1 centimetre left, 33 centimetres up], [1.3 centimetres left, 34 centimetres up], [2.55 centimetres left, 32 centimetres up], [2.3 centimetres left, 19 centimetres up], [2.55 centimetres left, 4 centimetres up].\nExtrude profile left fuller outline by 0.8 millimetres as a solid called Left Fuller with id entity/mainz-gladius-blade-details/fuller-left, centred at [0 centimetres right, 13 centimetres up, 4.1 millimetres forward], using material material/gladius-dark-steel.\nPreview these changes",
+                "surfaceCurves": [],
+                "surfaceDeformations": [],
+                "surfaceRegions": [],
+                "variables": {},
+                "version": 1
+              }
+            }
+          },
+          "entity/mainz-gladius-blade-details/midrib": {
+            "id": "entity/mainz-gladius-blade-details/midrib",
+            "kind": "mesh",
+            "name": "Raised Midrib",
+            "parentId": "entity/mainz-gladius-blade-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -0.003,
+                0.134
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/mainz-gladius-blade-details/raised-midrib",
+                "materialId": "material/gladius-steel"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "extrude"
+              }
+            }
+          },
+          "entity/mainz-gladius-display": {
+            "id": "entity/mainz-gladius-display",
+            "kind": "mesh",
+            "name": "Dark Stone Display Slab",
+            "parentId": null,
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0.095,
+                -0.245
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "castShadow": true,
+                "geometryId": "geometry/mainz-gladius/display-slab",
+                "materialId": "material/gladius-stone",
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/mainz-gladius-hilt": {
+            "id": "entity/mainz-gladius-hilt",
+            "kind": "group",
+            "name": "Mainz Gladius Hilt",
+            "parentId": null,
+            "children": [
+              "entity/mainz-gladius-hilt/guard",
+              "entity/mainz-gladius-hilt/grip",
+              "entity/mainz-gladius-hilt/collar-upper",
+              "entity/mainz-gladius-hilt/collar-lower",
+              "entity/mainz-gladius-hilt/rib-01",
+              "entity/mainz-gladius-hilt/rib-02",
+              "entity/mainz-gladius-hilt/rib-03",
+              "entity/mainz-gladius-hilt/rib-04",
+              "entity/mainz-gladius-hilt/pommel",
+              "entity/mainz-gladius-hilt/peen"
+            ],
+            "visible": false,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                -1.5707963267948966,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {},
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "boundaries": [],
+                "constraints": [],
+                "designFrame": {
+                  "internalLoftAxes": {
+                    "forward": "-Y",
+                    "right": "+X",
+                    "up": "+Z"
+                  },
+                  "name": "right-up-forward",
+                  "worldAxes": {
+                    "forward": "+Z",
+                    "right": "+X",
+                    "up": "+Y"
+                  }
+                },
+                "kind": "hilt",
+                "source": "Design a hilt called Mainz Gladius Hilt with id entity/mainz-gladius-hilt using the right-up-forward design frame.\nCreate an ellipsoid called Walnut Guard with id entity/mainz-gladius-hilt/guard, with width 9 centimetres, height 2.4 centimetres, and depth 3.6 centimetres, centred at [0 centimetres right, 11.6 centimetres up, 0 centimetres forward], using material material/gladius-walnut.\nCreate a tapered cylinder called Grip Core with id entity/mainz-gladius-hilt/grip, with bottom radius 1.3 centimetres, top radius 1.45 centimetres, and height 8.8 centimetres, centred at [0 centimetres right, 6 centimetres up, 0 centimetres forward], aligned along the up axis, using material material/gladius-bone.\nCreate a cylinder called Upper Bronze Collar with id entity/mainz-gladius-hilt/collar-upper, with radius 1.65 centimetres and height 5 millimetres, centred at [0 centimetres right, 10.4 centimetres up, 0 centimetres forward], aligned along the up axis, using material material/gladius-bronze.\nCreate a cylinder called Lower Bronze Collar with id entity/mainz-gladius-hilt/collar-lower, with radius 1.55 centimetres and height 5 millimetres, centred at [0 centimetres right, 1.6 centimetres up, 0 centimetres forward], aligned along the up axis, using material material/gladius-bronze.\nCreate a cylinder called Grip Rib One with id entity/mainz-gladius-hilt/rib-01, with radius 1.55 centimetres and height 4 millimetres, centred at [0 centimetres right, 8.9 centimetres up, 0 centimetres forward], aligned along the up axis, using material material/gladius-walnut.\nCreate a cylinder called Grip Rib Two with id entity/mainz-gladius-hilt/rib-02, with radius 1.5 centimetres and height 4 millimetres, centred at [0 centimetres right, 7.2 centimetres up, 0 centimetres forward], aligned along the up axis, using material material/gladius-walnut.\nCreate a cylinder called Grip Rib Three with id entity/mainz-gladius-hilt/rib-03, with radius 1.48 centimetres and height 4 millimetres, centred at [0 centimetres right, 5.5 centimetres up, 0 centimetres forward], aligned along the up axis, using material material/gladius-walnut.\nCreate a cylinder called Grip Rib Four with id entity/mainz-gladius-hilt/rib-04, with radius 1.48 centimetres and height 4 millimetres, centred at [0 centimetres right, 3.8 centimetres up, 0 centimetres forward], aligned along the up axis, using material material/gladius-walnut.\nCreate an ellipsoid called Walnut Pommel with id entity/mainz-gladius-hilt/pommel, with width 5.6 centimetres, height 4.4 centimetres, and depth 4.2 centimetres, centred at [0 centimetres right, -0.8 centimetres up, 0 centimetres forward], using material material/gladius-walnut.\nCreate a cylinder called Bronze Peen with id entity/mainz-gladius-hilt/peen, with radius 7 millimetres and height 8 millimetres, centred at [0 centimetres right, -3.2 centimetres up, 0 centimetres forward], aligned along the up axis, using material material/gladius-bronze.\nPreview these changes",
+                "surfaceCurves": [],
+                "surfaceDeformations": [],
+                "surfaceRegions": [],
+                "variables": {},
+                "version": 1
+              }
+            }
+          },
+          "entity/mainz-gladius-hilt/collar-lower": {
+            "id": "entity/mainz-gladius-hilt/collar-lower",
+            "kind": "mesh",
+            "name": "Lower Bronze Collar",
+            "parentId": "entity/mainz-gladius-hilt",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                3.552713678800501e-18,
+                0.016
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.015500000000000002,
+                0.005,
+                0.015500000000000002
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/mainz-gladius-hilt/cylinder-unit",
+                "materialId": "material/gladius-bronze"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "dimensions": {
+                  "height": 0.005,
+                  "radius": 0.015500000000000002
+                },
+                "primitive": "cylinder"
+              }
+            }
+          },
+          "entity/mainz-gladius-hilt/collar-upper": {
+            "id": "entity/mainz-gladius-hilt/collar-upper",
+            "kind": "mesh",
+            "name": "Upper Bronze Collar",
+            "parentId": "entity/mainz-gladius-hilt",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                2.3092638912203258e-17,
+                0.10400000000000001
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.0165,
+                0.005,
+                0.0165
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/mainz-gladius-hilt/cylinder-unit",
+                "materialId": "material/gladius-bronze"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "dimensions": {
+                  "height": 0.005,
+                  "radius": 0.0165
+                },
+                "primitive": "cylinder"
+              }
+            }
+          },
+          "entity/mainz-gladius-hilt/grip": {
+            "id": "entity/mainz-gladius-hilt/grip",
+            "kind": "mesh",
+            "name": "Grip Core",
+            "parentId": "entity/mainz-gladius-hilt",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                1.3322676295501878e-17,
+                0.06
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/mainz-gladius-hilt/grip-core",
+                "materialId": "material/gladius-bone"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "dimensions": {
+                  "height": 0.08800000000000001,
+                  "radiusBottom": 0.013000000000000001,
+                  "radiusTop": 0.014499999999999999
+                },
+                "primitive": "taperedCylinder"
+              }
+            }
+          },
+          "entity/mainz-gladius-hilt/guard": {
+            "id": "entity/mainz-gladius-hilt/guard",
+            "kind": "mesh",
+            "name": "Walnut Guard",
+            "parentId": "entity/mainz-gladius-hilt",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                2.575717417130363e-17,
+                0.11599999999999999
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.09,
+                0.024,
+                0.036000000000000004
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/mainz-gladius-hilt/sphere-unit",
+                "materialId": "material/gladius-walnut"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "dimensions": {
+                  "depth": 0.036000000000000004,
+                  "height": 0.024,
+                  "width": 0.09
+                },
+                "geometryKind": "sphere",
+                "primitive": "ellipsoid"
+              }
+            }
+          },
+          "entity/mainz-gladius-hilt/peen": {
+            "id": "entity/mainz-gladius-hilt/peen",
+            "kind": "mesh",
+            "name": "Bronze Peen",
+            "parentId": "entity/mainz-gladius-hilt",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -7.105427357601002e-18,
+                -0.032
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.007,
+                0.008,
+                0.007
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/mainz-gladius-hilt/cylinder-unit",
+                "materialId": "material/gladius-bronze"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "dimensions": {
+                  "height": 0.008,
+                  "radius": 0.007
+                },
+                "primitive": "cylinder"
+              }
+            }
+          },
+          "entity/mainz-gladius-hilt/pommel": {
+            "id": "entity/mainz-gladius-hilt/pommel",
+            "kind": "mesh",
+            "name": "Walnut Pommel",
+            "parentId": "entity/mainz-gladius-hilt",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -1.7763568394002505e-18,
+                -0.008
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.055999999999999994,
+                0.044000000000000004,
+                0.042
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/mainz-gladius-hilt/sphere-unit",
+                "materialId": "material/gladius-walnut"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "dimensions": {
+                  "depth": 0.042,
+                  "height": 0.044000000000000004,
+                  "width": 0.055999999999999994
+                },
+                "geometryKind": "sphere",
+                "primitive": "ellipsoid"
+              }
+            }
+          },
+          "entity/mainz-gladius-hilt/rib-01": {
+            "id": "entity/mainz-gladius-hilt/rib-01",
+            "kind": "mesh",
+            "name": "Grip Rib One",
+            "parentId": "entity/mainz-gladius-hilt",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                1.976196983832779e-17,
+                0.08900000000000001
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.015500000000000002,
+                0.004,
+                0.015500000000000002
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/mainz-gladius-hilt/cylinder-unit",
+                "materialId": "material/gladius-walnut"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "dimensions": {
+                  "height": 0.004,
+                  "radius": 0.015500000000000002
+                },
+                "primitive": "cylinder"
+              }
+            }
+          },
+          "entity/mainz-gladius-hilt/rib-02": {
+            "id": "entity/mainz-gladius-hilt/rib-02",
+            "kind": "mesh",
+            "name": "Grip Rib Two",
+            "parentId": "entity/mainz-gladius-hilt",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                1.5987211554602256e-17,
+                0.07200000000000001
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.015,
+                0.004,
+                0.015
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/mainz-gladius-hilt/cylinder-unit",
+                "materialId": "material/gladius-walnut"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "dimensions": {
+                  "height": 0.004,
+                  "radius": 0.015
+                },
+                "primitive": "cylinder"
+              }
+            }
+          },
+          "entity/mainz-gladius-hilt/rib-03": {
+            "id": "entity/mainz-gladius-hilt/rib-03",
+            "kind": "mesh",
+            "name": "Grip Rib Three",
+            "parentId": "entity/mainz-gladius-hilt",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                1.2212453270876722e-17,
+                0.055
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.0148,
+                0.004,
+                0.0148
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/mainz-gladius-hilt/cylinder-unit",
+                "materialId": "material/gladius-walnut"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "dimensions": {
+                  "height": 0.004,
+                  "radius": 0.0148
+                },
+                "primitive": "cylinder"
+              }
+            }
+          },
+          "entity/mainz-gladius-hilt/rib-04": {
+            "id": "entity/mainz-gladius-hilt/rib-04",
+            "kind": "mesh",
+            "name": "Grip Rib Four",
+            "parentId": "entity/mainz-gladius-hilt",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                8.43769498715119e-18,
+                0.038
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.0148,
+                0.004,
+                0.0148
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/mainz-gladius-hilt/cylinder-unit",
+                "materialId": "material/gladius-walnut"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "dimensions": {
+                  "height": 0.004,
+                  "radius": 0.0148
+                },
+                "primitive": "cylinder"
+              }
+            }
+          },
+          "entity/mainz-gladius-lighting": {
+            "id": "entity/mainz-gladius-lighting",
+            "kind": "group",
+            "name": "product lighting rig",
+            "parentId": null,
+            "children": [
+              "entity/mainz-gladius-lighting/ambient",
+              "entity/mainz-gladius-lighting/key",
+              "entity/mainz-gladius-lighting/fill",
+              "entity/mainz-gladius-lighting/rim",
+              "entity/mainz-gladius-lighting/key-softbox",
+              "entity/mainz-gladius-lighting/rim-strip"
+            ],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {},
+            "tags": [
+              "lighting",
+              "lighting-rig"
+            ],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/mainz-gladius-lighting/ambient": {
+            "id": "entity/mainz-gladius-lighting/ambient",
+            "kind": "ambientLight",
+            "name": "Visibility fill",
+            "parentId": "entity/mainz-gladius-lighting",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0.13,
+                -0.245
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "light": {
+                "castShadow": false,
+                "color": [
+                  0.42,
+                  0.48,
+                  0.6
+                ],
+                "intensity": 0.18039999999999998
+              }
+            },
+            "tags": [
+              "lighting",
+              "rig-product"
+            ],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/mainz-gladius-lighting/fill": {
+            "id": "entity/mainz-gladius-lighting/fill",
+            "kind": "pointLight",
+            "name": "Fill light",
+            "parentId": "entity/mainz-gladius-lighting",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                -2.6,
+                2.08,
+                1.0550000000000002
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "light": {
+                "castShadow": false,
+                "color": [
+                  0.48,
+                  0.68,
+                  1
+                ],
+                "decay": 2,
+                "distance": 18.2,
+                "intensity": 27.88
+              }
+            },
+            "tags": [
+              "lighting",
+              "rig-product"
+            ],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/mainz-gladius-lighting/key": {
+            "id": "entity/mainz-gladius-lighting/key",
+            "kind": "pointLight",
+            "name": "Key light",
+            "parentId": "entity/mainz-gladius-lighting",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                2.6,
+                3.38,
+                3.005
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "light": {
+                "castShadow": true,
+                "color": [
+                  1,
+                  0.93,
+                  0.84
+                ],
+                "decay": 2,
+                "distance": 19.5,
+                "intensity": 53.3,
+                "shadowMapSize": 2048
+              }
+            },
+            "tags": [
+              "lighting",
+              "rig-product"
+            ],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/mainz-gladius-lighting/key-softbox": {
+            "id": "entity/mainz-gladius-lighting/key-softbox",
+            "kind": "areaLight",
+            "name": "Key softbox",
+            "parentId": "entity/mainz-gladius-lighting",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                2.9250000000000003,
+                3.705,
+                2.355
+              ],
+              "rotation": [
+                -0.9420000403794637,
+                0.584551498324019,
+                0.6490839329406919
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "light": {
+                "castShadow": false,
+                "color": [
+                  1,
+                  0.94,
+                  0.86
+                ],
+                "height": 2.08,
+                "intensity": 6.56,
+                "width": 2.9250000000000003
+              }
+            },
+            "tags": [
+              "lighting",
+              "rig-product"
+            ],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/mainz-gladius-lighting/rim": {
+            "id": "entity/mainz-gladius-lighting/rim",
+            "kind": "pointLight",
+            "name": "Rim light",
+            "parentId": "entity/mainz-gladius-lighting",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0.65,
+                2.73,
+                -3.495
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "light": {
+                "castShadow": false,
+                "color": [
+                  0.65,
+                  0.82,
+                  1
+                ],
+                "decay": 2,
+                "distance": 16.900000000000002,
+                "intensity": 31.159999999999997
+              }
+            },
+            "tags": [
+              "lighting",
+              "rig-product"
+            ],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/mainz-gladius-lighting/rim-strip": {
+            "id": "entity/mainz-gladius-lighting/rim-strip",
+            "kind": "areaLight",
+            "name": "Rim strip",
+            "parentId": "entity/mainz-gladius-lighting",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                -2.275,
+                2.08,
+                -3.1700000000000004
+              ],
+              "rotation": [
+                -2.5535900500422257,
+                -0.5743692571486818,
+                -2.7940876843356244
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "light": {
+                "castShadow": false,
+                "color": [
+                  0.55,
+                  0.72,
+                  1
+                ],
+                "height": 3.12,
+                "intensity": 3.28,
+                "width": 0.78
+              }
+            },
+            "tags": [
+              "lighting",
+              "rig-product"
+            ],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/mainz-gladius-planar-hilt": {
+            "id": "entity/mainz-gladius-planar-hilt",
+            "kind": "group",
+            "name": "Planar Mainz Gladius Hilt",
+            "parentId": null,
+            "children": [
+              "entity/mainz-gladius-planar-hilt/guard",
+              "entity/mainz-gladius-planar-hilt/grip",
+              "entity/mainz-gladius-planar-hilt/collar-upper",
+              "entity/mainz-gladius-planar-hilt/collar-lower",
+              "entity/mainz-gladius-planar-hilt/pommel",
+              "entity/mainz-gladius-planar-hilt/peen"
+            ],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                -1.5707963267948966,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {},
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "boundaries": [],
+                "constraints": [],
+                "designFrame": {
+                  "internalLoftAxes": {
+                    "forward": "-Y",
+                    "right": "+X",
+                    "up": "+Z"
+                  },
+                  "name": "right-up-forward",
+                  "worldAxes": {
+                    "forward": "+Z",
+                    "right": "+X",
+                    "up": "+Y"
+                  }
+                },
+                "kind": "hilt",
+                "source": "Design a hilt called Planar Mainz Gladius Hilt with id entity/mainz-gladius-planar-hilt using the right-up-forward design frame.\nCreate a symmetric smooth profile called guard outline through [0 centimetres right, 0 centimetres up], [4.5 centimetres right, 0.7 centimetres down], [4.2 centimetres right, 1.7 centimetres down], [2.8 centimetres right, 2.3 centimetres down], [0 centimetres right, 2.4 centimetres down], mirrored across the up centreline.\nExtrude profile guard outline by 3.6 centimetres as a solid called Oval Walnut Guard with id entity/mainz-gladius-planar-hilt/guard, centred at [0 centimetres right, 13 centimetres up, 0 centimetres forward], using material material/gladius-walnut.\nCreate a symmetric profile called ribbed grip outline through [0 centimetres right, 2 centimetres down], [1.45 centimetres right, 2.2 centimetres down], [1.6 centimetres right, 2.7 centimetres down], [1.38 centimetres right, 3.2 centimetres down], [1.52 centimetres right, 4 centimetres down], [1.34 centimetres right, 4.5 centimetres down], [1.48 centimetres right, 5.7 centimetres down], [1.32 centimetres right, 6.2 centimetres down], [1.46 centimetres right, 7.4 centimetres down], [1.3 centimetres right, 7.9 centimetres down], [1.44 centimetres right, 9.1 centimetres down], [1.26 centimetres right, 9.7 centimetres down], [1.35 centimetres right, 10.6 centimetres down], [0 centimetres right, 10.9 centimetres down], mirrored across the up centreline.\nExtrude profile ribbed grip outline by 2.8 centimetres as a solid called Ribbed Bone Grip with id entity/mainz-gladius-planar-hilt/grip, centred at [0 centimetres right, 13 centimetres up, 0 centimetres forward], using material material/gladius-bone.\nCreate a rectangular profile called upper collar outline with width 3.3 centimetres and height 5 millimetres.\nExtrude profile upper collar outline by 3.2 centimetres as a solid called Upper Bronze Collar with id entity/mainz-gladius-planar-hilt/collar-upper, centred at [0 centimetres right, 13 centimetres up, 2.2 centimetres backward], using material material/gladius-bronze.\nCreate a rectangular profile called lower collar outline with width 3.1 centimetres and height 5 millimetres.\nExtrude profile lower collar outline by 3.1 centimetres as a solid called Lower Bronze Collar with id entity/mainz-gladius-planar-hilt/collar-lower, centred at [0 centimetres right, 13 centimetres up, 10.6 centimetres backward], using material material/gladius-bronze.\nCreate a symmetric smooth profile called pommel outline through [0 centimetres right, 10.5 centimetres down], [2.2 centimetres right, 11 centimetres down], [2.85 centimetres right, 12.3 centimetres down], [2.7 centimetres right, 13.7 centimetres down], [1.7 centimetres right, 14.8 centimetres down], [0 centimetres right, 15.2 centimetres down], mirrored across the up centreline.\nExtrude profile pommel outline by 4.2 centimetres as a solid called Walnut Pommel with id entity/mainz-gladius-planar-hilt/pommel, centred at [0 centimetres right, 13 centimetres up, 0 centimetres forward], using material material/gladius-walnut.\nCreate a symmetric smooth profile called peen outline through [0 centimetres right, 15 centimetres down], [0.75 centimetres right, 15.3 centimetres down], [0.65 centimetres right, 15.8 centimetres down], [0 centimetres right, 16 centimetres down], mirrored across the up centreline.\nExtrude profile peen outline by 1.4 centimetres as a solid called Bronze Peen with id entity/mainz-gladius-planar-hilt/peen, centred at [0 centimetres right, 13 centimetres up, 0 centimetres forward], using material material/gladius-bronze.\nPreview these changes",
+                "surfaceCurves": [],
+                "surfaceDeformations": [],
+                "surfaceRegions": [],
+                "variables": {},
+                "version": 1
+              }
+            }
+          },
+          "entity/mainz-gladius-planar-hilt/collar-lower": {
+            "id": "entity/mainz-gladius-planar-hilt/collar-lower",
+            "kind": "mesh",
+            "name": "Lower Bronze Collar",
+            "parentId": "entity/mainz-gladius-planar-hilt",
+            "children": [],
+            "visible": false,
+            "transform": {
+              "position": [
+                0,
+                0.106,
+                0.1145
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/planar-mainz-gladius-hilt/lower-bronze-collar",
+                "materialId": "material/gladius-bronze"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "extrude"
+              }
+            }
+          },
+          "entity/mainz-gladius-planar-hilt/collar-upper": {
+            "id": "entity/mainz-gladius-planar-hilt/collar-upper",
+            "kind": "mesh",
+            "name": "Upper Bronze Collar",
+            "parentId": "entity/mainz-gladius-planar-hilt",
+            "children": [],
+            "visible": false,
+            "transform": {
+              "position": [
+                0,
+                0.022000000000000002,
+                0.114
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/planar-mainz-gladius-hilt/upper-bronze-collar",
+                "materialId": "material/gladius-bronze"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "extrude"
+              }
+            }
+          },
+          "entity/mainz-gladius-planar-hilt/grip": {
+            "id": "entity/mainz-gladius-planar-hilt/grip",
+            "kind": "mesh",
+            "name": "Ribbed Bone Grip",
+            "parentId": "entity/mainz-gladius-planar-hilt",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0.116
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/planar-mainz-gladius-hilt/ribbed-bone-grip",
+                "materialId": "material/gladius-bone"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "extrude"
+              }
+            }
+          },
+          "entity/mainz-gladius-planar-hilt/guard": {
+            "id": "entity/mainz-gladius-planar-hilt/guard",
+            "kind": "mesh",
+            "name": "Oval Walnut Guard",
+            "parentId": "entity/mainz-gladius-planar-hilt",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0.112
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/planar-mainz-gladius-hilt/oval-walnut-guard",
+                "materialId": "material/gladius-walnut"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "extrude"
+              }
+            }
+          },
+          "entity/mainz-gladius-planar-hilt/peen": {
+            "id": "entity/mainz-gladius-planar-hilt/peen",
+            "kind": "mesh",
+            "name": "Bronze Peen",
+            "parentId": "entity/mainz-gladius-planar-hilt",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0.123
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/planar-mainz-gladius-hilt/bronze-peen",
+                "materialId": "material/gladius-bronze"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "extrude"
+              }
+            }
+          },
+          "entity/mainz-gladius-planar-hilt/pommel": {
+            "id": "entity/mainz-gladius-planar-hilt/pommel",
+            "kind": "mesh",
+            "name": "Walnut Pommel",
+            "parentId": "entity/mainz-gladius-planar-hilt",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0.109
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/planar-mainz-gladius-hilt/walnut-pommel",
+                "materialId": "material/gladius-walnut"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "extrude"
+              }
+            }
+          },
+          "entity/mainz-gladius/blade": {
+            "id": "entity/mainz-gladius/blade",
+            "kind": "mesh",
+            "name": "Waisted Blade",
+            "parentId": "entity/mainz-gladius",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0.1275
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/mainz-gladius/waisted-blade",
+                "materialId": "material/gladius-steel"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "extrude"
+              }
+            }
+          }
+        },
+        "rootCollectionIds": [],
+        "collections": {},
+        "settings": {
+          "background": {
+            "mode": "color",
+            "color": [
+              0.035,
+              0.045,
+              0.06
+            ],
+            "colorSpace": "linear-srgb"
+          },
+          "environment": null,
+          "fog": null,
+          "activeCameraId": null,
+          "timeline": {
+            "frameStart": 1,
+            "frameEnd": 250,
+            "currentFrame": 1,
+            "framesPerSecond": 24
+          },
+          "rtx": {
+            "ambientOcclusion": true,
+            "aoRadius": 0.8,
+            "aoSampleCount": 2,
+            "aoStrength": 0.22,
+            "directionalAngularRadius": 0.0065,
+            "directionalSampleCount": 1,
+            "enabled": false,
+            "lighting": true,
+            "maxDistance": 10000,
+            "rayBias": 0.002,
+            "shadowStrength": 0.9,
+            "shadows": true
+          }
+        },
+        "scriptIds": [],
+        "metadata": {}
+      }
+    },
+    "resources": {
+      "geometries": {
+        "geometry/mainz-gladius/display-slab": {
+          "id": "geometry/mainz-gladius/display-slab",
+          "kind": "geometry",
+          "metadata": {},
+          "name": "Roman Sword Display Slab",
+          "recipe": {
+            "depth": 0.78,
+            "height": 0.06,
+            "kind": "box",
+            "width": 0.24
+          }
+        },
+        "geometry/plainform-design/mainz-gladius-blade-details/left-fuller": {
+          "id": "geometry/plainform-design/mainz-gladius-blade-details/left-fuller",
+          "kind": "geometry",
+          "metadata": {},
+          "name": "left-fuller",
+          "recipe": {
+            "bevelEnabled": true,
+            "bevelOffset": 0,
+            "bevelSegments": 4,
+            "bevelSize": 0.000032000000000000005,
+            "bevelThickness": 0.000032000000000000005,
+            "curveSegments": 24,
+            "depth": 0.0008,
+            "holes": [],
+            "kind": "extrude",
+            "points": [
+              [
+                -0.0105,
+                0.03
+              ],
+              [
+                -0.01,
+                0.04
+              ],
+              [
+                -0.018000000000000002,
+                0.19
+              ],
+              [
+                -0.01,
+                0.33
+              ],
+              [
+                -0.013000000000000001,
+                0.34
+              ],
+              [
+                -0.0255,
+                0.32
+              ],
+              [
+                -0.023,
+                0.19
+              ],
+              [
+                -0.0255,
+                0.04
+              ]
+            ],
+            "steps": 1
+          }
+        },
+        "geometry/plainform-design/mainz-gladius-blade-details/raised-midrib": {
+          "id": "geometry/plainform-design/mainz-gladius-blade-details/raised-midrib",
+          "kind": "geometry",
+          "metadata": {},
+          "name": "raised-midrib",
+          "recipe": {
+            "bevelEnabled": true,
+            "bevelOffset": 0,
+            "bevelSegments": 4,
+            "bevelSize": 0.00008,
+            "bevelThickness": 0.00008,
+            "curveSegments": 24,
+            "depth": 0.002,
+            "holes": [],
+            "kind": "extrude",
+            "points": [
+              [
+                0,
+                0.01
+              ],
+              [
+                0.0105,
+                0.015
+              ],
+              [
+                0.009000000000000001,
+                0.19
+              ],
+              [
+                0.0075,
+                0.34
+              ],
+              [
+                0,
+                0.515
+              ],
+              [
+                -0.0075,
+                0.34
+              ],
+              [
+                -0.009000000000000001,
+                0.19
+              ],
+              [
+                -0.0105,
+                0.015
+              ]
+            ],
+            "steps": 1
+          }
+        },
+        "geometry/plainform-design/mainz-gladius-blade-details/right-fuller": {
+          "id": "geometry/plainform-design/mainz-gladius-blade-details/right-fuller",
+          "kind": "geometry",
+          "metadata": {},
+          "name": "right-fuller",
+          "recipe": {
+            "bevelEnabled": true,
+            "bevelOffset": 0,
+            "bevelSegments": 4,
+            "bevelSize": 0.000032000000000000005,
+            "bevelThickness": 0.000032000000000000005,
+            "curveSegments": 24,
+            "depth": 0.0008,
+            "holes": [],
+            "kind": "extrude",
+            "points": [
+              [
+                0.0105,
+                0.03
+              ],
+              [
+                0.0255,
+                0.04
+              ],
+              [
+                0.023,
+                0.19
+              ],
+              [
+                0.0255,
+                0.32
+              ],
+              [
+                0.013000000000000001,
+                0.34
+              ],
+              [
+                0.01,
+                0.33
+              ],
+              [
+                0.018000000000000002,
+                0.19
+              ],
+              [
+                0.01,
+                0.04
+              ]
+            ],
+            "steps": 1
+          }
+        },
+        "geometry/plainform-design/mainz-gladius-hilt/cylinder-unit": {
+          "id": "geometry/plainform-design/mainz-gladius-hilt/cylinder-unit",
+          "kind": "geometry",
+          "metadata": {},
+          "name": "cylinder-unit",
+          "recipe": {
+            "height": 1,
+            "kind": "cylinder",
+            "radialSegments": 32,
+            "radiusBottom": 1,
+            "radiusTop": 1
+          }
+        },
+        "geometry/plainform-design/mainz-gladius-hilt/grip-core": {
+          "id": "geometry/plainform-design/mainz-gladius-hilt/grip-core",
+          "kind": "geometry",
+          "metadata": {},
+          "name": "grip-core",
+          "recipe": {
+            "height": 0.08800000000000001,
+            "kind": "cylinder",
+            "radialSegments": 32,
+            "radiusBottom": 0.013000000000000001,
+            "radiusTop": 0.014499999999999999
+          }
+        },
+        "geometry/plainform-design/mainz-gladius-hilt/sphere-unit": {
+          "id": "geometry/plainform-design/mainz-gladius-hilt/sphere-unit",
+          "kind": "geometry",
+          "metadata": {},
+          "name": "sphere-unit",
+          "recipe": {
+            "heightSegments": 24,
+            "kind": "sphere",
+            "radius": 0.5,
+            "widthSegments": 48
+          }
+        },
+        "geometry/plainform-design/mainz-gladius/waisted-blade": {
+          "id": "geometry/plainform-design/mainz-gladius/waisted-blade",
+          "kind": "geometry",
+          "metadata": {},
+          "name": "waisted-blade",
+          "recipe": {
+            "bevelEnabled": true,
+            "bevelOffset": 0,
+            "bevelSegments": 4,
+            "bevelSize": 0.0002,
+            "bevelThickness": 0.0002,
+            "curveSegments": 24,
+            "depth": 0.005,
+            "holes": [],
+            "kind": "extrude",
+            "points": [
+              [
+                0,
+                0
+              ],
+              [
+                0.034,
+                0
+              ],
+              [
+                0.032,
+                0.04
+              ],
+              [
+                0.027999999999999997,
+                0.19
+              ],
+              [
+                0.0315,
+                0.34
+              ],
+              [
+                0.03,
+                0.365
+              ],
+              [
+                0,
+                0.525
+              ],
+              [
+                -0.03,
+                0.365
+              ],
+              [
+                -0.0315,
+                0.34
+              ],
+              [
+                -0.027999999999999997,
+                0.19
+              ],
+              [
+                -0.032,
+                0.04
+              ],
+              [
+                -0.034,
+                0
+              ]
+            ],
+            "steps": 1
+          }
+        },
+        "geometry/plainform-design/planar-mainz-gladius-hilt/bronze-peen": {
+          "id": "geometry/plainform-design/planar-mainz-gladius-hilt/bronze-peen",
+          "kind": "geometry",
+          "metadata": {},
+          "name": "bronze-peen",
+          "recipe": {
+            "bevelEnabled": true,
+            "bevelOffset": 0,
+            "bevelSegments": 4,
+            "bevelSize": 0.00056,
+            "bevelThickness": 0.00056,
+            "curveSegments": 24,
+            "depth": 0.013999999999999999,
+            "holes": [],
+            "kind": "extrude",
+            "points": [
+              [
+                0,
+                -0.15
+              ],
+              [
+                0.0020742187499999997,
+                -0.15028124999999998
+              ],
+              [
+                0.00428125,
+                -0.151
+              ],
+              [
+                0.006222656249999998,
+                -0.15196874999999999
+              ],
+              [
+                0.0075,
+                -0.153
+              ],
+              [
+                0.0079765625,
+                -0.1541796875
+              ],
+              [
+                0.007875,
+                -0.1555625
+              ],
+              [
+                0.0073359375,
+                -0.15691406249999998
+              ],
+              [
+                0.006500000000000001,
+                -0.158
+              ],
+              [
+                0.00526171875,
+                -0.15880468749999999
+              ],
+              [
+                0.0035937500000000006,
+                -0.1594375
+              ],
+              [
+                0.0017539062500000011,
+                -0.1598515625
+              ],
+              [
+                0,
+                -0.16
+              ],
+              [
+                -0.0017539062500000003,
+                -0.15985156250000002
+              ],
+              [
+                -0.0035937499999999997,
+                -0.15943749999999998
+              ],
+              [
+                -0.005261718750000001,
+                -0.1588046875
+              ],
+              [
+                -0.006500000000000001,
+                -0.158
+              ],
+              [
+                -0.0073359375000000004,
+                -0.1569140625
+              ],
+              [
+                -0.007875,
+                -0.1555625
+              ],
+              [
+                -0.007976562500000001,
+                -0.15417968749999997
+              ],
+              [
+                -0.0075,
+                -0.153
+              ],
+              [
+                -0.00622265625,
+                -0.15196875
+              ],
+              [
+                -0.00428125,
+                -0.151
+              ],
+              [
+                -0.0020742187500000005,
+                -0.15028124999999998
+              ]
+            ],
+            "steps": 1
+          }
+        },
+        "geometry/plainform-design/planar-mainz-gladius-hilt/lower-bronze-collar": {
+          "id": "geometry/plainform-design/planar-mainz-gladius-hilt/lower-bronze-collar",
+          "kind": "geometry",
+          "metadata": {},
+          "name": "lower-bronze-collar",
+          "recipe": {
+            "bevelEnabled": true,
+            "bevelOffset": 0,
+            "bevelSegments": 4,
+            "bevelSize": 0.0012400000000000002,
+            "bevelThickness": 0.0012400000000000002,
+            "curveSegments": 24,
+            "depth": 0.031000000000000003,
+            "holes": [],
+            "kind": "extrude",
+            "points": [
+              [
+                -0.015500000000000002,
+                -0.0025
+              ],
+              [
+                0.015500000000000002,
+                -0.0025
+              ],
+              [
+                0.015500000000000002,
+                0.0025
+              ],
+              [
+                -0.015500000000000002,
+                0.0025
+              ]
+            ],
+            "steps": 1
+          }
+        },
+        "geometry/plainform-design/planar-mainz-gladius-hilt/oval-walnut-guard": {
+          "id": "geometry/plainform-design/planar-mainz-gladius-hilt/oval-walnut-guard",
+          "kind": "geometry",
+          "metadata": {},
+          "name": "oval-walnut-guard",
+          "recipe": {
+            "bevelEnabled": true,
+            "bevelOffset": 0,
+            "bevelSegments": 4,
+            "bevelSize": 0.00144,
+            "bevelThickness": 0.00144,
+            "curveSegments": 24,
+            "depth": 0.036000000000000004,
+            "holes": [],
+            "kind": "extrude",
+            "points": [
+              [
+                0,
+                0
+              ],
+              [
+                0.012374999999999999,
+                -0.0006953124999999999
+              ],
+              [
+                0.0255,
+                -0.0024374999999999996
+              ],
+              [
+                0.037125,
+                -0.0047109375
+              ],
+              [
+                0.045,
+                -0.006999999999999999
+              ],
+              [
+                0.0478828125,
+                -0.0093828125
+              ],
+              [
+                0.04718750000000001,
+                -0.0120625
+              ],
+              [
+                0.04464843750000001,
+                -0.0147109375
+              ],
+              [
+                0.042,
+                -0.017
+              ],
+              [
+                0.0396015625,
+                -0.018898437500000004
+              ],
+              [
+                0.036562500000000005,
+                -0.0205625
+              ],
+              [
+                0.0327421875,
+                -0.021945312499999994
+              ],
+              [
+                0.027999999999999997,
+                -0.023
+              ],
+              [
+                0.021984374999999994,
+                -0.0236484375
+              ],
+              [
+                0.014874999999999996,
+                -0.023937500000000004
+              ],
+              [
+                0.0073281250000000004,
+                -0.024007812500000003
+              ],
+              [
+                0,
+                -0.024
+              ],
+              [
+                -0.007328124999999999,
+                -0.0240078125
+              ],
+              [
+                -0.014874999999999998,
+                -0.0239375
+              ],
+              [
+                -0.021984374999999997,
+                -0.0236484375
+              ],
+              [
+                -0.027999999999999997,
+                -0.023
+              ],
+              [
+                -0.0327421875,
+                -0.021945312499999998
+              ],
+              [
+                -0.036562500000000005,
+                -0.0205625
+              ],
+              [
+                -0.0396015625,
+                -0.018898437500000007
+              ],
+              [
+                -0.042,
+                -0.017
+              ],
+              [
+                -0.044648437500000006,
+                -0.0147109375
+              ],
+              [
+                -0.04718749999999999,
+                -0.0120625
+              ],
+              [
+                -0.0478828125,
+                -0.0093828125
+              ],
+              [
+                -0.045,
+                -0.006999999999999999
+              ],
+              [
+                -0.037125000000000005,
+                -0.004710937499999999
+              ],
+              [
+                -0.0255,
+                -0.0024374999999999996
+              ],
+              [
+                -0.01237500000000001,
+                -0.0006953124999999998
+              ]
+            ],
+            "steps": 1
+          }
+        },
+        "geometry/plainform-design/planar-mainz-gladius-hilt/ribbed-bone-grip": {
+          "id": "geometry/plainform-design/planar-mainz-gladius-hilt/ribbed-bone-grip",
+          "kind": "geometry",
+          "metadata": {},
+          "name": "ribbed-bone-grip",
+          "recipe": {
+            "bevelEnabled": true,
+            "bevelOffset": 0,
+            "bevelSegments": 4,
+            "bevelSize": 0.00112,
+            "bevelThickness": 0.00112,
+            "curveSegments": 24,
+            "depth": 0.027999999999999997,
+            "holes": [],
+            "kind": "extrude",
+            "points": [
+              [
+                0,
+                -0.02
+              ],
+              [
+                0.014499999999999999,
+                -0.022000000000000002
+              ],
+              [
+                0.016,
+                -0.027000000000000003
+              ],
+              [
+                0.0138,
+                -0.032
+              ],
+              [
+                0.0152,
+                -0.04
+              ],
+              [
+                0.0134,
+                -0.045
+              ],
+              [
+                0.0148,
+                -0.057
+              ],
+              [
+                0.013200000000000002,
+                -0.062000000000000006
+              ],
+              [
+                0.0146,
+                -0.07400000000000001
+              ],
+              [
+                0.013000000000000001,
+                -0.079
+              ],
+              [
+                0.0144,
+                -0.091
+              ],
+              [
+                0.0126,
+                -0.09699999999999999
+              ],
+              [
+                0.013500000000000002,
+                -0.106
+              ],
+              [
+                0,
+                -0.109
+              ],
+              [
+                -0.013500000000000002,
+                -0.106
+              ],
+              [
+                -0.0126,
+                -0.09699999999999999
+              ],
+              [
+                -0.0144,
+                -0.091
+              ],
+              [
+                -0.013000000000000001,
+                -0.079
+              ],
+              [
+                -0.0146,
+                -0.07400000000000001
+              ],
+              [
+                -0.013200000000000002,
+                -0.062000000000000006
+              ],
+              [
+                -0.0148,
+                -0.057
+              ],
+              [
+                -0.0134,
+                -0.045
+              ],
+              [
+                -0.0152,
+                -0.04
+              ],
+              [
+                -0.0138,
+                -0.032
+              ],
+              [
+                -0.016,
+                -0.027000000000000003
+              ],
+              [
+                -0.014499999999999999,
+                -0.022000000000000002
+              ]
+            ],
+            "steps": 1
+          }
+        },
+        "geometry/plainform-design/planar-mainz-gladius-hilt/upper-bronze-collar": {
+          "id": "geometry/plainform-design/planar-mainz-gladius-hilt/upper-bronze-collar",
+          "kind": "geometry",
+          "metadata": {},
+          "name": "upper-bronze-collar",
+          "recipe": {
+            "bevelEnabled": true,
+            "bevelOffset": 0,
+            "bevelSegments": 4,
+            "bevelSize": 0.00128,
+            "bevelThickness": 0.00128,
+            "curveSegments": 24,
+            "depth": 0.032,
+            "holes": [],
+            "kind": "extrude",
+            "points": [
+              [
+                -0.0165,
+                -0.0025
+              ],
+              [
+                0.0165,
+                -0.0025
+              ],
+              [
+                0.0165,
+                0.0025
+              ],
+              [
+                -0.0165,
+                0.0025
+              ]
+            ],
+            "steps": 1
+          }
+        },
+        "geometry/plainform-design/planar-mainz-gladius-hilt/walnut-pommel": {
+          "id": "geometry/plainform-design/planar-mainz-gladius-hilt/walnut-pommel",
+          "kind": "geometry",
+          "metadata": {},
+          "name": "walnut-pommel",
+          "recipe": {
+            "bevelEnabled": true,
+            "bevelOffset": 0,
+            "bevelSegments": 4,
+            "bevelSize": 0.00168,
+            "bevelThickness": 0.00168,
+            "curveSegments": 24,
+            "depth": 0.042,
+            "holes": [],
+            "kind": "extrude",
+            "points": [
+              [
+                0,
+                -0.105
+              ],
+              [
+                0.005863281250000001,
+                -0.10535937499999999
+              ],
+              [
+                0.011968750000000002,
+                -0.10637499999999998
+              ],
+              [
+                0.017589843750000004,
+                -0.10795312499999998
+              ],
+              [
+                0.022000000000000002,
+                -0.11
+              ],
+              [
+                0.02490234375,
+                -0.11266406250000001
+              ],
+              [
+                0.02671875,
+                -0.1159375
+              ],
+              [
+                0.02780078125,
+                -0.1194921875
+              ],
+              [
+                0.0285,
+                -0.12300000000000001
+              ],
+              [
+                0.028886718750000002,
+                -0.1265
+              ],
+              [
+                0.028781250000000005,
+                -0.13012499999999996
+              ],
+              [
+                0.028160156250000002,
+                -0.13368749999999996
+              ],
+              [
+                0.027000000000000003,
+                -0.13699999999999998
+              ],
+              [
+                0.025261718750000002,
+                -0.14012499999999997
+              ],
+              [
+                0.022968750000000003,
+                -0.143125
+              ],
+              [
+                0.020191406250000002,
+                -0.14581249999999998
+              ],
+              [
+                0.017,
+                -0.14800000000000002
+              ],
+              [
+                0.0132421875,
+                -0.14967968750000002
+              ],
+              [
+                0.008937500000000001,
+                -0.1509375
+              ],
+              [
+                0.004414062499999999,
+                -0.1517265625
+              ],
+              [
+                0,
+                -0.152
+              ],
+              [
+                -0.0044140625000000005,
+                -0.15172656250000002
+              ],
+              [
+                -0.008937500000000001,
+                -0.1509375
+              ],
+              [
+                -0.0132421875,
+                -0.14967968750000002
+              ],
+              [
+                -0.017,
+                -0.14800000000000002
+              ],
+              [
+                -0.020191406250000002,
+                -0.1458125
+              ],
+              [
+                -0.02296875,
+                -0.143125
+              ],
+              [
+                -0.025261718750000002,
+                -0.140125
+              ],
+              [
+                -0.027000000000000003,
+                -0.13699999999999998
+              ],
+              [
+                -0.028160156250000005,
+                -0.13368750000000001
+              ],
+              [
+                -0.02878125,
+                -0.130125
+              ],
+              [
+                -0.02888671875000001,
+                -0.1265
+              ],
+              [
+                -0.0285,
+                -0.12300000000000001
+              ],
+              [
+                -0.02780078125,
+                -0.1194921875
+              ],
+              [
+                -0.02671875,
+                -0.11593750000000001
+              ],
+              [
+                -0.024902343749999997,
+                -0.1126640625
+              ],
+              [
+                -0.022000000000000002,
+                -0.11
+              ],
+              [
+                -0.01758984375,
+                -0.107953125
+              ],
+              [
+                -0.011968750000000002,
+                -0.10637499999999998
+              ],
+              [
+                -0.00586328125,
+                -0.10535937499999998
+              ]
+            ],
+            "steps": 1
+          }
+        }
+      },
+      "materials": {
+        "material/gladius-bone": {
+          "id": "material/gladius-bone",
+          "kind": "material",
+          "metadata": {
+            "studioLook": "organicSkin"
+          },
+          "name": "Organic Skin",
+          "recipe": {
+            "clearcoat": 0.12,
+            "clearcoatRoughness": 0.42,
+            "color": "#d8c39a",
+            "kind": "physical",
+            "metalness": 0,
+            "roughness": 0.48,
+            "sheen": 0.08,
+            "sheenRoughness": 0.6
+          }
+        },
+        "material/gladius-bronze": {
+          "id": "material/gladius-bronze",
+          "kind": "material",
+          "metadata": {
+            "studioLook": "brushedMetal"
+          },
+          "name": "Brushed Metal",
+          "recipe": {
+            "anisotropy": 0.48,
+            "color": "#a9682c",
+            "kind": "physical",
+            "metalness": 1,
+            "roughness": 0.26
+          }
+        },
+        "material/gladius-dark-steel": {
+          "id": "material/gladius-dark-steel",
+          "kind": "material",
+          "metadata": {
+            "studioLook": "brushedMetal"
+          },
+          "name": "Brushed Metal",
+          "recipe": {
+            "anisotropy": 0.42,
+            "color": "#39434b",
+            "kind": "physical",
+            "metalness": 1,
+            "roughness": 0.32
+          }
+        },
+        "material/gladius-steel": {
+          "id": "material/gladius-steel",
+          "kind": "material",
+          "metadata": {
+            "studioLook": "brushedMetal"
+          },
+          "name": "Brushed Metal",
+          "recipe": {
+            "anisotropy": 0.5,
+            "color": "#d2dbe2",
+            "kind": "physical",
+            "metalness": 0.82,
+            "roughness": 0.3
+          }
+        },
+        "material/gladius-stone": {
+          "id": "material/gladius-stone",
+          "kind": "material",
+          "metadata": {
+            "studioLook": "rubber"
+          },
+          "name": "Rubber",
+          "recipe": {
+            "clearcoat": 0.04,
+            "clearcoatRoughness": 0.7,
+            "color": "#2c3237",
+            "kind": "physical",
+            "metalness": 0,
+            "roughness": 0.78
+          }
+        },
+        "material/gladius-walnut": {
+          "id": "material/gladius-walnut",
+          "kind": "material",
+          "metadata": {
+            "studioLook": "organicSkin"
+          },
+          "name": "Organic Skin",
+          "recipe": {
+            "clearcoat": 0.16,
+            "clearcoatRoughness": 0.36,
+            "color": "#4b2412",
+            "kind": "physical",
+            "metalness": 0,
+            "roughness": 0.5,
+            "sheen": 0.08,
+            "sheenRoughness": 0.6
+          }
+        }
+      },
+      "textures": {},
+      "graphs": {},
+      "animations": {},
+      "prefabs": {},
+      "audio": {},
+      "assets": {}
+    },
+    "scripts": {},
+    "scriptTrustPolicy": "agent-safe",
+    "settings": {
+      "lengthUnit": "metre",
+      "angleUnit": "radian",
+      "timeUnit": "second",
+      "workingColorSpace": "linear-srgb"
+    },
+    "exportSettings": {},
+    "metadata": {
+      "createdAt": "2026-09-01T21:41:26.000Z",
+      "updatedAt": "2026-09-01T21:51:37.000Z",
+      "description": "Empty Studio scene. No starter composition is included."
+    }
+  }
+}
