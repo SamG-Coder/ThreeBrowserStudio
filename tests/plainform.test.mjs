@@ -1572,6 +1572,57 @@ test('Shader Plainform accepts the same natural preview request as object Plainf
   assert.match(compiled.interpretation.at(-1), /dry-run preview/u);
 });
 
+test('Shader Plainform edits a cloned candidate by semantic roles and emits one validated canonical graph patch', () => {
+  const base = projectFixture();
+  const created = new PlainformCompiler().compile([
+    'Create a shader graph called Rugged Bark with id graph/rugged-bark.',
+    'Set base color to #50351f.',
+  ].join('\n'), { project: base }).operations[0].resource;
+  base.resources.graphs[created.id] = created;
+  const edited = new PlainformCompiler().compile([
+    'Edit shader graph Rugged Bark.',
+    'Apply preset Rugged Bark.',
+    'Set Ridges scale to 10.',
+    'Expose Ridges scale as Ridge Width.',
+    'Preview these changes.',
+  ].join('\n'), { project: base });
+  assert.equal(edited.operations.length, 1);
+  assert.equal(edited.operations[0].op, 'resource.patch');
+  assert.ok(operationSchema.safeParse(edited.operations[0]).success);
+  const patch = edited.operations[0].patch;
+  const ridges = patch.graph.nodes.find(node => node.id === 'plainform-bark-ridges');
+  assert.equal(ridges.inputs.scale, 10);
+  assert.ok(patch.graph.edges.some(edge => edge.from.nodeId === ridges.id && edge.to.port === 'roughness'));
+  assert.ok(patch.metadata.plainform.ownedNodeIds.includes(ridges.id));
+  assert.ok(edited.shader.exposedParameters.some(item => item.name === 'Ridge Width' && item.nodeId === ridges.id));
+  assert.equal(edited.requestedPreview, true);
+  base.resources.graphs[created.id] = { ...created, graph: patch.graph, metadata: patch.metadata };
+  const natural = new PlainformCompiler().compile('In Rugged Bark, make the Ridges 20 percent narrower and expose Bark Age.', { project: base });
+  assert.ok(natural.operations[0].patch.graph.nodes.find(node => node.id === 'plainform-bark-ridges').inputs.scale > ridges.inputs.scale);
+});
+
+test('Shader Plainform candidate validation rejects socket type errors and preserves explicit user nodes', () => {
+  const base = projectFixture();
+  const created = new PlainformCompiler().compile('Create a shader graph called Guarded with id graph/guarded.', { project: base }).operations[0].resource;
+  created.graph.nodes.push({ id: 'user-detail', type: 'constant.float', params: { value: 0.5 } });
+  base.resources.graphs[created.id] = created;
+  assert.throws(
+    () => new PlainformCompiler().compile('Edit shader graph Guarded.\nRemove user-detail if unused.', { project: base }),
+    error => error.code === 'plainform_shader_ownership_conflict',
+  );
+  assert.throws(
+    () => new PlainformCompiler().compile('Edit shader graph Guarded.\nInsert a Noise Texture node with id bad-noise as Bad Noise.\nConnect Bad Noise color to Principled Surface roughness.', { project: base }),
+    error => error.code === 'plainform_shader_graph_invalid',
+  );
+  const lifecycle = new PlainformCompiler().compile([
+    'Edit shader graph Guarded.',
+    'Insert a Noise Texture node with id temporary-noise as Temporary Detail.',
+    'Replace Temporary Detail with a Noise Texture node with id replacement-noise.',
+    'Remove Temporary Detail if unused.',
+  ].join('\n'), { project: base });
+  assert.equal(lifecycle.operations[0].patch.graph.nodes.some(node => /temporary|replacement/u.test(node.id)), false);
+});
+
 test('Shader Plainform rejects unknown functions and incompatible colour assignments', () => {
   assert.throws(
     () => new PlainformCompiler().compile([

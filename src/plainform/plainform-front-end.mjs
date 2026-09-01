@@ -258,6 +258,75 @@ const DEFINITIONS = Object.freeze([
     fields: match => ({ name: match[1] ?? match[2], graphId: match[3] }),
   }),
   definition({
+    id: 'shader.edit.header', dialect: 'shader', domain: 'shader', kind: 'shader.editHeader', priority: 1000,
+    pattern: /^edit (?:the )?(?:shader|material) graph (.+)$/iu,
+    summary: 'Edit one existing canonical graph through a validated candidate.', inputs: ['graph'], outputs: ['graphPatch'],
+    examples: ['Edit shader graph Rugged Bark.'],
+    semanticKey: match => `shader.edit.${semanticPart(match[1])}`,
+    fields: match => ({ graph: match[1] }),
+  }),
+  definition({
+    id: 'shader.edit.insert', dialect: 'shader', domain: 'shader', kind: 'shader.insertNode',
+    pattern: /^insert (?:a |an )?(.+?) node with id ([a-z0-9][a-z0-9._/-]*) as (.+)$/iu,
+    summary: 'Insert an owned typed shader node with stable ID and semantic role.', inputs: ['type', 'id', 'role'], outputs: ['node'],
+    examples: ['Insert a Noise Texture node with id bark-ridges as Ridges.'],
+    semanticKey: match => `shader.node.${semanticPart(match[2])}.insert`,
+    fields: match => ({ type: match[1], id: match[2], role: match[3] }),
+  }),
+  definition({
+    id: 'shader.edit.connect', dialect: 'shader', domain: 'shader', kind: 'shader.connect',
+    pattern: /^connect (.+?) (\S+) to (.+?) (\S+?)(?: only,? not (\S+))?$/iu,
+    summary: 'Connect typed sockets by stable node role.', inputs: ['fromRole', 'fromPort', 'toRole', 'toPort', 'excludedPort'], outputs: ['edge'],
+    examples: ['Connect Ridges factor to Principled Surface roughness.'],
+    semanticKey: match => `shader.edge.${semanticPart(match[1])}.${semanticPart(match[3])}.${semanticPart(match[4])}`,
+    fields: match => ({ from: match[1], output: match[2], to: match[3], input: match[4], excludedInput: match[5] }),
+  }),
+  definition({
+    id: 'shader.edit.set', dialect: 'shader', domain: 'shader', kind: 'shader.setNodeInput',
+    pattern: /^set (.+?) (\S+) to (.+)$/iu,
+    summary: 'Set a typed node input literal and disconnect its prior driver.', inputs: ['role', 'input', 'value'], outputs: ['nodeInput'],
+    examples: ['Set Ridges scale to 8.'],
+    semanticKey: match => `shader.node.${semanticPart(match[1])}.${semanticPart(match[2])}`,
+    fields: match => ({ role: match[1], input: match[2], value: match[3] }),
+  }),
+  definition({
+    id: 'shader.edit.preset', dialect: 'shader', domain: 'shader', kind: 'shader.applyPreset',
+    pattern: /^apply preset (.+)$/iu,
+    summary: 'Apply a bounded catalogued material preset as owned typed nodes and edges.', inputs: ['preset'], outputs: ['nodes', 'edges', 'exposedParameters'],
+    examples: ['Apply preset Rugged Bark.'],
+    semanticKey: match => `shader.preset.${semanticPart(match[1])}`,
+    fields: match => ({ preset: match[1] }),
+  }),
+  definition({
+    id: 'shader.edit.disconnect', dialect: 'shader', domain: 'shader', kind: 'shader.disconnect',
+    pattern: /^disconnect (.+?) from (.+?) (\S+)$/iu,
+    summary: 'Disconnect one exact role-to-socket edge.', inputs: ['fromRole', 'toRole', 'toPort'], outputs: ['edgeRemoval'],
+    examples: ['Disconnect Ridges from Principled Surface roughness.'],
+    semanticKey: match => `shader.edge.${semanticPart(match[1])}.${semanticPart(match[2])}.${semanticPart(match[3])}.disconnect`,
+    fields: match => ({ from: match[1], to: match[2], input: match[3] }),
+  }),
+  definition({
+    id: 'shader.edit.expose', dialect: 'shader', domain: 'shader', kind: 'shader.exposeParameter',
+    pattern: /^expose (.+?) (\S+) as (.+)$/iu,
+    summary: 'Expose a typed node input under a stable semantic parameter name.', inputs: ['role', 'input', 'name'], outputs: ['exposedParameter'],
+    examples: ['Expose Ridges scale as Bark Age.'],
+    semanticKey: match => `shader.parameter.${semanticPart(match[3])}`, fields: match => ({ role: match[1], input: match[2], name: match[3] }),
+  }),
+  definition({
+    id: 'shader.edit.replace', dialect: 'shader', domain: 'shader', kind: 'shader.replaceNode',
+    pattern: /^replace (.+?) with (?:a |an )?(.+?) node with id ([a-z0-9][a-z0-9._/-]*)$/iu,
+    summary: 'Replace one Plainform-owned node while preserving its semantic role.', inputs: ['role', 'type', 'id'], outputs: ['node'],
+    examples: ['Replace Ridges with a Noise Texture node with id finer-ridges.'],
+    semanticKey: match => `shader.node.${semanticPart(match[1])}.replace`, fields: match => ({ role: match[1], type: match[2], id: match[3] }),
+  }),
+  definition({
+    id: 'shader.edit.removeUnused', dialect: 'shader', domain: 'shader', kind: 'shader.removeIfUnused',
+    pattern: /^remove (.+?) if unused$/iu,
+    summary: 'Remove an unconnected Plainform-owned node and fail if it is used.', inputs: ['role'], outputs: ['nodeRemoval'],
+    examples: ['Remove Temporary Detail if unused.'],
+    semanticKey: match => `shader.node.${semanticPart(match[1])}.remove`, fields: match => ({ role: match[1] }),
+  }),
+  definition({
     id: 'shader.property.set', dialect: 'shader', domain: 'shader', kind: 'shader.setProperty',
     pattern: /^(?:set|drive) (?:the )?(.+?) (?:to|with) (.+)$/iu,
     summary: 'Drive one supported shader property with a typed value or expression.',
@@ -269,7 +338,7 @@ const DEFINITIONS = Object.freeze([
 ]);
 
 function inferDialect(source) {
-  if (/^\s*create (?:a |an )?(?:shader|material) graph\b/imu.test(source)) return 'shader';
+  if (/^\s*(?:create (?:a |an )?(?:shader|material) graph|edit (?:the )?(?:shader|material) graph|in .+?,)/imu.test(source)) return 'shader';
   if (/^\s*(?:begin\s+)?design\b/iu.test(source)) return 'design';
   return 'object';
 }

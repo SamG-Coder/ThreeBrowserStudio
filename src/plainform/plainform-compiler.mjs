@@ -362,7 +362,7 @@ export class PlainformCompiler {
   compile(source, { project }) {
     if (typeof source !== 'string' || source.trim().length === 0) fail('plainform_empty', 'Plainform source is empty.');
     const program = this.parse(source);
-    if (program.dialect === 'shader') return new ShaderPlainformCompiler().compile(source);
+    if (program.dialect === 'shader') return new ShaderPlainformCompiler().compile(source, { project });
     if (program.dialect === 'design') return new DesignPlainformCompiler().compile(source, { project });
     if (!project) fail('plainform_project_required', 'Plainform compilation requires the canonical project document.');
     const statements = source.split(/\r?\n/u).map(cleanStatement).filter(Boolean);

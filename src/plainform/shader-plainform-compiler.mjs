@@ -1,6 +1,7 @@
 import { GRAPH_CATALOGS } from '../graphs/catalogs.mjs';
 import { validateGraph } from '../graphs/index.mjs';
 import { interpretShaderFeel } from './shader-feel-vocabulary.mjs';
+import { compileShaderPlainformEdit } from './shader-plainform-editor.mjs';
 
 const MAX_NODES = 128;
 
@@ -280,14 +281,17 @@ const SOCKETS = Object.freeze({
 
 export class ShaderPlainformCompiler {
   static canCompile(source) {
-    return /^create (?:a |an )?(?:shader|material) graph\b/imu.test(source);
+    return /^(?:create (?:a |an )?(?:shader|material) graph|edit (?:the )?(?:shader|material) graph|in .+?,?$)\b/imu.test(source);
   }
 
   constructor(options = {}) {
     this.catalog = options.catalog ?? GRAPH_CATALOGS.shader;
   }
 
-  compile(source) {
+  compile(source, { project } = {}) {
+    if (/^\s*(?:edit (?:the )?(?:shader|material) graph|in .+?,?)/iu.test(source)) {
+      return compileShaderPlainformEdit(source, { project, catalog: this.catalog });
+    }
     const statements = splitStatements(source);
     const header = statements.shift()?.match(/^create (?:a |an )?(?:shader|material) graph called (?:(?:"([^"]+)")|(.+?))(?: with id ([a-z0-9][a-z0-9._/-]*))?$/iu);
     if (!header) fail('plainform_shader_header', 'Begin with “Create a shader graph called …” and an optional stable ID.');
@@ -357,6 +361,9 @@ export class ShaderPlainformCompiler {
         plainform: {
           descriptors: feel.descriptors,
           openDescriptors: feel.openDescriptors,
+          nodeRoles: { 'principled-surface': 'principled-surface' },
+          ownedNodeIds: builder.graph.nodes.map(node => node.id).sort(),
+          exposedParameters: [],
           source,
         },
       },
