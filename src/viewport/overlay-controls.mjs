@@ -418,10 +418,11 @@ export class WrappedLabel extends Label {
 }
 
 export class Button extends Control {
-  constructor({ text = '', onClick, ...rest } = {}) {
+  constructor({ text = '', onClick, centered = false, ...rest } = {}) {
     super({ backColor: rest.backColor ?? 'rgba(22, 34, 52, 0.96)', ...rest });
     this.text = text;
     this.onClick = onClick;
+    this.centered = centered === true;
     this.pressed = false;
   }
 
@@ -431,10 +432,12 @@ export class Button extends Control {
     context.fillStyle = 'rgba(135, 176, 224, 0.28)';
     context.fillRect(bounds.x, bounds.y, bounds.width, 1);
     context.fillRect(bounds.x, bounds.y + bounds.height - 1, bounds.width, 1);
-    fonts.blit(context, this.text, bounds.x + 8, bounds.y + bounds.height * 0.5 + 4, {
-      font: '600 12px "Segoe UI", Arial, sans-serif',
+    const font = '600 12px "Segoe UI", Arial, sans-serif';
+    const textWidth = this.centered ? fonts.measure(context, this.text, font).width : 0;
+    fonts.blit(context, this.text, this.centered ? bounds.x + Math.max(0, (bounds.width - textWidth) * 0.5) : bounds.x + 8, bounds.y + bounds.height * 0.5 + 4, {
+      font,
       fillStyle: '#dce8f7',
-      maxWidth: bounds.width - 16,
+      maxWidth: this.centered ? bounds.width - 4 : bounds.width - 16,
     });
     void clip;
   }

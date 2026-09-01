@@ -965,8 +965,10 @@ test('top project toolbar routes save, new, clear, import, and export actions', 
   const importButton = findControl(hud.host, 'import-project');
   const newBlankButton = findControl(hud.host, 'project-new-blank');
   const clearButton = findControl(hud.host, 'project-clear-scene');
-  assert.equal(exportButton.text, 'Export');
-  assert.equal(importButton.text, 'Import');
+  assert.equal(exportButton.text, '↗');
+  assert.equal(importButton.text, '↙');
+  assert.equal(newBlankButton.text, '＋');
+  assert.equal(clearButton.text, '⌫');
   assert.equal(exportButton.parent, hud.host, 'project transfer controls live in the retained top toolbar');
   exportButton.onClick();
   await new Promise(resolve => setImmediate(resolve));
@@ -998,7 +1000,7 @@ test('wide left panel collapses to a retained expand handle and restores its sel
   assert.equal(hud.panelBounds.width, 44);
   assert.equal(hud.panelBounds.height, 44);
   assert.equal(collapseButton.visible, true);
-  assert.equal(collapseButton.text, '>');
+  assert.equal(collapseButton.text, '›');
   assert.equal(title.visible, false);
   assert.equal(logPage.visible, false);
   collapseButton.onClick();
