@@ -121,6 +121,7 @@ export const INSPECT_QUERIES = Object.freeze([
   'unresolvedResources', 'unusedResources', 'graphCatalog', 'playState',
   'latestEvidence', 'blenderCatalog', 'beautyDigest', 'projectVisibility',
   'operationCatalog', 'geometryCatalog', 'lookCatalog', 'lightingDigest',
+  'plainformCatalog', 'plainformAst',
 ]);
 
 const inspectProbeSchema = z.object({
@@ -157,6 +158,13 @@ const inspectProjectionSchema = z.object({
   objectIdPath: z.string().min(1).max(1024).optional(),
 }).strict();
 
+const inspectPlainformSchema = z.object({
+  source: z.string().min(1).max(32 * 1024).optional(),
+  dialect: z.enum(['object', 'design', 'shader']).optional(),
+  domain: z.string().min(1).max(80).optional(),
+  includeTokens: z.boolean().optional().default(false),
+}).strict();
+
 const inspectMeshFilterSchema = z.object({
   min: vec3.optional(),
   max: vec3.optional(),
@@ -186,6 +194,7 @@ export const inspectSchema = z.object({
   limit: z.number().int().min(1).max(200).optional().default(50),
   evidence: inspectEvidenceSchema.optional(),
   projection: inspectProjectionSchema.optional(),
+  plainform: inspectPlainformSchema.optional(),
   meshFilter: inspectMeshFilterSchema.optional(),
   preset: z.enum(['summary', 'authoring', 'full']).optional().default('full'),
   ...responseProjectionFields,
@@ -205,6 +214,15 @@ export const inspectSchema = z.object({
   }
   if (value.projection !== undefined && value.query !== 'projectVisibility') {
     context.addIssue({ code: 'custom', path: ['projection'], message: 'projection is only valid for projectVisibility.' });
+  }
+  if (value.plainform !== undefined && !['plainformCatalog', 'plainformAst'].includes(value.query)) {
+    context.addIssue({ code: 'custom', path: ['plainform'], message: 'plainform is only valid for plainformCatalog or plainformAst.' });
+  }
+  if (value.query === 'plainformAst' && value.plainform?.source === undefined) {
+    context.addIssue({ code: 'custom', path: ['plainform', 'source'], message: 'plainformAst requires plainform.source.' });
+  }
+  if (value.query === 'plainformCatalog' && value.plainform?.source !== undefined) {
+    context.addIssue({ code: 'custom', path: ['plainform', 'source'], message: 'plainformCatalog does not accept source.' });
   }
   if (value.meshFilter !== undefined && !['meshElements', 'meshSelection'].includes(value.query)) {
     context.addIssue({ code: 'custom', path: ['meshFilter'], message: 'meshFilter is only valid for meshElements or meshSelection.' });
@@ -1665,6 +1683,8 @@ const TOOL_CONTRACT_FEATURES = Object.freeze({
   materialLookPatch: true,
   lookCatalog: true,
   lightingDigest: true,
+  plainformCatalog: true,
+  plainformAst: true,
   sameTransactionCameraFrame: true,
   cameraDistanceScale: true,
   meshElements: true,

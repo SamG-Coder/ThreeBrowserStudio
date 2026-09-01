@@ -15,6 +15,25 @@ and a coherent label around this program envelope:
 }
 ```
 
+For unfamiliar sentences, inspect the program before applying it:
+
+```json
+{
+  "query": "plainformAst",
+  "plainform": {
+    "source": "Create a box called Body with id entity/body, with width 1 metre, height 2 metres, and depth 1 metre."
+  }
+}
+```
+
+The response reports a typed statement kind, stable semantic key, exact source
+span, parsed fields, and whether the statement is still using the legacy
+compatibility path. `legacy.statement` is not an approval to guess and does not
+by itself mean compilation will fail. Query `plainformCatalog` to discover the
+migrated grammar, filtered with `plainform.dialect`, `plainform.domain`, and
+`selector.name`. Set `plainform.includeTokens: true` only when exact lexical
+tokens are needed; compact AST inspection omits them by default.
+
 ## Choose the dialect
 
 Object Plainform is for exact references, selections, spatial relations,

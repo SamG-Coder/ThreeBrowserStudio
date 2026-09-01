@@ -261,6 +261,7 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
     'unresolvedResources', 'unusedResources', 'graphCatalog', 'playState',
     'latestEvidence', 'blenderCatalog', 'beautyDigest', 'projectVisibility',
     'operationCatalog', 'geometryCatalog', 'lookCatalog', 'lightingDigest',
+    'plainformCatalog', 'plainformAst',
   ]);
   assert.deepEqual(OPERATION_TYPES, [
     'scene.create', 'scene.patch', 'scene.delete', 'scene.clear', 'scene.setActive',
@@ -285,6 +286,19 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
   assert.equal(inspectSchema.safeParse({ query: 'geometryCatalog', selector: { kind: 'procedural', name: 'loft' }, limit: 12 }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'lookCatalog', selector: { kind: 'glass' } }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'lightingDigest', selector: { tag: 'lighting' } }).success, true);
+  assert.equal(inspectSchema.safeParse({
+    query: 'plainformCatalog', plainform: { dialect: 'design', domain: 'groom' }, selector: { name: 'hair' },
+  }).success, true);
+  assert.equal(inspectSchema.safeParse({
+    query: 'plainformAst', plainform: { source: 'Preview these changes.', includeTokens: true },
+  }).success, true);
+  assert.equal(inspectSchema.safeParse({ query: 'plainformAst' }).success, false);
+  assert.equal(inspectSchema.safeParse({
+    query: 'plainformCatalog', plainform: { source: 'Preview these changes.' },
+  }).success, false);
+  assert.equal(inspectSchema.safeParse({
+    query: 'sceneDigest', plainform: { dialect: 'design' },
+  }).success, false);
   assert.equal(inspectSchema.safeParse({ query: 'unresolvedResources' }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'unusedResources' }).success, true);
   assert.equal(inspectSchema.safeParse({ query: 'resourceDigest', selector: { ids: ['geometry/dense'] }, include: ['components', 'bounds', 'references'] }).success, true);
@@ -330,6 +344,8 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
   assert.equal(TOOL_CONTRACT.features.materialLookPatch, true);
   assert.equal(TOOL_CONTRACT.features.lookCatalog, true);
   assert.equal(TOOL_CONTRACT.features.lightingDigest, true);
+  assert.equal(TOOL_CONTRACT.features.plainformCatalog, true);
+  assert.equal(TOOL_CONTRACT.features.plainformAst, true);
   assert.equal(TOOL_CONTRACT.features.sameTransactionCameraFrame, true);
   assert.equal(TOOL_CONTRACT.features.cameraDistanceScale, true);
   assert.equal(inspectSchema.safeParse({ query: 'meshElements', selector: { ids: ['geometry/a', 'geometry/b'] } }).success, false);

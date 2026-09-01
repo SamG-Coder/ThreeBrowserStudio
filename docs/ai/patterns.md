@@ -56,7 +56,9 @@ Do not infer support from an earlier Studio session, a tutorial module, or
   the exact typed mutation name, `geometryCatalog` to inspect supported recipes,
   defaults, and budgets, `lookCatalog` for material-look defaults and raster
   notes before `material.look.create`, `lightingDigest` for rig and light
-  intensities, and `graphCatalog` before graph authoring. Use
+  intensities, `plainformCatalog` for migrated controlled-English statement
+  families, `plainformAst` to inspect a proposed program before apply, and
+  `graphCatalog` before graph authoring. Use
   `graphDigest` and read `sockets` (`source`, `compiled`,
   `live`), not `inputs.$summary`.
 - Recolor or retune a semantic look with `material.look.patch` on the same
@@ -157,6 +159,15 @@ candidate compilation as a direct apply. A program accepts at most 256
 statements and may generate at most 128 operations. Read the returned
 `interpretation`, lowered operation families, diagnostics, and revision; never
 assume an unsupported sentence was approximated.
+
+Before applying unfamiliar Plainform, call `three_studio_inspect` with
+`query: "plainformAst"` and `plainform.source`. Typed statements include exact
+source spans, semantic keys, and fields. A `legacy.statement` is still handled
+by the compatibility compiler; it does not mean the sentence is invalid. Use
+`query: "plainformCatalog"` with optional `plainform.dialect`,
+`plainform.domain`, and `selector.name` filters to discover migrated grammar.
+Tokens are omitted from AST inspection unless `plainform.includeTokens` is
+explicitly true.
 
 Object Plainform supports exact named entity references, named selections,
 spatial relations, transforms, bounded iteration, grouping, prefab creation

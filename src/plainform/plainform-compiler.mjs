@@ -8,6 +8,7 @@ import { PlainformGrowthPlanner } from './growth-planner.mjs';
 import { PlainformPrefabContext } from './prefab-context.mjs';
 import { ShaderPlainformCompiler } from './shader-plainform-compiler.mjs';
 import { DesignPlainformCompiler } from './design-plainform-compiler.mjs';
+import { parsePlainformProgram } from './plainform-front-end.mjs';
 
 const TAU = Math.PI * 2;
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
@@ -354,10 +355,15 @@ function faceAxisRotation(axis) {
 
 /** Compiles controlled natural English into guarded, canonical Studio operations. */
 export class PlainformCompiler {
+  parse(source) {
+    return parsePlainformProgram(source);
+  }
+
   compile(source, { project }) {
     if (typeof source !== 'string' || source.trim().length === 0) fail('plainform_empty', 'Plainform source is empty.');
-    if (ShaderPlainformCompiler.canCompile(source)) return new ShaderPlainformCompiler().compile(source);
-    if (DesignPlainformCompiler.canCompile(source)) return new DesignPlainformCompiler().compile(source, { project });
+    const program = this.parse(source);
+    if (program.dialect === 'shader') return new ShaderPlainformCompiler().compile(source);
+    if (program.dialect === 'design') return new DesignPlainformCompiler().compile(source, { project });
     if (!project) fail('plainform_project_required', 'Plainform compilation requires the canonical project document.');
     const statements = source.split(/\r?\n/u).map(cleanStatement).filter(Boolean);
     if (statements.length > MAX_STATEMENTS) fail('plainform_statement_limit', `Plainform accepts at most ${MAX_STATEMENTS} statements.`);

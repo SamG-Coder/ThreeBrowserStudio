@@ -22,7 +22,7 @@ export const TOOL_DEFINITIONS = Object.freeze({
   },
   three_studio_inspect: {
     title: 'Inspect Three Studio',
-    description: 'Read paginated scene summaries plus exact entity-set, hierarchy, collection, and modifier-stack guards; inspect transform, component, compiled bounds, references, bounded resources, exact mesh elements, graphs, modifier execution classifications, and RTX state without echoing unbounded arrays; query changes, catalogs, Play state, or latest evidence.',
+    description: 'Read paginated scene summaries plus exact entity-set, hierarchy, collection, and modifier-stack guards; inspect transform, component, compiled bounds, references, bounded resources, exact mesh elements, graphs, Plainform grammar/AST, modifier execution classifications, and RTX state without echoing unbounded arrays; query changes, catalogs, Play state, or latest evidence.',
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
   three_studio_apply: {

@@ -889,6 +889,43 @@ test('lookCatalog and lightingDigest are inspectable without paging the scene', 
   assert.equal(lighting.lights[0].light.intensity, 65);
 });
 
+test('Plainform grammar and typed AST are inspectable before apply', async (t) => {
+  const { application } = await applicationFixture(t);
+  const catalog = await application.dispatch('three_studio_inspect', {
+    sessionId: application.sessionId,
+    query: 'plainformCatalog',
+    plainform: { dialect: 'design', domain: 'groom' },
+    selector: { name: 'hair card' },
+  });
+  assert.equal(catalog.success, true);
+  assert.equal(catalog.catalog.entries.length, 1);
+  assert.equal(catalog.catalog.entries[0].id, 'design.groom.hairCard');
+
+  const source = [
+    'Design a prop called Test with id entity/test.',
+    'Create a box called Body with id entity/body, with width 1 metre, height 2 metres, and depth 1 metre.',
+  ].join('\n');
+  const compact = await application.dispatch('three_studio_inspect', {
+    sessionId: application.sessionId,
+    query: 'plainformAst',
+    plainform: { source },
+  });
+  assert.equal(compact.success, true);
+  assert.equal(compact.ast.dialect, 'design');
+  assert.deepEqual(compact.ast.statements.map(statement => statement.kind), [
+    'design.header', 'primitive.createBox',
+  ]);
+  assert.equal('tokens' in compact.ast.statements[0], false);
+
+  const detailed = await application.dispatch('three_studio_inspect', {
+    sessionId: application.sessionId,
+    query: 'plainformAst',
+    plainform: { source: 'Preview these changes.', includeTokens: true },
+  });
+  assert.equal(detailed.ast.statements[0].kind, 'request.preview');
+  assert.ok(detailed.ast.statements[0].tokens.length > 0);
+});
+
 test('camera.frame can target a mesh created earlier in the same apply', async (t) => {
   const { application } = await applicationFixture(t);
   const result = await application.dispatch('three_studio_apply', {

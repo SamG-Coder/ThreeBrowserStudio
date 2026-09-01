@@ -155,7 +155,9 @@
               "operationCatalog",
               "geometryCatalog",
               "lookCatalog",
-              "lightingDigest"
+              "lightingDigest",
+              "plainformCatalog",
+              "plainformAst"
             ]
           },
           "selector": {
@@ -386,6 +388,34 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 1024
+              }
+            },
+            "additionalProperties": false
+          },
+          "plainform": {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 32768
+              },
+              "dialect": {
+                "type": "string",
+                "enum": [
+                  "object",
+                  "design",
+                  "shader"
+                ]
+              },
+              "domain": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "includeTokens": {
+                "default": false,
+                "type": "boolean"
               }
             },
             "additionalProperties": false

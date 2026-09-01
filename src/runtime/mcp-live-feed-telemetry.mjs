@@ -66,6 +66,8 @@ const INSPECT_QUERIES = Object.freeze({
   geometryCatalog: 'Inspect geometry catalog',
   lookCatalog: 'Inspect material look catalog',
   lightingDigest: 'Inspect lights and lighting rigs',
+  plainformCatalog: 'Inspect Plainform grammar catalog',
+  plainformAst: 'Inspect Plainform typed AST',
   playState: 'Inspect Play state',
   latestEvidence: 'Inspect latest evidence metadata',
   blenderCatalog: 'Inspect Blender catalog',

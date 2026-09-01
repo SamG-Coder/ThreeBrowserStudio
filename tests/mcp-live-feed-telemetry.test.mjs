@@ -44,6 +44,8 @@ test('summaries use only compact whitelisted facts and sanitize control, bidi, a
   assert.equal(summarizeStudioCommand('three_studio_inspect', { query: 'projectVisibility' }), 'Inspect camera projection visibility');
   assert.equal(summarizeStudioCommand('three_studio_inspect', { query: 'lookCatalog' }), 'Inspect material look catalog');
   assert.equal(summarizeStudioCommand('three_studio_inspect', { query: 'lightingDigest' }), 'Inspect lights and lighting rigs');
+  assert.equal(summarizeStudioCommand('three_studio_inspect', { query: 'plainformCatalog' }), 'Inspect Plainform grammar catalog');
+  assert.equal(summarizeStudioCommand('three_studio_inspect', { query: 'plainformAst' }), 'Inspect Plainform typed AST');
 });
 
 test('one telemetry entry advances started to completed without retaining raw request or result data', () => {

@@ -8,3 +8,11 @@ export { ShaderPlainformCompiler, ShaderPlainformError } from './shader-plainfor
 export { interpretShaderFeel, SHADER_FEEL_VOCABULARY } from './shader-feel-vocabulary.mjs';
 export { DesignPlainformCompiler } from './design-plainform-compiler.mjs';
 export { DesignExpressionError, evaluateDesignExpression, evaluateDesignVector } from './design-expression.mjs';
+export {
+  PLAINFORM_AST_VERSION,
+  PLAINFORM_STATEMENT_REGISTRY,
+  PlainformStatementRegistry,
+  getPlainformGrammarCatalog,
+  parsePlainformProgram,
+  tokenizePlainformSource,
+} from './plainform-front-end.mjs';

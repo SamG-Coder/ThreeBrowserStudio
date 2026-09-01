@@ -84,7 +84,11 @@ import {
   TOOL_CONTRACT_SUMMARY,
   TOOL_SCHEMAS,
 } from '../mcp/tool-schemas.mjs';
-import { PlainformCompiler } from '../plainform/index.mjs';
+import {
+  PlainformCompiler,
+  getPlainformGrammarCatalog,
+  parsePlainformProgram,
+} from '../plainform/index.mjs';
 import { queryOperationCatalog } from '../mcp/operation-catalog.mjs';
 import { emptyStudioCommandMetrics } from './mcp-live-feed-telemetry.mjs';
 import { compileSceneDocument } from './scene-compiler.mjs';
@@ -2114,6 +2118,8 @@ export class StudioApplication {
         geometryCatalog: true,
         lookCatalog: true,
         lightingDigest: true,
+        plainformCatalog: true,
+        plainformAst: true,
         loftSectionDigest: true,
         materialLookPatch: true,
         sameTransactionCameraFrame: true,
@@ -2780,6 +2786,33 @@ export class StudioApplication {
         limit: params.limit,
       }),
     };
+    if (params.query === 'plainformCatalog') return {
+      success: true,
+      revision: document.revision,
+      catalog: getPlainformGrammarCatalog({
+        dialect: params.plainform?.dialect,
+        domain: params.plainform?.domain,
+        query: params.selector?.name,
+        limit: params.limit,
+      }),
+    };
+    if (params.query === 'plainformAst') {
+      const ast = parsePlainformProgram(params.plainform.source, {
+        dialect: params.plainform.dialect,
+      });
+      return {
+        success: true,
+        revision: document.revision,
+        ast: {
+          ...ast,
+          statements: ast.statements.map(statement => {
+            if (params.plainform.includeTokens) return statement;
+            const { tokens, ...summary } = statement;
+            return summary;
+          }),
+        },
+      };
+    }
     if (params.query === 'lightingDigest') return {
       success: true,
       revision: document.revision,
