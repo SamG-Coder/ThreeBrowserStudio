@@ -2,11 +2,14 @@
 
 Status: proposed contributor design
 
-Implementation progress: the initial Stage 0/1 seam is live. Studio tokenizes
+Implementation progress: Stages 0–2 are live. Studio tokenizes
 exact source spans, classifies a representative typed AST through a statement
 registry, exposes `plainformCatalog` and `plainformAst` through the existing
 inspect tool, and explicitly marks unmigrated sentences as legacy fallbacks.
-Persistent design resources and later stages remain proposals.
+Versioned `plainformDesign` assets now retain source, AST, parameters,
+dependencies, output hashes, ownership, and lowering-plan identity. Guarded
+create, patch, regenerate, detach, and conflict-resolution operations lower
+atomically through the existing apply tool. Later stages remain proposals.
 
 This document defines a staged extension of Plainform. It is not a statement
 that every capability described here is already available. Live

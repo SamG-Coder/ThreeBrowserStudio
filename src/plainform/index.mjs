@@ -16,3 +16,10 @@ export {
   parsePlainformProgram,
   tokenizePlainformSource,
 } from './plainform-front-end.mjs';
+export {
+  PLAINFORM_DESIGN_OUTPUT_LIMIT,
+  PLAINFORM_DESIGN_SCHEMA_VERSION,
+  PLAINFORM_DESIGN_SOURCE_LIMIT,
+  expandPlainformDesignOperation,
+  normalizePlainformDesignResource,
+} from './plainform-design-resource.mjs';

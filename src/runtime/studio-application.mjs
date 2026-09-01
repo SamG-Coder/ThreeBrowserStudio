@@ -86,6 +86,7 @@ import {
 } from '../mcp/tool-schemas.mjs';
 import {
   PlainformCompiler,
+  expandPlainformDesignOperation,
   getPlainformGrammarCatalog,
   parsePlainformProgram,
 } from '../plainform/index.mjs';
@@ -2120,6 +2121,7 @@ export class StudioApplication {
         lightingDigest: true,
         plainformCatalog: true,
         plainformAst: true,
+        persistentPlainformDesigns: true,
         loftSectionDigest: true,
         materialLookPatch: true,
         sameTransactionCameraFrame: true,
@@ -2942,15 +2944,45 @@ export class StudioApplication {
           return parsed.data;
         })
       : [];
+    const persistentOperations = (params.operations ?? []).filter(operation => operation.op.startsWith('plainform.design.'));
+    if (persistentOperations.length > 1) {
+      throw new StudioError(
+        'plainform_design_batch_limit',
+        'Apply at most one persistent Plainform design operation per transaction.',
+      );
+    }
+    let persistentPlainform = null;
+    const explicitOperations = [];
+    for (const operation of (params.operations ?? [])) {
+      if (!operation.op.startsWith('plainform.design.')) {
+        explicitOperations.push(operation);
+        continue;
+      }
+      const expansion = expandPlainformDesignOperation(operation, document);
+      persistentPlainform = expansion.result;
+      for (let index = 0; index < expansion.operations.length; index += 1) {
+        const parsed = operationSchema.safeParse(expansion.operations[index]);
+        if (!parsed.success) throw new StudioError(
+          'plainform_design_compile_invalid',
+          `Persistent Plainform generated an invalid operation at index ${index}.`,
+          { index, diagnostics: parsed.error.issues },
+        );
+        explicitOperations.push(parsed.data);
+      }
+    }
     // A live MCP client may retain the older operations-required transport
     // shape while Studio refreshes its tool contract. Combining both inputs
     // keeps every supplied mutation explicit and preserves Plainform telemetry.
-    const authoredOperations = [...(params.operations ?? []), ...plainformOperations];
+    const authoredOperations = [...explicitOperations, ...plainformOperations];
     // A candidate token is an explicit request to promote the identical compiled
     // candidate. Natural-language preview intent must not force that promotion
     // back into another dry run.
     const dryRun = params.candidateToken === undefined
-      && (params.dryRun === true || plainform?.requestedPreview === true);
+      && (
+        params.dryRun === true
+        || plainform?.requestedPreview === true
+        || persistentPlainform?.requestedPreview === true
+      );
     const translationDocument = structuredClone(document);
     const operations = [];
     for (const operation of authoredOperations) {
@@ -3086,6 +3118,7 @@ export class StudioApplication {
         ...(plainform.shader ? { shader: plainform.shader } : {}),
         ...(plainform.design ? { design: plainform.design } : {}),
       } } : {}),
+      ...(persistentPlainform ? { plainformDesign: persistentPlainform } : {}),
       authoring: {
         authoredOperationCount: authoredOperations.length,
         loweredOperationCount: operations.length,

@@ -2876,6 +2876,150 @@
                       "properties": {
                         "op": {
                           "type": "string",
+                          "const": "plainform.design.create"
+                        },
+                        "designId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 240
+                        },
+                        "source": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 32768
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "designId",
+                        "source"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "plainform.design.patch"
+                        },
+                        "designId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "expectedDesignHash": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 240
+                        },
+                        "source": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 32768
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "designId",
+                        "expectedDesignHash",
+                        "source"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "plainform.design.regenerate"
+                        },
+                        "designId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "expectedDesignHash": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "designId",
+                        "expectedDesignHash"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "plainform.design.detachOutput"
+                        },
+                        "designId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "expectedDesignHash": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
+                        },
+                        "semanticId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 512
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "designId",
+                        "expectedDesignHash",
+                        "semanticId"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "plainform.design.resolveConflict"
+                        },
+                        "designId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "expectedDesignHash": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema7"
+                        },
+                        "semanticId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 512
+                        },
+                        "resolution": {
+                          "type": "string",
+                          "enum": [
+                            "keep",
+                            "overwrite",
+                            "detach"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "designId",
+                        "expectedDesignHash",
+                        "semanticId",
+                        "resolution"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
                           "const": "artifact.json.patch"
                         },
                         "artifactId": {

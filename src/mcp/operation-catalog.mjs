@@ -11,6 +11,7 @@ const FAMILY_SUMMARIES = Object.freeze({
   modifier: 'Edit an exact guarded non-destructive modifier stack.',
   geometry: 'Edit or derive canonical geometry resources.',
   material: 'Create a reusable material variant or look.',
+  plainform: 'Create or safely regenerate a persistent Plainform design.',
   resource: 'Create, patch, or delete a typed project resource.',
 });
 

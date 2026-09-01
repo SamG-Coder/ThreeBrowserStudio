@@ -19,6 +19,8 @@ const PUBLIC_OPERATION_TYPES = new Set([
   'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
   'geometry.edit', 'geometry.realize', 'geometry.loft.edit', 'geometry.selection.edit',
   'material.variant.create', 'material.look.create', 'material.look.patch',
+  'plainform.design.create', 'plainform.design.patch', 'plainform.design.regenerate',
+  'plainform.design.detachOutput', 'plainform.design.resolveConflict',
   'resource.create', 'resource.createMany', 'resource.patch', 'resource.delete',
 ]);
 const RESOURCE_TYPE_SET = new Set(RESOURCE_TYPES);

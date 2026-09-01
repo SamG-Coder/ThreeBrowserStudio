@@ -926,6 +926,152 @@ test('Plainform grammar and typed AST are inspectable before apply', async (t) =
   assert.ok(detailed.ast.statements[0].tokens.length > 0);
 });
 
+test('persistent Plainform designs create, regenerate, detect conflicts, resolve, and detach atomically', async (t) => {
+  const { application } = await applicationFixture(t);
+  const source = [
+    'Design a prop called Persistent Box with id entity/persistent-box.',
+    'Create a box called Body with id entity/persistent-body, with width 1 metre, height 2 metres, and depth 1 metre.',
+  ].join('\n');
+  const created = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1',
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    baseRevision: 0,
+    idempotencyKey: 'persistent-plainform-create-0001',
+    label: 'Create persistent Plainform box',
+    operations: [{
+      op: 'plainform.design.create',
+      designId: 'design/persistent-box',
+      name: 'Persistent Box Design',
+      source,
+    }],
+  });
+  assert.equal(created.success, true);
+  assert.equal(created.plainformDesign.action, 'create');
+  assert.equal(created.plainformDesign.rootId, 'entity/persistent-box');
+  let design = application.kernel.document.resources.assets['design/persistent-box'];
+  assert.equal(design.kind, 'plainformDesign');
+  assert.equal(application.kernel.document.scenes['scene/main'].entities['entity/persistent-body'].kind, 'mesh');
+  const bodyOutput = design.outputs.find(output => output.projectId === 'entity/persistent-body');
+  assert.ok(bodyOutput);
+
+  const patchedSource = source.replace('width 1 metre', 'width 2 metres');
+  const patched = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1',
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    baseRevision: created.revision,
+    idempotencyKey: 'persistent-plainform-patch-0001',
+    label: 'Widen persistent Plainform box',
+    operations: [{
+      op: 'plainform.design.patch',
+      designId: design.id,
+      expectedDesignHash: contentHash(design),
+      source: patchedSource,
+    }],
+  });
+  assert.equal(patched.success, true);
+  assert.equal(patched.plainformDesign.action, 'patch');
+  design = application.kernel.document.resources.assets['design/persistent-box'];
+  assert.equal(design.source, patchedSource);
+  const body = application.kernel.document.scenes['scene/main'].entities['entity/persistent-body'];
+  // Design Plainform shares canonical unit primitive geometry and expresses
+  // authored dimensions through the entity transform.
+  assert.equal(body.transform.scale[0], 2);
+
+  const manuallyEdited = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1',
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    baseRevision: patched.revision,
+    idempotencyKey: 'persistent-plainform-manual-edit-0001',
+    label: 'Manually move owned output',
+    operations: [{
+      op: 'entity.patch', entityId: 'entity/persistent-body', patch: { transform: { position: [3, 0, 0] } },
+    }],
+  });
+  const guardedHash = contentHash(design);
+  await assert.rejects(
+    () => application.dispatch('three_studio_apply', {
+      protocolVersion: 'three-studio/1',
+      sessionId: application.sessionId,
+      projectId: 'project/active',
+      baseRevision: manuallyEdited.revision,
+      idempotencyKey: 'persistent-plainform-conflict-0001',
+      label: 'Refuse unapproved overwrite',
+      operations: [{
+        op: 'plainform.design.regenerate', designId: design.id, expectedDesignHash: guardedHash,
+      }],
+    }),
+    error => error.code === 'plainform_design_conflict'
+      && error.details.conflicts.some(conflict => conflict.projectId === 'entity/persistent-body'),
+  );
+  assert.deepEqual(
+    application.kernel.document.scenes['scene/main'].entities['entity/persistent-body'].transform.position,
+    [3, 0, 0],
+  );
+
+  const resolved = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1',
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    baseRevision: manuallyEdited.revision,
+    idempotencyKey: 'persistent-plainform-overwrite-0001',
+    label: 'Approve owned output overwrite',
+    operations: [{
+      op: 'plainform.design.resolveConflict',
+      designId: design.id,
+      expectedDesignHash: guardedHash,
+      semanticId: bodyOutput.semanticId,
+      resolution: 'overwrite',
+    }],
+  });
+  assert.equal(resolved.success, true);
+  assert.deepEqual(
+    application.kernel.document.scenes['scene/main'].entities['entity/persistent-body'].transform.position,
+    [0, 0, 0],
+  );
+
+  design = application.kernel.document.resources.assets['design/persistent-box'];
+  const resourceOutput = design.outputs.find(output => output.outputType === 'resource');
+  const detached = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1',
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    baseRevision: resolved.revision,
+    idempotencyKey: 'persistent-plainform-detach-0001',
+    label: 'Detach one generated resource',
+    operations: [{
+      op: 'plainform.design.detachOutput',
+      designId: design.id,
+      expectedDesignHash: contentHash(design),
+      semanticId: resourceOutput.semanticId,
+    }],
+  });
+  assert.equal(detached.success, true);
+  design = application.kernel.document.resources.assets['design/persistent-box'];
+  assert.equal(design.outputs.find(output => output.semanticId === resourceOutput.semanticId).ownership, 'detached');
+  assert.ok(application.kernel.document.resources.geometries[resourceOutput.projectId]);
+
+  const regeneratedAfterDetach = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1',
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    baseRevision: detached.revision,
+    idempotencyKey: 'persistent-plainform-regenerate-detached-0001',
+    label: 'Regenerate while preserving detached geometry',
+    operations: [{
+      op: 'plainform.design.regenerate',
+      designId: design.id,
+      expectedDesignHash: contentHash(design),
+    }],
+  });
+  assert.equal(regeneratedAfterDetach.success, true);
+  design = application.kernel.document.resources.assets['design/persistent-box'];
+  assert.equal(design.outputs.find(output => output.semanticId === resourceOutput.semanticId).ownership, 'detached');
+  assert.ok(application.kernel.document.resources.geometries[resourceOutput.projectId]);
+});
+
 test('camera.frame can target a mesh created earlier in the same apply', async (t) => {
   const { application } = await applicationFixture(t);
   const result = await application.dispatch('three_studio_apply', {

@@ -26,6 +26,7 @@ import {
   jobSchema,
   modifierDocumentSchema,
   modifierPatchSchema,
+  operationSchema,
   playSchema,
   projectSchema,
   renderSchema,
@@ -144,8 +145,8 @@ test('checked-in JSON contract is generated exactly from compact live schemas', 
     inputSchemas: TOOL_INPUT_SCHEMAS,
   }));
   const encoder = new TextEncoder();
-  assert.ok(encoder.encode(JSON.stringify(TOOL_INPUT_SCHEMAS.three_studio_apply)).byteLength <= 73_000);
-  assert.ok(encoder.encode(JSON.stringify(TOOL_INPUT_SCHEMAS)).byteLength <= 86_000);
+  assert.ok(encoder.encode(JSON.stringify(TOOL_INPUT_SCHEMAS.three_studio_apply)).byteLength <= 75_000);
+  assert.ok(encoder.encode(JSON.stringify(TOOL_INPUT_SCHEMAS)).byteLength <= 89_000);
 });
 
 test('modifier schemas expose every strict per-type control and mirror the checked-in contract', async () => {
@@ -275,6 +276,8 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
     'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
     'geometry.edit', 'geometry.realize', 'geometry.loft.edit', 'geometry.selection.edit',
   'material.variant.create', 'material.look.create', 'material.look.patch',
+  'plainform.design.create', 'plainform.design.patch', 'plainform.design.regenerate',
+  'plainform.design.detachOutput', 'plainform.design.resolveConflict',
   'artifact.json.patch',
     'resource.create', 'resource.createMany', 'resource.patch', 'resource.delete',
   ]);
@@ -346,6 +349,25 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
   assert.equal(TOOL_CONTRACT.features.lightingDigest, true);
   assert.equal(TOOL_CONTRACT.features.plainformCatalog, true);
   assert.equal(TOOL_CONTRACT.features.plainformAst, true);
+  assert.equal(TOOL_CONTRACT.features.persistentPlainformDesigns, true);
+  assert.equal(operationSchema.safeParse({
+    op: 'plainform.design.create', designId: 'design/tree', source: 'Design a tree called Tree with id entity/tree.',
+  }).success, true);
+  assert.equal(operationSchema.safeParse({
+    op: 'plainform.design.patch', designId: 'design/tree', expectedDesignHash: 'a'.repeat(64),
+    source: 'Design a tree called Tree with id entity/tree.',
+  }).success, true);
+  assert.equal(operationSchema.safeParse({
+    op: 'plainform.design.regenerate', designId: 'design/tree', expectedDesignHash: 'a'.repeat(64),
+  }).success, true);
+  assert.equal(operationSchema.safeParse({
+    op: 'plainform.design.detachOutput', designId: 'design/tree', expectedDesignHash: 'a'.repeat(64),
+    semanticId: 'entity.entity/tree',
+  }).success, true);
+  assert.equal(operationSchema.safeParse({
+    op: 'plainform.design.resolveConflict', designId: 'design/tree', expectedDesignHash: 'a'.repeat(64),
+    semanticId: 'entity.entity/tree', resolution: 'overwrite',
+  }).success, true);
   assert.equal(TOOL_CONTRACT.features.sameTransactionCameraFrame, true);
   assert.equal(TOOL_CONTRACT.features.cameraDistanceScale, true);
   assert.equal(inspectSchema.safeParse({ query: 'meshElements', selector: { ids: ['geometry/a', 'geometry/b'] } }).success, false);

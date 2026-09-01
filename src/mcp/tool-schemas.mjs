@@ -258,6 +258,8 @@ export const OPERATION_TYPES = Object.freeze([
   'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
   'geometry.edit', 'geometry.realize', 'geometry.loft.edit', 'geometry.selection.edit',
   'material.variant.create', 'material.look.create', 'material.look.patch',
+  'plainform.design.create', 'plainform.design.patch', 'plainform.design.regenerate',
+  'plainform.design.detachOutput', 'plainform.design.resolveConflict',
   'artifact.json.patch',
   'resource.create', 'resource.createMany', 'resource.patch', 'resource.delete',
 ]);
@@ -1398,6 +1400,32 @@ const directOperations = [
     look: materialLookEnum.optional(),
     ...materialLookOverrides,
   }),
+  operation('plainform.design.create', {
+    designId: identifier,
+    name: z.string().min(1).max(240).optional(),
+    source: z.string().min(1).max(32 * 1024),
+  }),
+  operation('plainform.design.patch', {
+    designId: reference,
+    expectedDesignHash: hash,
+    name: z.string().min(1).max(240).optional(),
+    source: z.string().min(1).max(32 * 1024),
+  }),
+  operation('plainform.design.regenerate', {
+    designId: reference,
+    expectedDesignHash: hash,
+  }),
+  operation('plainform.design.detachOutput', {
+    designId: reference,
+    expectedDesignHash: hash,
+    semanticId: z.string().min(1).max(512),
+  }),
+  operation('plainform.design.resolveConflict', {
+    designId: reference,
+    expectedDesignHash: hash,
+    semanticId: z.string().min(1).max(512),
+    resolution: z.enum(['keep', 'overwrite', 'detach']),
+  }),
   operation('artifact.json.patch', {
     artifactId: reference,
     pointer: jsonPointer,
@@ -1685,6 +1713,7 @@ const TOOL_CONTRACT_FEATURES = Object.freeze({
   lightingDigest: true,
   plainformCatalog: true,
   plainformAst: true,
+  persistentPlainformDesigns: true,
   sameTransactionCameraFrame: true,
   cameraDistanceScale: true,
   meshElements: true,
