@@ -886,6 +886,8 @@ test('LLM Setup is a retained main-window tab on every host', () => {
   assert.equal(status.text, 'LLM Setup  ·  on-device models');
   hud.setLocalModelState({ supported: true, activeModelId: model.id, ready: true });
   assert.equal(status.text, 'LLM Setup  ·  local model ready');
+  assert.match(findControl(hud.host, 'llm-harness-hint').text, /Every prompt routes through Studio MCP/);
+  assert.match(findControl(hud.host, 'llm-harness-hint').text, /three_studio_apply/);
   tabs.setSelected('settings');
   findControl(hud.host, 'open-llm-setup').onClick();
   assert.equal(hud.tab, 'llm');
@@ -903,7 +905,7 @@ test('optional Prompt workspace routes Ctrl+Enter through the active local model
       runs.push(prompt);
       onEvent({ type: 'tool-call', name: 'three_studio_status' });
       onEvent({ type: 'tool-result', name: 'three_studio_status', ok: true });
-      return { text: 'Project is ready.', rounds: 2 };
+      return { text: 'Project is ready.', rounds: 2, toolTrace: [{ name: 'three_studio_status' }] };
     },
   });
   const tabs = findControl(hud.host, 'tabs');
@@ -945,7 +947,7 @@ test('optional Prompt workspace routes Ctrl+Enter through the active local model
   assert.deepEqual(runs, ['Statusx\nMore']);
   assert.equal(submit.immediateStopped, true);
   assert.equal(submitUp.immediateStopped, true, 'key-up is also retained and cannot reach the 3D input controller');
-  assert.equal(findControl(hud.host, 'llm-prompt-status').text, 'Completed in 2 model rounds.');
+  assert.equal(findControl(hud.host, 'llm-prompt-status').text, 'Completed via 1 MCP call in 2 model rounds.');
   assert.equal(findControl(hud.host, 'llm-prompt-output').text, 'Project is ready.');
   assert.equal(hud.visible, true, 'Enter cannot leak into the panel shortcut or viewport');
   hud.dispose();

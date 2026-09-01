@@ -63,7 +63,16 @@ export function createBrowserMcpHarness({
       assertNotAborted(context.signal);
       return invoke(name, args, context);
     },
-    async run({ provider, messages, signal, onEvent } = {}) {
+    async run({
+      provider,
+      messages,
+      signal,
+      onEvent,
+      requiredFirstTool = null,
+      requiredToolNames = [],
+      strictEnvelopes = false,
+      maxProtocolRepairs = 2,
+    } = {}) {
       if (!provider || typeof provider.complete !== 'function') {
         throw new StudioError('provider_required', 'A chat provider with complete() is required.');
       }
@@ -72,6 +81,68 @@ export function createBrowserMcpHarness({
       }
       const thread = messages.map(message => ({ ...message }));
       const toolTrace = [];
+      const modelToolNames = new Set();
+      let protocolRepairs = 0;
+
+      const callAndRecord = async (call, round) => {
+        assertNotAborted(signal);
+        const callId = String(call.id || `call-${round}-${call.name}`);
+        emit(onEvent, { type: 'tool-call', round, id: callId, name: call.name });
+        let result;
+        let error = null;
+        try {
+          result = await this.callTool(call.name, call.arguments ?? {}, { signal, toolCallId: callId });
+        } catch (caught) {
+          error = caught instanceof StudioError
+            ? caught
+            : new StudioError('dispatch_error', caught?.message ?? String(caught), { cause: caught });
+          result = { success: false, error: error.toJSON() };
+        }
+        const serialized = (() => {
+          try {
+            return JSON.stringify(result);
+          } catch {
+            return '{"success":false,"error":{"code":"dispatch_error","message":"Tool result was not JSON serializable."}}';
+          }
+        })();
+        toolTrace.push(Object.freeze({
+          id: callId,
+          name: call.name,
+          ok: error == null,
+          code: error?.code ?? null,
+        }));
+        emit(onEvent, {
+          type: 'tool-result',
+          round,
+          id: callId,
+          name: call.name,
+          ok: error == null,
+          code: error?.code ?? null,
+        });
+        thread.push({ role: 'tool', toolCallId: callId, name: call.name, content: serialized });
+      };
+
+      if (requiredFirstTool) {
+        const call = { id: `required-first-${requiredFirstTool}`, name: requiredFirstTool, arguments: {} };
+        thread.push({ role: 'assistant', content: '', toolCalls: [call] });
+        await callAndRecord(call, -1);
+      }
+
+      const requestCorrection = (round, message) => {
+        if (!strictEnvelopes || protocolRepairs >= maxProtocolRepairs) {
+          throw new StudioError('model_protocol_error', message, {
+            round,
+            requiredToolNames: [...requiredToolNames],
+          });
+        }
+        protocolRepairs += 1;
+        emit(onEvent, { type: 'protocol-retry', round, attempt: protocolRepairs });
+        thread.push({
+          role: 'user',
+          content: `PROTOCOL_CORRECTION: ${message} Output only one valid JSON tool_call envelope now. Do not explain or provide an example.`,
+        });
+      };
+
       for (let round = 0; round < maxToolRounds; round += 1) {
         assertNotAborted(signal);
         emit(onEvent, { type: 'model', round });
@@ -81,10 +152,20 @@ export function createBrowserMcpHarness({
           signal,
         });
         const content = completion?.message?.content ?? '';
-        if (content) emit(onEvent, { type: 'text', round, text: content });
         const toolCalls = Array.isArray(completion?.toolCalls) ? completion.toolCalls : [];
-        if (toolCalls.length === 0 || completion?.finishReason === 'stop') {
+        if (completion?.finishReason === 'invalid_envelope') {
           thread.push({ role: 'assistant', content, toolCalls: [] });
+          requestCorrection(round, 'Your previous response was not a valid Studio tool envelope.');
+          continue;
+        }
+        if (toolCalls.length === 0 || completion?.finishReason === 'stop') {
+          const missing = requiredToolNames.filter(name => !modelToolNames.has(name));
+          thread.push({ role: 'assistant', content, toolCalls: [] });
+          if (missing.length > 0) {
+            requestCorrection(round, `This request requires ${missing.join(', ')} before a final response.`);
+            continue;
+          }
+          if (content) emit(onEvent, { type: 'text', round, text: content });
           return Object.freeze({
             messages: Object.freeze(thread.map(item => Object.freeze({ ...item }))),
             text: content,
@@ -95,46 +176,8 @@ export function createBrowserMcpHarness({
         }
         thread.push({ role: 'assistant', content, toolCalls });
         for (const call of toolCalls) {
-          assertNotAborted(signal);
-          const callId = String(call.id || `call-${round}-${call.name}`);
-          emit(onEvent, { type: 'tool-call', round, id: callId, name: call.name });
-          let result;
-          let error = null;
-          try {
-            result = await this.callTool(call.name, call.arguments ?? {}, { signal, toolCallId: callId });
-          } catch (caught) {
-            error = caught instanceof StudioError
-              ? caught
-              : new StudioError('dispatch_error', caught?.message ?? String(caught), { cause: caught });
-            result = { success: false, error: error.toJSON() };
-          }
-          const serialized = (() => {
-            try {
-              return JSON.stringify(result);
-            } catch {
-              return '{"success":false,"error":{"code":"dispatch_error","message":"Tool result was not JSON serializable."}}';
-            }
-          })();
-          toolTrace.push(Object.freeze({
-            id: callId,
-            name: call.name,
-            ok: error == null,
-            code: error?.code ?? null,
-          }));
-          emit(onEvent, {
-            type: 'tool-result',
-            round,
-            id: callId,
-            name: call.name,
-            ok: error == null,
-            code: error?.code ?? null,
-          });
-          thread.push({
-            role: 'tool',
-            toolCallId: callId,
-            name: call.name,
-            content: serialized,
-          });
+          modelToolNames.add(call.name);
+          await callAndRecord(call, round);
         }
       }
       throw new StudioError('tool_round_limit', `The harness stopped after ${maxToolRounds} tool rounds.`);

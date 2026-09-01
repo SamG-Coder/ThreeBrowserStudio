@@ -32,6 +32,9 @@ test('local model completion normalizes constrained tool and final envelopes', (
   assert.equal(tool.toolCalls[0].name, 'three_studio_validate');
   const final = normalizeLocalModelCompletion({ choices: [{ message: { content: '{"type":"final","text":"Done"}' } }] });
   assert.equal(final.message.content, 'Done');
+  const invalid = normalizeLocalModelCompletion({ choices: [{ message: { content: 'Here is an example tree.' } }] });
+  assert.equal(invalid.finishReason, 'invalid_envelope');
+  assert.equal(invalid.message.content, 'Here is an example tree.');
 });
 
 test('worker-backed provider initializes and emits Studio tool calls', async () => {
@@ -54,6 +57,8 @@ test('worker-backed provider initializes and emits Studio tool calls', async () 
   const sent = worker.requests.findLast(request => request.command === 'complete').payload.messages;
   assert.equal(sent[0].role, 'system');
   assert.match(sent[0].content, /Studio rules/);
+  assert.match(sent[0].content, /three_studio_status:/);
+  assert.match(sent[0].content, /Plain text, Markdown, code fences, examples, and ASCII art are invalid/);
   assert.equal(sent.filter(message => message.role === 'system').length, 1);
   assert.match(sent.at(-1).content, /^TOOL_RESULT three_studio_status:/);
   provider.dispose();

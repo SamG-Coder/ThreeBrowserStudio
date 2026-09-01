@@ -54,3 +54,97 @@ test('unavailable dispatch is kernel_unavailable and the run loop feeds tool res
   assert.ok(events.includes('tool-call'));
   assert.ok(events.includes('tool-result'));
 });
+
+test('strict local harness routes through status and refuses completion until the required MCP mutation runs', async () => {
+  const dispatched = [];
+  const events = [];
+  let round = 0;
+  const harness = createBrowserMcpHarness({
+    dispatch: async (name, args) => {
+      dispatched.push({ name, args });
+      if (name === 'three_studio_status') {
+        return { sessionId: 'session/test', projectId: 'project/test', revision: 4 };
+      }
+      return { success: true, revision: 5 };
+    },
+  });
+  const provider = {
+    async complete({ messages }) {
+      round += 1;
+      assert.equal(messages.some(message => message.role === 'tool' && message.name === 'three_studio_status'), true);
+      if (round === 1) {
+        return {
+          finishReason: 'invalid_envelope',
+          message: { role: 'assistant', content: 'Here is a simple example tree.' },
+          toolCalls: [],
+        };
+      }
+      if (round === 2) {
+        return {
+          finishReason: 'stop',
+          message: { role: 'assistant', content: 'Done.' },
+          toolCalls: [],
+        };
+      }
+      if (round === 3) {
+        return {
+          finishReason: 'tool_calls',
+          message: { role: 'assistant', content: '' },
+          toolCalls: [{
+            id: 'apply-tree',
+            name: 'three_studio_apply',
+            arguments: {
+              protocolVersion: 'three-studio/1',
+              sessionId: 'session/test',
+              projectId: 'project/test',
+              baseRevision: 4,
+              idempotencyKey: 'local-tree-0001',
+              label: 'Create a tree',
+              program: { language: 'plainform-v1', source: 'Create a design named Local Tree.' },
+            },
+          }],
+        };
+      }
+      return {
+        finishReason: 'stop',
+        message: { role: 'assistant', content: 'Created through Studio.' },
+        toolCalls: [],
+      };
+    },
+  };
+
+  const result = await harness.run({
+    provider,
+    messages: [{ role: 'user', content: 'Create a tree using Plainform.' }],
+    requiredFirstTool: 'three_studio_status',
+    requiredToolNames: ['three_studio_apply'],
+    strictEnvelopes: true,
+    onEvent: event => events.push(event.type),
+  });
+
+  assert.deepEqual(dispatched.map(item => item.name), ['three_studio_status', 'three_studio_apply']);
+  assert.equal(result.text, 'Created through Studio.');
+  assert.equal(result.rounds, 4);
+  assert.deepEqual(result.toolTrace.map(item => item.name), ['three_studio_status', 'three_studio_apply']);
+  assert.equal(events.filter(type => type === 'protocol-retry').length, 2);
+});
+
+test('strict local harness fails closed when a model keeps returning prose', async () => {
+  const harness = createBrowserMcpHarness({ dispatch: async () => ({ revision: 0 }) });
+  const provider = {
+    async complete() {
+      return {
+        finishReason: 'invalid_envelope',
+        message: { role: 'assistant', content: 'An example instead of a tool call.' },
+        toolCalls: [],
+      };
+    },
+  };
+  await assert.rejects(() => harness.run({
+    provider,
+    messages: [{ role: 'user', content: 'Create a tree.' }],
+    requiredFirstTool: 'three_studio_status',
+    requiredToolNames: ['three_studio_apply'],
+    strictEnvelopes: true,
+  }), { code: 'model_protocol_error' });
+});

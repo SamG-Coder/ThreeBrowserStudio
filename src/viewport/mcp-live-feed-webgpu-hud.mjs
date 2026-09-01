@@ -1093,7 +1093,7 @@ export function createMcpLiveFeedWebGpuHud({
     }));
     llmHarnessHint = llmPage.add(new WrappedLabel({
       name: 'llm-harness-hint',
-      text: 'The active model uses Studio rules and the same nine MCP tools in web and native.',
+      text: 'Every prompt routes through Studio MCP. Create/change requests must complete through three_studio_apply.',
       color: '#7f94ad',
       maxLines: 2,
     }));
@@ -1192,6 +1192,7 @@ export function createMcpLiveFeedWebGpuHud({
           if (event?.type === 'tool-result') {
             llmPromptStatus?.setText(`${event.name} ${event.ok ? 'completed' : 'failed'}…`);
           }
+          if (event?.type === 'protocol-retry') llmPromptStatus?.setText('Requiring a valid Studio MCP call…');
           if (event?.type === 'text' && event.text) {
             llmPromptOutput?.setText(sanitizeLiveFeedText(event.text, { maximum: 240, fallback: '' }));
           }
@@ -1201,7 +1202,8 @@ export function createMcpLiveFeedWebGpuHud({
         maximum: 240,
         fallback: 'Completed without a text response.',
       }));
-      llmPromptStatus?.setText(`Completed in ${result?.rounds ?? 1} model round${result?.rounds === 1 ? '' : 's'}.`);
+      const mcpCalls = result?.toolTrace?.length ?? 0;
+      llmPromptStatus?.setText(`Completed via ${mcpCalls} MCP call${mcpCalls === 1 ? '' : 's'} in ${result?.rounds ?? 1} model round${result?.rounds === 1 ? '' : 's'}.`);
     } catch (error) {
       llmPromptStatus?.setText('Prompt stopped.');
       llmPromptOutput?.setText(sanitizeLiveFeedText(error?.message ?? String(error), {

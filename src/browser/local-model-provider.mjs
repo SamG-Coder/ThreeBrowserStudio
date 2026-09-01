@@ -1,10 +1,12 @@
 import { StudioError } from '../core/errors.mjs';
 
 const TOOL_PROTOCOL = [
-  'When you need a Studio tool, output only one JSON object:',
+  'Every response must be only one JSON object. To call a Studio MCP tool, output:',
   '{"type":"tool_call","name":"three_studio_status","arguments":{}}',
-  'When finished, output {"type":"final","text":"..."}.',
-  'Never invent tool names or emit code fences around this JSON.',
+  'Only after required tools complete, output {"type":"final","text":"..."}.',
+  'Plain text, Markdown, code fences, examples, and ASCII art are invalid responses.',
+  'For Plainform authoring call three_studio_apply with arguments.program.language="plainform-v1" and arguments.program.source containing the controlled-English program.',
+  'Never print a Plainform program instead of calling three_studio_apply.',
 ].join(' ');
 
 function stripFence(text) {
@@ -33,9 +35,9 @@ export function normalizeLocalModelCompletion(payload) {
       return Object.freeze({ message: Object.freeze({ role: 'assistant', content: String(envelope.text ?? '') }), toolCalls: Object.freeze([]), finishReason: 'stop', usage: payload?.usage ?? null });
     }
   } catch {
-    // Plain text remains a valid final answer for models that ignore the envelope.
+    // The strict harness feeds invalid output back to the model for correction.
   }
-  return Object.freeze({ message: Object.freeze({ role: 'assistant', content }), toolCalls: Object.freeze([]), finishReason: 'stop', usage: payload?.usage ?? null });
+  return Object.freeze({ message: Object.freeze({ role: 'assistant', content }), toolCalls: Object.freeze([]), finishReason: 'invalid_envelope', usage: payload?.usage ?? null });
 }
 
 export function createLocalModelProvider({ model, worker, onProgress } = {}) {
@@ -84,8 +86,8 @@ export function createLocalModelProvider({ model, worker, onProgress } = {}) {
     },
     async complete({ messages = [], tools = [], signal } = {}) {
       if (!initialized) await this.initialize({ signal });
-      const toolNames = tools.map(tool => tool.name).join(', ');
-      const protocol = `${TOOL_PROTOCOL} Allowed tools: ${toolNames}.`;
+      const toolCatalog = tools.map(tool => `${tool.name}: ${tool.description ?? 'Use the live Studio tool contract.'}`).join('\n');
+      const protocol = `${TOOL_PROTOCOL}\nDeclared Studio MCP tools:\n${toolCatalog}`;
       // WebLLM accepts at most one system message and requires it to be first.
       // Merge Studio's tool protocol with the caller's system rules instead of
       // prepending a second system entry on every harness round.

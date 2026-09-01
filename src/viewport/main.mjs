@@ -26,17 +26,10 @@ import { LOCAL_MODEL_CATALOG } from '../browser/local-model-catalog.mjs';
 import { createLocalModelManager } from '../browser/local-model-manager.mjs';
 import { createBrowserMcpHarness } from '../browser/mcp-harness.mjs';
 import { createLocalModelDirectWorker } from '../browser/local-model-direct-worker.mjs';
+import { LOCAL_AI_SYSTEM_PROMPT, requiredLocalAiTools } from '../browser/local-ai-policy.mjs';
 
 const NATIVE_WEBLLM_RUNTIME_URL = new URL('../../node_modules/@mlc-ai/web-llm/lib/index.js', import.meta.url).href;
 const LOCAL_PROMPT_ENABLED_KEY = 'three-browser-studio.local-prompt.enabled';
-const LOCAL_AI_SYSTEM_PROMPT = [
-  'You author through ThreeBrowser Studio and its nine declared MCP tools.',
-  'Call three_studio_status first when project state or revision is not already known.',
-  'Inspect exact stable IDs before mutation, use typed atomic changesets, and validate after changes.',
-  'Never invent tools, raw code, shaders, or unrestricted eval. The canonical Studio document is authoritative.',
-  'Use tools when the request requires inspection or a project change; otherwise answer briefly and clearly.',
-].join(' ');
-
 function readLocalPromptEnabled() {
   try {
     return globalThis.localStorage?.getItem(LOCAL_PROMPT_ENABLED_KEY) === 'true';
@@ -227,6 +220,9 @@ async function main() {
             { role: 'user', content: prompt },
           ],
           onEvent,
+          requiredFirstTool: 'three_studio_status',
+          requiredToolNames: requiredLocalAiTools(prompt),
+          strictEnvelopes: true,
         });
       } finally {
         localAiBusy = false;
