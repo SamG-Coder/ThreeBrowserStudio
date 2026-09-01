@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createProjectWorkspaceActions } from '../src/viewport/project-workspace-actions.mjs';
+import { applySchema, projectSchema } from '../src/mcp/tool-schemas.mjs';
 
 function nativeFixture() {
   const calls = [];
@@ -20,7 +21,7 @@ function nativeFixture() {
         return {
           success: true,
           revision: 7,
-          scene: { id: 'scene/main', name: 'Main Scene', sceneHash: 'sha256:verified-scene' },
+          scene: { id: 'scene/main', name: 'Main Scene', sceneHash: 'a'.repeat(64) },
         };
       }
       return { success: true };
@@ -38,10 +39,12 @@ test('native workspace toolbar uses project actions for new and save', async () 
   assert.equal(calls[0].params.action, 'create');
   assert.equal(calls[0].params.template, 'starter');
   assert.equal(calls[0].params.path, 'starter-ya');
+  assert.equal(projectSchema.safeParse(calls[0].params).success, true);
   assert.equal(calls[1].tool, 'three_studio_project');
   assert.equal(calls[1].params.action, 'save');
   assert.equal(calls[1].params.projectId, 'project/live');
   assert.equal(calls[1].params.baseRevision, 7);
+  assert.equal(projectSchema.safeParse(calls[1].params).success, true);
 });
 
 test('clear scene reads the digest then applies one hash-guarded MCP mutation', async () => {
@@ -55,8 +58,9 @@ test('clear scene reads the digest then applies one hash-guarded MCP mutation', 
   assert.deepEqual(calls[1].params.operations, [{
     op: 'scene.clear',
     sceneId: 'scene/main',
-    expectedSceneHash: 'sha256:verified-scene',
+    expectedSceneHash: 'a'.repeat(64),
   }]);
+  assert.equal(applySchema.safeParse(calls[1].params).success, true);
 });
 
 test('browser workspace creates canonical blank and starter documents and downloads on save', async () => {

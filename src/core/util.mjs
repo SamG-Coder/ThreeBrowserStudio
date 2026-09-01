@@ -68,7 +68,7 @@ export function contentHash(value) {
 }
 
 export function createTransactionId(prefix = 'tx') {
-  return `${prefix}/${randomUuid()}`;
+  return `${prefix}:${randomUuid()}`;
 }
 
 export function uniqueSorted(values) {
