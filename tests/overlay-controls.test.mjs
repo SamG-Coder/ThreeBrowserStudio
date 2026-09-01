@@ -9,6 +9,7 @@ import {
   OverlayHost,
   RangeOption,
   ScrollPanel,
+  TabStrip,
   TextInput,
   ToolWindow,
   VirtualList,
@@ -244,6 +245,28 @@ test('retained tool windows provide shared Form-like chrome and dialog results',
   assert.equal(window.visible, false);
   assert.equal(window.dialogResult, 'ok');
   assert.deepEqual(closed, ['ok']);
+});
+
+test('tab strips select the tab at the pointer coordinates', () => {
+  const { host } = hostFixture();
+  const changes = [];
+  const tabs = host.add(new TabStrip({
+    x: 10,
+    y: 20,
+    width: 200,
+    height: 30,
+    tabs: [
+      { id: 'scene', label: 'Scene' },
+      { id: 'logic', label: 'Logic' },
+    ],
+    selected: 'scene',
+    onChange(id) { changes.push(id); },
+  }));
+
+  assert.equal(tabs.onPointerDown({}, { x: 160, y: 35 }), true);
+  assert.equal(tabs.selected, 'logic');
+  assert.deepEqual(changes, ['logic']);
+  assert.equal(tabs.onPointerDown({}, { x: 220, y: 35 }), false);
 });
 
 test('button click only invalidates the button bounds', () => {

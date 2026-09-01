@@ -986,7 +986,7 @@ export class TabStrip extends Control {
     });
   }
 
-  onPointerDown(event, { y }) {
+  onPointerDown(event, { x, y }) {
     const bounds = this.absoluteBounds;
     const index = this.tabs.findIndex((_, tabIndex) => pointInRect(x, y, this.#tabRect(tabIndex, bounds)));
     if (index < 0) return false;
