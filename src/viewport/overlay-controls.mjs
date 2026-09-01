@@ -384,6 +384,408 @@ export class Button extends Control {
   }
 }
 
+export class TextInput extends Control {
+  constructor({
+    text = '',
+    placeholder = '',
+    maximumLength = 1200,
+    multiline = false,
+    readClipboardText,
+    writeClipboardText,
+    onChange,
+    onSubmit,
+    onFocusChange,
+    ...rest
+  } = {}) {
+    super({ backColor: rest.backColor ?? 'rgba(10, 18, 29, 0.98)', ...rest });
+    this.text = this.#normalize(text).slice(0, maximumLength);
+    this.placeholder = String(placeholder ?? '');
+    this.maximumLength = maximumLength;
+    this.multiline = multiline === true;
+    this.readClipboardText = readClipboardText;
+    this.writeClipboardText = writeClipboardText;
+    this.onChange = onChange;
+    this.onSubmit = onSubmit;
+    this.onFocusChange = onFocusChange;
+    this.focused = false;
+    this.cursor = this.text.length;
+    this.anchor = this.cursor;
+    this.scrollLine = 0;
+    this.preferredColumn = null;
+    this.undoStack = [];
+    this.redoStack = [];
+    this.dragging = false;
+    this.lastFonts = null;
+  }
+
+  #normalize(value) {
+    return String(value ?? '').replace(/\r\n?/g, '\n');
+  }
+
+  get selectionStart() { return Math.min(this.anchor, this.cursor); }
+  get selectionEnd() { return Math.max(this.anchor, this.cursor); }
+  get selectedText() { return this.text.slice(this.selectionStart, this.selectionEnd); }
+
+  #recordUndo() {
+    const previous = this.undoStack.at(-1);
+    if (!previous || previous.text !== this.text || previous.cursor !== this.cursor || previous.anchor !== this.anchor) {
+      this.undoStack.push({ text: this.text, cursor: this.cursor, anchor: this.anchor });
+      if (this.undoStack.length > 100) this.undoStack.shift();
+    }
+    this.redoStack = [];
+  }
+
+  #restore(stack, destination) {
+    const state = stack.pop();
+    if (!state) return false;
+    destination.push({ text: this.text, cursor: this.cursor, anchor: this.anchor });
+    this.text = state.text;
+    this.cursor = state.cursor;
+    this.anchor = state.anchor;
+    this.preferredColumn = null;
+    this.#ensureCaretVisible();
+    this.invalidate();
+    this.onChange?.(this.text, this);
+    return true;
+  }
+
+  #replaceSelection(value) {
+    const insertion = this.#normalize(value);
+    const start = this.selectionStart;
+    const end = this.selectionEnd;
+    const capacity = this.maximumLength - (this.text.length - (end - start));
+    const accepted = insertion.slice(0, Math.max(0, capacity));
+    if (start === end && accepted.length === 0) return false;
+    this.#recordUndo();
+    this.text = `${this.text.slice(0, start)}${accepted}${this.text.slice(end)}`;
+    this.cursor = start + accepted.length;
+    this.anchor = this.cursor;
+    this.preferredColumn = null;
+    this.#ensureCaretVisible();
+    this.invalidate();
+    this.onChange?.(this.text, this);
+    return true;
+  }
+
+  #deleteRange(start, end) {
+    if (end <= start) return false;
+    this.anchor = Math.max(0, start);
+    this.cursor = Math.min(this.text.length, end);
+    return this.#replaceSelection('');
+  }
+
+  #wordBoundary(index, direction) {
+    let cursor = Math.max(0, Math.min(this.text.length, index));
+    const isWord = value => /[\p{L}\p{N}_]/u.test(value ?? '');
+    if (direction < 0) {
+      while (cursor > 0 && !isWord(this.text[cursor - 1])) cursor -= 1;
+      while (cursor > 0 && isWord(this.text[cursor - 1])) cursor -= 1;
+      return cursor;
+    }
+    while (cursor < this.text.length && !isWord(this.text[cursor])) cursor += 1;
+    while (cursor < this.text.length && isWord(this.text[cursor])) cursor += 1;
+    return cursor;
+  }
+
+  #lineColumn(index = this.cursor) {
+    const before = this.text.slice(0, index);
+    const row = before.split('\n').length - 1;
+    const lineStart = before.lastIndexOf('\n') + 1;
+    return { row, column: index - lineStart, lineStart };
+  }
+
+  #indexAtLineColumn(row, column) {
+    const lines = this.text.split('\n');
+    const targetRow = Math.max(0, Math.min(lines.length - 1, row));
+    let index = 0;
+    for (let line = 0; line < targetRow; line += 1) index += lines[line].length + 1;
+    return index + Math.min(lines[targetRow].length, Math.max(0, column));
+  }
+
+  #move(next, extend = false) {
+    const bounded = Math.max(0, Math.min(this.text.length, next));
+    this.cursor = bounded;
+    if (!extend) this.anchor = bounded;
+    this.#ensureCaretVisible();
+    this.invalidate();
+  }
+
+  #visualLines(bounds = this.absoluteBounds) {
+    const available = Math.max(1, bounds.width - 16);
+    const estimatedColumns = this.multiline ? Math.max(1, Math.floor(available / 7.2)) : Number.POSITIVE_INFINITY;
+    const result = [];
+    let offset = 0;
+    for (const logical of this.text.split('\n')) {
+      if (logical.length === 0) result.push({ text: '', start: offset, end: offset });
+      else {
+        for (let start = 0; start < logical.length; start += estimatedColumns) {
+          const text = logical.slice(start, start + estimatedColumns);
+          result.push({ text, start: offset + start, end: offset + start + text.length });
+        }
+      }
+      offset += logical.length + 1;
+    }
+    return result.length > 0 ? result : [{ text: '', start: 0, end: 0 }];
+  }
+
+  #caretVisualLine(lines) {
+    let match = lines.length - 1;
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index];
+      if (this.cursor >= line.start && this.cursor <= line.end) {
+        match = index;
+        if (this.cursor === line.end && index + 1 < lines.length && lines[index + 1].start === this.cursor) continue;
+        break;
+      }
+    }
+    return match;
+  }
+
+  #ensureCaretVisible() {
+    const lines = this.#visualLines();
+    const caretLine = this.#caretVisualLine(lines);
+    const capacity = Math.max(1, Math.floor((this.height - 12) / 18));
+    if (caretLine < this.scrollLine) this.scrollLine = caretLine;
+    if (caretLine >= this.scrollLine + capacity) this.scrollLine = caretLine - capacity + 1;
+    this.scrollLine = Math.max(0, Math.min(this.scrollLine, Math.max(0, lines.length - capacity)));
+  }
+
+  #indexFromPoint(point) {
+    const bounds = this.absoluteBounds;
+    const lines = this.#visualLines(bounds);
+    const row = Math.max(0, Math.min(lines.length - 1, this.scrollLine + Math.floor((point.y - bounds.y - 6) / 18)));
+    const line = lines[row];
+    const localX = Math.max(0, point.x - bounds.x - 8);
+    if (!this.lastFonts) return line.start + Math.min(line.text.length, Math.round(localX / 7.2));
+    let best = 0;
+    let distance = Number.POSITIVE_INFINITY;
+    for (let column = 0; column <= line.text.length; column += 1) {
+      const width = this.lastFonts.measure(null, line.text.slice(0, column), '13px "Segoe UI", Arial, sans-serif').width;
+      const nextDistance = Math.abs(width - localX);
+      if (nextDistance < distance) {
+        best = column;
+        distance = nextDistance;
+      }
+    }
+    return line.start + best;
+  }
+
+  setFocused(focused) {
+    const next = focused === true;
+    if (next === this.focused) return false;
+    this.focused = next;
+    this.invalidate();
+    this.onFocusChange?.(next, this);
+    return true;
+  }
+
+  setText(text, { notify = false } = {}) {
+    const next = this.#normalize(text).slice(0, this.maximumLength);
+    if (next === this.text) return false;
+    this.text = next;
+    this.cursor = Math.min(this.cursor, next.length);
+    this.anchor = Math.min(this.anchor, next.length);
+    this.undoStack = [];
+    this.redoStack = [];
+    this.#ensureCaretVisible();
+    this.invalidate();
+    if (notify) this.onChange?.(next, this);
+    return true;
+  }
+
+  onPaint(context, fonts, clip, bounds) {
+    this.lastFonts = fonts;
+    context.fillStyle = this.backColor;
+    context.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+    context.fillStyle = this.focused ? '#7eb0e8' : 'rgba(135, 176, 224, 0.34)';
+    context.fillRect(bounds.x, bounds.y, bounds.width, 1);
+    context.fillRect(bounds.x, bounds.y + bounds.height - 1, bounds.width, 1);
+    context.fillRect(bounds.x, bounds.y, 1, bounds.height);
+    context.fillRect(bounds.x + bounds.width - 1, bounds.y, 1, bounds.height);
+    const font = '13px "Segoe UI", Arial, sans-serif';
+    if (!this.text) {
+      fonts.blit(context, this.placeholder, bounds.x + 8, bounds.y + 22, {
+        font,
+        fillStyle: '#667c94',
+        maxWidth: bounds.width - 16,
+      });
+      if (this.focused) {
+        context.fillStyle = '#b9d8f6';
+        context.fillRect(bounds.x + 8, bounds.y + 7, 1, 16);
+      }
+      return;
+    }
+    const lines = this.#visualLines(bounds);
+    const capacity = Math.max(1, Math.floor((bounds.height - 12) / 18));
+    const visibleLines = lines.slice(this.scrollLine, this.scrollLine + capacity);
+    for (let row = 0; row < visibleLines.length; row += 1) {
+      const line = visibleLines[row];
+      const y = bounds.y + 18 + (row * 18);
+      const selectionStart = Math.max(line.start, this.selectionStart);
+      const selectionEnd = Math.min(line.end, this.selectionEnd);
+      if (selectionEnd > selectionStart) {
+        const before = line.text.slice(0, selectionStart - line.start);
+        const selected = line.text.slice(selectionStart - line.start, selectionEnd - line.start);
+        const x = bounds.x + 8 + fonts.measure(context, before, font).width;
+        const width = Math.max(2, fonts.measure(context, selected, font).width);
+        context.fillStyle = 'rgba(74, 126, 186, 0.62)';
+        context.fillRect(x, y - 14, width, 17);
+      }
+      fonts.blit(context, line.text.replaceAll('\t', '    '), bounds.x + 8, y, {
+        font,
+        fillStyle: '#dce8f7',
+        maxWidth: bounds.width - 16,
+      });
+    }
+    if (this.focused) {
+      const caretLineIndex = this.#caretVisualLine(lines);
+      if (caretLineIndex >= this.scrollLine && caretLineIndex < this.scrollLine + capacity) {
+        const line = lines[caretLineIndex];
+        const before = line.text.slice(0, Math.max(0, this.cursor - line.start));
+        const x = Math.min(bounds.x + bounds.width - 9, bounds.x + 8 + fonts.measure(context, before, font).width);
+        const y = bounds.y + 5 + ((caretLineIndex - this.scrollLine) * 18);
+        context.fillStyle = '#b9d8f6';
+        context.fillRect(x, y, 1, 16);
+      }
+    }
+    void clip;
+  }
+
+  onPointerDown(event, point) {
+    this.setFocused(true);
+    const index = point ? this.#indexFromPoint(point) : this.cursor;
+    if (event?.detail >= 2) {
+      this.anchor = this.#wordBoundary(index, -1);
+      this.cursor = this.#wordBoundary(index, 1);
+    } else {
+      this.cursor = index;
+      this.anchor = event?.shiftKey ? this.anchor : index;
+    }
+    this.dragging = true;
+    this.#ensureCaretVisible();
+    this.invalidate();
+    return true;
+  }
+
+  onPointerMove(event, point) {
+    if (!this.dragging || !point) return false;
+    this.cursor = this.#indexFromPoint(point);
+    this.#ensureCaretVisible();
+    this.invalidate();
+    void event;
+    return true;
+  }
+
+  onPointerUp() {
+    this.dragging = false;
+    return true;
+  }
+
+  handleKey(event) {
+    if (!this.focused) return false;
+    const command = event?.ctrlKey || event?.metaKey;
+    const extend = event?.shiftKey === true;
+    const key = String(event?.key ?? '');
+    if (event.key === 'Escape') {
+      this.setFocused(false);
+      return true;
+    }
+    if (command && key.toLowerCase() === 'a') {
+      this.anchor = 0;
+      this.cursor = this.text.length;
+      this.#ensureCaretVisible();
+      this.invalidate();
+      return true;
+    }
+    if (command && key.toLowerCase() === 'c') {
+      if (this.selectedText) void this.writeClipboardText?.(this.selectedText);
+      return true;
+    }
+    if (command && key.toLowerCase() === 'x') {
+      if (this.selectedText) {
+        void this.writeClipboardText?.(this.selectedText);
+        this.#replaceSelection('');
+      }
+      return true;
+    }
+    if (command && key.toLowerCase() === 'v') {
+      if (typeof this.readClipboardText === 'function') {
+        void Promise.resolve(this.readClipboardText()).then(value => {
+          if (this.focused && value != null) this.#replaceSelection(value);
+        }).catch(() => {});
+      }
+      return true;
+    }
+    if (command && key.toLowerCase() === 'z') {
+      this.#restore(extend ? this.redoStack : this.undoStack, extend ? this.undoStack : this.redoStack);
+      return true;
+    }
+    if (command && key.toLowerCase() === 'y') {
+      this.#restore(this.redoStack, this.undoStack);
+      return true;
+    }
+    if (key === 'Enter' && (!this.multiline || command)) {
+      this.onSubmit?.(this.text, this);
+      return true;
+    }
+    if (key === 'Enter') return this.#replaceSelection('\n');
+    if (key === 'Tab') return this.#replaceSelection('    ');
+    if (key === 'Backspace') {
+      if (this.selectionStart !== this.selectionEnd) this.#replaceSelection('');
+      else if (this.cursor > 0) this.#deleteRange(command ? this.#wordBoundary(this.cursor, -1) : this.cursor - 1, this.cursor);
+      return true;
+    }
+    if (key === 'Delete') {
+      if (this.selectionStart !== this.selectionEnd) this.#replaceSelection('');
+      else if (this.cursor < this.text.length) this.#deleteRange(this.cursor, command ? this.#wordBoundary(this.cursor, 1) : this.cursor + 1);
+      return true;
+    }
+    if (key === 'ArrowLeft' || key === 'ArrowRight') {
+      const direction = key === 'ArrowLeft' ? -1 : 1;
+      if (!extend && this.selectionStart !== this.selectionEnd) {
+        this.#move(direction < 0 ? this.selectionStart : this.selectionEnd, false);
+      } else {
+        this.#move(command ? this.#wordBoundary(this.cursor, direction) : this.cursor + direction, extend);
+      }
+      this.preferredColumn = null;
+      return true;
+    }
+    if (key === 'ArrowUp' || key === 'ArrowDown' || key === 'PageUp' || key === 'PageDown') {
+      const { row, column } = this.#lineColumn();
+      if (this.preferredColumn == null) this.preferredColumn = column;
+      const page = Math.max(1, Math.floor((this.height - 12) / 18));
+      const delta = key === 'ArrowUp' ? -1 : key === 'ArrowDown' ? 1 : key === 'PageUp' ? -page : page;
+      this.#move(this.#indexAtLineColumn(row + delta, this.preferredColumn), extend);
+      return true;
+    }
+    if (key === 'Home' || key === 'End') {
+      const { row, lineStart } = this.#lineColumn();
+      const next = command
+        ? key === 'Home' ? 0 : this.text.length
+        : key === 'Home' ? lineStart : this.#indexAtLineColumn(row, Number.POSITIVE_INFINITY);
+      this.#move(next, extend);
+      this.preferredColumn = null;
+      return true;
+    }
+    if (!command && !event?.altKey && key.length === 1) {
+      const shifted = event?.shiftKey === true && /^[a-z]$/.test(key)
+        ? key.toUpperCase()
+        : event?.shiftKey === true
+          ? ({
+              '1': '!', '2': '@', '3': '#', '4': '$', '5': '%',
+              '6': '^', '7': '&', '8': '*', '9': '(', '0': ')',
+              '-': '_', '=': '+', '[': '{', ']': '}', '\\': '|',
+              ';': ':', "'": '"', ',': '<', '.': '>', '/': '?', '`': '~',
+            }[key] ?? key)
+          : key;
+      this.#replaceSelection(shifted);
+      return true;
+    }
+    // Focused text controls own every key even when it has no editing action.
+    return true;
+  }
+}
+
 export class TabStrip extends Control {
   constructor({ tabs = [], selected = tabs[0]?.id, onChange, ...rest } = {}) {
     super(rest);

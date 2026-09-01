@@ -739,8 +739,31 @@ allowing deliberate procedural bake workflows.
 
 The scene is the interface. The viewport occupies the window.
 
+The stock-browser host owns an in-memory `AuthoringKernel` and uses the same
+canonical operation, validation, history, compile-before-swap, and Play
+boundaries as desktop. Browser persistence remains explicitly adapter-owned:
+project packs use browser import/export and model weights use a device-local
+cache. A compact component composer stages typed component
+attachments/removals on the selected object and commits them as one revision.
+
+Local AI runs in a Web Worker through the existing nine-tool harness on both
+the browser and native hosts. Its retained **LLM Setup** tab is the only model
+configuration surface: there are no HTTP-provider or API-key settings. The
+catalog is curated to compatible WebLLM artifacts; arbitrary remote model code
+is not executed. An opt-in **Prompt Studio** section lives inside that retained
+tab. It sends the user's text through the active on-device model, Studio system
+rules, and the same bounded nine-tool harness; browser calls reach the in-process
+kernel and native calls reach the native application. Tool requests use a
+bounded structured envelope, the ordinary kernel remains authoritative, and
+the viewport reduces its frame rate while inference shares WebGPU resources.
+The Prompt editor is the same retained multiline control on both hosts. It owns
+both halves of each keyboard event while focused so editing cannot drive Play,
+controllers, camera navigation, or other 3D viewport shortcuts; Ctrl+Enter is
+the explicit run gesture.
+
 The only persistent chrome is a left side panel composited through one
-`CanvasTexture` sprite: Log, Plainform, Explorer, Layers, and Settings. Layers
+`CanvasTexture` sprite: Log, Plainform, Explorer, Layers, Settings, and LLM
+Setup. Layers
 switches among the committed scene, retained Preview candidate, or both, and
 toggles a Blender-style grid floor and conditional workbench lighting for empty
 scenes. Grid, workbench lighting, and Preview are transient viewport

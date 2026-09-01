@@ -13,6 +13,7 @@ import {
   ScrollBar,
   ScrollPanel,
   TabStrip,
+  TextInput,
   ToggleOption,
   VirtualList,
   eventPoint,
@@ -301,14 +302,27 @@ export function createMcpLiveFeedWebGpuHud({
   onViewModeChange,
   typeface = null,
   viewMode: initialViewMode = VIEW_MODE_FOLLOW_SHOT,
-  promptTab = false,
+  llmSetupTab = true,
+  localModels = [],
+  promptEnabled: initialPromptEnabled = false,
   onTabChange,
   onVisibilityChange,
   onViewportLayerChange,
   onExportProject,
   onImportProject,
+  onExplorerEntitySelect,
+  onLocalModelActivate,
+  onLocalModelRemove,
+  onPromptEnabledChange,
+  onLocalPromptRun,
   onRtxSettingsChange,
   onDlss5SettingsChange,
+  readClipboardText = () => {
+    if (typeof globalThis.navigator?.clipboard?.readText !== 'function') {
+      throw new Error('Clipboard reading is unavailable.');
+    }
+    return globalThis.navigator.clipboard.readText();
+  },
   writeClipboardText = value => {
     if (typeof globalThis.navigator?.clipboard?.writeText !== 'function') {
       throw new Error('Clipboard writing is unavailable.');
@@ -393,6 +407,9 @@ export function createMcpLiveFeedWebGpuHud({
   let timer = null;
   let viewMode = initialViewMode === VIEW_MODE_REVIEW ? VIEW_MODE_REVIEW : VIEW_MODE_FOLLOW_SHOT;
   let captured = null;
+  const consumedTextKeys = new Set();
+  const handledTextEvents = new WeakSet();
+  let lastTextKeyDown = null;
   let tab = 'log';
   let logExpanded = false;
   let plainformRows = Object.freeze([]);
@@ -468,12 +485,12 @@ export function createMcpLiveFeedWebGpuHud({
   }));
   const tabItems = [
     { id: 'log', label: 'Log' },
-    { id: 'plainform', label: 'Plainform' },
-    { id: 'explorer', label: 'Explorer' },
-    { id: 'layers', label: 'Layers' },
-    { id: 'settings', label: 'Settings' },
+    { id: 'plainform', label: 'Form' },
+    { id: 'explorer', label: 'Scene' },
+    { id: 'layers', label: 'Layer' },
+    { id: 'settings', label: 'Prefs' },
   ];
-  if (promptTab) tabItems.push({ id: 'prompt', label: 'Prompt' });
+  if (llmSetupTab) tabItems.push({ id: 'llm', label: 'LLM' });
   const tabs = host.add(new TabStrip({
     name: 'tabs',
     tabs: tabItems,
@@ -485,7 +502,7 @@ export function createMcpLiveFeedWebGpuHud({
       explorerPage.setVisible(id === 'explorer');
       layersPage.setVisible(id === 'layers');
       settingsPage.setVisible(id === 'settings');
-      promptPage?.setVisible(id === 'prompt');
+      llmPage?.setVisible(id === 'llm');
       syncStatus();
       onTabChange?.(id);
     },
@@ -631,7 +648,9 @@ export function createMcpLiveFeedWebGpuHud({
     },
     onActivate(index) {
       const row = explorerRows[index];
-      if (!row?.expandable) return;
+      if (!row) return;
+      if (row.section === 'entity') onExplorerEntitySelect?.(row.id);
+      if (!row.expandable) return;
       if (explorerExpanded.has(row.id)) explorerExpanded.delete(row.id);
       else explorerExpanded.add(row.id);
       refreshExplorer({ fromIndex: index });
@@ -977,48 +996,278 @@ export function createMcpLiveFeedWebGpuHud({
   }));
   const projectHint = settingsContent.add(new Label({
     name: 'project-hint',
-    text: 'JSON pack of the canonical project. History, recovery, and Prompt keys stay out.',
+    text: 'JSON pack of the canonical project. History, recovery, and local model state stay out.',
     color: '#7f94ad',
   }));
-  const promptSettingsLabel = promptTab ? settingsContent.add(new Label({
-    name: 'prompt-settings-label',
-    text: 'Prompt',
+  const llmSettingsLabel = llmSetupTab ? settingsContent.add(new Label({
+    name: 'llm-settings-label',
+    text: 'Local LLM',
     font: UI_FONT_BOLD,
     color: '#9fc6f2',
   })) : null;
-  const promptSettingsButton = promptTab ? settingsContent.add(new Button({
-    name: 'open-prompt',
-    text: 'Open Prompt  ·  models',
-    onClick() { tabs.setSelected('prompt'); },
+  const llmSettingsButton = llmSetupTab ? settingsContent.add(new Button({
+    name: 'open-llm-setup',
+    text: 'Open LLM Setup',
+    onClick() { tabs.setSelected('llm'); },
   })) : null;
-  const promptSettingsHint = promptTab ? settingsContent.add(new Label({
-    name: 'prompt-settings-hint',
-    text: 'Connect HTTP chat APIs here. Tokens stay PIN-encrypted in this browser.',
+  const llmSettingsHint = llmSetupTab ? settingsContent.add(new Label({
+    name: 'llm-settings-hint',
+    text: 'Download and activate an on-device model. No API keys or remote prompt service.',
     color: '#7f94ad',
   })) : null;
 
-  const promptPage = promptTab ? host.add(new Control({
-    name: 'prompt-page',
+  const llmPage = llmSetupTab ? host.add(new Control({
+    name: 'llm-page',
     visible: false,
     backColor: PANEL_LAYER_TRANSPARENT,
   })) : null;
-  if (promptPage) {
-    promptPage.add(new Label({
-      name: 'prompt-title',
-      text: 'Prompt',
+  let selectedLocalModelId = localModels[0]?.id ?? null;
+  let localModelState = Object.freeze({
+    supported: false,
+    activeModelId: null,
+    ready: false,
+    progress: null,
+    busy: false,
+    error: '',
+  });
+  let llmModelOptions = [];
+  let llmDetails = null;
+  let llmStatus = null;
+  let llmActivateButton = null;
+  let llmRemoveButton = null;
+  let llmTitle = null;
+  let llmHint = null;
+  let llmHarnessHint = null;
+  let promptEnabled = initialPromptEnabled === true;
+  let promptRunning = false;
+  let llmPromptToggle = null;
+  let llmPromptTitle = null;
+  let llmPromptInput = null;
+  let llmPromptRunButton = null;
+  let llmPromptStatus = null;
+  let llmPromptOutput = null;
+  let llmPromptHint = null;
+  if (llmPage) {
+    llmTitle = llmPage.add(new Label({
+      name: 'llm-title',
+      text: 'Local LLM Setup',
       font: UI_FONT_BOLD,
       color: '#9fc6f2',
     }));
-    promptPage.add(new Label({
-      name: 'prompt-hint',
-      text: 'Connect an HTTP chat API. Bearer tokens stay in this browser, encrypted with your PIN.',
+    llmHint = llmPage.add(new Label({
+      name: 'llm-hint',
+      text: 'Models run on this device through WebGPU and remain in the local model cache.',
       color: '#7f94ad',
     }));
-    promptPage.add(new Label({
-      name: 'prompt-kernel-hint',
-      text: 'The nine MCP tools go through the browser harness. The authoring kernel is not in the page yet.',
+    llmModelOptions = localModels.map(model => llmPage.add(new RadioOption({
+      name: `llm-model-${model.id}`,
+      text: `${model.label}  ·  ${model.vramRequiredMB} MB`,
+      selected: model.id === selectedLocalModelId,
+      onSelect() {
+        selectedLocalModelId = model.id;
+        syncLocalModelControls();
+      },
+    })));
+    llmDetails = llmPage.add(new Label({
+      name: 'llm-model-details',
+      text: '',
       color: '#7f94ad',
     }));
+    llmActivateButton = llmPage.add(new Button({
+      name: 'llm-activate',
+      text: 'Download & activate',
+      onClick() { void activateSelectedLocalModel(); },
+    }));
+    llmRemoveButton = llmPage.add(new Button({
+      name: 'llm-remove',
+      text: 'Remove local files',
+      onClick() { void removeSelectedLocalModel(); },
+    }));
+    llmStatus = llmPage.add(new Label({
+      name: 'llm-status',
+      text: 'Checking local WebGPU support…',
+      color: '#9fc6f2',
+    }));
+    llmHarnessHint = llmPage.add(new Label({
+      name: 'llm-harness-hint',
+      text: 'The active model uses Studio rules and the same nine MCP tools in web and native.',
+      color: '#7f94ad',
+    }));
+    llmPromptToggle = llmPage.add(new ToggleOption({
+      name: 'llm-prompt-enabled',
+      text: 'Enable Prompt workspace',
+      selected: promptEnabled,
+      onChange(enabled) {
+        promptEnabled = enabled;
+        syncPromptControls();
+        onPromptEnabledChange?.(enabled);
+      },
+    }));
+    llmPromptTitle = llmPage.add(new Label({
+      name: 'llm-prompt-title',
+      text: 'Prompt Studio',
+      font: UI_FONT_BOLD,
+      color: '#9fc6f2',
+    }));
+    llmPromptInput = llmPage.add(new TextInput({
+      name: 'llm-prompt-input',
+      placeholder: 'Describe what to inspect or change…',
+      maximumLength: 1200,
+      multiline: true,
+      readClipboardText,
+      writeClipboardText,
+      onChange() {
+        if (!promptRunning) {
+          llmPromptStatus?.setText('');
+          llmPromptOutput?.setText('');
+        }
+        syncPromptControls();
+      },
+      onSubmit() { void runLocalPrompt(); },
+    }));
+    llmPromptRunButton = llmPage.add(new Button({
+      name: 'llm-prompt-run',
+      text: 'Run through Studio',
+      onClick() { void runLocalPrompt(); },
+    }));
+    llmPromptStatus = llmPage.add(new Label({
+      name: 'llm-prompt-status',
+      text: '',
+      color: '#9fc6f2',
+    }));
+    llmPromptOutput = llmPage.add(new Label({
+      name: 'llm-prompt-output',
+      text: '',
+      color: '#dce8f7',
+    }));
+    llmPromptHint = llmPage.add(new Label({
+      name: 'llm-prompt-hint',
+      text: 'Ctrl+Enter runs · Enter adds a line · Escape releases typing.',
+      color: '#7f94ad',
+    }));
+  }
+
+  function syncPromptControls() {
+    if (!llmPage) return;
+    llmPromptToggle?.setSelected(promptEnabled);
+    const promptControls = [
+      llmPromptTitle,
+      llmPromptInput,
+      llmPromptRunButton,
+      llmPromptStatus,
+      llmPromptOutput,
+      llmPromptHint,
+    ];
+    for (const control of promptControls) control?.setVisible(promptEnabled);
+    if (!promptEnabled) llmPromptInput?.setFocused(false);
+    const canRun = promptEnabled
+      && localModelState.ready === true
+      && promptRunning !== true
+      && Boolean(llmPromptInput?.text.trim());
+    llmPromptRunButton?.setEnabled(canRun);
+    if (!promptRunning && !llmPromptOutput?.text) {
+      llmPromptStatus?.setText(localModelState.ready
+        ? 'Ready · local model + Studio rules + nine tools.'
+        : 'Activate a local model above to run prompts.');
+    }
+  }
+
+  async function runLocalPrompt() {
+    const prompt = llmPromptInput?.text.trim() ?? '';
+    if (!promptEnabled || promptRunning || !localModelState.ready || !prompt || typeof onLocalPromptRun !== 'function') return;
+    promptRunning = true;
+    llmPromptStatus?.setText('Local model is working…');
+    llmPromptOutput?.setText('');
+    syncPromptControls();
+    try {
+      const result = await onLocalPromptRun(prompt, {
+        onEvent(event) {
+          if (event?.type === 'tool-call') llmPromptStatus?.setText(`Calling ${event.name}…`);
+          if (event?.type === 'tool-result') {
+            llmPromptStatus?.setText(`${event.name} ${event.ok ? 'completed' : 'failed'}…`);
+          }
+          if (event?.type === 'text' && event.text) {
+            llmPromptOutput?.setText(sanitizeLiveFeedText(event.text, { maximum: 240, fallback: '' }));
+          }
+        },
+      });
+      llmPromptOutput?.setText(sanitizeLiveFeedText(result?.text, {
+        maximum: 240,
+        fallback: 'Completed without a text response.',
+      }));
+      llmPromptStatus?.setText(`Completed in ${result?.rounds ?? 1} model round${result?.rounds === 1 ? '' : 's'}.`);
+    } catch (error) {
+      llmPromptStatus?.setText('Prompt stopped.');
+      llmPromptOutput?.setText(sanitizeLiveFeedText(error?.message ?? String(error), {
+        maximum: 240,
+        fallback: 'The local prompt could not be completed.',
+      }));
+    } finally {
+      promptRunning = false;
+      syncPromptControls();
+    }
+  }
+
+  function syncLocalModelControls() {
+    if (!llmPage) return;
+    const selected = localModels.find(model => model.id === selectedLocalModelId) ?? null;
+    for (let index = 0; index < llmModelOptions.length; index += 1) {
+      llmModelOptions[index].setSelected(localModels[index]?.id === selectedLocalModelId);
+    }
+    llmDetails?.setText(selected
+      ? `${selected.contextTokens} token context  ·  ${selected.runtime === 'webllm' ? 'WebLLM / Hugging Face' : selected.runtime}`
+      : 'No compatible local models are configured.');
+    const activeSelected = selected?.id === localModelState.activeModelId;
+    const working = localModelState.busy === true || localModelState.progress != null;
+    if (llmActivateButton) {
+      llmActivateButton.text = activeSelected && localModelState.ready ? 'Active on this device' : 'Download & activate';
+      llmActivateButton.setEnabled(Boolean(selected) && localModelState.supported && !working && !(activeSelected && localModelState.ready));
+      llmActivateButton.invalidate();
+    }
+    if (llmRemoveButton) {
+      llmRemoveButton.setEnabled(Boolean(selected) && !working);
+    }
+    const progress = localModelState.progress;
+    let statusText = localModelState.error || '';
+    if (!statusText && progress) {
+      const ratio = Number(progress.progress);
+      const percent = Number.isFinite(ratio) ? `  ·  ${Math.round(ratio * 100)}%` : '';
+      statusText = `${progress.text ?? 'Downloading model…'}${percent}`;
+    }
+    if (!statusText && activeSelected && localModelState.ready) statusText = `${selected.label} is ready locally.`;
+    if (!statusText && !localModelState.supported) statusText = 'Local WebGPU model execution is unavailable in this host.';
+    if (!statusText) statusText = 'Choose a model, then download it into the local device cache.';
+    llmStatus?.setText(statusText);
+    syncPromptControls();
+    syncStatus();
+  }
+
+  async function activateSelectedLocalModel() {
+    if (!selectedLocalModelId || typeof onLocalModelActivate !== 'function') return;
+    localModelState = Object.freeze({ ...localModelState, busy: true, error: '' });
+    syncLocalModelControls();
+    try {
+      await onLocalModelActivate(selectedLocalModelId);
+    } catch (error) {
+      localModelState = Object.freeze({ ...localModelState, error: error?.message ?? String(error) });
+    } finally {
+      localModelState = Object.freeze({ ...localModelState, busy: false });
+      syncLocalModelControls();
+    }
+  }
+
+  async function removeSelectedLocalModel() {
+    if (!selectedLocalModelId || typeof onLocalModelRemove !== 'function') return;
+    localModelState = Object.freeze({ ...localModelState, busy: true, error: '' });
+    syncLocalModelControls();
+    try {
+      await onLocalModelRemove(selectedLocalModelId);
+    } catch (error) {
+      localModelState = Object.freeze({ ...localModelState, error: error?.message ?? String(error) });
+    } finally {
+      localModelState = Object.freeze({ ...localModelState, busy: false });
+      syncLocalModelControls();
+    }
   }
 
   function layoutPages() {
@@ -1033,7 +1282,7 @@ export function createMcpLiveFeedWebGpuHud({
     explorerPage.setBounds(0, contentY, host.width, contentHeight);
     layersPage.setBounds(0, contentY, host.width, contentHeight);
     settingsPage.setBounds(0, contentY, host.width, contentHeight);
-    promptPage?.setBounds(0, contentY, host.width, contentHeight);
+    llmPage?.setBounds(0, contentY, host.width, contentHeight);
     logToolbar.setBounds(0, 0, logPage.width, LOG_TOOLBAR_HEIGHT);
     logDetailToggle.setBounds(4, 0, Math.max(80, logPage.width - 8), LOG_TOOLBAR_HEIGHT);
     list.setBounds(0, LOG_TOOLBAR_HEIGHT, Math.max(40, logPage.width - SCROLL_WIDTH), Math.max(20, logPage.height - LOG_TOOLBAR_HEIGHT));
@@ -1118,14 +1367,31 @@ export function createMcpLiveFeedWebGpuHud({
     importProjectButton.setBounds(8 + buttonWidth + 8, 1338, Math.max(80, settingsWidth - 16 - buttonWidth - 8), 28);
     projectTransferStatus.setBounds(12, 1372, settingsWidth - 24, 32);
     projectHint.setBounds(12, 1406, settingsWidth - 24, 36);
-    promptSettingsLabel?.setBounds(12, 1450, settingsWidth - 24, 20);
-    promptSettingsButton?.setBounds(8, 1474, settingsWidth - 16, 28);
-    promptSettingsHint?.setBounds(12, 1508, settingsWidth - 24, 36);
-    if (promptPage) {
-      const [promptTitle, promptHint, promptKernelHint] = promptPage.children;
-      promptTitle.setBounds(12, 10, promptPage.width - 24, 20);
-      promptHint.setBounds(12, 36, promptPage.width - 24, 48);
-      promptKernelHint.setBounds(12, 88, promptPage.width - 24, 48);
+    llmSettingsLabel?.setBounds(12, 1450, settingsWidth - 24, 20);
+    llmSettingsButton?.setBounds(8, 1474, settingsWidth - 16, 28);
+    llmSettingsHint?.setBounds(12, 1508, settingsWidth - 24, 36);
+    if (llmPage) {
+      llmTitle.setBounds(12, 10, llmPage.width - 24, 20);
+      llmHint.setBounds(12, 36, llmPage.width - 24, 42);
+      let rowY = 82;
+      for (const option of llmModelOptions) {
+        option.setBounds(8, rowY, llmPage.width - 16, 34);
+        rowY += 36;
+      }
+      llmDetails?.setBounds(12, rowY + 4, llmPage.width - 24, 40);
+      const buttonY = rowY + 50;
+      const llmButtonWidth = Math.max(90, Math.floor((llmPage.width - 24) / 2));
+      llmActivateButton?.setBounds(8, buttonY, llmButtonWidth, 30);
+      llmRemoveButton?.setBounds(16 + llmButtonWidth, buttonY, Math.max(90, llmPage.width - 24 - llmButtonWidth), 30);
+      llmStatus?.setBounds(12, buttonY + 40, llmPage.width - 24, 54);
+      llmHarnessHint?.setBounds(12, buttonY + 100, llmPage.width - 24, 42);
+      llmPromptToggle?.setBounds(8, buttonY + 146, llmPage.width - 16, 30);
+      llmPromptTitle?.setBounds(12, buttonY + 182, llmPage.width - 24, 20);
+      llmPromptInput?.setBounds(8, buttonY + 208, llmPage.width - 16, 64);
+      llmPromptRunButton?.setBounds(8, buttonY + 278, llmPage.width - 16, 30);
+      llmPromptStatus?.setBounds(12, buttonY + 314, llmPage.width - 24, 24);
+      llmPromptOutput?.setBounds(12, buttonY + 342, llmPage.width - 24, 34);
+      llmPromptHint?.setBounds(12, buttonY + 380, llmPage.width - 24, 24);
     }
     syncScroll();
   }
@@ -1457,8 +1723,12 @@ export function createMcpLiveFeedWebGpuHud({
         ? `Explorer  ·  ${objectCount} objects  ·  ${explorerFirst}–${explorerLast}`
       : tab === 'layers'
         ? `${viewportLayerState.previewActive ? 'PREVIEW ACTIVE' : 'Layers'}  ·  ${viewportLayerState.mode}  ·  grid ${viewportLayerState.gridVisible ? 'on' : 'off'}`
-      : tab === 'prompt'
-          ? 'Prompt  ·  PIN-encrypted models'
+      : tab === 'llm'
+          ? localModelState.ready
+            ? 'LLM Setup  ·  local model ready'
+            : localModelState.progress
+              ? 'LLM Setup  ·  downloading'
+              : 'LLM Setup  ·  on-device models'
           : 'Settings';
     const nextColor = activeCount > 0 && tab === 'log' ? '#f2b45c' : '#7f94ad';
     status.setText(nextText);
@@ -1623,6 +1893,7 @@ export function createMcpLiveFeedWebGpuHud({
 
   const hide = () => {
     if (disposed || !visible) return;
+    llmPromptInput?.setFocused(false);
     visible = false;
     sprite.visible = false;
     if (nativeOverlayPresentation) canvas.style.display = 'none';
@@ -1653,13 +1924,52 @@ export function createMcpLiveFeedWebGpuHud({
   };
 
   const onKeyDown = event => {
-    if (disposed || !exactToggle(event)) return;
+    if (disposed) return;
+    if (llmPromptInput?.focused) {
+      if (event && typeof event === 'object') {
+        if (handledTextEvents.has(event)) {
+          stealEvent(event);
+          return;
+        }
+        handledTextEvents.add(event);
+      }
+      const keyIdentity = String(event?.code || event?.key || 'unknown');
+      const eventStamp = Number(event?.timeStamp);
+      const receivedAt = globalThis.performance?.now?.() ?? Date.now();
+      const duplicateNativeDelivery = lastTextKeyDown?.identity === keyIdentity
+        && ((Number.isFinite(eventStamp) && eventStamp > 0 && eventStamp === lastTextKeyDown.eventStamp)
+          || receivedAt - lastTextKeyDown.receivedAt < 4);
+      lastTextKeyDown = { identity: keyIdentity, eventStamp, receivedAt };
+      consumedTextKeys.add(keyIdentity);
+      if (duplicateNativeDelivery) {
+        stealEvent(event);
+        return;
+      }
+      llmPromptInput.handleKey(event);
+      stealEvent(event);
+      return;
+    }
+    if (!exactToggle(event)) return;
     try {
       event.preventDefault?.();
     } catch {
       // A synthetic keyboard event may not be cancellable.
     }
     toggle();
+  };
+
+  const onKeyUp = event => {
+    if (disposed) return;
+    const key = String(event?.code || event?.key || 'unknown');
+    if (!llmPromptInput?.focused && !consumedTextKeys.has(key)) return;
+    consumedTextKeys.delete(key);
+    if (lastTextKeyDown?.identity === key) lastTextKeyDown = null;
+    stealEvent(event);
+  };
+
+  const onKeyPress = event => {
+    if (disposed || !llmPromptInput?.focused) return;
+    stealEvent(event);
   };
 
   const stealEvent = event => {
@@ -1677,6 +1987,7 @@ export function createMcpLiveFeedWebGpuHud({
     claimStudioViewportFocus(event, event?.target);
     const point = contentPoint(event);
     const hit = host.hitTest(point.x, point.y);
+    if (llmPromptInput?.focused && hit !== llmPromptInput) llmPromptInput.setFocused(false);
     captured = hit;
     hit?.onPointerDown?.(event, point);
     stealEvent(event);
@@ -1748,6 +2059,7 @@ export function createMcpLiveFeedWebGpuHud({
 
   syncGraphicsControls();
   syncViewportLayerControls();
+  syncLocalModelControls();
   latest = boundedEntries(safeSnapshot(source));
   retainedPlainformSnapshots = Object.freeze(plainformSnapshots(latest));
   plainformRows = flattenPlainformRows(latest);
@@ -1759,7 +2071,9 @@ export function createMcpLiveFeedWebGpuHud({
   } catch {
     // The HUD remains as an inert, visible status panel.
   }
-  keyboard?.addEventListener?.('keydown', onKeyDown);
+  keyboard?.addEventListener?.('keydown', onKeyDown, { capture: true });
+  keyboard?.addEventListener?.('keyup', onKeyUp, { capture: true });
+  keyboard?.addEventListener?.('keypress', onKeyPress, { capture: true });
   keyboard?.addEventListener?.('pointerdown', onPointerDown, { capture: true });
   keyboard?.addEventListener?.('pointermove', onPointerMove, { capture: true });
   keyboard?.addEventListener?.('pointerup', onPointerUp, { capture: true });
@@ -1778,7 +2092,9 @@ export function createMcpLiveFeedWebGpuHud({
     } catch {
       // Subscription disposal is presentation-only.
     }
-    keyboard?.removeEventListener?.('keydown', onKeyDown);
+    keyboard?.removeEventListener?.('keydown', onKeyDown, { capture: true });
+    keyboard?.removeEventListener?.('keyup', onKeyUp, { capture: true });
+    keyboard?.removeEventListener?.('keypress', onKeyPress, { capture: true });
     keyboard?.removeEventListener?.('pointerdown', onPointerDown, { capture: true });
     keyboard?.removeEventListener?.('pointermove', onPointerMove, { capture: true });
     keyboard?.removeEventListener?.('pointerup', onPointerUp, { capture: true });
@@ -1811,6 +2127,13 @@ export function createMcpLiveFeedWebGpuHud({
     setExplorerOutline,
     setViewportLayerState,
     setGraphicsSettingsState,
+    setLocalModelState(state = {}) {
+      localModelState = Object.freeze({ ...localModelState, ...state });
+      if (localModelState.activeModelId && localModels.some(model => model.id === localModelState.activeModelId)) {
+        selectedLocalModelId = localModelState.activeModelId;
+      }
+      syncLocalModelControls();
+    },
     setProjectTransferStatus(text) {
       projectTransferStatus.setText(text);
     },

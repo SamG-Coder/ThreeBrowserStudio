@@ -3,7 +3,6 @@ import { assertValidProjectDocument, normalizeProjectDocument } from './document
 import { changedIdsSince, computeCompactDiff } from './diff.mjs';
 import { StudioError, studioAssert } from './errors.mjs';
 import { applyOperations } from './operations.mjs';
-import { AtomicProjectStore } from './persistence.mjs';
 import {
   assertJsonValue,
   cloneJson,
@@ -24,7 +23,8 @@ const HISTORY_KEYS = new Set([
 function assertRequestKeys(request, allowed) {
   studioAssert(request && typeof request === 'object' && !Array.isArray(request), 'invalid_request', 'Request must be an object');
   assertJsonValue(request);
-  studioAssert(Buffer.byteLength(JSON.stringify(request), 'utf8') <= MAX_CONTROL_REQUEST_BYTES, 'request_too_large', `Control requests cannot exceed ${MAX_CONTROL_REQUEST_BYTES} bytes`);
+  const encodedBytes = new TextEncoder().encode(JSON.stringify(request)).byteLength;
+  studioAssert(encodedBytes <= MAX_CONTROL_REQUEST_BYTES, 'request_too_large', `Control requests cannot exceed ${MAX_CONTROL_REQUEST_BYTES} bytes`);
   for (const key of Object.keys(request)) {
     if (!allowed.has(key)) throw new StudioError('unknown_property', `Request contains unknown property ${key}`, { key });
   }
@@ -74,6 +74,9 @@ export class AuthoringKernel {
   }
 
   static async open(projectRoot, options = {}) {
+    // Keep the in-memory kernel browser-safe. Desktop persistence is loaded
+    // only for callers that actually open a project directory.
+    const { AtomicProjectStore } = await import('./persistence.mjs');
     const store = options.store ?? new AtomicProjectStore(projectRoot);
     const loaded = await store.load();
     const kernel = new AuthoringKernel(loaded.document, {

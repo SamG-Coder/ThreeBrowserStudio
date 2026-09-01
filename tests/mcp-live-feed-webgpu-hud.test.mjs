@@ -200,8 +200,10 @@ function fakeTimers() {
 function keyEvent(overrides = {}) {
   return {
     key: 'm', ctrlKey: true, shiftKey: true, altKey: false, metaKey: false,
-    repeat: false, prevented: false,
+    repeat: false, prevented: false, stopped: false, immediateStopped: false,
     preventDefault() { this.prevented = true; },
+    stopPropagation() { this.stopped = true; },
+    stopImmediatePropagation() { this.immediateStopped = true; },
     ...overrides,
   };
 }
@@ -225,12 +227,16 @@ function fixture({
   height = 700,
   pixelRatio = 2,
   maxVisibleRows = 10,
-  promptTab = false,
+  llmSetupTab = true,
+  localModels = [],
+  promptEnabled = false,
   onExportProject,
   onImportProject,
   onRtxSettingsChange,
   onDlss5SettingsChange,
   onViewportLayerChange,
+  onPromptEnabledChange,
+  onLocalPromptRun,
   writeClipboardText,
 } = {}) {
   const document = new FakeDocument();
@@ -240,12 +246,14 @@ function fixture({
   const scene = new FakeScene();
   const hud = createMcpLiveFeedWebGpuHud({
     THREE, document, eventTarget, source: telemetry, scene,
-    width, height, pixelRatio, maxVisibleRows, now, promptTab,
+    width, height, pixelRatio, maxVisibleRows, now, llmSetupTab, localModels, promptEnabled,
     onExportProject,
     onImportProject,
     onRtxSettingsChange,
     onDlss5SettingsChange,
     onViewportLayerChange,
+    onPromptEnabledChange,
+    onLocalPromptRun,
     writeClipboardText,
     setIntervalFn: timers.setIntervalFn,
     clearIntervalFn: timers.clearIntervalFn,
@@ -473,7 +481,7 @@ test('pointer hits on the panel steal the event so orbit does not start', () => 
   assert.equal(event.stopped, true);
 });
 
-test('HUD does not steal pointer events from the browser Prompt overlay', () => {
+test('HUD does not steal pointer events from a marked Studio DOM overlay', () => {
   const { hud } = fixture({ width: 1000, height: 700, pixelRatio: 1 });
   const overlay = { closest: selector => String(selector).includes('data-studio-overlay') ? overlay : null };
   const event = {
@@ -846,6 +854,8 @@ test('exact shortcut and disposal update GPU presentation state safely', () => {
   assert.equal(hud.material.disposed, true);
   assert.equal(hud.scene.children.length, 0);
   assert.equal(eventTarget.listeners.get('keydown').size, 0);
+  assert.equal(eventTarget.listeners.get('keyup').size, 0);
+  assert.equal(eventTarget.listeners.get('keypress').size, 0);
   assert.equal(eventTarget.listeners.get('pointerdown').size, 0);
   assert.equal(eventTarget.listeners.get('wheel').size, 0);
 });
@@ -864,27 +874,81 @@ test('HUD backing bitmap never exceeds the visible control or window bounds', ()
   hud.dispose();
 });
 
-test('Prompt tab is browser-only and does not appear on the native HUD', () => {
-  const native = fixture();
-  const nativeTabs = native.hud.host.children.find(child => child.name === 'tabs');
-  assert.deepEqual(nativeTabs.tabs.map(tab => tab.id), ['log', 'plainform', 'explorer', 'layers', 'settings']);
-  assert.equal(native.hud.host.children.some(child => child.name === 'prompt-page'), false);
-  native.hud.dispose();
+test('LLM Setup is a retained main-window tab on every host', () => {
+  const model = { id: 'model/local', label: 'Local Test', runtime: 'webllm', vramRequiredMB: 64, contextTokens: 2048 };
+  const { hud } = fixture({ localModels: [model] });
+  const tabs = hud.host.children.find(child => child.name === 'tabs');
+  assert.deepEqual(tabs.tabs.map(tab => tab.id), ['log', 'plainform', 'explorer', 'layers', 'settings', 'llm']);
+  tabs.setSelected('llm');
+  assert.equal(hud.tab, 'llm');
+  assert.equal(hud.host.children.find(child => child.name === 'llm-page').visible, true);
+  const status = hud.host.children.find(child => child.name === 'status');
+  assert.equal(status.text, 'LLM Setup  ·  on-device models');
+  hud.setLocalModelState({ supported: true, activeModelId: model.id, ready: true });
+  assert.equal(status.text, 'LLM Setup  ·  local model ready');
+  tabs.setSelected('settings');
+  findControl(hud.host, 'open-llm-setup').onClick();
+  assert.equal(hud.tab, 'llm');
+  hud.dispose();
+});
 
-  const browser = fixture({ promptTab: true });
-  const browserTabs = browser.hud.host.children.find(child => child.name === 'tabs');
-  assert.deepEqual(browserTabs.tabs.map(tab => tab.id), ['log', 'plainform', 'explorer', 'layers', 'settings', 'prompt']);
-  browserTabs.setSelected('prompt');
-  assert.equal(browser.hud.tab, 'prompt');
-  const promptPage = browser.hud.host.children.find(child => child.name === 'prompt-page');
-  assert.equal(promptPage.visible, true);
-  const status = browser.hud.host.children.find(child => child.name === 'status');
-  assert.equal(status.text, 'Prompt  ·  PIN-encrypted models');
-  browserTabs.setSelected('settings');
-  const openPrompt = findControl(browser.hud.host, 'open-prompt');
-  openPrompt.onClick();
-  assert.equal(browser.hud.tab, 'prompt');
-  browser.hud.dispose();
+test('optional Prompt workspace routes Ctrl+Enter through the active local model harness', async () => {
+  const model = { id: 'model/local', label: 'Local Test', runtime: 'webllm', vramRequiredMB: 64, contextTokens: 2048 };
+  const enabledChanges = [];
+  const runs = [];
+  const { eventTarget, hud } = fixture({
+    localModels: [model],
+    onPromptEnabledChange(enabled) { enabledChanges.push(enabled); },
+    async onLocalPromptRun(prompt, { onEvent }) {
+      runs.push(prompt);
+      onEvent({ type: 'tool-call', name: 'three_studio_status' });
+      onEvent({ type: 'tool-result', name: 'three_studio_status', ok: true });
+      return { text: 'Project is ready.', rounds: 2 };
+    },
+  });
+  const tabs = findControl(hud.host, 'tabs');
+  tabs.setSelected('llm');
+  const toggle = findControl(hud.host, 'llm-prompt-enabled');
+  const input = findControl(hud.host, 'llm-prompt-input');
+  const runButton = findControl(hud.host, 'llm-prompt-run');
+  assert.equal(toggle.selected, false);
+  assert.equal(input.visible, false);
+
+  toggle.onPointerDown();
+  assert.deepEqual(enabledChanges, [true]);
+  assert.equal(input.visible, true);
+  assert.equal(runButton.enabled, false, 'a ready model and non-empty prompt are both required');
+  hud.setLocalModelState({ supported: true, activeModelId: model.id, ready: true });
+  input.onPointerDown();
+  for (const key of 'Status') {
+    const event = keyEvent({ key, ctrlKey: false, shiftKey: false });
+    eventTarget.dispatch('keydown', event);
+    assert.equal(event.prevented, true, 'typing is retained by the Prompt workspace');
+  }
+  assert.equal(input.text, 'Status');
+  eventTarget.dispatch('keydown', keyEvent({ key: 'x', code: 'KeyX', timeStamp: 123, ctrlKey: false, shiftKey: false }));
+  eventTarget.dispatch('keydown', keyEvent({ key: 'x', code: 'KeyX', timeStamp: 123, ctrlKey: false, shiftKey: false }));
+  assert.equal(input.text, 'Statusx', 'duplicate native delivery of one physical key edits once');
+  assert.equal(runButton.enabled, true);
+  const newline = keyEvent({ key: 'Enter', code: 'Enter', ctrlKey: false, shiftKey: false });
+  eventTarget.dispatch('keydown', newline);
+  assert.equal(input.text, 'Statusx\n');
+  assert.equal(newline.immediateStopped, true);
+  assert.deepEqual(runs, [], 'plain Enter edits the multiline prompt');
+  for (const key of 'More') eventTarget.dispatch('keydown', keyEvent({ key, ctrlKey: false, shiftKey: false }));
+  const submit = keyEvent({ key: 'Enter', code: 'Enter', ctrlKey: true, shiftKey: false });
+  eventTarget.dispatch('keydown', submit);
+  const submitUp = keyEvent({ key: 'Enter', code: 'Enter', ctrlKey: false, shiftKey: false });
+  eventTarget.dispatch('keyup', submitUp);
+  await new Promise(resolve => setImmediate(resolve));
+
+  assert.deepEqual(runs, ['Statusx\nMore']);
+  assert.equal(submit.immediateStopped, true);
+  assert.equal(submitUp.immediateStopped, true, 'key-up is also retained and cannot reach the 3D input controller');
+  assert.equal(findControl(hud.host, 'llm-prompt-status').text, 'Completed in 2 model rounds.');
+  assert.equal(findControl(hud.host, 'llm-prompt-output').text, 'Project is ready.');
+  assert.equal(hud.visible, true, 'Enter cannot leak into the panel shortcut or viewport');
+  hud.dispose();
 });
 
 test('Settings Import/Export is always present and does not create file inputs', () => {

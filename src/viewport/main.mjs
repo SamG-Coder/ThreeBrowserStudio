@@ -22,6 +22,53 @@ import { openProjectPackFile, saveProjectPackFile } from "./project-file-transfe
 import { showStarterProjectFromLocation } from "../browser/starter-project-scene.mjs";
 import { createSceneControllerInput } from './scene-controller-input.mjs';
 import { createViewportLayers } from './viewport-layers.mjs';
+import { LOCAL_MODEL_CATALOG } from '../browser/local-model-catalog.mjs';
+import { createLocalModelManager } from '../browser/local-model-manager.mjs';
+import { createBrowserMcpHarness } from '../browser/mcp-harness.mjs';
+import { createLocalModelDirectWorker } from '../browser/local-model-direct-worker.mjs';
+
+const NATIVE_WEBLLM_RUNTIME_URL = new URL('../../node_modules/@mlc-ai/web-llm/lib/index.js', import.meta.url).href;
+const LOCAL_PROMPT_ENABLED_KEY = 'three-browser-studio.local-prompt.enabled';
+const LOCAL_AI_SYSTEM_PROMPT = [
+  'You author through ThreeBrowser Studio and its nine declared MCP tools.',
+  'Call three_studio_status first when project state or revision is not already known.',
+  'Inspect exact stable IDs before mutation, use typed atomic changesets, and validate after changes.',
+  'Never invent tools, raw code, shaders, or unrestricted eval. The canonical Studio document is authoritative.',
+  'Use tools when the request requires inspection or a project change; otherwise answer briefly and clearly.',
+].join(' ');
+
+function readLocalPromptEnabled() {
+  try {
+    return globalThis.localStorage?.getItem(LOCAL_PROMPT_ENABLED_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function writeLocalPromptEnabled(enabled) {
+  try {
+    globalThis.localStorage?.setItem(LOCAL_PROMPT_ENABLED_KEY, enabled === true ? 'true' : 'false');
+  } catch {
+    // Some embedded or privacy-restricted hosts do not expose persistent storage.
+  }
+}
+
+async function importNativeWebLlm() {
+  // The native surface exposes Node globals for Studio, but WebLLM's bundled
+  // Emscripten modules must select their browser/WebGPU branch. Rewrite only
+  // those compile-time environment probes; never hide globals from the host.
+  const processObject = globalThis.process;
+  const fs = processObject?.getBuiltinModule?.('fs');
+  const nodeUrl = processObject?.getBuiltinModule?.('url');
+  if (!fs || !nodeUrl || typeof globalThis.Buffer?.from !== 'function') {
+    throw new Error('The native WebLLM runtime could not be loaded locally.');
+  }
+  const source = fs.readFileSync(nodeUrl.fileURLToPath(NATIVE_WEBLLM_RUNTIME_URL), 'utf8')
+    .replace(/typeof process=="object"&&typeof process\.versions=="object"&&typeof process\.versions\.node=="string"/g, 'false')
+    .replace(/typeof process === "object" && typeof process\.versions === "object" && typeof process\.versions\.node === "string"/g, 'false');
+  const moduleUrl = `data:text/javascript;base64,${globalThis.Buffer.from(source).toString('base64')}`;
+  return import(moduleUrl);
+}
 
 document.title = "ThreeBrowser Studio — waiting for project";
 
@@ -104,7 +151,19 @@ async function main() {
     const { getSystemTypeface } = await import("./system-typeface.mjs");
     typeface = getSystemTypeface();
   }
-  let promptSheet = null;
+  let playControls = null;
+  let componentComposer = null;
+  let localModelManager = createLocalModelManager({
+    ...(host.attached ? {
+      workerFactory: () => createLocalModelDirectWorker({
+        importModule: importNativeWebLlm,
+        runtimeBaseUrl: NATIVE_WEBLLM_RUNTIME_URL,
+      }),
+    } : {}),
+  });
+  let localModelUnsubscribe = null;
+  let localAiHarness = null;
+  let localAiBusy = false;
   let application = null;
   let rtxLighting = null;
   let activeRtxSettings = {};
@@ -121,7 +180,9 @@ async function main() {
     height: Math.max(1, innerHeight),
     pixelRatio: Math.max(1, Number(globalThis.devicePixelRatio || 1)),
     typeface,
-    promptTab: false,
+    llmSetupTab: true,
+    localModels: LOCAL_MODEL_CATALOG,
+    promptEnabled: readLocalPromptEnabled(),
     onViewModeChange(mode) {
       reviewSession.setViewMode(mode);
     },
@@ -143,7 +204,38 @@ async function main() {
     },
     onExportProject() { void transferProject("export"); },
     onImportProject() { void transferProject("import"); },
+    onExplorerEntitySelect(entityId) { componentComposer?.open(entityId); },
+    async onLocalModelActivate(modelId) {
+      localAiBusy = true;
+      try { return await localModelManager.activate(modelId); }
+      finally { localAiBusy = false; }
+    },
+    async onLocalModelRemove(modelId) {
+      return localModelManager.remove(modelId);
+    },
+    onPromptEnabledChange(enabled) {
+      writeLocalPromptEnabled(enabled);
+    },
+    async onLocalPromptRun(prompt, { onEvent } = {}) {
+      if (!localAiHarness) throw new Error('The Studio AI tool harness is not ready yet.');
+      localAiBusy = true;
+      try {
+        return await localAiHarness.run({
+          provider: localModelManager.provider(),
+          messages: [
+            { role: 'system', content: LOCAL_AI_SYSTEM_PROMPT },
+            { role: 'user', content: prompt },
+          ],
+          onEvent,
+        });
+      } finally {
+        localAiBusy = false;
+      }
+    },
   });
+
+  localModelUnsubscribe = localModelManager.subscribe(state => liveFeed.setLocalModelState(state));
+  liveFeed.setLocalModelState(localModelManager.status());
 
   const presentCompiledLayer = compiled => {
     scene.background = compiled?.background ?? null;
@@ -285,7 +377,6 @@ async function main() {
     const pixelRatio = Math.max(1, Number(globalThis.devicePixelRatio || 1));
     updateCameraAspect(reviewSession.renderCamera, width / height);
     liveFeed.resize(width, height, pixelRatio);
-    promptSheet?.layout();
     if (lastPresentation === '') {
       applyGpuSize(width, height, pixelRatio);
       return;
@@ -303,13 +394,21 @@ async function main() {
   async function dispose() {
     if (disposed) return;
     disposed = true;
+    try { delete globalThis.__THREE_STUDIO_LOCAL_AI__; } catch { /* Host globals are best-effort diagnostics. */ }
     renderer.setAnimationLoop(null);
     globalThis.removeEventListener("resize", resize);
-    promptSheet?.dispose();
-    promptSheet = null;
+    playControls?.dispose();
+    playControls = null;
+    componentComposer?.dispose();
+    componentComposer = null;
+    localModelUnsubscribe?.();
+    localModelUnsubscribe = null;
+    localModelManager?.dispose();
+    localModelManager = null;
+    localAiHarness = null;
+    await application?.dispose();
     preview?.dispose();
     preview = null;
-    await application?.dispose();
     liveFeed.dispose();
     viewportLayers?.dispose();
     viewportLayers = null;
@@ -455,20 +554,8 @@ async function main() {
       });
     } else {
       document.title = "ThreeBrowser Studio — browser preview";
-      console.log("[ThreeBrowser Studio] browser host: MCP pipe and project kernel stay on the desktop runtime");
-      const { createSecretVault } = await import("../browser/secret-vault.mjs");
-      const { createBrowserMcpHarness, createUnavailableStudioDispatch } = await import("../browser/mcp-harness.mjs");
-      const { createBrowserPromptSession } = await import("../browser/prompt-session.mjs");
-      const { createBrowserPromptPanel } = await import("../browser/prompt-panel.mjs");
+      console.log("[ThreeBrowser Studio] browser host: in-process authoring kernel enabled");
       const { createLiveProjectPreview } = await import("./live-project-preview.mjs");
-      const session = createBrowserPromptSession({
-        vault: createSecretVault(),
-        harness: createBrowserMcpHarness({
-          dispatch: createUnavailableStudioDispatch(),
-        }),
-      });
-      promptSheet = createBrowserPromptPanel({ document, session });
-      promptSheet.setVisible(true);
       preview = createLiveProjectPreview({
         THREE,
         TSL,
@@ -482,6 +569,17 @@ async function main() {
           console.warn("[ThreeBrowser Studio remote starter]", error);
         },
       });
+      const { createBrowserStudioSession } = await import("../browser/browser-studio-session.mjs");
+      application = await createBrowserStudioSession({
+        project: starterResult.document,
+        preview,
+        viewport: viewportApi,
+        alreadyShown: true,
+      });
+      const { createBrowserPlayControls } = await import("../browser/play-controls.mjs");
+      playControls = createBrowserPlayControls({ document, application });
+      const { createComponentComposer } = await import("../browser/component-composer.mjs");
+      componentComposer = createComponentComposer({ document, application });
       initialBrowserProjectStatus = starterResult.sourceUrl
         ? `Loaded ${starterResult.document.name} from GitHub.`
         : starterResult.error
@@ -492,7 +590,9 @@ async function main() {
     await dispose();
     throw error;
   }
+  localAiHarness = application ? createBrowserMcpHarness({ dispatch: application }) : null;
   if (application) globalThis.__THREE_STUDIO_APPLICATION__ = application;
+  globalThis.__THREE_STUDIO_LOCAL_AI__ = Object.freeze({ manager: localModelManager, harness: localAiHarness });
   globalThis.__THREE_STUDIO_LIVE_FEED__ = liveFeed;
   liveFeed.setProjectTransferStatus(application
     ? "Exports the open project as JSON."
@@ -503,10 +603,14 @@ async function main() {
   globalThis.addEventListener("beforeunload", () => { void dispose(); }, { once: true });
   resize();
   let previousFrame = performance.now() * 0.001;
+  let previousAiFrame = 0;
   let nextGraphicsStatusSync = 0;
   let renderingFrame = false;
   renderer.setAnimationLoop(async () => {
     if (disposed || renderingFrame) return;
+    const frameMilliseconds = performance.now();
+    if (localAiBusy && frameMilliseconds - previousAiFrame < 66) return;
+    previousAiFrame = frameMilliseconds;
     renderingFrame = true;
     try {
       const now = performance.now() * 0.001;
@@ -519,6 +623,7 @@ async function main() {
       }
       if (bootstrap.root.parent) bootstrap.update(elapsed);
       application?.update(delta);
+      playControls?.sync();
       if (reviewSession.viewMode !== VIEW_MODE_FOLLOW_SHOT && controllerInput?.active !== true) controls.update(delta);
       renderer.setRenderTarget(null);
       renderer.setMRT(null);

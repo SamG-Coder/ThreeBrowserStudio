@@ -70,7 +70,7 @@ export const STUDIO_BROWSER_TOOLS = Object.freeze([
   Object.freeze({
     name: 'three_studio_play',
     title: 'Three Studio Play State',
-    description: 'Control or query the transient Author/Play boundary. Scripts, blueprints, physics, and game logic do not execute.',
+    description: 'Control or query the transient Author/Play boundary. Actions, bounded blueprints, controller input, and fixed-step physics execute; arbitrary scripts remain disabled.',
     inputSchema: GENERIC_ARGUMENTS,
   }),
 ]);

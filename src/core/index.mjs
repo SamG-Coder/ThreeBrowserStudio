@@ -1,5 +1,6 @@
 export * from './constants.mjs';
 export * from './component-validation.mjs';
+export * from './component-catalog.mjs';
 export * from './beauty-evidence.mjs';
 export * from './camera-project.mjs';
 export * from './camera-framing.mjs';

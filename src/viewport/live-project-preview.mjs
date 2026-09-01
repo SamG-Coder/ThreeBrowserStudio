@@ -43,7 +43,29 @@ export function createLiveProjectPreview({ THREE, TSL, viewport, getAspect } = {
   }
 
   async function show(project, { onBeforeSwap } = {}) {
+    const prepared = await prepare(project);
+    return prepared.show({ onBeforeSwap });
+  }
+
+  async function prepare(project) {
     const next = await compile(project);
+    let consumed = false;
+    return Object.freeze({
+      document: project,
+      async show({ onBeforeSwap } = {}) {
+        if (consumed) throw new StudioError('preview_candidate_consumed', 'This compiled browser candidate was already used.');
+        consumed = true;
+        return swap(project, next, { onBeforeSwap });
+      },
+      dispose() {
+        if (consumed) return;
+        consumed = true;
+        next.dispose();
+      },
+    });
+  }
+
+  async function swap(project, next, { onBeforeSwap } = {}) {
     const previous = compiled;
     try {
       onBeforeSwap?.();
@@ -87,6 +109,8 @@ export function createLiveProjectPreview({ THREE, TSL, viewport, getAspect } = {
 
   return Object.freeze({
     get document() { return document; },
+    get compiled() { return compiled; },
+    prepare,
     show,
     dispose,
   });

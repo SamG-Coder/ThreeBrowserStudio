@@ -266,6 +266,7 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
     'scene.create', 'scene.patch', 'scene.delete', 'scene.clear', 'scene.setActive',
     'scene.settings.patch', 'scene.rtx.patch', 'scene.setActiveCamera',
     'entity.create', 'entity.createMany', 'entity.patch', 'entity.patchMany', 'entity.transformMany',
+    'entity.component.attach', 'entity.component.remove',
     'entity.group', 'entity.ungroup', 'entity.duplicate', 'entity.duplicateMany', 'entity.reparent', 'entity.delete',
     'collection.create', 'collection.patch', 'collection.membership.patch', 'collection.reparent', 'collection.delete',
     'camera.frame', 'layout.pattern', 'stroke.apply',

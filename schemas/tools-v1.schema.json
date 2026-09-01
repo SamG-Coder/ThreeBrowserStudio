@@ -964,6 +964,52 @@
                       "properties": {
                         "op": {
                           "type": "string",
+                          "const": "entity.component.attach"
+                        },
+                        "entityId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "component": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                        },
+                        "value": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema1"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "entityId",
+                        "component",
+                        "value"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "entity.component.remove"
+                        },
+                        "entityId": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
+                        },
+                        "component": {
+                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "entityId",
+                        "component"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
                           "const": "entity.patchMany"
                         },
                         "entityIds": {
@@ -3288,7 +3334,7 @@
             "maxLength": 128
           },
           "__schema24": {
-            "description": "Strict canonical modifier document. Objects reject unknown controls; types not listed here require bakeBoundary.",
+            "description": "Strict modifier document; unsupported types require bakeBoundary.",
             "oneOf": [
               {
                 "type": "object",
@@ -4291,7 +4337,7 @@
             "type": "boolean"
           },
           "__schema29": {
-            "description": "Pattern modifiers are further discriminated by mode; grid products and every final instance count are bounded to 8192.",
+            "description": "Pattern modes and counts are bounded to 8192.",
             "anyOf": [
               {
                 "type": "number",
@@ -4423,7 +4469,7 @@
           "__schema33": {
             "anyOf": [
               {
-                "description": "Strict partial controls for triangulate or common visibility flags on any modifier; inspect modifierDigest before patching because id and type are immutable.",
+                "description": "Strict triangulate or common visibility flags on any modifier patch; id and type are immutable.",
                 "minProperties": 1,
                 "type": "object",
                 "properties": {
@@ -4440,7 +4486,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "Strict partial controls for array; inspect modifierDigest before patching because id and type are immutable.",
+                "description": "Strict array patch; id and type are immutable.",
                 "minProperties": 1,
                 "type": "object",
                 "properties": {
@@ -4472,7 +4518,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "Strict partial controls for mirror; inspect modifierDigest before patching because id and type are immutable.",
+                "description": "Strict mirror patch; id and type are immutable.",
                 "minProperties": 1,
                 "type": "object",
                 "properties": {
@@ -4504,7 +4550,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "Strict partial controls for pattern; inspect modifierDigest before patching because id and type are immutable.",
+                "description": "Strict pattern patch; id and type are immutable.",
                 "minProperties": 1,
                 "type": "object",
                 "properties": {
@@ -4612,7 +4658,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "Strict partial controls for weld; inspect modifierDigest before patching because id and type are immutable.",
+                "description": "Strict weld patch; id and type are immutable.",
                 "minProperties": 1,
                 "type": "object",
                 "properties": {
@@ -4641,7 +4687,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "Strict partial controls for smooth; inspect modifierDigest before patching because id and type are immutable.",
+                "description": "Strict smooth patch; id and type are immutable.",
                 "minProperties": 1,
                 "type": "object",
                 "properties": {
@@ -4702,7 +4748,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "Strict partial controls for weightedNormal; inspect modifierDigest before patching because id and type are immutable.",
+                "description": "Strict weightedNormal patch; id and type are immutable.",
                 "minProperties": 1,
                 "type": "object",
                 "properties": {
@@ -4746,7 +4792,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "Strict partial controls for edgeSplit; inspect modifierDigest before patching because id and type are immutable.",
+                "description": "Strict edgeSplit patch; id and type are immutable.",
                 "minProperties": 1,
                 "type": "object",
                 "properties": {
@@ -4785,7 +4831,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "Strict partial controls for solidify; inspect modifierDigest before patching because id and type are immutable.",
+                "description": "Strict solidify patch; id and type are immutable.",
                 "minProperties": 1,
                 "type": "object",
                 "properties": {
@@ -4834,7 +4880,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "Strict partial controls for subdivision; inspect modifierDigest before patching because id and type are immutable.",
+                "description": "Strict subdivision patch; id and type are immutable.",
                 "minProperties": 1,
                 "type": "object",
                 "properties": {
@@ -4887,7 +4933,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "Strict partial controls for decimate; ratio and targetTriangles cannot both be non-null.",
+                "description": "Strict decimate patch; choose ratio or targetTriangles.",
                 "minProperties": 1,
                 "not": {
                   "required": [
@@ -4952,7 +4998,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "Strict partial controls for displace; inspect modifierDigest before patching because id and type are immutable.",
+                "description": "Strict displace patch; id and type are immutable.",
                 "minProperties": 1,
                 "type": "object",
                 "properties": {
@@ -5034,7 +5080,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "Strict partial controls for simpleDeform; inspect modifierDigest before patching because id and type are immutable.",
+                "description": "Strict simpleDeform patch; id and type are immutable.",
                 "minProperties": 1,
                 "type": "object",
                 "properties": {
@@ -5114,7 +5160,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "Strict partial controls for ocean; inspect modifierDigest before patching because id and type are immutable.",
+                "description": "Strict ocean patch; id and type are immutable.",
                 "minProperties": 1,
                 "type": "object",
                 "properties": {
@@ -5297,7 +5343,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "Strict partial controls for bakeBoundary; inspect modifierDigest before patching because id and type are immutable.",
+                "description": "Strict bakeBoundary patch; id and type are immutable.",
                 "minProperties": 1,
                 "type": "object",
                 "properties": {

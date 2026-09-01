@@ -232,6 +232,7 @@ export const OPERATION_TYPES = Object.freeze([
   'scene.create', 'scene.patch', 'scene.delete', 'scene.clear', 'scene.setActive',
   'scene.settings.patch', 'scene.rtx.patch', 'scene.setActiveCamera',
   'entity.create', 'entity.createMany', 'entity.patch', 'entity.patchMany', 'entity.transformMany',
+  'entity.component.attach', 'entity.component.remove',
   'entity.group', 'entity.ungroup', 'entity.duplicate', 'entity.duplicateMany', 'entity.reparent', 'entity.delete',
   'collection.create', 'collection.patch', 'collection.membership.patch', 'collection.reparent', 'collection.delete',
   'camera.frame', 'layout.pattern', 'stroke.apply',
@@ -466,7 +467,7 @@ const recalculateNormalsField = { recalculateNormals: z.boolean().optional() };
 const nonZeroThickness = z.union([
   z.number().finite().min(-10_000).negative(),
   z.number().finite().positive().max(10_000),
-]).describe('Pattern modifiers are further discriminated by mode; grid products and every final instance count are bounded to 8192.');
+]).describe('Pattern modes and counts are bounded to 8192.');
 const displacementSourceSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('constant'),
@@ -582,7 +583,7 @@ export const modifierDocumentSchema = z.discriminatedUnion('type', [
   } catch (error) {
     context.addIssue({ code: 'custom', message: error.message });
   }
-}).describe('Strict canonical modifier document. Objects reject unknown controls; types not listed here require bakeBoundary.');
+}).describe('Strict modifier document; unsupported types require bakeBoundary.');
 
 const patchable = schema => schema.nullable().optional();
 const modifierPatchFlags = {
@@ -593,7 +594,7 @@ const modifierPatchFlags = {
 const modifierPatch = (target, fields) => z.object({ ...modifierPatchFlags, ...fields })
   .strict()
   .refine(value => Object.keys(value).length > 0, { message: 'modifier.patch requires at least one field.' })
-  .describe(`Strict partial controls for ${target}; inspect modifierDigest before patching because id and type are immutable.`)
+  .describe(`Strict ${target} patch; id and type are immutable.`)
   .meta({ minProperties: 1 });
 const decimateModifierPatchSchema = modifierPatch('decimate', {
   ratio: patchable(z.number().finite().min(0.001).max(1)),
@@ -608,7 +609,7 @@ const decimateModifierPatchSchema = modifierPatch('decimate', {
     });
   }
 }).meta({
-  description: 'Strict partial controls for decimate; ratio and targetTriangles cannot both be non-null.',
+  description: 'Strict decimate patch; choose ratio or targetTriangles.',
   minProperties: 1,
   not: {
     required: ['ratio', 'targetTriangles'],
@@ -1266,6 +1267,8 @@ const directOperations = [
   operation('entity.create', { sceneId: reference, entity: jsonObjectSchema, alias: alias.optional(), index: insertionIndex.optional() }),
   operation('entity.createMany', { sceneId: reference, items: z.array(entityCreateBatchItem).min(1).max(128) }),
   operation('entity.patch', { entityId: reference, patch: jsonObjectSchema }),
+  operation('entity.component.attach', { entityId: reference, component: identifier, value: jsonObjectSchema }),
+  operation('entity.component.remove', { entityId: reference, component: identifier }),
   operation('entity.patchMany', { entityIds: exactEntityReferences, patch: jsonObjectSchema, expectedEntitySetHash: hash }),
   operation('entity.transformMany', {
     entityIds: exactEntityReferences,

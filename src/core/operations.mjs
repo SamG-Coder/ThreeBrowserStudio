@@ -41,6 +41,7 @@ import {
 } from './stroke-authoring.mjs';
 import { normalizeLayoutPattern } from './layout-patterns.mjs';
 import { DEFAULT_RTX_SETTINGS, normalizeRtxSettings } from './rtx-settings.mjs';
+import { ENTITY_COMPONENT_IDS, getEntityComponentDefinition } from './component-catalog.mjs';
 import {
   assertExpectedModifierStackHash,
   MAX_MODIFIERS_PER_ENTITY,
@@ -118,6 +119,8 @@ const OPERATION_KEYS = new Map([
   ['scene.setActiveCamera', new Set(['type', 'op', 'sceneId', 'cameraId'])],
   ['entity.create', new Set(['type', 'op', 'sceneId', 'entity', 'alias', 'index'])],
   ['entity.patch', new Set(['type', 'op', 'entityId', 'patch'])],
+  ['entity.component.attach', new Set(['type', 'op', 'entityId', 'component', 'value'])],
+  ['entity.component.remove', new Set(['type', 'op', 'entityId', 'component'])],
   ['entity.patchMany', new Set(['type', 'op', 'entityIds', 'patch', 'expectedEntitySetHash'])],
   ['entity.transformMany', new Set(['type', 'op', 'entityIds', 'mode', 'transform', 'expectedEntitySetHash'])],
   ['entity.group', new Set(['type', 'op', 'sceneId', 'entityIds', 'group', 'expectedEntitySetHash', 'alias', 'index'])],
@@ -747,6 +750,50 @@ function applyEntityPatch(draft, operation, aliases) {
   scene.entities[entityId] = createEntityDocument(mergePatch(entity, resolvedPatch));
   return {
     resolved: { type: 'entity.patch', entityId, patch: resolvedPatch },
+    inverse: { type: '_entity.fields.restore', entityId, fields },
+  };
+}
+
+function assertKnownComponent(component) {
+  studioAssert(ENTITY_COMPONENT_IDS.includes(component), 'unknown_component', `Unknown authorable component ${component}`, {
+    component,
+    supported: ENTITY_COMPONENT_IDS,
+  });
+}
+
+function applyEntityComponentAttach(draft, operation, aliases) {
+  const entityId = resolveId(operation.entityId, aliases, 'entityId');
+  const { scene, entity } = buildProjectIndex(draft).getEntity(entityId);
+  assertKnownComponent(operation.component);
+  const definition = getEntityComponentDefinition(operation.component);
+  studioAssert(definition.compatibleKinds.includes(entity.kind), 'component_incompatible', `${operation.component} cannot be attached to ${entity.kind}`, {
+    component: operation.component,
+    entityKind: entity.kind,
+    compatibleKinds: definition.compatibleKinds,
+  });
+  studioAssert(isPlainRecord(operation.value), 'invalid_component', 'Component value must be an object');
+  studioAssert(entity.components?.[operation.component] === undefined, 'component_exists', `${entityId} already has ${operation.component}`);
+  const fields = captureFields(entity, ['components']);
+  const components = cloneJson(entity.components ?? {});
+  components[operation.component] = cloneJson(operation.value);
+  scene.entities[entityId] = createEntityDocument({ ...entity, components });
+  return {
+    resolved: { type: 'entity.component.attach', entityId, component: operation.component, value: cloneJson(operation.value) },
+    inverse: { type: '_entity.fields.restore', entityId, fields },
+  };
+}
+
+function applyEntityComponentRemove(draft, operation, aliases) {
+  const entityId = resolveId(operation.entityId, aliases, 'entityId');
+  const { scene, entity } = buildProjectIndex(draft).getEntity(entityId);
+  assertKnownComponent(operation.component);
+  studioAssert(entity.components?.[operation.component] !== undefined, 'component_missing', `${entityId} does not have ${operation.component}`);
+  const fields = captureFields(entity, ['components']);
+  const components = cloneJson(entity.components);
+  delete components[operation.component];
+  scene.entities[entityId] = createEntityDocument({ ...entity, components });
+  return {
+    resolved: { type: 'entity.component.remove', entityId, component: operation.component },
     inverse: { type: '_entity.fields.restore', entityId, fields },
   };
 }
@@ -1867,6 +1914,8 @@ function applyOne(draft, operation, aliases, resolvedIds, allowInternal) {
     case 'collection.delete': return applyCollectionDelete(draft, operation, aliases);
     case 'entity.create': return applyEntityCreate(draft, operation, aliases, resolvedIds);
     case 'entity.patch': return applyEntityPatch(draft, operation, aliases);
+    case 'entity.component.attach': return applyEntityComponentAttach(draft, operation, aliases);
+    case 'entity.component.remove': return applyEntityComponentRemove(draft, operation, aliases);
     case 'entity.patchMany': return applyEntityPatchMany(draft, operation, aliases);
     case 'entity.transformMany': return applyEntityTransformMany(draft, operation, aliases);
     case 'entity.group': return applyEntityGroup(draft, operation, aliases, resolvedIds);

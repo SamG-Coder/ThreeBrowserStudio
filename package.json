@@ -32,6 +32,7 @@
     "launch": "node scripts/launch.mjs",
     "release:pack": "node scripts/package-release.mjs",
     "pages:prepare": "node scripts/prepare-pages.mjs",
+    "pages:check": "node scripts/check-page-imports.mjs",
     "obs:setup": "node scripts/obs-showcase.mjs setup",
     "obs:status": "node scripts/obs-showcase.mjs status",
     "tutorial:blender": "node scripts/run-blender-fundamentals.mjs",
@@ -41,6 +42,7 @@
     "tutorial:blender:rainy-window:live": "node scripts/run-blender-rainy-window-live.mjs"
   },
   "dependencies": {
+    "@mlc-ai/web-llm": "0.2.81",
     "@modelcontextprotocol/server": "2.0.0",
     "acorn": "8.15.0",
     "acorn-walk": "8.3.4",

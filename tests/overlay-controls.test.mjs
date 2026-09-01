@@ -9,6 +9,7 @@ import {
   OverlayHost,
   RangeOption,
   ScrollPanel,
+  TextInput,
   VirtualList,
   claimStudioViewportFocus,
   isEditableStudioEvent,
@@ -224,6 +225,69 @@ test('button click only invalidates the button bounds', () => {
   assert.equal(clicks, 1);
   const clip = host.paintedRects.at(-1);
   assert.ok(clip.y >= 100);
+});
+
+test('retained text input edits, submits, and releases focus without a DOM field', () => {
+  const { host } = hostFixture();
+  const changes = [];
+  const submissions = [];
+  const input = host.add(new TextInput({
+    text: 'Sta',
+    maximumLength: 8,
+    onChange(value) { changes.push(value); },
+    onSubmit(value) { submissions.push(value); },
+  }));
+
+  input.onPointerDown();
+  assert.equal(input.focused, true);
+  assert.equal(input.handleKey({ key: 't' }), true);
+  assert.equal(input.handleKey({ key: 'u' }), true);
+  assert.equal(input.text, 'Statu');
+  assert.equal(input.handleKey({ key: 'Backspace' }), true);
+  assert.equal(input.text, 'Stat');
+  assert.equal(input.handleKey({ key: 'Enter' }), true);
+  assert.deepEqual(submissions, ['Stat']);
+  assert.deepEqual(changes, ['Stat', 'Statu', 'Stat']);
+  assert.equal(input.handleKey({ key: 'Escape' }), true);
+  assert.equal(input.focused, false);
+  assert.equal(input.handleKey({ key: 'x' }), false);
+});
+
+test('multiline text input supports selection, navigation, clipboard, undo, and explicit submit', async () => {
+  const copied = [];
+  const submitted = [];
+  const input = new TextInput({
+    text: 'one\ntwo',
+    multiline: true,
+    readClipboardText: async () => 'TWO\nTHREE',
+    writeClipboardText(value) { copied.push(value); },
+    onSubmit(value) { submitted.push(value); },
+  });
+  input.onPointerDown();
+
+  input.handleKey({ key: 'Home' });
+  input.handleKey({ key: 'End', shiftKey: true });
+  assert.equal(input.selectedText, 'two');
+  input.handleKey({ key: 'c', ctrlKey: true });
+  input.handleKey({ key: 'x', ctrlKey: true });
+  assert.deepEqual(copied, ['two', 'two']);
+  assert.equal(input.text, 'one\n');
+  input.handleKey({ key: 'z', ctrlKey: true });
+  assert.equal(input.text, 'one\ntwo');
+  input.handleKey({ key: 'y', ctrlKey: true });
+  assert.equal(input.text, 'one\n');
+  input.handleKey({ key: 'v', ctrlKey: true });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(input.text, 'one\nTWO\nTHREE');
+
+  input.handleKey({ key: 'a', ctrlKey: true });
+  input.handleKey({ key: 'r', shiftKey: true });
+  assert.equal(input.text, 'R');
+  input.handleKey({ key: 'Enter' });
+  input.handleKey({ key: 'N' });
+  assert.equal(input.text, 'R\nN');
+  input.handleKey({ key: 'Enter', ctrlKey: true });
+  assert.deepEqual(submitted, ['R\nN']);
 });
 
 test('scroll panel clips offscreen children and scrolls in pixels', () => {

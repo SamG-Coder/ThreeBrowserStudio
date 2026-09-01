@@ -2,8 +2,8 @@
 
 The published page is a **browser WebGPU preview** of the Studio viewport. It
 is not the desktop authoring host. Open this URL in Chrome or Edge (WebGPU).
-Hard-refresh if you still see an old boot error. The native `.exe` /
-`npm run launch` window does not show Prompt.
+Hard-refresh if you still see an old boot error. Both this page and the native
+`.exe` expose the same retained **LLM Setup** tab.
 
 https://samg-coder.github.io/ThreeBrowserStudio/
 
@@ -35,32 +35,49 @@ project instead.
   scene in this tab. Nothing is written under `%LOCALAPPDATA%`.
   The wait-for-kernel bootstrap stage is desktop-only; it is not a project
   object and the browser never keeps it.
-- A bottom **Prompt** dock (browser only) for Gemini or an HTTP chat API
-  through an abstract provider catalog. API keys live in `localStorage` only
-  as AES-GCM ciphertext; a PIN unlocks them. Prompt keys are never included
-  in a project pack.
+- An in-process browser authoring kernel with canonical revisions, validation,
+  history, component editing, and transient Play.
+- A retained **LLM Setup** tab that can download and activate a curated WebLLM
+  model from Hugging Face in the device-local cache. There is no HTTP-provider,
+  API-key, or separate prompt-settings UI. An **Enable Prompt workspace** toggle
+  reveals Studio-native prompt controls in the same tab.
+- A GameMaker-style component composer opened by selecting an object in
+  Explorer. Component changes are staged and committed as one revision.
+- A visible **Play** button. Enter starts Play and Escape stops it and restores
+  the authored state.
 
 ## What stays desktop-only
 
-- MCP named pipe and the Node authoring kernel
+- MCP named pipe and Node filesystem persistence
 - Project files under `%LOCALAPPDATA%`
 - Native typeface outlines, RTX, and `three_browser_runtime.node`
 
-The browser Prompt dock talks to the nine `three_studio_*` names through a
-generic in-page harness. Until an in-process kernel is attached, tool calls
-return `kernel_unavailable`. The page never stores a PIN, and it never puts
-API keys in the published HTML. Gemini uses `x-goog-api-key` against
-`generativelanguage.googleapis.com`. Stock browsers usually block that origin
-with CORS; if Test fails, put a same-origin proxy URL in Base URL, or use
-HTTP chat through a CORS-friendly host. Do not paste a key into the page
-source.
+The active local model is paired with the same nine `three_studio_*` names
+through the Studio harness. In the browser those calls reach the in-process
+kernel; in native they reach the native application. Model weights are cached
+locally and are never included in project packs. WebGPU inference and the
+viewport share GPU memory, so Studio lowers viewport refresh while a model is
+busy.
+
+When the Prompt workspace is enabled, its shared retained multiline editor
+supports selection, navigation, clipboard editing, and undo/redo. Enter adds a
+line; Ctrl+Enter sends the text through the active local model, Studio rules,
+and that harness. Tool-call progress and the final response stay in the LLM
+tab; Escape releases the editor. While it owns focus, key-down and key-up events
+are stopped before the 3D viewport input controllers. The enabled state is
+local to the host and no prompt or model setting is added to the canonical
+project document.
+
+The native host stores downloaded artifacts under
+`%LOCALAPPDATA%\ThreeBrowserStudio\model-cache`; the browser uses its private
+CacheStorage. The pinned WebLLM JavaScript runtime is installed with Studio,
+while model weights are downloaded only when the user presses **Download &
+activate**.
 
 The page detects the host in JavaScript. It attaches the desktop kernel only
 when ThreeRuntime is present (`__threeBrowserNativeRuntime`, the RTX bridge,
 or a `ThreeBrowserRuntime/` user-agent). A generic Chrome user-agent is not
 enough — that is how GitHub Pages stays on the browser path.
 
-## Desktop is unchanged
-
-The Windows exe still loads `site-entry.mjs` through the native host. It never
-loads `pages/index.html`.
+The Windows exe still loads `site-entry.mjs` through the native host rather
+than `pages/index.html`; the retained LLM tab is part of the shared viewport.
