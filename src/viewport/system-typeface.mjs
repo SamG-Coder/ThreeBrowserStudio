@@ -235,7 +235,6 @@ function emitContour(context, points, originX, originY, scale) {
 function candidateFontPaths() {
   const windows = process.env.WINDIR || 'C:\\Windows';
   return [
-    path.join(windows, 'Fonts', 'seguisym.ttf'),
     path.join(windows, 'Fonts', 'segoeui.ttf'),
     path.join(windows, 'Fonts', 'segoeuisl.ttf'),
     path.join(windows, 'Fonts', 'arial.ttf'),
@@ -313,9 +312,6 @@ export function loadSystemTypeface({
   return Object.freeze({
     filePath,
     unitsPerEm,
-    hasGlyph(codepoint) {
-      return glyphIndexFor(Number(codepoint)) !== 0;
-    },
     get ascent() { return ascender; },
     get descent() { return descender; },
     measure(text, fontSize) {

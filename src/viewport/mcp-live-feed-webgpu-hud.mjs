@@ -37,7 +37,7 @@ const PLAINFORM_TOOLBAR_HEIGHT = 30;
 const EXPLORER_ROW_HEIGHT = 22;
 const PLAINFORM_ROW_HEIGHT = 22;
 const PLAINFORM_WRAP_COLUMNS = 48;
-const HEADER_HEIGHT = 80;
+const HEADER_HEIGHT = 100;
 const TAB_HEIGHT = 30;
 const SCROLL_WIDTH = 10;
 const MAX_RETAINED_SOURCE_ENTRIES = 256;
@@ -490,49 +490,49 @@ export function createMcpLiveFeedWebGpuHud({
   }));
   const collapseButton = host.add(new Button({
     name: 'panel-collapse',
-    text: '‹',
+    text: '<',
     centered: true,
     onClick() { setPanelCollapsed(!panelCollapsed); },
   }));
   const newBlankButton = host.add(new Button({
     name: 'project-new-blank',
-    text: '⊕',
+    text: 'Blank',
     centered: true,
     onClick() { void requestProjectAction('new-blank', { confirm: true, label: 'New blank' }); },
   }));
   const newStarterButton = host.add(new Button({
     name: 'project-new-starter',
-    text: '✦',
+    text: 'Starter',
     centered: true,
     onClick() { void requestProjectAction('new-starter', { confirm: true, label: 'New starter' }); },
   }));
   const clearSceneButton = host.add(new Button({
     name: 'project-clear-scene',
-    text: '⌫',
+    text: 'Clear',
     centered: true,
     onClick() { void requestProjectAction('clear-scene', { confirm: true, label: 'Clear scene' }); },
   }));
   const saveProjectButton = host.add(new Button({
     name: 'project-save',
-    text: '↓',
+    text: 'Save',
     centered: true,
     onClick() { void requestProjectAction('save', { label: 'Save' }); },
   }));
   const saveAsProjectButton = host.add(new Button({
     name: 'project-save-as',
-    text: '↓+',
+    text: 'Save as',
     centered: true,
     onClick() { void requestProjectAction('save-as', { label: 'Save as' }); },
   }));
   const importProjectButton = host.add(new Button({
     name: 'import-project',
-    text: '↙',
+    text: 'Import',
     centered: true,
     onClick() { void requestProjectAction('import', { confirm: true, label: 'Import' }); },
   }));
   const exportProjectButton = host.add(new Button({
     name: 'export-project',
-    text: '↗',
+    text: 'Export',
     centered: true,
     onClick() { void requestProjectAction('export', { label: 'Export' }); },
   }));
@@ -829,7 +829,7 @@ export function createMcpLiveFeedWebGpuHud({
     color: '#7f94ad',
   }));
   const panelHint = settingsContent.add(new Label({
-    text: 'Drag looks. WASD moves. Space up, Ctrl down. Use ‹ to collapse; Ctrl+Shift+M hides.',
+    text: 'Drag looks. WASD moves. Space up, Ctrl down. Use < to collapse; Ctrl+Shift+M hides.',
     color: '#7f94ad',
   }));
   const rtxSettingsLabel = settingsContent.add(new Label({
@@ -1367,7 +1367,7 @@ export function createMcpLiveFeedWebGpuHud({
       projectTransferStatus,
     ]) control.setVisible(expanded);
     collapseButton.setVisible(true);
-    collapseButton.text = panelCollapsed ? '›' : '‹';
+    collapseButton.text = panelCollapsed ? '>' : '<';
     collapseButton.invalidate();
     logPage.setVisible(expanded && tab === 'log');
     plainformPage.setVisible(expanded && tab === 'plainform');
@@ -1395,21 +1395,21 @@ export function createMcpLiveFeedWebGpuHud({
     status.setBounds(10, 26, host.width - 174, 16);
     modeButton.setBounds(host.width - 154, 8, 108, 30);
     const actionY = 47;
-    const actionGap = 5;
+    const actionGap = 4;
     let actionX = 8;
     for (const [button, buttonWidth] of [
-      [newBlankButton, 32],
-      [newStarterButton, 32],
-      [clearSceneButton, 32],
-      [saveProjectButton, 32],
-      [saveAsProjectButton, 38],
-      [importProjectButton, 32],
-      [exportProjectButton, 32],
+      [newBlankButton, 50],
+      [newStarterButton, 58],
+      [clearSceneButton, 48],
+      [saveProjectButton, 46],
+      [saveAsProjectButton, 58],
+      [importProjectButton, 54],
+      [exportProjectButton, 54],
     ]) {
       button.setBounds(actionX, actionY, buttonWidth, 27);
       actionX += buttonWidth + actionGap;
     }
-    projectTransferStatus.setBounds(actionX + 3, 46, Math.max(80, host.width - actionX - 11), 30);
+    projectTransferStatus.setBounds(8, 77, Math.max(80, host.width - 16), 18);
     tabs.setBounds(0, HEADER_HEIGHT, host.width, TAB_HEIGHT);
     logPage.setBounds(0, contentY, host.width, contentHeight);
     plainformPage.setBounds(0, contentY, host.width, contentHeight);
