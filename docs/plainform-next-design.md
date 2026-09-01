@@ -23,7 +23,13 @@ correspondence, G0/G1 targets, iteration budgets, and area, inversion, tangent,
 boundary-deviation, and local-grid intersection evidence. Legacy curvature
 wording is explicitly reported as a bounded G1 approximation until source
 curvature tensors can prove G2; it is never silently labelled as achieved G2.
-Later stages remain proposals.
+Stage 6 now recognizes a mature mountain-pine description and builds a seeded,
+bounded semantic skeleton before geometry. Trunk, whorl, major-branch, and
+second-order paths use stable IDs; height, age, seed, envelope, sparse-side,
+tropism, taper, collar, deadwood, and asymmetry data remain canonical, while a
+growth report exposes tiers, path/order counts, envelope, and estimated
+triangles during preview. Structural paths are separate from the Stage 7
+foliage layer. Later stages remain proposals.
 
 This document defines a staged extension of Plainform. It is not a statement
 that every capability described here is already available. Live

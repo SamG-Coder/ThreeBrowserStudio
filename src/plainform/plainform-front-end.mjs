@@ -223,6 +223,15 @@ const DEFINITIONS = Object.freeze([
     fields: match => ({ region: match[1], passes: Number(match[2]), strength: match[3] ?? '0.5' }),
   }),
   definition({
+    id: 'design.botanical.mountainPine', dialect: 'design', domain: 'growth', kind: 'botanical.mountainPine', priority: 700,
+    pattern: /^create a mature (?:mountain )?pine(?: tree)? named (.+?), (.+?) tall and about (\d+) years old$/iu,
+    summary: 'Generate a bounded seeded mountain-pine skeleton with stable semantic paths.',
+    inputs: ['name', 'height', 'age', 'seed from following botanical description'], outputs: ['structural paths', 'growth report'],
+    examples: ['Create a mature mountain pine named Mountain Pine, 18 metres tall and about 70 years old.'],
+    semanticKey: match => `botanical.${semanticPart(match[1])}.skeleton`,
+    fields: match => ({ name: match[1], height: match[2], age: Number(match[3]), species: 'mountainPine' }),
+  }),
+  definition({
     id: 'shader.header', dialect: 'shader', domain: 'shader', kind: 'shader.header', priority: 1000,
     pattern: /^create (?:a |an )?(?:shader|material) graph called (?:(?:"([^"]+)")|(.+?))(?: with id ([a-z0-9][a-z0-9._/-]*))?$/iu,
     summary: 'Declare a typed shader graph.', inputs: ['name', 'graphId'], outputs: ['graph'],

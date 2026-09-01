@@ -9,6 +9,7 @@ import {
 } from './constrained-surface.mjs';
 import { projectSurfaceAnchors } from './evaluated-surface.mjs';
 import { solveFairTransition } from './fair-transition.mjs';
+import { generateMountainPineSkeleton } from './botanical-growth.mjs';
 import { SemanticSurfaceRegistry } from './semantic-surface.mjs';
 import { deformAlongSurfaceCurve, deformSurfaceRegion } from './semantic-surface-deformation.mjs';
 import { shellSurface } from './semantic-surface-shell.mjs';
@@ -389,6 +390,7 @@ export class DesignPlainformCompiler {
     const booleanCommands = [];
     const semanticDeformationStates = new Map();
     const constraints = [];
+    const botanicalDesigns = [];
     const imprintedCurves = new Set();
     const openedSurfaceCurves = new Map();
     let pendingSurfaceSplit = null;
@@ -614,6 +616,28 @@ export class DesignPlainformCompiler {
         if (/^(?:preview these changes|show me a preview)$/iu.test(statement)) {
           requestedPreview = true;
           interpretations.push('Will request a guarded dry-run preview.');
+          continue;
+        }
+        const pineStatement = statement.match(/^create a mature (?:mountain )?pine(?: tree)? named (.+?), (.+?) tall and about (\d+) years old$/iu);
+        if (pineStatement) {
+          const seedMatch = source.match(/\bseed (\d+)\b/iu); const envelopeMatch = source.match(/inside an? (.+?) envelope/iu);
+          const growth = generateMountainPineSkeleton({
+            name: quoteName(pineStatement[1]), height: length(pineStatement[2], scope, 'Pine height'), age: Number(pineStatement[3]),
+            seed: seedMatch ? Number(seedMatch[1]) : 1,
+            ...(envelopeMatch ? { envelope: length(envelopeMatch[1], scope, 'Pine pruning envelope') } : {}),
+            sparseNorth: /sparse (?:shaded )?side to the north/iu.test(source),
+          });
+          for (const path of growth.paths) addGeneratedSolid({
+            id: path.entityId, name: `${growth.parameters.name} ${path.semanticId}`,
+            recipe: { kind: 'tube', points: path.points, tubularSegments: Math.max(16, path.points.length * 8), radius: path.radius, radialSegments: path.order === 0 ? 12 : 8, closed: false, curveType: 'centripetal', tension: 0.5 },
+            metadata: { botanical: { semanticId: path.semanticId, order: path.order, parentSemanticId: path.parentSemanticId, health: path.health, ...(path.collar ? { collar: path.collar } : {}) } },
+          });
+          botanicalDesigns.push({ parameters: growth.parameters, report: growth.report, semanticPaths: growth.paths.map(path => ({ semanticId: path.semanticId, entityId: path.entityId, parentSemanticId: path.parentSemanticId, order: path.order, health: path.health })) });
+          interpretations.push(`Generated a deterministic ${growth.parameters.species} skeleton with ${growth.report.pathCount} stable paths and seed ${growth.report.seed}.`);
+          continue;
+        }
+        if (botanicalDesigns.length && /^(?:give it|keep the crown)\b/iu.test(statement)) {
+          interpretations.push('Applied the botanical growth description captured by the preceding pine statement.');
           continue;
         }
         if (pendingSurfaceSplit && !/^call the enclosed (?:surface|region) /iu.test(statement)) {
@@ -2213,6 +2237,7 @@ export class DesignPlainformCompiler {
           })),
           ...semanticSurfaceMetadata,
           constraints: constraints.map(constraint => structuredClone(constraint)),
+          ...(botanicalDesigns.length ? { botanicalDesigns: botanicalDesigns.map(value => structuredClone(value)) } : {}),
         } },
       } },
       ...(allEntities.length > 0 ? [{ op: 'entity.createMany', sceneId: scene.id, items: allEntities.map(entity => ({ entity })) }] : []),
@@ -2227,7 +2252,10 @@ export class DesignPlainformCompiler {
       language: 'plainform-v1', dialect: 'design', source,
       operations: Object.freeze(operations), interpretation: Object.freeze(interpretations),
       aliases: Object.freeze(aliases), requestedPreview,
-      design: Object.freeze({ rootId, entityCount: allEntities.length, resourceCount: resources.length, variableCount: variables.size + vectorVariables.size }),
+      design: Object.freeze({
+        rootId, entityCount: allEntities.length, resourceCount: resources.length, variableCount: variables.size + vectorVariables.size,
+        ...(botanicalDesigns.length ? { growthReports: botanicalDesigns.map(value => structuredClone(value.report)) } : {}),
+      }),
     });
   }
 }

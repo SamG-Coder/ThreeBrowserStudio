@@ -33,3 +33,4 @@ export {
 } from './conforming-remesh.mjs';
 export { EvaluatedSurface, createEvaluatedSurface, inspectSurfaceAnchorHealth } from './evaluated-surface.mjs';
 export { solveFairTransition } from './fair-transition.mjs';
+export { generateMountainPineSkeleton } from './botanical-growth.mjs';

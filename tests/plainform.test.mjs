@@ -276,6 +276,27 @@ Relax the surface region crown detail for 3 passes while preserving its boundary
   assert.equal(metadata.surfaceDeformations[1].quality.manifold, true);
 });
 
+test('Design Plainform lowers a realistic pine description to a stable botanical skeleton and growth report', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a tree called Pine Study with id entity/pine-study.
+Create a mature mountain pine named Mountain Pine, 18 metres tall and about 70 years old.
+Give it a straight tapered trunk, irregular whorled branches, strong upward growth near the crown, long slightly drooping lower limbs, a sparse shaded side to the north, and seed 1847.
+Keep the crown asymmetrical and inside a 9 metre envelope.
+`, { project: projectFixture() });
+  const root = compiled.operations[1].entity; const botanical = root.metadata.plainformDesign.botanicalDesigns[0];
+  assert.equal(botanical.parameters.seed, 1847);
+  assert.equal(botanical.parameters.envelope, 9);
+  assert.equal(botanical.parameters.sparseNorth, true);
+  assert.ok(botanical.report.pathCount > 40);
+  assert.equal(botanical.report.pathCount, botanical.semanticPaths.length);
+  assert.ok(botanical.semanticPaths.some(path => path.semanticId === 'tier.04.branch.02'));
+  assert.deepEqual(compiled.design.growthReports, [botanical.report]);
+  const resources = compiled.operations[0].items.map(item => item.resource);
+  assert.equal(resources.length, botanical.report.structuralPathCount);
+  assert.ok(resources.every(resource => resource.recipe.kind === 'tube'));
+  assert.ok(compiled.operations.every(operation => operationSchema.safeParse(operation).success));
+});
+
 test('Design Plainform compiles curved symmetric profiles, independent section controls, guides, continuity, and local form modifiers', () => {
   const compiled = new PlainformCompiler().compile(`
 Design a manufactured shell called Guided Shell with id entity/guided-shell.
