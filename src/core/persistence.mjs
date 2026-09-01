@@ -14,7 +14,7 @@ import { assertValidProjectDocument, normalizeProjectDocument } from './document
 import { StudioError } from './errors.mjs';
 import { cloneJson, contentHash, stableStringify } from './util.mjs';
 
-const MAX_PROJECT_JSON_BYTES = 32 * 1024 * 1024;
+const MAX_PROJECT_JSON_BYTES = 64 * 1024 * 1024;
 const MAX_JOURNAL_BYTES = 64 * 1024 * 1024;
 
 function pathIsInside(root, candidate) {
@@ -203,7 +203,12 @@ export class AtomicProjectStore {
   async writeRecovery(document, journalEntry) {
     assertValidProjectDocument(document);
     await this.initialize();
-    const current = await readJson(this.recoveryPath);
+    let current = null;
+    try {
+      current = await readJson(this.recoveryPath);
+    } catch (error) {
+      if (error.code !== 'project_file_too_large') throw error;
+    }
     if (current?.journalEntry) {
       const journal = await this.readJournal();
       if (!journal.some((item) => item.transactionId === current.journalEntry.transactionId)) {
