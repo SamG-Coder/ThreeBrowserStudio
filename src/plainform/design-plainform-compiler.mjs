@@ -10,6 +10,7 @@ import {
 import { projectSurfaceAnchors } from './evaluated-surface.mjs';
 import { solveFairTransition } from './fair-transition.mjs';
 import { generateMountainPineSkeleton } from './botanical-growth.mjs';
+import { cylindricalBotanicalCoordinates, generatePineNeedleGroom, generateRegionGroomField } from './groom-field.mjs';
 import { SemanticSurfaceRegistry } from './semantic-surface.mjs';
 import { deformAlongSurfaceCurve, deformSurfaceRegion } from './semantic-surface-deformation.mjs';
 import { shellSurface } from './semantic-surface-shell.mjs';
@@ -391,6 +392,8 @@ export class DesignPlainformCompiler {
     const semanticDeformationStates = new Map();
     const constraints = [];
     const botanicalDesigns = [];
+    const botanicalRuntime = [];
+    const groomDesigns = [];
     const imprintedCurves = new Set();
     const openedSurfaceCurves = new Map();
     let pendingSurfaceSplit = null;
@@ -633,11 +636,57 @@ export class DesignPlainformCompiler {
             metadata: { botanical: { semanticId: path.semanticId, order: path.order, parentSemanticId: path.parentSemanticId, health: path.health, ...(path.collar ? { collar: path.collar } : {}) } },
           });
           botanicalDesigns.push({ parameters: growth.parameters, report: growth.report, semanticPaths: growth.paths.map(path => ({ semanticId: path.semanticId, entityId: path.entityId, parentSemanticId: path.parentSemanticId, order: path.order, health: path.health })) });
+          botanicalRuntime.push({ growth, design: botanicalDesigns.at(-1) });
           interpretations.push(`Generated a deterministic ${growth.parameters.species} skeleton with ${growth.report.pathCount} stable paths and seed ${growth.report.seed}.`);
           continue;
         }
         if (botanicalDesigns.length && /^(?:give it|keep the crown)\b/iu.test(statement)) {
           interpretations.push('Applied the botanical growth description captured by the preceding pine statement.');
+          continue;
+        }
+        const pineNeedles = statement.match(/^place clusters of (.+?) pine needles along (?:the )?(?:first-|second-|third-|and|order|branches|\s)+,? denser near healthy tips and absent from deadwood$/iu);
+        if (pineNeedles) {
+          const active = botanicalRuntime.at(-1);
+          if (!active) { const error = new Error('Pine needle grooming requires a botanical design earlier in the same program.'); error.code = 'plainform_groom_parent'; throw error; }
+          const groom = generatePineNeedleGroom({ paths: active.growth.paths, seed: active.growth.parameters.seed, needleLength: length(pineNeedles[1], scope, 'Pine needle length') });
+          const assetId = `asset/plainform-design/${designSlug}/pine-needle-groom`;
+          generatedResources.push({ resourceType: 'assets', resource: { id: assetId, kind: 'groomField', groom } });
+          const geometryId = `geometry/plainform-design/${designSlug}/cone-unit`;
+          geometryKinds.add('cone');
+          const entityId = `entity/${designSlug}/pine-needle-groom`;
+          if (occupied.has(entityId) || ids.has(entityId)) { const error = new Error(`Generated groom entity ID ${entityId} already exists.`); error.code = 'plainform_id_conflict'; throw error; }
+          ids.add(entityId);
+          entities.push({
+            id: entityId, kind: 'instancedMesh', name: `${active.growth.parameters.name} needles`, parentId: rootId,
+            transform: identityTransform(),
+            components: { mesh: { geometryId, count: groom.elements.length, instances: groom.elements.map(element => element.transform) } },
+            metadata: { plainformDesign: { primitive: 'groomField', assetId, report: groom.report } },
+          });
+          active.design.groom = { assetId, report: groom.report };
+          active.design.report.foliageClusterCount = groom.report.instanceCount / groom.density.clusterSize;
+          active.design.report.estimatedTriangles += groom.report.instanceCount * 64;
+          interpretations.push(`Groomed ${groom.report.instanceCount} deterministic pine needles as one bounded instance field, excluding deadwood.`);
+          continue;
+        }
+        if (/^generate cylindrical bark coordinates along the trunk and branch hierarchy$/iu.test(statement)) {
+          const active = botanicalRuntime.at(-1);
+          if (!active) { const error = new Error('Botanical bark coordinates require a botanical design earlier in the same program.'); error.code = 'plainform_groom_parent'; throw error; }
+          const assetId = `asset/plainform-design/${designSlug}/bark-coordinates`;
+          const coordinates = cylindricalBotanicalCoordinates(active.growth.paths);
+          generatedResources.push({ resourceType: 'assets', resource: { id: assetId, kind: 'surfaceCoordinates', coordinateSystem: 'cylindricalPath', paths: coordinates } });
+          active.design.barkCoordinates = { assetId, pathCount: coordinates.length, deterministic: true };
+          interpretations.push(`Generated deterministic cylindrical bark coordinates for ${coordinates.length} semantic paths.`);
+          continue;
+        }
+        const regionGroom = statement.match(/^groom (.+?) hair over (.+?) using (\d+) guides, (low|medium|high) clumping, and seed (\d+)(?:;?\s*exclude (.+))?$/iu);
+        if (regionGroom) {
+          const region = semanticSurfaces.resolveRegion(regionGroom[2]);
+          const exclusions = regionGroom[6] ? regionGroom[6].split(/\s*,\s*|\s+and\s+/iu).map(key) : [];
+          const groom = generateRegionGroomField({ region, description: regionGroom[1], guideCount: Number(regionGroom[3]), clumping: regionGroom[4].toLowerCase(), seed: Number(regionGroom[5]), exclusions });
+          const assetId = `asset/plainform-design/${designSlug}/${slug(region.name)}-groom`;
+          generatedResources.push({ resourceType: 'assets', resource: { id: assetId, kind: 'groomField', groom } });
+          groomDesigns.push({ assetId, parentRegion: region.name, report: groom.report });
+          interpretations.push(`Generated ${groom.report.guideCount} deterministic ${groom.parameters.direction} guides over ${region.name} as bounded guide-only data.`);
           continue;
         }
         if (pendingSurfaceSplit && !/^call the enclosed (?:surface|region) /iu.test(statement)) {
@@ -2238,6 +2287,7 @@ export class DesignPlainformCompiler {
           ...semanticSurfaceMetadata,
           constraints: constraints.map(constraint => structuredClone(constraint)),
           ...(botanicalDesigns.length ? { botanicalDesigns: botanicalDesigns.map(value => structuredClone(value)) } : {}),
+          ...(groomDesigns.length ? { groomDesigns: groomDesigns.map(value => structuredClone(value)) } : {}),
         } },
       } },
       ...(allEntities.length > 0 ? [{ op: 'entity.createMany', sceneId: scene.id, items: allEntities.map(entity => ({ entity })) }] : []),

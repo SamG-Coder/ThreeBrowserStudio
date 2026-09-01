@@ -120,8 +120,10 @@ test('recognized semantic keys do not depend on blank lines or trailing punctuat
 
 test('generated Plainform grammar catalog is bounded, searchable, and JSON-safe', () => {
   const catalog = getPlainformGrammarCatalog({ dialect: 'design', query: 'groom', limit: 8 });
-  assert.equal(catalog.total, 1);
+  assert.equal(catalog.total, 3);
   assert.equal(catalog.entries[0].id, 'design.groom.hairCard');
+  assert.equal(catalog.entries[1].id, 'design.groom.pineNeedleField');
+  assert.equal(catalog.entries[2].id, 'design.groom.regionField');
   assert.equal(typeof catalog.entries[0].grammar.source, 'string');
   assert.doesNotThrow(() => JSON.stringify(catalog));
   assert.ok(Object.isFrozen(catalog));

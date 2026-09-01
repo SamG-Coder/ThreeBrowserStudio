@@ -297,6 +297,46 @@ Keep the crown asymmetrical and inside a 9 metre envelope.
   assert.ok(compiled.operations.every(operation => operationSchema.safeParse(operation).success));
 });
 
+test('Design Plainform creates deterministic bounded pine grooming and bark coordinates without expanding the scene tree per needle', () => {
+  const source = `
+Design a tree called Groomed Pine with id entity/groomed-pine.
+Create a mature mountain pine named Mountain Pine, 12 metres tall and about 55 years old.
+Give it irregular whorled branches and seed 914.
+Place clusters of 9 centimetre pine needles along second- and third-order branches, denser near healthy tips and absent from deadwood.
+Generate cylindrical bark coordinates along the trunk and branch hierarchy.
+`;
+  const first = new PlainformCompiler().compile(source, { project: projectFixture() });
+  const second = new PlainformCompiler().compile(source, { project: projectFixture() });
+  const items = first.operations[0].items;
+  const groom = items.find(item => item.resource.kind === 'groomField').resource.groom;
+  const coordinates = items.find(item => item.resource.kind === 'surfaceCoordinates').resource;
+  const instanceEntity = first.operations[2].items.find(item => item.entity.kind === 'instancedMesh').entity;
+  assert.ok(groom.elements.length > 100);
+  assert.equal(groom.elements.length, instanceEntity.components.mesh.instances.length);
+  assert.equal(first.design.entityCount < groom.elements.length, true);
+  assert.ok(groom.elements.every(element => element.semanticId && element.parentSemanticId && element.attachment.pathT > 0.4 && element.detailCoordinates.v === element.attachment.pathT));
+  assert.equal(groom.elements.some(element => element.attachment.health === 'deadwood'), false);
+  assert.equal(coordinates.paths.length, first.design.growthReports[0].pathCount);
+  assert.deepEqual(first.operations, second.operations);
+  assert.ok(first.operations.every(operation => operationSchema.safeParse(operation).success));
+});
+
+test('Design Plainform grooms a semantic region with stable guide attachments, detail coordinates, clumping, and exclusions', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a character called Groom Study with id entity/groom-study.
+Create a box called Head with id entity/head, with width 2 metres, height 2 metres, and depth 2 metres.
+Create a closed surface curve called scalp outline on Head through surface points nearest to design points [-80 centimetres, 50 centimetres, 1 metre], [80 centimetres, 50 centimetres, 1 metre], [80 centimetres, -50 centimetres, 1 metre], [-80 centimetres, -50 centimetres, 1 metre].
+Name the surface enclosed by $scalp-outline as Scalp.
+Groom short swept-back hair over Scalp using 24 guides, medium clumping, and seed 91; exclude the forehead and ears.
+`, { project: projectFixture() });
+  const asset = compiled.operations[0].items.find(item => item.resource.kind === 'groomField').resource;
+  assert.equal(asset.groom.mode, 'guideOnly');
+  assert.equal(asset.groom.guides.length, 24);
+  assert.deepEqual(asset.groom.exclusions, [{ semanticRegion: 'forehead' }, { semanticRegion: 'ears' }]);
+  assert.ok(asset.groom.guides.every(guide => guide.parentSemanticId === 'scalp' && guide.attachment.ownerEntityId === 'entity/head' && Number.isFinite(guide.detailCoordinates.u)));
+  assert.equal(compiled.operations[1].entity.metadata.plainformDesign.groomDesigns[0].assetId, asset.id);
+});
+
 test('Design Plainform compiles curved symmetric profiles, independent section controls, guides, continuity, and local form modifiers', () => {
   const compiled = new PlainformCompiler().compile(`
 Design a manufactured shell called Guided Shell with id entity/guided-shell.
