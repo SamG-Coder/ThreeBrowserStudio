@@ -327,6 +327,27 @@ const DEFINITIONS = Object.freeze([
     semanticKey: match => `shader.node.${semanticPart(match[1])}.remove`, fields: match => ({ role: match[1] }),
   }),
   definition({
+    id: 'event.keyHeld.move', dialect: 'event', domain: 'event', kind: 'event.keyHeldMove', priority: 900,
+    pattern: /^for (.+?),\s*when (.+?) is held, move (left|right|up|down) at (\d+(?:\.\d+)?) metres? per second$/iu,
+    summary: 'Move an object at an exact velocity while a shared keyboard key is held.', inputs: ['subject', 'key', 'direction', 'speed'], outputs: ['eventRow'],
+    examples: ['For Player, when Left is held, move left at 5 metres per second.'],
+    semanticKey: match => `event.${semanticPart(match[1])}.key.${semanticPart(match[2])}`, fields: match => ({ subject: match[1], key: match[2], direction: match[3], speedMetresPerSecond: Number(match[4]) }),
+  }),
+  definition({
+    id: 'event.collision.stop', dialect: 'event', domain: 'event', kind: 'event.collisionStop', priority: 900,
+    pattern: /^when (.+?) collides with (.+?), stop horizontal movement$/iu,
+    summary: 'Condition a collision event on one exact other entity and stop movement.', inputs: ['subject', 'other'], outputs: ['eventRow'],
+    examples: ['When Player collides with Pine Trunk, stop horizontal movement.'],
+    semanticKey: match => `event.${semanticPart(match[1])}.collision.${semanticPart(match[2])}`, fields: match => ({ subject: match[1], other: match[2] }),
+  }),
+  definition({
+    id: 'event.message.stateAnimation', dialect: 'event', domain: 'event', kind: 'event.messageStateAnimation', priority: 900,
+    pattern: /^when (?:the )?(.+?) receives (.+?) with strength at least (\d+(?:\.\d+)?), add (\d+(?:\.\d+)?) to (.+?) and play the (.+?) animation(?:\. if (.+?) reaches (\d+(?:\.\d+)?), send (.+?) once)?$/iu,
+    summary: 'Gate a message payload, change numeric state, play animation, and optionally emit a one-shot event.', inputs: ['subject', 'message', 'minimumStrength', 'increment', 'state', 'animation', 'threshold', 'event'], outputs: ['eventRow'],
+    examples: ['When the tree receives Chop with strength at least 3, add 1 to Damage and play the bark-hit animation. If Damage reaches 10, send Tree Fell once.'],
+    semanticKey: match => `event.${semanticPart(match[1])}.message.${semanticPart(match[2])}`, fields: match => ({ subject: match[1], message: match[2], minimumStrength: Number(match[3]), increment: Number(match[4]), state: match[5], animation: match[6], thresholdState: match[7], threshold: match[8] ? Number(match[8]) : undefined, emitOnce: match[9] }),
+  }),
+  definition({
     id: 'shader.property.set', dialect: 'shader', domain: 'shader', kind: 'shader.setProperty',
     pattern: /^(?:set|drive) (?:the )?(.+?) (?:to|with) (.+)$/iu,
     summary: 'Drive one supported shader property with a typed value or expression.',
@@ -340,6 +361,7 @@ const DEFINITIONS = Object.freeze([
 function inferDialect(source) {
   if (/^\s*(?:create (?:a |an )?(?:shader|material) graph|edit (?:the )?(?:shader|material) graph|in .+?,)/imu.test(source)) return 'shader';
   if (/^\s*(?:begin\s+)?design\b/iu.test(source)) return 'design';
+  if (/^\s*(?:for .+?,\s*when |when (?:the )?.+? (?:collides|receives|is destroyed))/imu.test(source)) return 'event';
   return 'object';
 }
 

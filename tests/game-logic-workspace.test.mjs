@@ -34,7 +34,7 @@ function application() {
 }
 
 test('GameMaker node catalog exposes every predefined event, condition, and action', () => {
-  assert.equal(GAME_LOGIC_NODE_CATALOG.length, 59);
+  assert.equal(GAME_LOGIC_NODE_CATALOG.length, 62);
   assert.equal(GAME_LOGIC_NODE_CATALOG.find(node => node.type === 'event.onStart').event, true);
   assert.equal(GAME_LOGIC_NODE_CATALOG.find(node => node.type === 'flow.branch').category, 'flow');
   assert.equal(GAME_LOGIC_NODE_CATALOG.find(node => node.type === 'physics.addForce').category, 'physics');

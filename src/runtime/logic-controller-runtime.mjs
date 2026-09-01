@@ -168,6 +168,17 @@ export function createLogicControllerRuntime({ project, scene, objects, animatio
       case 'event.onUpdate': value = source.port === 'delta' ? context.delta : undefined; break;
       case 'event.onInput': value = source.port === 'pressed' ? context.pressed : context.value; break;
       case 'event.onEvent': value = context.payload; break;
+      case 'event.payloadNumber': {
+        const payload = dataValue(plan, node.id, 'payload', context, stack);
+        value = finite(payload?.[node.params?.field]);
+        break;
+      }
+      case 'value.add': value = finite(dataValue(plan, node.id, 'a', context, stack)) + finite(dataValue(plan, node.id, 'b', context, stack)); break;
+      case 'compare.values': {
+        const a = dataValue(plan, node.id, 'a', context, stack); const b = dataValue(plan, node.id, 'b', context, stack);
+        value = ({ equal: () => a === b, notEqual: () => a !== b, less: () => a < b, lessEqual: () => a <= b, greater: () => a > b, greaterEqual: () => a >= b })[node.params?.operation]?.() ?? false;
+        break;
+      }
       case 'event.onCollisionEnter': value = source.port === 'other' ? context.otherId : context.normal; break;
       case 'event.onCollisionExit': value = context.otherId; break;
       default: value = node?.outputs?.[source.port];
@@ -293,6 +304,14 @@ export function createLogicControllerRuntime({ project, scene, objects, animatio
         });
         break;
       }
+      case 'event.emitOnce': {
+        const onceKey = `event-once/${node.params?.eventId}`; const state = stateFor(context.selfId);
+        if (state.get(onceKey) !== true && emitted.length < MAX_EMITTED_EVENTS) {
+          state.set(onceKey, true);
+          emitted.push({ eventId: node.params?.eventId, payload: dataValue(plan, node.id, 'payload', context) });
+        }
+        break;
+      }
       default:
         diagnostics.push({ code: 'logic_node_not_executable', nodeId: node.id, nodeType: node.type, message: `${node.type} is validated but not executable in the controller runtime.` });
         return;
@@ -416,6 +435,11 @@ export function createLogicControllerRuntime({ project, scene, objects, animatio
       return true;
     },
     releaseKeys() { heldKeys.clear(); },
+    emit(eventId, payload = {}) {
+      if (!active || typeof eventId !== 'string' || !eventId) return false;
+      dispatch('event.onEvent', { eventId, payload: cloneValue(payload) });
+      return true;
+    },
     update(deltaSeconds) {
       if (!active || !Number.isFinite(deltaSeconds) || deltaSeconds <= 0) return;
       const delta = Math.min(0.1, deltaSeconds);

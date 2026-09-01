@@ -8,6 +8,7 @@ import { PlainformGrowthPlanner } from './growth-planner.mjs';
 import { PlainformPrefabContext } from './prefab-context.mjs';
 import { ShaderPlainformCompiler } from './shader-plainform-compiler.mjs';
 import { DesignPlainformCompiler } from './design-plainform-compiler.mjs';
+import { EventPlainformCompiler } from './event-plainform-compiler.mjs';
 import { parsePlainformProgram } from './plainform-front-end.mjs';
 
 const TAU = Math.PI * 2;
@@ -364,6 +365,7 @@ export class PlainformCompiler {
     const program = this.parse(source);
     if (program.dialect === 'shader') return new ShaderPlainformCompiler().compile(source, { project });
     if (program.dialect === 'design') return new DesignPlainformCompiler().compile(source, { project });
+    if (program.dialect === 'event') return new EventPlainformCompiler().compile(source, { project });
     if (!project) fail('plainform_project_required', 'Plainform compilation requires the canonical project document.');
     const statements = source.split(/\r?\n/u).map(cleanStatement).filter(Boolean);
     if (statements.length > MAX_STATEMENTS) fail('plainform_statement_limit', `Plainform accepts at most ${MAX_STATEMENTS} statements.`);
