@@ -28,6 +28,8 @@ import { createBrowserMcpHarness } from '../browser/mcp-harness.mjs';
 import { createLocalModelDirectWorker } from '../browser/local-model-direct-worker.mjs';
 import { LOCAL_AI_SYSTEM_PROMPT, localAiToolNames, requiredLocalAiTools } from '../browser/local-ai-policy.mjs';
 import { createProjectWorkspaceActions } from './project-workspace-actions.mjs';
+import { applyComponentWorkspace, readComponentWorkspace } from './component-workspace.mjs';
+import { createTransactionId } from '../core/util.mjs';
 
 const NATIVE_WEBLLM_RUNTIME_URL = new URL('../../node_modules/@mlc-ai/web-llm/lib/index.js', import.meta.url).href;
 const LOCAL_PROMPT_ENABLED_KEY = 'three-browser-studio.local-prompt.enabled';
@@ -145,8 +147,6 @@ async function main() {
     const { getSystemTypeface } = await import("./system-typeface.mjs");
     typeface = getSystemTypeface();
   }
-  let playControls = null;
-  let componentComposer = null;
   let localModelManager = createLocalModelManager({
     ...(host.attached ? {
       workerFactory: () => createLocalModelDirectWorker({
@@ -201,7 +201,20 @@ async function main() {
       if (!projectWorkspaceActions) throw new Error('The Studio project is still loading.');
       return projectWorkspaceActions.run(action);
     },
-    onExplorerEntitySelect(entityId) { componentComposer?.open(entityId); },
+    async onPlayToggle(currentMode) {
+      if (!application?.dispatch || !application.document) throw new Error('The Studio project is still loading.');
+      return application.dispatch('three_studio_play', {
+        action: currentMode === 'play' ? 'stop' : 'enter',
+        baseRevision: application.document.revision,
+        idempotencyKey: createTransactionId('ui-play'),
+      });
+    },
+    onExplorerEntitySelect(entityId) {
+      return readComponentWorkspace(application?.document, entityId);
+    },
+    onExplorerComponentsApply(entityId, components) {
+      return applyComponentWorkspace(application, entityId, components);
+    },
     async onLocalModelActivate(modelId) {
       localAiBusy = true;
       try { return await localModelManager.activate(modelId); }
@@ -259,6 +272,7 @@ async function main() {
 
   function syncGraphicsSettingsState() {
     if (!rtxLighting) return;
+    try { liveFeed.setPlayMode?.(application?.mode ?? application?.status?.().mode); } catch { /* Status display is best effort. */ }
     liveFeed.setGraphicsSettingsState?.({
       rtx: {
         authored: application?.getActiveSceneRtxSettings?.() ?? activeRtxSettings,
@@ -394,10 +408,6 @@ async function main() {
     try { delete globalThis.__THREE_STUDIO_LOCAL_AI__; } catch { /* Host globals are best-effort diagnostics. */ }
     renderer.setAnimationLoop(null);
     globalThis.removeEventListener("resize", resize);
-    playControls?.dispose();
-    playControls = null;
-    componentComposer?.dispose();
-    componentComposer = null;
     localModelUnsubscribe?.();
     localModelUnsubscribe = null;
     localModelManager?.dispose();
@@ -573,10 +583,6 @@ async function main() {
         viewport: viewportApi,
         alreadyShown: true,
       });
-      const { createBrowserPlayControls } = await import("../browser/play-controls.mjs");
-      playControls = createBrowserPlayControls({ document, application });
-      const { createComponentComposer } = await import("../browser/component-composer.mjs");
-      componentComposer = createComponentComposer({ document, application });
       initialBrowserProjectStatus = starterResult.sourceUrl
         ? `Loaded ${starterResult.document.name} from GitHub.`
         : starterResult.error
@@ -626,7 +632,6 @@ async function main() {
       }
       if (bootstrap.root.parent) bootstrap.update(elapsed);
       application?.update(delta);
-      playControls?.sync();
       if (reviewSession.viewMode !== VIEW_MODE_FOLLOW_SHOT && controllerInput?.active !== true) controls.update(delta);
       renderer.setRenderTarget(null);
       renderer.setMRT(null);

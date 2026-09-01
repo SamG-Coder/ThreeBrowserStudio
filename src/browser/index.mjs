@@ -21,4 +21,3 @@ export {
   createUnavailableStudioDispatch,
 } from './mcp-harness.mjs';
 export { BROWSER_HARNESS_SYSTEM, createBrowserPromptSession } from './prompt-session.mjs';
-export { createBrowserPromptPanel } from './prompt-panel.mjs';

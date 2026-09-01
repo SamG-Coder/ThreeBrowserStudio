@@ -231,6 +231,9 @@ function fixture({
   localModels = [],
   promptEnabled = false,
   onProjectAction,
+  onPlayToggle,
+  onExplorerEntitySelect,
+  onExplorerComponentsApply,
   onExportProject,
   onImportProject,
   onRtxSettingsChange,
@@ -249,6 +252,9 @@ function fixture({
     THREE, document, eventTarget, source: telemetry, scene,
     width, height, pixelRatio, maxVisibleRows, now, llmSetupTab, localModels, promptEnabled,
     onProjectAction,
+    onPlayToggle,
+    onExplorerEntitySelect,
+    onExplorerComponentsApply,
     onExportProject,
     onImportProject,
     onRtxSettingsChange,
@@ -531,6 +537,65 @@ test('explorer tab shows the scene tree and collapse stays in the HUD', () => {
   assert.match(hud.visibleExplorerText, /Room/);
   assert.doesNotMatch(hud.visibleExplorerText, /Table/);
   assert.equal(hud.explorerRowCount, 2);
+});
+
+test('component action opens a retained side column without collapsing the tree', async () => {
+  const applied = [];
+  const workspace = {
+    revision: 2,
+    entity: { id: 'entity/table', name: 'Table', kind: 'mesh' },
+    components: { rigidBody: { mass: 1 } },
+    catalog: [{
+      id: 'rigidBody', label: 'Rigid Body', description: 'Physics body', compatible: true,
+      requirementsMet: true, suggestedValue: { mass: 1 },
+    }],
+  };
+  const { hud } = fixture({
+    width: 1200, height: 700, pixelRatio: 1,
+    onExplorerEntitySelect(entityId) { assert.equal(entityId, 'entity/table'); return workspace; },
+    onExplorerComponentsApply(entityId, components) {
+      applied.push({ entityId, components });
+      return { ...workspace, revision: 3, components };
+    },
+  });
+  hud.setExplorerOutline(buildExplorerOutline(createProjectDocument({
+    projectId: 'project/components-hud',
+    scenes: [{
+      id: 'scene/main', rootEntityIds: ['entity/room'], entities: [
+        { id: 'entity/room', kind: 'group', children: ['entity/table'] },
+        { id: 'entity/table', kind: 'mesh', name: 'Table', parentId: 'entity/room', components: { rigidBody: { mass: 1 } } },
+      ],
+    }],
+  })));
+  findControl(hud.host, 'tabs').setSelected('explorer');
+  const explorerList = findControl(hud.host, 'explorer-list');
+  const tableIndex = hud.visibleExplorerText.split('\n').findIndex(line => line.includes('Table'));
+  explorerList.onActivate(tableIndex, { x: explorerList.absoluteBounds.x + explorerList.width - 2 });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(findControl(hud.host, 'component-tool-window').visible, true);
+  assert.equal(hud.panelBounds.width, 810);
+  assert.match(hud.visibleExplorerText, /Table/, 'component action keeps the existing tree expanded');
+  const propertyInput = findControl(hud.host, 'component-property-input');
+  propertyInput.setText('{"mass":4}');
+  findControl(hud.host, 'component-apply').onClick();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(applied, [{ entityId: 'entity/table', components: { rigidBody: { mass: 4 } } }]);
+  hud.dispose();
+});
+
+test('retained Play button is shared host chrome', async () => {
+  const calls = [];
+  const { hud } = fixture({ onPlayToggle(mode) { calls.push(mode); return { mode: mode === 'play' ? 'author' : 'play' }; } });
+  const play = findControl(hud.host, 'play-toggle');
+  assert.equal(play.text, 'Play');
+  play.onClick();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(play.text, 'Stop');
+  play.onClick();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(play.text, 'Play');
+  assert.deepEqual(calls, ['author', 'play']);
+  hud.dispose();
 });
 
 test('settings tab switches without a full-tree glyph rebuild and view-mode is retained', () => {

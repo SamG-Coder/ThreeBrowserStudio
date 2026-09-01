@@ -910,7 +910,7 @@ export class TabStrip extends Control {
     });
   }
 
-  onPointerDown(event, { x, y }) {
+  onPointerDown(event, { y }) {
     const bounds = this.absoluteBounds;
     const index = this.tabs.findIndex((_, tabIndex) => pointInRect(x, y, this.#tabRect(tabIndex, bounds)));
     if (index < 0) return false;
@@ -1335,11 +1335,11 @@ export class VirtualList extends Control {
     return this.setScrollIndex(this.scrollIndex + (delta > 0 ? steps : -steps));
   }
 
-  onPointerDown(event, { y }) {
+  onPointerDown(event, { x, y }) {
     const bounds = this.absoluteBounds;
     const index = this.scrollIndex + Math.floor((y - bounds.y) / this.itemHeight);
     if (!Number.isInteger(index) || index < 0 || index >= this.itemCount) return false;
-    this.onActivate?.(index, { y, event });
+    this.onActivate?.(index, { x, y, event });
     return true;
   }
 }

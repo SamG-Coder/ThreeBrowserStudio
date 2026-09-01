@@ -35,6 +35,9 @@ const EXPANDED_ROW_HEIGHT = 64;
 const LOG_TOOLBAR_HEIGHT = 28;
 const PLAINFORM_TOOLBAR_HEIGHT = 30;
 const EXPLORER_ROW_HEIGHT = 22;
+const EXPLORER_TOOLBAR_HEIGHT = 30;
+const COMPONENT_PANEL_WIDTH = 350;
+const COMPONENT_ACTION_WIDTH = 72;
 const PLAINFORM_ROW_HEIGHT = 22;
 const PLAINFORM_WRAP_COLUMNS = 48;
 const HEADER_HEIGHT = 100;
@@ -314,7 +317,9 @@ export function createMcpLiveFeedWebGpuHud({
   onExportProject,
   onImportProject,
   onProjectAction,
+  onPlayToggle,
   onExplorerEntitySelect,
+  onExplorerComponentsApply,
   onLocalModelActivate,
   onLocalModelRemove,
   onPromptEnabledChange,
@@ -431,6 +436,11 @@ export function createMcpLiveFeedWebGpuHud({
   let explorerExpanded = new Set();
   let explorerKnownIds = new Set();
   let explorerRows = Object.freeze([]);
+  let explorerComponentsOnly = false;
+  let componentWorkspace = null;
+  let componentStaged = {};
+  let selectedComponentId = null;
+  let componentBusy = false;
   let viewportLayerState = Object.freeze({
     mode: 'scene',
     gridVisible: true,
@@ -487,6 +497,12 @@ export function createMcpLiveFeedWebGpuHud({
       const next = viewMode === VIEW_MODE_FOLLOW_SHOT ? VIEW_MODE_REVIEW : VIEW_MODE_FOLLOW_SHOT;
       setViewMode(next, { fromUi: true });
     },
+  }));
+  const playButton = host.add(new Button({
+    name: 'play-toggle',
+    text: 'Play',
+    centered: true,
+    onClick() { void requestPlayToggle(); },
   }));
   const collapseButton = host.add(new Button({
     name: 'panel-collapse',
@@ -554,6 +570,8 @@ export function createMcpLiveFeedWebGpuHud({
   ]);
   let pendingProjectAction = null;
   let projectActionBusy = false;
+  let playActionBusy = false;
+  let playMode = 'author';
   const tabItems = [
     { id: 'log', label: 'Log' },
     { id: 'plainform', label: 'Form' },
@@ -569,6 +587,7 @@ export function createMcpLiveFeedWebGpuHud({
     onChange(id) {
       tab = id;
       syncPanelCollapsedVisibility();
+      resize(viewportWidth, viewportHeight, backingRatio);
       syncStatus();
       onTabChange?.(id);
     },
@@ -669,6 +688,21 @@ export function createMcpLiveFeedWebGpuHud({
     visible: false,
     backColor: PANEL_LAYER_TRANSPARENT,
   }));
+  const explorerToolbar = explorerPage.add(new Control({
+    name: 'explorer-toolbar', backColor: PANEL_LAYER_TRANSPARENT,
+  }));
+  const explorerComponentsFilter = explorerToolbar.add(new ToggleOption({
+    name: 'explorer-components-only',
+    text: 'Has components',
+    selected: false,
+    onChange(selected) {
+      explorerComponentsOnly = selected === true;
+      refreshExplorer();
+    },
+  }));
+  const explorerComponentColumnLabel = explorerToolbar.add(new Label({
+    name: 'explorer-component-column-label', text: 'Components', color: '#8eb4dc', font: UI_FONT_BOLD,
+  }));
   const explorerList = explorerPage.add(new VirtualList({
     name: 'explorer-list',
     backColor: PANEL_LAYER_TRANSPARENT,
@@ -702,9 +736,20 @@ export function createMcpLiveFeedWebGpuHud({
       drawFonts.blit(drawContext, row.name, nameX, bounds.y + 15, {
         font: row.kind === 'scene' || row.kind === 'group' ? UI_FONT_BOLD : UI_FONT,
         fillStyle: muted ? '#6d8299' : '#dce8f7',
-        maxWidth: Math.max(40, bounds.width - (nameX - bounds.x) - 58),
+        maxWidth: Math.max(40, bounds.width - (nameX - bounds.x) - (row.section === 'entity' ? COMPONENT_ACTION_WIDTH + 58 : 58)),
       });
-      drawFonts.blit(drawContext, meta, bounds.x + bounds.width - 54, bounds.y + 15, {
+      const componentX = bounds.x + bounds.width - COMPONENT_ACTION_WIDTH;
+      if (row.section === 'entity') {
+        drawContext.fillStyle = componentWorkspace?.entity?.id === row.id
+          ? 'rgba(70, 110, 160, 0.72)'
+          : 'rgba(22, 34, 52, 0.96)';
+        drawContext.fillRect(componentX, bounds.y + 1, COMPONENT_ACTION_WIDTH - 2, bounds.height - 2);
+        const count = Number(row.componentCount ?? 0);
+        drawFonts.blit(drawContext, count > 0 ? `Edit ${count}` : 'Add', componentX + 8, bounds.y + 15, {
+          font: '600 11px "Segoe UI", Arial, sans-serif', fillStyle: '#b9d7f6', maxWidth: COMPONENT_ACTION_WIDTH - 14,
+        });
+      }
+      drawFonts.blit(drawContext, meta, componentX - 54, bounds.y + 15, {
         font: '11px "Segoe UI", Arial, sans-serif',
         fillStyle: '#6d8299',
         maxWidth: 48,
@@ -712,10 +757,14 @@ export function createMcpLiveFeedWebGpuHud({
       drawContext.fillStyle = 'rgba(135, 176, 224, 0.08)';
       drawContext.fillRect(bounds.x + 8, bounds.y + bounds.height - 1, bounds.width - 16, 1);
     },
-    onActivate(index) {
+    onActivate(index, { x = Number.NEGATIVE_INFINITY } = {}) {
       const row = explorerRows[index];
       if (!row) return;
-      if (row.section === 'entity') onExplorerEntitySelect?.(row.id);
+      const listBounds = explorerList.absoluteBounds;
+      if (row.section === 'entity' && x >= listBounds.x + listBounds.width - COMPONENT_ACTION_WIDTH) {
+        void openComponentWorkspace(row.id);
+        return;
+      }
       if (!row.expandable) return;
       if (explorerExpanded.has(row.id)) explorerExpanded.delete(row.id);
       else explorerExpanded.add(row.id);
@@ -731,6 +780,58 @@ export function createMcpLiveFeedWebGpuHud({
   explorerList.onScroll = value => {
     explorerScroll.setScroll(value, { notify: false });
   };
+
+  const componentPanel = explorerPage.add(new Control({
+    name: 'component-tool-window', visible: false, clipChildren: true, backColor: 'rgba(11, 19, 30, 0.98)',
+  }));
+  const componentTitle = componentPanel.add(new Label({
+    name: 'component-title', text: 'Object components', color: '#dce8f7', font: UI_FONT_BOLD,
+  }));
+  const componentClose = componentPanel.add(new Button({
+    name: 'component-close', text: 'Close', centered: true, onClick() { closeComponentWorkspace(); },
+  }));
+  const componentCatalogLabel = componentPanel.add(new Label({
+    name: 'component-catalog-label', text: 'Predefined components', color: '#8eb4dc', font: UI_FONT_BOLD,
+  }));
+  const componentCatalogList = componentPanel.add(new VirtualList({
+    name: 'component-catalog-list', itemHeight: 34, reusePixels: false,
+    paintItem(drawContext, drawFonts, { index, bounds }) {
+      const item = componentWorkspace?.catalog?.[index];
+      if (!item) return;
+      const selected = item.id === selectedComponentId;
+      if (selected) {
+        drawContext.fillStyle = 'rgba(70, 110, 160, 0.52)';
+        drawContext.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+      }
+      const attached = componentStaged[item.id] !== undefined;
+      drawFonts.blit(drawContext, item.label, bounds.x + 8, bounds.y + 14, {
+        font: UI_FONT_BOLD, fillStyle: item.compatible ? '#dce8f7' : '#65788d', maxWidth: bounds.width - 76,
+      });
+      drawFonts.blit(drawContext, attached ? 'Attached' : 'Available', bounds.x + bounds.width - 68, bounds.y + 14, {
+        font: '11px "Segoe UI", Arial, sans-serif', fillStyle: attached ? '#77d7a3' : '#7890a9', maxWidth: 62,
+      });
+      drawFonts.blit(drawContext, item.description, bounds.x + 8, bounds.y + 29, {
+        font: '11px "Segoe UI", Arial, sans-serif', fillStyle: '#7f94ad', maxWidth: bounds.width - 16,
+      });
+    },
+    onActivate(index) { selectComponent(componentWorkspace?.catalog?.[index]?.id); },
+  }));
+  const componentPropertyLabel = componentPanel.add(new Label({
+    name: 'component-property-label', text: 'Settings', color: '#8eb4dc', font: UI_FONT_BOLD,
+  }));
+  const componentPropertyInput = componentPanel.add(new TextInput({
+    name: 'component-property-input', multiline: true, maximumLength: 12_000,
+    placeholder: 'Select a predefined component.', readClipboardText, writeClipboardText,
+  }));
+  const componentToggleButton = componentPanel.add(new Button({
+    name: 'component-toggle', text: 'Add component', centered: true, onClick() { toggleSelectedComponent(); },
+  }));
+  const componentApplyButton = componentPanel.add(new Button({
+    name: 'component-apply', text: 'Apply', centered: true, onClick() { void applyComponentChanges(); },
+  }));
+  const componentStatus = componentPanel.add(new WrappedLabel({
+    name: 'component-status', text: 'Select an object.', color: '#9fc6f2', maxLines: 2, lineHeight: 14,
+  }));
 
   const layersPage = host.add(new Control({
     name: 'layers-page',
@@ -1350,12 +1451,144 @@ export function createMcpLiveFeedWebGpuHud({
     }
   }
 
+  async function requestPlayToggle() {
+    if (playActionBusy || typeof onPlayToggle !== 'function') return;
+    playActionBusy = true;
+    playButton.setEnabled(false);
+    playButton.text = playMode === 'play' ? 'Stopping…' : 'Starting…';
+    playButton.invalidate();
+    try {
+      const result = await onPlayToggle(playMode);
+      playMode = result?.mode === 'play' ? 'play' : 'author';
+      projectTransferStatus.setText(playMode === 'play' ? 'Play mode · Escape or Stop returns to authoring.' : 'Author mode restored.');
+    } catch (error) {
+      projectTransferStatus.setText(error?.message ?? String(error));
+    } finally {
+      playActionBusy = false;
+      playButton.text = playMode === 'play' ? 'Stop' : 'Play';
+      playButton.setEnabled(true);
+      playButton.invalidate();
+    }
+  }
+
+  function setPlayMode(mode) {
+    const next = mode === 'play' ? 'play' : 'author';
+    if (next === playMode && playButton.text === (next === 'play' ? 'Stop' : 'Play')) return;
+    playMode = next;
+    if (!playActionBusy) {
+      playButton.text = playMode === 'play' ? 'Stop' : 'Play';
+      playButton.invalidate();
+    }
+  }
+
+  function commitSelectedComponentText() {
+    if (!componentWorkspace || !selectedComponentId || componentStaged[selectedComponentId] === undefined) return true;
+    try {
+      const value = JSON.parse(componentPropertyInput.text);
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Settings must be a JSON object.');
+      componentStaged[selectedComponentId] = value;
+      return true;
+    } catch (error) {
+      componentStatus.setText(`Invalid ${selectedComponentId} settings · ${error?.message ?? String(error)}`);
+      return false;
+    }
+  }
+
+  function syncSelectedComponent() {
+    const item = componentWorkspace?.catalog?.find(entry => entry.id === selectedComponentId) ?? null;
+    const attached = item && componentStaged[item.id] !== undefined;
+    componentPropertyLabel.setText(item ? `${item.label} settings` : 'Settings');
+    componentPropertyInput.setText(attached ? JSON.stringify(componentStaged[item.id], null, 2) : '');
+    componentPropertyInput.setEnabled(Boolean(attached));
+    componentToggleButton.text = attached ? 'Remove component' : 'Add component';
+    componentToggleButton.setEnabled(Boolean(item?.compatible && (attached || item.requirementsMet)) && !componentBusy);
+    componentToggleButton.invalidate();
+    componentApplyButton.setEnabled(Boolean(componentWorkspace) && !componentBusy);
+    componentCatalogList.invalidate();
+  }
+
+  function selectComponent(componentId) {
+    if (!componentId || componentId === selectedComponentId) return;
+    if (!commitSelectedComponentText()) return;
+    selectedComponentId = componentId;
+    syncSelectedComponent();
+  }
+
+  function toggleSelectedComponent() {
+    const item = componentWorkspace?.catalog?.find(entry => entry.id === selectedComponentId);
+    if (!item || !item.compatible) return;
+    if (componentStaged[item.id] !== undefined) delete componentStaged[item.id];
+    else if (item.requirementsMet) componentStaged[item.id] = structuredClone(item.suggestedValue);
+    syncSelectedComponent();
+    componentStatus.setText(`${item.label} change is staged. Apply to compile and commit it.`);
+  }
+
+  async function openComponentWorkspace(entityId) {
+    if (componentBusy || typeof onExplorerEntitySelect !== 'function') return;
+    componentBusy = true;
+    componentStatus.setText('Loading components…');
+    try {
+      const workspace = await onExplorerEntitySelect(entityId);
+      if (!workspace?.entity || !Array.isArray(workspace.catalog)) throw new Error('Component workspace is unavailable for this object.');
+      componentWorkspace = workspace;
+      componentStaged = structuredClone(workspace.components ?? {});
+      selectedComponentId = workspace.catalog.find(item => componentStaged[item.id] !== undefined)?.id
+        ?? workspace.catalog.find(item => item.compatible && item.requirementsMet)?.id
+        ?? workspace.catalog[0]?.id
+        ?? null;
+      componentTitle.setText(`${workspace.entity.name} · Components`);
+      componentCatalogList.setItems(workspace.catalog.length);
+      componentPanel.setVisible(true);
+      componentStatus.setText(`${Object.keys(componentStaged).length} attached · edits use the canonical Studio operation path.`);
+      syncSelectedComponent();
+      resize(viewportWidth, viewportHeight, backingRatio);
+      refreshExplorer();
+    } catch (error) {
+      componentStatus.setText(error?.message ?? String(error));
+    } finally {
+      componentBusy = false;
+      syncSelectedComponent();
+    }
+  }
+
+  function closeComponentWorkspace() {
+    componentPropertyInput.setFocused(false);
+    componentWorkspace = null;
+    componentStaged = {};
+    selectedComponentId = null;
+    componentPanel.setVisible(false);
+    resize(viewportWidth, viewportHeight, backingRatio);
+    refreshExplorer();
+  }
+
+  async function applyComponentChanges() {
+    if (!componentWorkspace || componentBusy || typeof onExplorerComponentsApply !== 'function') return;
+    if (!commitSelectedComponentText()) return;
+    componentBusy = true;
+    syncSelectedComponent();
+    componentStatus.setText('Compiling and applying components…');
+    try {
+      const next = await onExplorerComponentsApply(componentWorkspace.entity.id, structuredClone(componentStaged));
+      componentWorkspace = next ?? componentWorkspace;
+      componentStaged = structuredClone(componentWorkspace.components ?? componentStaged);
+      componentStatus.setText(`${Object.keys(componentStaged).length} components committed at revision ${componentWorkspace.revision}.`);
+      syncSelectedComponent();
+      refreshExplorer();
+    } catch (error) {
+      componentStatus.setText(error?.message ?? String(error));
+    } finally {
+      componentBusy = false;
+      syncSelectedComponent();
+    }
+  }
+
   function syncPanelCollapsedVisibility() {
     const expanded = !panelCollapsed;
     for (const control of [
       title,
       status,
       modeButton,
+      playButton,
       tabs,
       newBlankButton,
       newStarterButton,
@@ -1372,6 +1605,7 @@ export function createMcpLiveFeedWebGpuHud({
     logPage.setVisible(expanded && tab === 'log');
     plainformPage.setVisible(expanded && tab === 'plainform');
     explorerPage.setVisible(expanded && tab === 'explorer');
+    componentPanel.setVisible(expanded && tab === 'explorer' && Boolean(componentWorkspace));
     layersPage.setVisible(expanded && tab === 'layers');
     settingsPage.setVisible(expanded && tab === 'settings');
     llmPage?.setVisible(expanded && tab === 'llm');
@@ -1391,8 +1625,9 @@ export function createMcpLiveFeedWebGpuHud({
     if (panelCollapsed) return;
     const contentY = HEADER_HEIGHT + TAB_HEIGHT;
     const contentHeight = Math.max(40, host.height - contentY);
-    title.setBounds(10, 8, host.width - 174, 18);
-    status.setBounds(10, 26, host.width - 174, 16);
+    title.setBounds(10, 8, host.width - 254, 18);
+    status.setBounds(10, 26, host.width - 254, 16);
+    playButton.setBounds(host.width - 234, 8, 76, 30);
     modeButton.setBounds(host.width - 154, 8, 108, 30);
     const actionY = 47;
     const actionGap = 4;
@@ -1440,8 +1675,25 @@ export function createMcpLiveFeedWebGpuHud({
       SCROLL_WIDTH,
       Math.max(20, plainformPage.height - PLAINFORM_TOOLBAR_HEIGHT),
     );
-    explorerList.setBounds(0, 0, Math.max(40, explorerPage.width - SCROLL_WIDTH), explorerPage.height);
-    explorerScroll.setBounds(explorerPage.width - SCROLL_WIDTH, 0, SCROLL_WIDTH, explorerPage.height);
+    const componentWidth = componentWorkspace ? Math.min(COMPONENT_PANEL_WIDTH, Math.max(240, explorerPage.width - 260)) : 0;
+    const explorerWidth = Math.max(180, explorerPage.width - componentWidth);
+    explorerToolbar.setBounds(0, 0, explorerWidth, EXPLORER_TOOLBAR_HEIGHT);
+    explorerComponentsFilter.setBounds(4, 1, Math.max(100, explorerWidth - COMPONENT_ACTION_WIDTH - 8), 28);
+    explorerComponentColumnLabel.setBounds(explorerWidth - COMPONENT_ACTION_WIDTH, 7, COMPONENT_ACTION_WIDTH - 6, 18);
+    explorerList.setBounds(0, EXPLORER_TOOLBAR_HEIGHT, Math.max(40, explorerWidth - SCROLL_WIDTH), Math.max(20, explorerPage.height - EXPLORER_TOOLBAR_HEIGHT));
+    explorerScroll.setBounds(explorerWidth - SCROLL_WIDTH, EXPLORER_TOOLBAR_HEIGHT, SCROLL_WIDTH, Math.max(20, explorerPage.height - EXPLORER_TOOLBAR_HEIGHT));
+    componentPanel.setBounds(explorerWidth, 0, componentWidth, explorerPage.height);
+    componentTitle.setBounds(10, 8, Math.max(80, componentWidth - 78), 20);
+    componentClose.setBounds(Math.max(4, componentWidth - 62), 4, 56, 26);
+    componentCatalogLabel.setBounds(10, 38, Math.max(80, componentWidth - 20), 20);
+    componentCatalogList.setBounds(8, 60, Math.max(80, componentWidth - 16), 204);
+    componentPropertyLabel.setBounds(10, 274, Math.max(80, componentWidth - 20), 20);
+    componentPropertyInput.setBounds(8, 296, Math.max(80, componentWidth - 16), Math.max(70, componentPanel.height - 404));
+    const componentButtonY = Math.max(372, componentPanel.height - 102);
+    const componentButtonWidth = Math.max(80, Math.floor((componentWidth - 24) / 2));
+    componentToggleButton.setBounds(8, componentButtonY, componentButtonWidth, 30);
+    componentApplyButton.setBounds(16 + componentButtonWidth, componentButtonY, Math.max(70, componentWidth - 24 - componentButtonWidth), 30);
+    componentStatus.setBounds(10, componentButtonY + 38, Math.max(80, componentWidth - 20), 54);
     layersLabel.setBounds(12, 12, layersPage.width - 24, 20);
     sceneLayerOption.setBounds(8, 40, layersPage.width - 16, 30);
     previewLayerOption.setBounds(8, 72, layersPage.width - 16, 30);
@@ -1806,7 +2058,7 @@ export function createMcpLiveFeedWebGpuHud({
   }
 
   function refreshExplorer({ fromIndex = 0 } = {}) {
-    explorerRows = flattenExplorerRows(explorerOutline, explorerExpanded);
+    explorerRows = flattenExplorerRows(explorerOutline, explorerExpanded, { componentsOnly: explorerComponentsOnly });
     explorerList.setItems(explorerRows.length, { invalidate: false });
     if (tab === 'explorer') explorerList.invalidateFromIndex(fromIndex);
     syncExplorerScroll();
@@ -1948,7 +2200,10 @@ export function createMcpLiveFeedWebGpuHud({
     originTop = PANEL_MARGIN;
     const availableWidth = Math.max(1, viewportWidth - (PANEL_MARGIN * 2));
     const availableHeight = Math.max(1, viewportHeight - (PANEL_MARGIN * 2));
-    const panelWidth = Math.min(panelCollapsed ? COLLAPSED_PANEL_WIDTH : PANEL_WIDTH, availableWidth);
+    const requestedPanelWidth = componentWorkspace && tab === 'explorer'
+      ? PANEL_WIDTH + COMPONENT_PANEL_WIDTH
+      : PANEL_WIDTH;
+    const panelWidth = Math.min(panelCollapsed ? COLLAPSED_PANEL_WIDTH : requestedPanelWidth, availableWidth);
     const panelHeight = Math.min(panelCollapsed ? COLLAPSED_PANEL_HEIGHT : idealPanelHeight, availableHeight);
     if (host.width === panelWidth && host.height === panelHeight && host.backingRatio === backingRatio) {
       return;
@@ -2022,6 +2277,7 @@ export function createMcpLiveFeedWebGpuHud({
   const hide = () => {
     if (disposed || !visible) return;
     llmPromptInput?.setFocused(false);
+    componentPropertyInput.setFocused(false);
     visible = false;
     sprite.visible = false;
     if (nativeOverlayPresentation) canvas.style.display = 'none';
@@ -2051,9 +2307,12 @@ export function createMcpLiveFeedWebGpuHud({
     });
   };
 
+  const focusedTextInput = () => [llmPromptInput, componentPropertyInput].find(input => input?.focused) ?? null;
+
   const onKeyDown = event => {
     if (disposed) return;
-    if (llmPromptInput?.focused) {
+    const textInput = focusedTextInput();
+    if (textInput) {
       if (event && typeof event === 'object') {
         if (handledTextEvents.has(event)) {
           stealEvent(event);
@@ -2073,7 +2332,7 @@ export function createMcpLiveFeedWebGpuHud({
         stealEvent(event);
         return;
       }
-      llmPromptInput.handleKey(event);
+      textInput.handleKey(event);
       stealEvent(event);
       return;
     }
@@ -2089,14 +2348,14 @@ export function createMcpLiveFeedWebGpuHud({
   const onKeyUp = event => {
     if (disposed) return;
     const key = String(event?.code || event?.key || 'unknown');
-    if (!llmPromptInput?.focused && !consumedTextKeys.has(key)) return;
+    if (!focusedTextInput() && !consumedTextKeys.has(key)) return;
     consumedTextKeys.delete(key);
     if (lastTextKeyDown?.identity === key) lastTextKeyDown = null;
     stealEvent(event);
   };
 
   const onKeyPress = event => {
-    if (disposed || !llmPromptInput?.focused) return;
+    if (disposed || !focusedTextInput()) return;
     stealEvent(event);
   };
 
@@ -2116,6 +2375,7 @@ export function createMcpLiveFeedWebGpuHud({
     const point = contentPoint(event);
     const hit = host.hitTest(point.x, point.y);
     if (llmPromptInput?.focused && hit !== llmPromptInput) llmPromptInput.setFocused(false);
+    if (componentPropertyInput.focused && hit !== componentPropertyInput) componentPropertyInput.setFocused(false);
     captured = hit;
     hit?.onPointerDown?.(event, point);
     stealEvent(event);
@@ -2256,6 +2516,7 @@ export function createMcpLiveFeedWebGpuHud({
     resize,
     updateCamera,
     setViewMode,
+    setPlayMode,
     setExplorerOutline,
     setViewportLayerState,
     setGraphicsSettingsState,

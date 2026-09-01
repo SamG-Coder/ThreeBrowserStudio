@@ -47,7 +47,10 @@ export function buildExplorerOutline(document) {
   }
   const entities = {};
   for (const entity of Object.values(scene.entities ?? {})) {
-    entities[entity.id] = compactNode(entity, { visible: entity.visible !== false });
+    entities[entity.id] = compactNode(entity, {
+      visible: entity.visible !== false,
+      componentCount: Object.keys(entity.components ?? {}).length,
+    });
   }
   const collections = {};
   for (const collection of Object.values(scene.collections ?? {})) {
@@ -82,10 +85,20 @@ export function defaultExpandedIds(outline) {
   return expanded;
 }
 
-function walk(ids, table, depth, expanded, rows, section) {
+function nodeMatchesComponentFilter(node, table, memo) {
+  if (!node) return false;
+  if (memo.has(node.id)) return memo.get(node.id);
+  const matches = Number(node.componentCount ?? 0) > 0
+    || node.children.some(id => nodeMatchesComponentFilter(table[id], table, memo));
+  memo.set(node.id, matches);
+  return matches;
+}
+
+function walk(ids, table, depth, expanded, rows, section, componentsOnly, matches) {
   for (const id of ids) {
     const node = table[id];
     if (!node) continue;
+    if (componentsOnly && section === 'entity' && !nodeMatchesComponentFilter(node, table, matches)) continue;
     const expandable = node.children.length > 0;
     const open = expandable && expanded.has(id);
     rows.push(Object.freeze({
@@ -99,13 +112,15 @@ function walk(ids, table, depth, expanded, rows, section) {
       section,
       visible: node.visible !== false,
       memberCount: node.memberCount,
+      componentCount: node.componentCount,
     }));
-    if (open) walk(node.children, table, depth + 1, expanded, rows, section);
+    if (open) walk(node.children, table, depth + 1, expanded, rows, section, componentsOnly, matches);
   }
 }
 
-export function flattenExplorerRows(outline, expanded = defaultExpandedIds(outline)) {
+export function flattenExplorerRows(outline, expanded = defaultExpandedIds(outline), { componentsOnly = false } = {}) {
   const rows = [];
+  const matches = new Map();
   if (outline?.sceneId) {
     rows.push(Object.freeze({
       id: outline.sceneId,
@@ -119,10 +134,10 @@ export function flattenExplorerRows(outline, expanded = defaultExpandedIds(outli
       visible: true,
     }));
     if (expanded.has(outline.sceneId)) {
-      walk(outline.rootEntityIds, outline.entities, 1, expanded, rows, 'entity');
+      walk(outline.rootEntityIds, outline.entities, 1, expanded, rows, 'entity', componentsOnly, matches);
     }
   }
-  if ((outline?.rootCollectionIds ?? []).length > 0) {
+  if (!componentsOnly && (outline?.rootCollectionIds ?? []).length > 0) {
     const sectionId = 'section/collections';
     const open = expanded.has(sectionId);
     rows.push(Object.freeze({
@@ -136,7 +151,7 @@ export function flattenExplorerRows(outline, expanded = defaultExpandedIds(outli
       section: 'collections',
       visible: true,
     }));
-    if (open) walk(outline.rootCollectionIds, outline.collections, 1, expanded, rows, 'collections');
+    if (open && !componentsOnly) walk(outline.rootCollectionIds, outline.collections, 1, expanded, rows, 'collections', false, matches);
   }
   return Object.freeze(rows);
 }

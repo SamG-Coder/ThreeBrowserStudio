@@ -28,6 +28,7 @@ function sampleDocument() {
           kind: 'mesh',
           name: 'Table',
           parentId: 'entity/room',
+          components: { rigidBody: { mass: 1 } },
         },
         {
           id: 'entity/lamp',
@@ -63,6 +64,14 @@ test('explorer outline is a compact scene tree, not a second document', () => {
   assert.equal(outline.entities['entity/hidden'].visible, false);
   assert.equal(outline.collections['collection/props'].memberCount, 2);
   assert.equal(outline.entities['entity/table'].children.length, 0);
+  assert.equal(outline.entities['entity/table'].componentCount, 1);
+});
+
+test('component filter keeps matching objects and their tree ancestors without collections', () => {
+  const outline = buildExplorerOutline(sampleDocument());
+  const rows = flattenExplorerRows(outline, defaultExpandedIds(outline), { componentsOnly: true });
+  assert.deepEqual(rows.map(row => row.id), ['scene/stage', 'entity/room', 'entity/table']);
+  assert.equal(rows[2].componentCount, 1);
 });
 
 test('flatten walks transform children and keeps collections as their own section', () => {
