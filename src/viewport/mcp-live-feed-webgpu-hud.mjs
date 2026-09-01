@@ -16,6 +16,7 @@ import {
   TextInput,
   ToggleOption,
   VirtualList,
+  WrappedLabel,
   eventPoint,
   claimStudioViewportFocus,
   isStudioOverlayEvent,
@@ -1054,10 +1055,11 @@ export function createMcpLiveFeedWebGpuHud({
       font: UI_FONT_BOLD,
       color: '#9fc6f2',
     }));
-    llmHint = llmPage.add(new Label({
+    llmHint = llmPage.add(new WrappedLabel({
       name: 'llm-hint',
       text: 'Models run on this device through WebGPU and remain in the local model cache.',
       color: '#7f94ad',
+      maxLines: 2,
     }));
     llmModelOptions = localModels.map(model => llmPage.add(new RadioOption({
       name: `llm-model-${model.id}`,
@@ -1083,15 +1085,17 @@ export function createMcpLiveFeedWebGpuHud({
       text: 'Remove local files',
       onClick() { void removeSelectedLocalModel(); },
     }));
-    llmStatus = llmPage.add(new Label({
+    llmStatus = llmPage.add(new WrappedLabel({
       name: 'llm-status',
       text: 'Checking local WebGPU support…',
       color: '#9fc6f2',
+      maxLines: 3,
     }));
-    llmHarnessHint = llmPage.add(new Label({
+    llmHarnessHint = llmPage.add(new WrappedLabel({
       name: 'llm-harness-hint',
       text: 'The active model uses Studio rules and the same nine MCP tools in web and native.',
       color: '#7f94ad',
+      maxLines: 2,
     }));
     llmPromptToggle = llmPage.add(new ToggleOption({
       name: 'llm-prompt-enabled',
@@ -1135,15 +1139,17 @@ export function createMcpLiveFeedWebGpuHud({
       text: '',
       color: '#9fc6f2',
     }));
-    llmPromptOutput = llmPage.add(new Label({
+    llmPromptOutput = llmPage.add(new WrappedLabel({
       name: 'llm-prompt-output',
       text: '',
       color: '#dce8f7',
+      maxLines: 2,
     }));
-    llmPromptHint = llmPage.add(new Label({
+    llmPromptHint = llmPage.add(new WrappedLabel({
       name: 'llm-prompt-hint',
       text: 'Ctrl+Enter runs · Enter adds a line · Escape releases typing.',
       color: '#7f94ad',
+      maxLines: 2,
     }));
   }
 

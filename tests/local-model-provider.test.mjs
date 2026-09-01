@@ -11,9 +11,11 @@ import path from 'node:path';
 class FakeWorker {
   listeners = new Set();
   terminated = false;
+  requests = [];
   addEventListener(type, listener) { if (type === 'message') this.listeners.add(listener); }
   removeEventListener(type, listener) { if (type === 'message') this.listeners.delete(listener); }
   postMessage(message) {
+    this.requests.push(message);
     queueMicrotask(() => {
       const value = message.command === 'complete'
         ? { choices: [{ message: { content: '{"type":"tool_call","name":"three_studio_status","arguments":{}}' } }] }
@@ -39,8 +41,21 @@ test('worker-backed provider initializes and emits Studio tool calls', async () 
     worker,
   });
   await provider.initialize();
-  const completion = await provider.complete({ messages: [{ role: 'user', content: 'Inspect' }], tools: [{ name: 'three_studio_status' }] });
+  const completion = await provider.complete({
+    messages: [
+      { role: 'system', content: 'Studio rules' },
+      { role: 'user', content: 'Inspect' },
+      { role: 'assistant', content: '' },
+      { role: 'tool', name: 'three_studio_status', content: '{"revision":0}' },
+    ],
+    tools: [{ name: 'three_studio_status' }],
+  });
   assert.equal(completion.toolCalls[0].name, 'three_studio_status');
+  const sent = worker.requests.findLast(request => request.command === 'complete').payload.messages;
+  assert.equal(sent[0].role, 'system');
+  assert.match(sent[0].content, /Studio rules/);
+  assert.equal(sent.filter(message => message.role === 'system').length, 1);
+  assert.match(sent.at(-1).content, /^TOOL_RESULT three_studio_status:/);
   provider.dispose();
   assert.equal(worker.terminated, true);
 });

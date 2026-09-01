@@ -347,6 +347,76 @@ export class Label extends Control {
   }
 }
 
+function wrapLabelLines(text, fonts, context, font, maxWidth, maxLines) {
+  const measure = value => fonts.measure(context, value, font).width;
+  const lines = [];
+  const pushBrokenWord = word => {
+    let remaining = word;
+    while (remaining && lines.length < maxLines) {
+      let end = 1;
+      while (end < remaining.length && measure(remaining.slice(0, end + 1)) <= maxWidth) end += 1;
+      lines.push(remaining.slice(0, end));
+      remaining = remaining.slice(end);
+    }
+  };
+  for (const paragraph of String(text ?? '').replace(/\r\n?/g, '\n').split('\n')) {
+    if (lines.length >= maxLines) break;
+    if (!paragraph) {
+      lines.push('');
+      continue;
+    }
+    let current = '';
+    for (const word of paragraph.trim().split(/\s+/)) {
+      const candidate = current ? `${current} ${word}` : word;
+      if (measure(candidate) <= maxWidth) {
+        current = candidate;
+        continue;
+      }
+      if (current) {
+        lines.push(current);
+        current = '';
+        if (lines.length >= maxLines) break;
+      }
+      if (measure(word) <= maxWidth) current = word;
+      else pushBrokenWord(word);
+      if (lines.length >= maxLines) break;
+    }
+    if (current && lines.length < maxLines) lines.push(current);
+  }
+  const source = String(text ?? '').replace(/\s+/g, ' ').trim();
+  const rendered = lines.join(' ').trim();
+  if (source.length > rendered.length && lines.length > 0) {
+    let last = lines.length - 1;
+    let value = lines[last];
+    while (value && measure(`${value}…`) > maxWidth) value = value.slice(0, -1);
+    lines[last] = `${value.trimEnd()}…`;
+  }
+  return lines.slice(0, maxLines);
+}
+
+/** Retained bounded word-wrapped status text; never horizontally scales glyphs. */
+export class WrappedLabel extends Label {
+  constructor({ maxLines = 3, lineHeight = 16, padding = 2, ...rest } = {}) {
+    super(rest);
+    this.maxLines = Math.max(1, Math.floor(maxLines));
+    this.lineHeight = Math.max(10, Number(lineHeight) || 16);
+    this.padding = Math.max(0, Number(padding) || 0);
+  }
+
+  onPaint(context, fonts, clip, bounds) {
+    Control.prototype.onPaint.call(this, context, fonts, clip, bounds);
+    const maxWidth = Math.max(1, bounds.width - (this.padding * 2));
+    const capacity = Math.max(1, Math.min(this.maxLines, Math.floor((bounds.height - this.padding) / this.lineHeight)));
+    const lines = wrapLabelLines(this.text, fonts, context, this.font, maxWidth, capacity);
+    for (let index = 0; index < lines.length; index += 1) {
+      fonts.blit(context, lines[index], bounds.x + this.padding, bounds.y + this.padding + 12 + (index * this.lineHeight), {
+        font: this.font,
+        fillStyle: this.color,
+      });
+    }
+  }
+}
+
 export class Button extends Control {
   constructor({ text = '', onClick, ...rest } = {}) {
     super({ backColor: rest.backColor ?? 'rgba(22, 34, 52, 0.96)', ...rest });

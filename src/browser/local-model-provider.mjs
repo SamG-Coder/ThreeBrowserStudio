@@ -86,9 +86,22 @@ export function createLocalModelProvider({ model, worker, onProgress } = {}) {
       if (!initialized) await this.initialize({ signal });
       const toolNames = tools.map(tool => tool.name).join(', ');
       const protocol = `${TOOL_PROTOCOL} Allowed tools: ${toolNames}.`;
-      const nextMessages = [{ role: 'system', content: protocol }, ...messages.map(message => message.role === 'tool'
-        ? { role: 'user', content: `TOOL_RESULT ${message.name ?? ''}: ${String(message.content ?? '')}` }
-        : { role: message.role, content: String(message.content ?? '') })];
+      // WebLLM accepts at most one system message and requires it to be first.
+      // Merge Studio's tool protocol with the caller's system rules instead of
+      // prepending a second system entry on every harness round.
+      const systemRules = messages
+        .filter(message => message?.role === 'system')
+        .map(message => String(message.content ?? ''))
+        .filter(Boolean);
+      const conversation = messages
+        .filter(message => message?.role !== 'system')
+        .map(message => message.role === 'tool'
+          ? { role: 'user', content: `TOOL_RESULT ${message.name ?? ''}: ${String(message.content ?? '')}` }
+          : { role: message.role, content: String(message.content ?? '') });
+      const nextMessages = [
+        { role: 'system', content: [protocol, ...systemRules].join('\n\n') },
+        ...conversation,
+      ];
       return normalizeLocalModelCompletion(await request('complete', { messages: nextMessages }, signal));
     },
     async testConnection({ signal } = {}) {

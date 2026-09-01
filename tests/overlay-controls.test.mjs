@@ -11,6 +11,7 @@ import {
   ScrollPanel,
   TextInput,
   VirtualList,
+  WrappedLabel,
   claimStudioViewportFocus,
   isEditableStudioEvent,
   isStudioOverlayEvent,
@@ -105,6 +106,27 @@ test('update regions union and only the dirty clip is painted', () => {
   const clip = host.paintedRects.at(-1);
   assert.ok(clip.width <= 90 && clip.height <= 24);
   assert.ok(clip.y >= 80);
+});
+
+test('wrapped labels break long status text into bounded unscaled lines', () => {
+  const calls = [];
+  const context = new FakeContext();
+  const fonts = {
+    measure(_context, value) { return { width: String(value).length * 7 }; },
+    blit(_context, value, _x, _y, options) { calls.push({ value, options }); },
+  };
+  const label = new WrappedLabel({
+    text: 'Downloading model parameters from a very-long-browser-cache-resource-name.bin',
+    width: 126,
+    height: 50,
+    maxLines: 3,
+  });
+  label.onPaint(context, fonts, label.absoluteBounds, label.absoluteBounds);
+
+  assert.equal(calls.length, 3);
+  assert.equal(calls.at(-1).value.endsWith('…'), true);
+  assert.equal(calls.every(call => call.options.maxWidth === undefined), true, 'wrapped lines are clipped, never glyph-scaled');
+  assert.equal(calls.every(call => call.value.length * 7 <= 122), true);
 });
 
 test('dirty regions are clipped to the control bitmap before scheduling paint', () => {
