@@ -27,7 +27,9 @@ import { VIEW_MODE_FOLLOW_SHOT, VIEW_MODE_REVIEW } from './view-mode.mjs';
 const ACTIVE_REFRESH_MS = 250;
 const DEFAULT_MAX_VISIBLE_ROWS = 16;
 const PANEL_MARGIN = 12;
-const PANEL_WIDTH = 380;
+const PANEL_WIDTH = 460;
+const COLLAPSED_PANEL_WIDTH = 44;
+const COLLAPSED_PANEL_HEIGHT = 44;
 const ROW_HEIGHT = 40;
 const EXPANDED_ROW_HEIGHT = 64;
 const LOG_TOOLBAR_HEIGHT = 28;
@@ -35,13 +37,13 @@ const PLAINFORM_TOOLBAR_HEIGHT = 30;
 const EXPLORER_ROW_HEIGHT = 22;
 const PLAINFORM_ROW_HEIGHT = 22;
 const PLAINFORM_WRAP_COLUMNS = 48;
-const HEADER_HEIGHT = 48;
+const HEADER_HEIGHT = 116;
 const TAB_HEIGHT = 30;
 const SCROLL_WIDTH = 10;
 const MAX_RETAINED_SOURCE_ENTRIES = 256;
 const PANEL_BACKGROUND = 'rgba(8, 13, 22, 0.92)';
 const PANEL_LAYER_TRANSPARENT = 'rgba(0, 0, 0, 0)';
-const SETTINGS_CONTENT_HEIGHT = 1_570;
+const SETTINGS_CONTENT_HEIGHT = 1_420;
 const DLSS5_STYLES = Object.freeze([0, 1, 2]);
 const STAGE_COLORS = Object.freeze({
   started: '#f2b45c',
@@ -311,6 +313,7 @@ export function createMcpLiveFeedWebGpuHud({
   onViewportLayerChange,
   onExportProject,
   onImportProject,
+  onProjectAction,
   onExplorerEntitySelect,
   onLocalModelActivate,
   onLocalModelRemove,
@@ -404,6 +407,7 @@ export function createMcpLiveFeedWebGpuHud({
   let originTop = PANEL_MARGIN;
   let latest = Object.freeze([]);
   let visible = true;
+  let panelCollapsed = false;
   let disposed = false;
   let timer = null;
   let viewMode = initialViewMode === VIEW_MODE_REVIEW ? VIEW_MODE_REVIEW : VIEW_MODE_FOLLOW_SHOT;
@@ -484,6 +488,64 @@ export function createMcpLiveFeedWebGpuHud({
       setViewMode(next, { fromUi: true });
     },
   }));
+  const collapseButton = host.add(new Button({
+    name: 'panel-collapse',
+    text: '<',
+    onClick() { setPanelCollapsed(!panelCollapsed); },
+  }));
+  const newBlankButton = host.add(new Button({
+    name: 'project-new-blank',
+    text: 'New blank',
+    onClick() { void requestProjectAction('new-blank', { confirm: true, label: 'New blank' }); },
+  }));
+  const newStarterButton = host.add(new Button({
+    name: 'project-new-starter',
+    text: 'New starter',
+    onClick() { void requestProjectAction('new-starter', { confirm: true, label: 'New starter' }); },
+  }));
+  const clearSceneButton = host.add(new Button({
+    name: 'project-clear-scene',
+    text: 'Clear scene',
+    onClick() { void requestProjectAction('clear-scene', { confirm: true, label: 'Clear scene' }); },
+  }));
+  const saveProjectButton = host.add(new Button({
+    name: 'project-save',
+    text: 'Save',
+    onClick() { void requestProjectAction('save', { label: 'Save' }); },
+  }));
+  const saveAsProjectButton = host.add(new Button({
+    name: 'project-save-as',
+    text: 'Save as',
+    onClick() { void requestProjectAction('save-as', { label: 'Save as' }); },
+  }));
+  const importProjectButton = host.add(new Button({
+    name: 'import-project',
+    text: 'Import',
+    onClick() { void requestProjectAction('import', { confirm: true, label: 'Import' }); },
+  }));
+  const exportProjectButton = host.add(new Button({
+    name: 'export-project',
+    text: 'Export',
+    onClick() { void requestProjectAction('export', { label: 'Export' }); },
+  }));
+  const projectTransferStatus = host.add(new WrappedLabel({
+    name: 'project-transfer-status',
+    text: 'Project actions use the canonical Studio document.',
+    color: '#9fc6f2',
+    maxLines: 2,
+    lineHeight: 14,
+  }));
+  const projectButtons = Object.freeze([
+    newBlankButton,
+    newStarterButton,
+    clearSceneButton,
+    saveProjectButton,
+    saveAsProjectButton,
+    importProjectButton,
+    exportProjectButton,
+  ]);
+  let pendingProjectAction = null;
+  let projectActionBusy = false;
   const tabItems = [
     { id: 'log', label: 'Log' },
     { id: 'plainform', label: 'Form' },
@@ -498,12 +560,7 @@ export function createMcpLiveFeedWebGpuHud({
     selected: 'log',
     onChange(id) {
       tab = id;
-      logPage.setVisible(id === 'log');
-      plainformPage.setVisible(id === 'plainform');
-      explorerPage.setVisible(id === 'explorer');
-      layersPage.setVisible(id === 'layers');
-      settingsPage.setVisible(id === 'settings');
-      llmPage?.setVisible(id === 'llm');
+      syncPanelCollapsedVisibility();
       syncStatus();
       onTabChange?.(id);
     },
@@ -764,7 +821,7 @@ export function createMcpLiveFeedWebGpuHud({
     color: '#7f94ad',
   }));
   const panelHint = settingsContent.add(new Label({
-    text: 'Drag looks. WASD moves. Space up, Ctrl down. Ctrl+Shift+M hides this panel.',
+    text: 'Drag looks. WASD moves. Space up, Ctrl down. Use < to collapse; Ctrl+Shift+M hides.',
     color: '#7f94ad',
   }));
   const rtxSettingsLabel = settingsContent.add(new Label({
@@ -972,32 +1029,6 @@ export function createMcpLiveFeedWebGpuHud({
   }));
   const logHint = settingsContent.add(new Label({
     text: 'Expanded details name whitelisted operation types. Never raw arguments or results.',
-    color: '#7f94ad',
-  }));
-  const projectLabel = settingsContent.add(new Label({
-    name: 'project-label',
-    text: 'Project',
-    font: UI_FONT_BOLD,
-    color: '#9fc6f2',
-  }));
-  const exportProjectButton = settingsContent.add(new Button({
-    name: 'export-project',
-    text: 'Export JSON',
-    onClick() { onExportProject?.(); },
-  }));
-  const importProjectButton = settingsContent.add(new Button({
-    name: 'import-project',
-    text: 'Import JSON',
-    onClick() { onImportProject?.(); },
-  }));
-  const projectTransferStatus = settingsContent.add(new Label({
-    name: 'project-transfer-status',
-    text: '',
-    color: '#9fc6f2',
-  }));
-  const projectHint = settingsContent.add(new Label({
-    name: 'project-hint',
-    text: 'JSON pack of the canonical project. History, recovery, and local model state stay out.',
     color: '#7f94ad',
   }));
   const llmSettingsLabel = llmSetupTab ? settingsContent.add(new Label({
@@ -1278,12 +1309,93 @@ export function createMcpLiveFeedWebGpuHud({
     }
   }
 
+  function syncProjectButtons() {
+    for (const button of projectButtons) button.setEnabled(!projectActionBusy);
+  }
+
+  async function requestProjectAction(action, { confirm = false, label = action } = {}) {
+    if (projectActionBusy) return;
+    const stamp = timeNow();
+    if (confirm && (pendingProjectAction?.action !== action || stamp - pendingProjectAction.at > 5_000)) {
+      pendingProjectAction = { action, at: stamp };
+      projectTransferStatus.setText(`Click ${label} again within 5 seconds to confirm.`);
+      return;
+    }
+    pendingProjectAction = null;
+    projectActionBusy = true;
+    syncProjectButtons();
+    projectTransferStatus.setText(`${label}…`);
+    try {
+      let result;
+      if (typeof onProjectAction === 'function') result = await onProjectAction(action);
+      else if (action === 'export') result = await onExportProject?.();
+      else if (action === 'import') result = await onImportProject?.();
+      else throw new Error(`${label} is unavailable in this host.`);
+      if (result !== undefined && result !== null && result !== '') {
+        projectTransferStatus.setText(String(result));
+      }
+    } catch (error) {
+      projectTransferStatus.setText(error?.message ?? String(error));
+    } finally {
+      projectActionBusy = false;
+      syncProjectButtons();
+    }
+  }
+
+  function syncPanelCollapsedVisibility() {
+    const expanded = !panelCollapsed;
+    for (const control of [
+      title,
+      status,
+      modeButton,
+      tabs,
+      newBlankButton,
+      newStarterButton,
+      clearSceneButton,
+      saveProjectButton,
+      saveAsProjectButton,
+      importProjectButton,
+      exportProjectButton,
+      projectTransferStatus,
+    ]) control.setVisible(expanded);
+    collapseButton.setVisible(true);
+    collapseButton.text = panelCollapsed ? '>' : '<';
+    collapseButton.invalidate();
+    logPage.setVisible(expanded && tab === 'log');
+    plainformPage.setVisible(expanded && tab === 'plainform');
+    explorerPage.setVisible(expanded && tab === 'explorer');
+    layersPage.setVisible(expanded && tab === 'layers');
+    settingsPage.setVisible(expanded && tab === 'settings');
+    llmPage?.setVisible(expanded && tab === 'llm');
+  }
+
+  function setPanelCollapsed(collapsed) {
+    const next = collapsed === true;
+    if (next === panelCollapsed) return;
+    panelCollapsed = next;
+    if (panelCollapsed) llmPromptInput?.setFocused(false);
+    syncPanelCollapsedVisibility();
+    resize(viewportWidth, viewportHeight, backingRatio);
+  }
+
   function layoutPages() {
+    collapseButton.setBounds(panelCollapsed ? 7 : host.width - 40, 7, panelCollapsed ? 30 : 32, 30);
+    if (panelCollapsed) return;
     const contentY = HEADER_HEIGHT + TAB_HEIGHT;
     const contentHeight = Math.max(40, host.height - contentY);
-    title.setBounds(10, 8, host.width - 132, 18);
-    status.setBounds(10, 26, host.width - 132, 16);
-    modeButton.setBounds(host.width - 118, 10, 108, 28);
+    title.setBounds(10, 8, host.width - 174, 18);
+    status.setBounds(10, 26, host.width - 174, 16);
+    modeButton.setBounds(host.width - 154, 8, 108, 30);
+    const actionGap = 6;
+    const firstRowWidth = Math.max(62, Math.floor((host.width - 28 - (actionGap * 3)) / 4));
+    newBlankButton.setBounds(8, 48, firstRowWidth, 28);
+    newStarterButton.setBounds(8 + firstRowWidth + actionGap, 48, firstRowWidth, 28);
+    clearSceneButton.setBounds(8 + ((firstRowWidth + actionGap) * 2), 48, firstRowWidth, 28);
+    saveProjectButton.setBounds(8 + ((firstRowWidth + actionGap) * 3), 48, firstRowWidth, 28);
+    saveAsProjectButton.setBounds(8, 80, 78, 28);
+    importProjectButton.setBounds(92, 80, 78, 28);
+    exportProjectButton.setBounds(176, 80, 78, 28);
+    projectTransferStatus.setBounds(262, 80, Math.max(80, host.width - 270), 30);
     tabs.setBounds(0, HEADER_HEIGHT, host.width, TAB_HEIGHT);
     logPage.setBounds(0, contentY, host.width, contentHeight);
     plainformPage.setBounds(0, contentY, host.width, contentHeight);
@@ -1369,15 +1481,9 @@ export function createMcpLiveFeedWebGpuHud({
     logSettingsLabel.setBounds(12, 1214, settingsWidth - 24, 20);
     settingsDetailToggle.setBounds(8, 1238, settingsWidth - 16, 28);
     logHint.setBounds(12, 1270, settingsWidth - 24, 36);
-    projectLabel.setBounds(12, 1314, settingsWidth - 24, 20);
-    const buttonWidth = Math.max(80, Math.floor((settingsWidth - 24) / 2));
-    exportProjectButton.setBounds(8, 1338, buttonWidth, 28);
-    importProjectButton.setBounds(8 + buttonWidth + 8, 1338, Math.max(80, settingsWidth - 16 - buttonWidth - 8), 28);
-    projectTransferStatus.setBounds(12, 1372, settingsWidth - 24, 32);
-    projectHint.setBounds(12, 1406, settingsWidth - 24, 36);
-    llmSettingsLabel?.setBounds(12, 1450, settingsWidth - 24, 20);
-    llmSettingsButton?.setBounds(8, 1474, settingsWidth - 16, 28);
-    llmSettingsHint?.setBounds(12, 1508, settingsWidth - 24, 36);
+    llmSettingsLabel?.setBounds(12, 1314, settingsWidth - 24, 20);
+    llmSettingsButton?.setBounds(8, 1338, settingsWidth - 16, 28);
+    llmSettingsHint?.setBounds(12, 1372, settingsWidth - 24, 36);
     if (llmPage) {
       llmTitle.setBounds(12, 10, llmPage.width - 24, 20);
       llmHint.setBounds(12, 36, llmPage.width - 24, 42);
@@ -1828,8 +1934,8 @@ export function createMcpLiveFeedWebGpuHud({
     originTop = PANEL_MARGIN;
     const availableWidth = Math.max(1, viewportWidth - (PANEL_MARGIN * 2));
     const availableHeight = Math.max(1, viewportHeight - (PANEL_MARGIN * 2));
-    const panelWidth = Math.min(PANEL_WIDTH, availableWidth);
-    const panelHeight = Math.min(idealPanelHeight, availableHeight);
+    const panelWidth = Math.min(panelCollapsed ? COLLAPSED_PANEL_WIDTH : PANEL_WIDTH, availableWidth);
+    const panelHeight = Math.min(panelCollapsed ? COLLAPSED_PANEL_HEIGHT : idealPanelHeight, availableHeight);
     if (host.width === panelWidth && host.height === panelHeight && host.backingRatio === backingRatio) {
       return;
     }
@@ -2068,6 +2174,7 @@ export function createMcpLiveFeedWebGpuHud({
   syncGraphicsControls();
   syncViewportLayerControls();
   syncLocalModelControls();
+  syncPanelCollapsedVisibility();
   latest = boundedEntries(safeSnapshot(source));
   retainedPlainformSnapshots = Object.freeze(plainformSnapshots(latest));
   plainformRows = flattenPlainformRows(latest);
@@ -2129,6 +2236,9 @@ export function createMcpLiveFeedWebGpuHud({
     show,
     hide,
     toggle,
+    collapse() { setPanelCollapsed(true); },
+    expand() { setPanelCollapsed(false); },
+    toggleCollapsed() { setPanelCollapsed(!panelCollapsed); },
     resize,
     updateCamera,
     setViewMode,
@@ -2153,6 +2263,7 @@ export function createMcpLiveFeedWebGpuHud({
     get logExpanded() { return logExpanded; },
     get viewMode() { return viewMode; },
     get visible() { return visible; },
+    get collapsed() { return panelCollapsed; },
     get webGpuPresentation() { return !nativeOverlayPresentation; },
     get drawRevision() { return host.paintGeneration; },
     get scrollIndex() { return list.scrollIndex; },

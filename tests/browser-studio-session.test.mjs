@@ -52,6 +52,8 @@ test('browser session dispatches the nine-tool authoring core and swaps after co
   const session = await createBrowserStudioSession({ project, preview, viewport });
   const status = await session.dispatch('three_studio_status');
   assert.equal(status.capabilities.browserKernel, true);
+  const digest = await session.dispatch('three_studio_inspect', { query: 'sceneDigest' });
+  assert.match(digest.scene.sceneHash, /^[a-f0-9]{64}$/);
 
   const applied = await session.dispatch('three_studio_apply', {
     baseRevision: 0,

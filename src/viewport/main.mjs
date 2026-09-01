@@ -27,6 +27,7 @@ import { createLocalModelManager } from '../browser/local-model-manager.mjs';
 import { createBrowserMcpHarness } from '../browser/mcp-harness.mjs';
 import { createLocalModelDirectWorker } from '../browser/local-model-direct-worker.mjs';
 import { LOCAL_AI_SYSTEM_PROMPT, localAiToolNames, requiredLocalAiTools } from '../browser/local-ai-policy.mjs';
+import { createProjectWorkspaceActions } from './project-workspace-actions.mjs';
 
 const NATIVE_WEBLLM_RUNTIME_URL = new URL('../../node_modules/@mlc-ai/web-llm/lib/index.js', import.meta.url).href;
 const LOCAL_PROMPT_ENABLED_KEY = 'three-browser-studio.local-prompt.enabled';
@@ -158,6 +159,7 @@ async function main() {
   let localAiHarness = null;
   let localAiBusy = false;
   let application = null;
+  let projectWorkspaceActions = null;
   let rtxLighting = null;
   let activeRtxSettings = {};
   let preview = null;
@@ -195,8 +197,10 @@ async function main() {
       rtxLighting.setDlss5Settings(patch);
       syncGraphicsSettingsState();
     },
-    onExportProject() { void transferProject("export"); },
-    onImportProject() { void transferProject("import"); },
+    onProjectAction(action) {
+      if (!projectWorkspaceActions) throw new Error('The Studio project is still loading.');
+      return projectWorkspaceActions.run(action);
+    },
     onExplorerEntitySelect(entityId) { componentComposer?.open(entityId); },
     async onLocalModelActivate(modelId) {
       localAiBusy = true;
@@ -269,16 +273,13 @@ async function main() {
 
   async function transferProject(action) {
     if (transferBusy) {
-      liveFeed.setProjectTransferStatus("A transfer is already running.");
-      return;
+      return "A transfer is already running.";
     }
     if (nativeTransfer && !application) {
-      liveFeed.setProjectTransferStatus("Studio project is still loading. Try again in a moment.");
-      return;
+      return "Studio project is still loading. Try again in a moment.";
     }
     if (!nativeTransfer && !preview) {
-      liveFeed.setProjectTransferStatus("Project preview is still loading. Try again in a moment.");
-      return;
+      return "Project preview is still loading. Try again in a moment.";
     }
     transferBusy = true;
     try {
@@ -291,17 +292,14 @@ async function main() {
           native: nativeTransfer,
         });
         if (!saved) {
-          liveFeed.setProjectTransferStatus("Export cancelled.");
-          return;
+          return "Export cancelled.";
         }
-        liveFeed.setProjectTransferStatus(`Exported ${pack.document.name}.`);
-        return;
+        return `Exported ${pack.document.name}.`;
       }
       liveFeed.setProjectTransferStatus("Choose a JSON pack…");
       const picked = await openProjectPackFile({ native: nativeTransfer });
       if (!picked) {
-        liveFeed.setProjectTransferStatus("Import cancelled.");
-        return;
+        return "Import cancelled.";
       }
       liveFeed.setProjectTransferStatus("Importing…");
       const document = parseProjectPack(picked.text);
@@ -312,10 +310,11 @@ async function main() {
       } else {
         throw new Error("Project preview is not ready.");
       }
-      liveFeed.setProjectTransferStatus(`Imported ${document.name}.`);
+      return `Imported ${document.name}.`;
     } catch (error) {
       liveFeed.setProjectTransferStatus(error?.message ?? String(error));
       console.warn("[ThreeBrowser Studio import/export]", error);
+      throw error;
     } finally {
       transferBusy = false;
     }
@@ -584,6 +583,12 @@ async function main() {
           ? `Starter link failed: ${starterResult.error.message ?? String(starterResult.error)} Using bundled starter.`
           : null;
     }
+    projectWorkspaceActions = createProjectWorkspaceActions({
+      application: () => application,
+      native: nativeTransfer,
+      exportProject: () => transferProject('export'),
+      importProject: () => transferProject('import'),
+    });
   } catch (error) {
     await dispose();
     throw error;
@@ -592,9 +597,9 @@ async function main() {
   if (application) globalThis.__THREE_STUDIO_APPLICATION__ = application;
   globalThis.__THREE_STUDIO_LOCAL_AI__ = Object.freeze({ manager: localModelManager, harness: localAiHarness });
   globalThis.__THREE_STUDIO_LIVE_FEED__ = liveFeed;
-  liveFeed.setProjectTransferStatus(application
-    ? "Exports the open project as JSON."
-    : initialBrowserProjectStatus ?? "Exports the compiled starter. Import replaces it in this tab.");
+  liveFeed.setProjectTransferStatus(nativeTransfer
+    ? "Canonical project actions route through Studio."
+    : initialBrowserProjectStatus ?? "Canonical project actions route through Studio.");
   syncGraphicsSettingsState();
 
   globalThis.addEventListener("resize", resize);

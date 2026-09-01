@@ -230,6 +230,7 @@ function fixture({
   llmSetupTab = true,
   localModels = [],
   promptEnabled = false,
+  onProjectAction,
   onExportProject,
   onImportProject,
   onRtxSettingsChange,
@@ -247,6 +248,7 @@ function fixture({
   const hud = createMcpLiveFeedWebGpuHud({
     THREE, document, eventTarget, source: telemetry, scene,
     width, height, pixelRatio, maxVisibleRows, now, llmSetupTab, localModels, promptEnabled,
+    onProjectAction,
     onExportProject,
     onImportProject,
     onRtxSettingsChange,
@@ -602,8 +604,8 @@ test('Settings is a clipped pixel-scroll page with a visible synchronized scroll
 
   settingsScroll.setScroll(settingsScroll.maximum);
   assert.equal(hud.settingsScrollOffset, hud.settingsMaxScroll);
-  const promptHint = findControl(hud.host, 'project-hint');
-  assert.ok(promptHint.absoluteBounds.y < bounds.top + bounds.height);
+  const llmHint = findControl(hud.host, 'llm-settings-hint');
+  assert.ok(llmHint.absoluteBounds.y < bounds.top + bounds.height);
 });
 
 test('Settings exposes the complete RTX controls and numeric drag commits only on release', () => {
@@ -953,21 +955,56 @@ test('optional Prompt workspace routes Ctrl+Enter through the active local model
   hud.dispose();
 });
 
-test('Settings Import/Export is always present and does not create file inputs', () => {
+test('top project toolbar routes save, new, clear, import, and export actions', async () => {
   const calls = [];
   const { document, hud } = fixture({
-    onExportProject() { calls.push('export'); },
-    onImportProject() { calls.push('import'); },
+    onProjectAction(action) { calls.push(action); return `${action} complete`; },
   });
   assert.equal(document.canvases.length > 0, true);
   const exportButton = findControl(hud.host, 'export-project');
   const importButton = findControl(hud.host, 'import-project');
-  assert.equal(exportButton.text, 'Export JSON');
-  assert.equal(importButton.text, 'Import JSON');
+  const newBlankButton = findControl(hud.host, 'project-new-blank');
+  const clearButton = findControl(hud.host, 'project-clear-scene');
+  assert.equal(exportButton.text, 'Export');
+  assert.equal(importButton.text, 'Import');
+  assert.equal(exportButton.parent, hud.host, 'project transfer controls live in the retained top toolbar');
   exportButton.onClick();
+  await new Promise(resolve => setImmediate(resolve));
   importButton.onClick();
-  assert.deepEqual(calls, ['export', 'import']);
+  assert.match(hud.projectTransferStatus, /again within 5 seconds/);
+  importButton.onClick();
+  await new Promise(resolve => setImmediate(resolve));
+  newBlankButton.onClick();
+  newBlankButton.onClick();
+  await new Promise(resolve => setImmediate(resolve));
+  clearButton.onClick();
+  clearButton.onClick();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(calls, ['export', 'import', 'new-blank', 'clear-scene']);
   hud.setProjectTransferStatus('Exported Packed Scene.');
   assert.equal(hud.projectTransferStatus, 'Exported Packed Scene.');
+  hud.dispose();
+});
+
+test('wide left panel collapses to a retained expand handle and restores its selected page', () => {
+  const { hud } = fixture({ width: 1000, height: 700, pixelRatio: 1 });
+  const collapseButton = findControl(hud.host, 'panel-collapse');
+  const title = findControl(hud.host, 'title');
+  const logPage = findControl(hud.host, 'log-page');
+  assert.equal(hud.panelBounds.width, 460);
+  assert.equal(hud.collapsed, false);
+  collapseButton.onClick();
+  assert.equal(hud.collapsed, true);
+  assert.equal(hud.panelBounds.width, 44);
+  assert.equal(hud.panelBounds.height, 44);
+  assert.equal(collapseButton.visible, true);
+  assert.equal(collapseButton.text, '>');
+  assert.equal(title.visible, false);
+  assert.equal(logPage.visible, false);
+  collapseButton.onClick();
+  assert.equal(hud.collapsed, false);
+  assert.equal(hud.panelBounds.width, 460);
+  assert.equal(title.visible, true);
+  assert.equal(logPage.visible, true);
   hud.dispose();
 });

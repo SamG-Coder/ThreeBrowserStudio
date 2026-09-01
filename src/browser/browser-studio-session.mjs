@@ -2,7 +2,7 @@ import { AuthoringKernel } from '../core/kernel.mjs';
 import { PROTOCOL_VERSION } from '../core/constants.mjs';
 import { validateProjectDocument } from '../core/documents.mjs';
 import { StudioError } from '../core/errors.mjs';
-import { createTransactionId } from '../core/util.mjs';
+import { contentHash, createTransactionId } from '../core/util.mjs';
 import { queryEntityComponentCatalog } from '../core/component-catalog.mjs';
 import { createProjectPack } from '../core/project-pack.mjs';
 import { createLogicControllerRuntime } from '../runtime/logic-controller-runtime.mjs';
@@ -191,7 +191,12 @@ export async function createBrowserStudioSession({ project, preview, viewport, a
         const entities = Array.isArray(ids)
           ? ids.map(id => activeScene.entities[id]).filter(Boolean)
           : Object.values(activeScene.entities);
-        return { success: true, revision: kernel.revision, scene: { id: activeScene.id, name: activeScene.name }, entities };
+        return {
+          success: true,
+          revision: kernel.revision,
+          scene: { id: activeScene.id, name: activeScene.name, sceneHash: contentHash(activeScene) },
+          entities,
+        };
       }
       case 'three_studio_apply': return kernel.apply({
         ...mutationRequest(params, kernel, 'Apply browser Studio changes'),
