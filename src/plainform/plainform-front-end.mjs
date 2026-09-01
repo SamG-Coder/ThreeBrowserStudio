@@ -362,6 +362,13 @@ const DEFINITIONS = Object.freeze([
     semanticKey: match => `form.${semanticPart(match[1])}`, fields: match => ({ name: match[1], notesField: match[2] }),
   }),
   definition({
+    id: 'composition.hero', dialect: 'composition', domain: 'composition', kind: 'composition.heroFrame', priority: 900,
+    pattern: /^frame the whole (.+?) from (slightly below|eye level|slightly above) at a (\d+(?:\.\d+)?) millimetre lens\. use late afternoon sun from camera left, soft blue sky fill, a (.+?) ground, and enough depth of field to keep the (.+?) and (.+?) sharp$/iu,
+    summary: 'Create a bounded semantic hero composition with camera, outdoor rig, ground, atmosphere, and explicit fallbacks.', inputs: ['subject', 'angle', 'lens', 'ground', 'nearSemantic', 'farSemantic'], outputs: ['presentation', 'camera', 'lightRig'],
+    examples: ['Frame the whole pine from slightly below at a 50 millimetre lens. Use late afternoon sun from camera left, soft blue sky fill, a dry grass ground, and enough depth of field to keep the trunk and crown sharp.'],
+    semanticKey: match => `composition.${semanticPart(match[1])}.hero`, fields: match => ({ subject: match[1], angle: match[2], lensMillimetres: Number(match[3]), ground: match[4], nearSemantic: match[5], farSemantic: match[6] }),
+  }),
+  definition({
     id: 'shader.property.set', dialect: 'shader', domain: 'shader', kind: 'shader.setProperty',
     pattern: /^(?:set|drive) (?:the )?(.+?) (?:to|with) (.+)$/iu,
     summary: 'Drive one supported shader property with a typed value or expression.',
@@ -377,6 +384,7 @@ function inferDialect(source) {
   if (/^\s*(?:begin\s+)?design\b/iu.test(source)) return 'design';
   if (/^\s*(?:for .+?,\s*when |when (?:the )?.+? (?:collides|receives|is destroyed))/imu.test(source)) return 'event';
   if (/^\s*create (?:an? .+? window|a modal .+? dialog)\b/imu.test(source)) return 'form';
+  if (/^\s*frame the whole .+? from /imu.test(source)) return 'composition';
   return 'object';
 }
 
