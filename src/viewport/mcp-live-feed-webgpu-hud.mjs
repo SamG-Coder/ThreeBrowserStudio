@@ -496,7 +496,7 @@ export function createMcpLiveFeedWebGpuHud({
   }));
   const newBlankButton = host.add(new Button({
     name: 'project-new-blank',
-    text: '＋',
+    text: '⊕',
     centered: true,
     onClick() { void requestProjectAction('new-blank', { confirm: true, label: 'New blank' }); },
   }));

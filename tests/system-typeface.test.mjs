@@ -41,6 +41,11 @@ test('system typeface measures real outlines when a TTF is available', () => {
   const wide = face.measure('MMMM', 16);
   const narrow = face.measure('iiii', 16);
   assert.ok(wide > narrow, 'M should be wider than i in a real font');
+  if (process.platform === 'win32' && face.filePath.toLowerCase().endsWith('seguisym.ttf')) {
+    for (const symbol of '⊕✦⌫↓↙↗‹›') {
+      assert.equal(face.hasGlyph(symbol.codePointAt(0)), true, `${symbol} should resolve to a real system glyph`);
+    }
+  }
   const context = new FakeContext();
   context.beginPath();
   face.addTextPath(context, 'A', 0, 16, 16);

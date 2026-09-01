@@ -967,7 +967,7 @@ test('top project toolbar routes save, new, clear, import, and export actions', 
   const clearButton = findControl(hud.host, 'project-clear-scene');
   assert.equal(exportButton.text, '↗');
   assert.equal(importButton.text, '↙');
-  assert.equal(newBlankButton.text, '＋');
+  assert.equal(newBlankButton.text, '⊕');
   assert.equal(clearButton.text, '⌫');
   assert.equal(exportButton.parent, hud.host, 'project transfer controls live in the retained top toolbar');
   exportButton.onClick();
