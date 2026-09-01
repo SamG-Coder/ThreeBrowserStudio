@@ -80,11 +80,18 @@ function lightFor(THREE, entity) {
   const color = colorFrom(THREE, values.color, [1, 1, 1]);
   switch (entity.kind) {
     case 'ambientLight': return new THREE.AmbientLight(color, values.intensity ?? 1);
-    case 'hemisphereLight': return new THREE.HemisphereLight(
-      color,
-      colorFrom(THREE, values.groundColor, [0.12, 0.1, 0.08]),
-      values.intensity ?? 1,
-    );
+    case 'hemisphereLight': {
+      // Authored HemisphereLight objects currently invalidate the shared
+      // WebGPU lighting pipeline when they are compiled with project material
+      // resources, leaving every lit surface black. Keep the canonical light
+      // semantic intact and use a stable ambient approximation at runtime,
+      // blending some ground colour into the dominant sky colour.
+      const ground = colorFrom(THREE, values.groundColor, [0.12, 0.1, 0.08]);
+      const approximationColor = color.clone?.().lerp?.(ground, 0.35) ?? color;
+      const light = new THREE.AmbientLight(approximationColor, values.intensity ?? 1);
+      light.userData = { studioHemisphereLightApproximation: { groundInfluence: 0.35 } };
+      return light;
+    }
     case 'directionalLight': return new THREE.DirectionalLight(color, values.intensity ?? 3);
     case 'pointLight': return new THREE.PointLight(color, values.intensity ?? 10, values.distance ?? 0, values.decay ?? 2);
     case 'spotLight': return new THREE.SpotLight(color, values.intensity ?? 10, values.distance ?? 0, values.angle ?? Math.PI / 3, values.penumbra ?? 0, values.decay ?? 2);
@@ -312,6 +319,14 @@ function instantiateEntity(THREE, entity, context) {
           code: 'runtime_area_light_approximated',
           id: entity.id,
           message: 'Native WebGPU compiles area lights as safe point-light approximations.',
+        });
+      }
+      if (object.userData?.studioHemisphereLightApproximation) {
+        context.diagnostics.push({
+          severity: 'warning',
+          code: 'runtime_hemisphere_light_approximated',
+          id: entity.id,
+          message: 'WebGPU compiles hemisphere lights as safe ambient approximations.',
         });
       }
       if (object.shadow && lightValues.castShadow !== false) {

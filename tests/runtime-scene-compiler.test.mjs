@@ -1154,3 +1154,22 @@ test('area lights compile to a safe native approximation instead of blacking out
     item.code === 'runtime_area_light_approximated' && item.id === 'light/softbox'
   )), true);
 });
+
+test('hemisphere lights compile to a safe native approximation instead of blacking out WebGPU', () => {
+  const project = createProjectDocument({
+    projectId: 'project/hemisphere-light-safe',
+    scenes: [{
+      id: 'scene/main',
+      entities: [entity('light/sky', 'hemisphereLight', { components: {
+        light: { color: [0.55, 0.72, 1], groundColor: [0.18, 0.14, 0.09], intensity: 0.75 },
+      } })],
+    }],
+  });
+  const compiled = compileSceneDocument({ THREE: fakeThree(), TSL: fakeTsl(), project });
+  assert.deepEqual(compiled.objects.get('light/sky').userData.studioHemisphereLightApproximation, {
+    groundInfluence: 0.35,
+  });
+  assert.equal(compiled.diagnostics.some(item => (
+    item.code === 'runtime_hemisphere_light_approximated' && item.id === 'light/sky'
+  )), true);
+});
