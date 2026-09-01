@@ -18,7 +18,12 @@ The shared evaluated-surface contract now supplies deterministic UVs, position,
 normal and tangent frames, semantic ancestry, bounded reprojection, and explicit
 `exact`, `remapped`, `projected`, or `broken` anchor health. `anchorHealth`
 exposes retained anchor status through the existing inspect tool. Later stages
-remain proposals.
+Stage 5's bounded transition solver is also live for deterministic loop
+correspondence, G0/G1 targets, iteration budgets, and area, inversion, tangent,
+boundary-deviation, and local-grid intersection evidence. Legacy curvature
+wording is explicitly reported as a bounded G1 approximation until source
+curvature tensors can prove G2; it is never silently labelled as achieved G2.
+Later stages remain proposals.
 
 This document defines a staged extension of Plainform. It is not a statement
 that every capability described here is already available. Live

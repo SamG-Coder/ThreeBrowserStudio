@@ -1006,6 +1006,8 @@ Blend $upper-rail into $lower-rail over 25 centimetres as a surface called Fairi
     .map(item => item.entity).find(entity => entity.id === 'entity/fairing-skin');
   assert.equal(fairing.metadata.plainformDesign.blendWidth, 0.25);
   assert.equal(fairing.metadata.plainformDesign.sourceTangency, true);
+  assert.equal(fairing.metadata.plainformDesign.continuityEvidence.requested, 'G2');
+  assert.equal(fairing.metadata.plainformDesign.continuityEvidence.achieved, 'boundedG1');
 });
 
 test('Advanced semantic-surface grammar fails closed on invalid references, factors, openings, and uniform gaps', () => {

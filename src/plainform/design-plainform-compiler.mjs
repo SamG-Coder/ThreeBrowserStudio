@@ -8,6 +8,7 @@ import {
   realizeSurfaceTriangles,
 } from './constrained-surface.mjs';
 import { projectSurfaceAnchors } from './evaluated-surface.mjs';
+import { solveFairTransition } from './fair-transition.mjs';
 import { SemanticSurfaceRegistry } from './semantic-surface.mjs';
 import { deformAlongSurfaceCurve, deformSurfaceRegion } from './semantic-surface-deformation.mjs';
 import { shellSurface } from './semantic-surface-shell.mjs';
@@ -1646,12 +1647,13 @@ export class DesignPlainformCompiler {
             const error = new Error(`Boundary blend ID ${entityId} or ${geometryId} already exists.`); error.code = 'plainform_id_conflict'; throw error;
           }
           ids.add(entityId); ids.add(geometryId);
-          const evaluated = buildConstrainedPatchSections({ first, second, continuity, sourceTangency: true });
+          const evaluated = solveFairTransition({ first, second, continuity, sourceTangency: true });
           surfacePatches.push({
             entityId, geometryId, name: quoteName(boundaryBlend[4]), continuity,
             materialId: boundaryBlend[7], sourceTangency: true, blendWidth,
             boundaries: [first, second], endBoundaries: [],
             sections: evaluated.sections, profileResolution: evaluated.profileResolution,
+            continuityEvidence: evaluated.evidence,
           });
           aliases[key(boundaryBlend[4])] = [entityId];
           interpretations.push(`Created a bounded ${continuity} surface blend between $${first.name} and $${second.name} over ${blendWidth} metres.`);
@@ -2043,6 +2045,7 @@ export class DesignPlainformCompiler {
             name: boundary.name, ownerEntityId: boundary.ownerEntityId,
           })),
           sourceTangency: patch.sourceTangency,
+          ...(patch.continuityEvidence ? { continuityEvidence: patch.continuityEvidence } : {}),
           ...(patch.blendWidth ? { blendWidth: patch.blendWidth } : {}),
         } },
         recipe: {
@@ -2102,6 +2105,7 @@ export class DesignPlainformCompiler {
       metadata: { plainformDesign: {
         primitive: 'surfacePatch', continuity: patch.continuity,
         sourceTangency: patch.sourceTangency,
+        ...(patch.continuityEvidence ? { continuityEvidence: patch.continuityEvidence } : {}),
         ...(patch.blendWidth ? { blendWidth: patch.blendWidth } : {}),
         boundaryRefs: [...patch.boundaries, ...patch.endBoundaries].map(boundary => ({
           name: boundary.name, ownerEntityId: boundary.ownerEntityId,
