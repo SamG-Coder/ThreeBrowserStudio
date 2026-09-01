@@ -9,6 +9,7 @@ import {
   DesignExpressionError, PlainformCompiler, PlainformError,
   evaluateDesignExpression, evaluatePlainformMath, interpretShaderFeel,
 } from '../src/plainform/index.mjs';
+import { projectSurfaceAnchors, resolveParametricSurfaceAnchor } from '../src/plainform/constrained-surface.mjs';
 
 function projectFixture() {
   return createProjectDocument({
@@ -76,6 +77,22 @@ test('Plainform mathematical English preserves units, constants, variables, and 
     () => evaluatePlainformMath('2 metres plus 20 degrees'),
     error => error instanceof PlainformError && error.code === 'plainform_dimension_mismatch',
   );
+});
+
+test('parametric surface anchors re-evaluate after tessellation changes without retaining triangle indices', () => {
+  const matrix = composeTransformMatrix({ position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] });
+  const [anchor] = projectSurfaceAnchors({
+    recipe: { kind: 'sphere', radius: 1, widthSegments: 12, heightSegments: 6 }, matrix,
+    seedPoints: [[0.4, 0.25, 1.2]], entityId: 'entity/head',
+  });
+  const regenerated = resolveParametricSurfaceAnchor({
+    recipe: { kind: 'sphere', radius: 1, widthSegments: 48, heightSegments: 24 }, matrix,
+    anchor, entityId: 'entity/head',
+  });
+  assert.equal(regenerated.parametric.kind, 'surfaceUv');
+  assert.notEqual(regenerated.triangleIndex, anchor.triangleIndex);
+  assert.ok(Math.abs(Math.hypot(...regenerated.point) - 1) < 0.02);
+  assert.ok(regenerated.normal.reduce((sum, value, axis) => sum + value * anchor.normal[axis], 0) > 0.8);
 });
 
 test('Design Plainform mathematics supports dimensional algebra, functions, and natural operator chains', () => {
@@ -168,11 +185,79 @@ End.
   );
 });
 
+test('Design Plainform exposes rounded anatomical primitives through natural dimensional language', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design an anatomical study called Natural Forms with id entity/natural-forms using the right-up-forward design frame.
+Create a sphere called Eye with id entity/eye, with radius 12 millimetres, centred at [3 centimetres right, 1.6 metres up, 8 centimetres forward], using material material/leaf.
+Create an ellipsoid called Head with id entity/head, with width 16 centimetres, height 23 centimetres, and depth 19 centimetres, centred at [0 metres right, 1.65 metres up, 0 metres forward], rotated by [0 degrees, 8 degrees, 0 degrees].
+Create a capsule called Neck with id entity/neck, with radius 55 millimetres and body length 9 centimetres, centred at [0 metres right, 1.43 metres up, 1 centimetre backward], aligned along the up axis.
+Create a tapered cylinder called Nose Base with id entity/nose-base, with bottom radius 18 millimetres, top radius 9 millimetres, and height 5 centimetres, centred at [0 metres right, 1.64 metres up, 10 centimetres forward], aligned along the forward direction.
+`, { project: projectFixture() });
+  assert.ok(compiled.operations.every(operation => operationSchema.safeParse(operation).success));
+  const resources = compiled.operations[0].items.map(item => item.resource);
+  assert.equal(resources.find(resource => resource.id.endsWith('/sphere-unit')).recipe.kind, 'sphere');
+  assert.deepEqual(resources.find(resource => resource.id.endsWith('/neck')).recipe, {
+    kind: 'capsule', radius: 0.055, length: 0.09, capSegments: 12, radialSegments: 24,
+  });
+  const noseRecipe = resources.find(resource => resource.id.endsWith('/nose-base')).recipe;
+  assert.equal(noseRecipe.kind, 'cylinder');
+  assert.ok(Math.abs(noseRecipe.radiusTop - 0.009) < 1e-12);
+  assert.ok(Math.abs(noseRecipe.radiusBottom - 0.018) < 1e-12);
+  assert.equal(noseRecipe.height, 0.05);
+  assert.equal(noseRecipe.radialSegments, 32);
+  const entities = compiled.operations[2].items.map(item => item.entity);
+  assert.deepEqual(entities.find(entity => entity.id === 'entity/eye').transform.scale, [0.024, 0.024, 0.024]);
+  assert.deepEqual(entities.find(entity => entity.id === 'entity/head').transform.scale, [0.16, 0.23, 0.19]);
+  assert.equal(entities.find(entity => entity.id === 'entity/head').metadata.plainformDesign.primitive, 'ellipsoid');
+  const root = compiled.operations[1].entity;
+  const neck = entities.find(entity => entity.id === 'entity/neck');
+  const neckWorld = multiplyTransformMatrices(composeTransformMatrix(root.transform), composeTransformMatrix(neck.transform));
+  assert.deepEqual(transformPointByMatrix(neckWorld, [0, 0, 0]).map(value => Math.round(value * 1e9) / 1e9), [0, 1.43, -0.01]);
+});
+
+test('Design Plainform builds dense caps, coordinated gaze, UV hair grooming, and local relaxed subdivision', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a portrait rig called Refined Portrait with id entity/refined-portrait using the right-up-forward design frame.
+Create a smooth profile called head section through [0 centimetres right, 12 centimetres up], [9 centimetres right, 0 centimetres up], [0 centimetres right, 12 centimetres down], [-9 centimetres right, 0 centimetres up].
+Add a controlled section of head section at 8 centimetres backward, width 16 centimetres, height 22 centimetres.
+Add a controlled section of head section at 8 centimetres forward, width 16 centimetres, height 22 centimetres.
+Loft a watertight solid called Dense Head with id entity/dense-head through all sections of head section, with 3 cap rings, with curvature continuity.
+Create a coordinated eye pair called Portrait Eyes with id entity/portrait-eyes, centred at [0 centimetres right, 3 centimetres up, 8 centimetres forward], separated by 7 centimetres, with eye width 3 centimetres, eye height 1.5 centimetres, and eye depth 1.8 centimetres, looking at [0 centimetres right, 3 centimetres up, 1 metre forward].
+Create a smooth guide curve called fringe path through [-7 centimetres right, 11 centimetres up, 2 centimetres backward], [-5 centimetres right, 13 centimetres up, 3 centimetres forward], [-4 centimetres right, 8 centimetres up, 10 centimetres forward].
+Groom a hair card called Fringe Card with id entity/fringe-card along guide fringe path, with width 3 centimetres, tapering to 10 percent.
+Groom a hair strand called Fringe Strand with id entity/fringe-strand along guide fringe path, with radius 1 millimetre.
+Create a sphere called Detail Head with id entity/detail-head, with radius 10 centimetres.
+Name the surface on Detail Head around [0 centimetres right, 0 centimetres up, 10 centimetres forward] within 5 centimetres as cheek detail.
+Subdivide the surface region cheek detail locally by 1 level, then relax it for 2 iterations with strength 40 percent.
+`, { project: projectFixture() });
+  assert.ok(compiled.operations.every(operation => operationSchema.safeParse(operation).success));
+  const resources = compiled.operations[0].items.map(item => item.resource);
+  const dense = resources.find(resource => resource.id.endsWith('/dense-head')).recipe;
+  assert.equal(dense.capRings, 3);
+  const card = resources.find(resource => resource.id.endsWith('/fringe-card')).recipe;
+  assert.equal(card.kind, 'indexedMesh');
+  assert.equal(card.uvs.length, card.positions.length / 3 * 2);
+  const strand = resources.find(resource => resource.id.endsWith('/fringe-strand')).recipe;
+  assert.equal(strand.kind, 'tube');
+  const refined = resources.find(resource => resource.id.includes('detail-head-semantic-surface')).recipe;
+  assert.equal(refined.kind, 'indexedMesh');
+  assert.ok(refined.uvs.length > 0);
+  const entities = compiled.operations[2].items.map(item => item.entity);
+  const left = entities.find(entity => entity.id === 'entity/portrait-eyes/left');
+  const right = entities.find(entity => entity.id === 'entity/portrait-eyes/right');
+  assert.equal(left.components.constraints[0].targetId, 'entity/portrait-eyes/gaze-target');
+  assert.equal(right.components.constraints[0].targetId, 'entity/portrait-eyes/gaze-target');
+  assert.equal(entities.find(entity => entity.id === 'entity/portrait-eyes/gaze-target').visible, false);
+  const metadata = compiled.operations[1].entity.metadata.plainformDesign;
+  assert.equal(metadata.surfaceDeformations.at(-1).kind, 'localRefinement');
+  assert.ok(metadata.surfaceDeformations.at(-1).refinedFaceCount > 0);
+});
+
 test('Design Plainform compiles curved symmetric profiles, independent section controls, guides, continuity, and local form modifiers', () => {
   const compiled = new PlainformCompiler().compile(`
 Design a manufactured shell called Guided Shell with id entity/guided-shell.
 Create a symmetric smooth profile called body section through [0 metres, 45 centimetres], [35 centimetres, 40 centimetres], [55 centimetres, 10 centimetres], [50 centimetres, -35 centimetres], [0 metres, -42 centimetres], mirrored across the z centreline.
-Create a guide curve called shoulder line through [42 centimetres, 0 metres, 30 centimetres], [50 centimetres, 1 metre, 34 centimetres], [44 centimetres, 2 metres, 28 centimetres].
+Create a guide curve called shoulder line through [42 centimetres, 0 metres, 30 centimetres], [50 centimetres, 1 metre, 34 centimetres], [44 centimetres, 2 metres, 28 centimetres], following point 2 of profile body section.
 Add a controlled section of body section at height 0 metres, width 92 centimetres, depth 84 centimetres, offset by [0 metres, 0 metres, 0 metres], rotated by [0 degrees, 0 degrees, 0 degrees], and scaled locally by [0.8, 1, 0.9].
 Add a controlled section of body section at height 1 metre, width 1.10 metres, depth 92 centimetres, offset vertically by 8 centimetres, offset laterally by 5 centimetres.
 Add a controlled section of body section at height 2 metres, width 94 centimetres, depth 76 centimetres, offset by [0 metres, 2 centimetres, 0 metres].
@@ -185,6 +270,7 @@ Preview these changes.
   assert.equal(resource.recipe.continuity, 'curvature');
   assert.equal(resource.recipe.subdivisions, 3);
   assert.equal(resource.recipe.guideCurves.length, 1);
+  assert.equal(resource.recipe.guideCurves[0].profileIndex, 1);
   assert.equal(resource.recipe.modifiers.length, 2);
   assert.equal(resource.recipe.sections.length, 3);
   assert.notEqual(resource.recipe.sections[0].transform.scale[0], resource.recipe.sections[0].transform.scale[2]);
@@ -658,6 +744,21 @@ Attach Boss to Main Shell over $join-rail, removing hidden intersecting surfaces
   assert.equal(target.metadata.plainformDesign.attachment.boundaryReference, 'join-rail');
   assert.equal(tool.visible, false);
 
+  const faired = new PlainformCompiler().compile(`
+Design a joined face called Faired Attachment with id entity/faired-attachment.
+Create a sphere called Main Face with id entity/main-face, with radius 1 metre.
+Create a sphere called Nose Form with id entity/nose-form, with radius 50 centimetres, centred at [0 metres, 0 metres, 80 centimetres].
+Create a surface curve called nose join on Main Face through surface points nearest to local points [-20 centimetres, -20 centimetres, 95 centimetres], [0 metres, 25 centimetres, 1 metre], [20 centimetres, -20 centimetres, 95 centimetres].
+Fair Nose Form into Main Face over $nose-join within 30 centimetres, removing hidden intersecting surfaces, with curvature continuity.
+`, { project: projectFixture() });
+  const fairedEntities = faired.operations.find(operation => operation.op === 'entity.createMany').items.map(item => item.entity);
+  const fairedTarget = fairedEntities.find(entity => entity.id === 'entity/main-face');
+  const fairedRecipe = faired.operations[0].items.find(item => item.resource.id === fairedTarget.components.mesh.geometryId).resource.recipe;
+  assert.equal(fairedRecipe.kind, 'csg');
+  assert.equal(fairedRecipe.fairing.continuity, 'curvature');
+  assert.equal(fairedRecipe.fairing.iterations, 6);
+  assert.equal(fairedTarget.metadata.plainformDesign.attachment.fairingRadius, 0.3);
+
   assert.throws(() => new PlainformCompiler().compile(`
 Design a joined housing called Unsupported Blend with id entity/unsupported-blend.
 Create a box called Main Shell with id entity/main-shell, with width 2 metres, height 2 metres, and depth 2 metres.
@@ -692,6 +793,8 @@ Name a surface-anchored boundary called orbital rail on Head Shell through surfa
   const boundary = compiled.operations[1].entity.metadata.plainformDesign.boundaries[0];
   assert.equal(boundary.anchorMode, 'nearestSurface');
   assert.equal(boundary.anchors.length, 3);
+  assert.ok(boundary.anchors.every(anchor => anchor.parametric?.kind === 'surfaceUv'));
+  assert.ok(boundary.anchors.every(anchor => anchor.parametric.uv.every(value => Number.isFinite(value))));
   assert.ok(boundary.anchors.every(anchor => anchor.projectedPoint[2] < anchor.seedPoint[2]));
   assert.ok(boundary.anchors.every(anchor => Math.hypot(...anchor.normal) > 0.999));
 });
@@ -1000,6 +1103,28 @@ Set the scale of the solar module to 1.5.
   assert.ok(Math.abs(compiled.operations[1].transform.rotation[1] - Math.PI / 2) < 1e-12);
   assert.deepEqual(compiled.operations[2].transform.scale, [1.5, 1.5, 1.5]);
   assert.ok(compiled.operations.every(operation => operationSchema.safeParse(operation).success));
+});
+
+test('Plainform sets independent scale axes directly and inside natural iteration', () => {
+  const compiled = new PlainformCompiler().compile(`
+Use entity/leaf-a as the broad leaf.
+Set the scale of the broad leaf to [1.4, 0.7, 0.25].
+Find every visible mesh whose name contains "Leaf B".
+Call them the narrow leaves.
+For each leaf in the narrow leaves.
+  Set its scale to [0.6, 1.2, 0.15].
+End.
+`, { project: projectFixture() });
+  assert.deepEqual(compiled.operations[0].transform.scale, [1.4, 0.7, 0.25]);
+  assert.deepEqual(compiled.operations[1].patch.transform.scale, [0.6, 1.2, 0.15]);
+  assert.ok(compiled.operations.every(operation => operationSchema.safeParse(operation).success));
+  assert.throws(
+    () => new PlainformCompiler().compile(`
+Use entity/leaf-a as the broken leaf.
+Set the scale of the broken leaf to [1, 0, 1].
+`, { project: projectFixture() }),
+    error => error.code === 'plainform_invalid_scale',
+  );
 });
 
 test('Plainform extends and subtracts named selections without domain-specific nouns', () => {

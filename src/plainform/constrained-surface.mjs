@@ -52,17 +52,26 @@ function barycentric(point, a, b, c) {
   return [1 - second - third, second, third];
 }
 
+function barycentric2d(point, a, b, c) {
+  const denominator = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]);
+  if (Math.abs(denominator) <= 1e-18) return null;
+  const first = ((b[1] - c[1]) * (point[0] - c[0]) + (c[0] - b[0]) * (point[1] - c[1])) / denominator;
+  const second = ((c[1] - a[1]) * (point[0] - c[0]) + (a[0] - c[0]) * (point[1] - c[1])) / denominator;
+  return [first, second, 1 - first - second];
+}
+
 function boxMesh(recipe) {
   const x = (recipe.width ?? 1) / 2; const y = (recipe.height ?? 1) / 2; const z = (recipe.depth ?? 1) / 2;
   return {
     positions: [[-x, -y, -z], [x, -y, -z], [x, y, -z], [-x, y, -z], [-x, -y, z], [x, -y, z], [x, y, z], [-x, y, z]],
     indices: [0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 3, 7, 6, 3, 6, 2, 0, 4, 7, 0, 7, 3, 1, 2, 6, 1, 6, 5],
+    uvs: [[0, 0], [1, 0], [1, 1], [0, 1], [0, 0], [1, 0], [1, 1], [0, 1]],
   };
 }
 
 function planeMesh(recipe) {
   const x = (recipe.width ?? 1) / 2; const y = (recipe.height ?? 1) / 2;
-  return { positions: [[-x, -y, 0], [x, -y, 0], [x, y, 0], [-x, y, 0]], indices: [0, 1, 2, 0, 2, 3] };
+  return { positions: [[-x, -y, 0], [x, -y, 0], [x, y, 0], [-x, y, 0]], indices: [0, 1, 2, 0, 2, 3], uvs: [[0, 0], [1, 0], [1, 1], [0, 1]] };
 }
 
 function cylinderMesh(recipe) {
@@ -71,10 +80,12 @@ function cylinderMesh(recipe) {
   const top = recipe.radiusTop ?? recipe.radius ?? 0.5;
   const bottom = recipe.radiusBottom ?? recipe.radius ?? 0.5;
   const positions = [[0, half, 0], [0, -half, 0]];
+  const uvs = [[0.5, 1], [0.5, 0]];
   for (let index = 0; index < segments; index += 1) {
     const angle = index / segments * Math.PI * 2;
     positions.push([Math.sin(angle) * top, half, Math.cos(angle) * top]);
     positions.push([Math.sin(angle) * bottom, -half, Math.cos(angle) * bottom]);
+    uvs.push([index / segments, 1], [index / segments, 0]);
   }
   const indices = [];
   for (let index = 0; index < segments; index += 1) {
@@ -83,7 +94,7 @@ function cylinderMesh(recipe) {
     const topB = 2 + next * 2; const bottomB = topB + 1;
     indices.push(topA, bottomA, bottomB, topA, bottomB, topB, 0, topB, topA, 1, bottomA, bottomB);
   }
-  return { positions, indices };
+  return { positions, indices, uvs };
 }
 
 function sphereMesh(recipe) {
@@ -91,11 +102,13 @@ function sphereMesh(recipe) {
   const heightSegments = Math.max(4, Math.min(32, recipe.heightSegments ?? 12));
   const radius = recipe.radius ?? 0.5;
   const positions = [];
+  const uvs = [];
   for (let row = 0; row <= heightSegments; row += 1) {
     const theta = row / heightSegments * Math.PI;
     for (let column = 0; column <= widthSegments; column += 1) {
       const phi = column / widthSegments * Math.PI * 2;
       positions.push([radius * Math.sin(theta) * Math.sin(phi), radius * Math.cos(theta), radius * Math.sin(theta) * Math.cos(phi)]);
+      uvs.push([column / widthSegments, 1 - row / heightSegments]);
     }
   }
   const indices = [];
@@ -107,12 +120,18 @@ function sphereMesh(recipe) {
       if (row < heightSegments - 1) indices.push(a + 1, b, b + 1);
     }
   }
-  return { positions, indices };
+  return { positions, indices, uvs };
 }
 
 function loftMesh(recipe) {
   const { sections, profileSize, closed } = evaluateLoftSections(recipe);
   const positions = sections.flat();
+  const uvs = sections.flatMap((_section, section) => Array.from(
+    { length: profileSize }, (_, point) => [
+      closed ? point / profileSize : point / Math.max(1, profileSize - 1),
+      section / Math.max(1, sections.length - 1),
+    ],
+  ));
   const indices = [];
   const edgeCount = closed ? profileSize : profileSize - 1;
   let reverseWinding = false;
@@ -146,20 +165,63 @@ function loftMesh(recipe) {
       else indices.push(a, b, d, b, c, d);
     }
   }
-  if (closed && recipe.capStart !== false) {
+  const appendDenseCap = (sectionPoints, isStart) => {
+    const ringCount = Math.max(1, Math.min(32, recipe.capRings ?? 0));
+    const center = sectionPoints.reduce(
+      (sum, point) => sum.map((value, axis) => value + point[axis] / profileSize), [0, 0, 0],
+    );
+    const spans = [0, 1, 2].map(axis => {
+      const values = sectionPoints.map(point => point[axis]); return Math.max(...values) - Math.min(...values);
+    });
+    const axes = [0, 1, 2].sort((a, b) => spans[b] - spans[a]).slice(0, 2);
+    const bounds = axes.map(axis => {
+      const values = sectionPoints.map(point => point[axis]); return [Math.min(...values), Math.max(...values)];
+    });
+    const capUv = point => axes.map((axis, index) => bounds[index][1] - bounds[index][0] > 1e-12
+      ? (point[axis] - bounds[index][0]) / (bounds[index][1] - bounds[index][0]) : 0.5);
+    const rings = [];
+    for (let ring = 0; ring <= ringCount; ring += 1) {
+      const factor = 1 - ring / (ringCount + 1); rings.push(positions.length);
+      for (const point of sectionPoints) {
+        const value = center.map((component, axis) => component + (point[axis] - component) * factor);
+        positions.push(value); uvs.push(capUv(value));
+      }
+    }
+    for (let ring = 0; ring < ringCount; ring += 1) {
+      const outer = rings[ring]; const inner = rings[ring + 1];
+      for (let point = 0; point < profileSize; point += 1) {
+        const next = (point + 1) % profileSize;
+        const quad = [outer + point, outer + next, inner + point, outer + next, inner + next, inner + point];
+        const reverse = isStart ? !reverseWinding : reverseWinding;
+        indices.push(...(reverse ? quad.reverse() : quad));
+      }
+    }
+    const centerIndex = positions.length; positions.push(center); uvs.push(capUv(center));
+    const inner = rings.at(-1);
+    for (let point = 0; point < profileSize; point += 1) {
+      const next = (point + 1) % profileSize; const triangle = [inner + point, inner + next, centerIndex];
+      if (isStart ? !reverseWinding : reverseWinding) triangle.reverse();
+      indices.push(...triangle);
+    }
+  };
+  if (closed && recipe.capStart !== false && (recipe.capRings ?? 0) > 0) {
+    appendDenseCap(sections[0], true);
+  } else if (closed && recipe.capStart !== false) {
     for (let point = 1; point < profileSize - 1; point += 1) {
       if (reverseWinding) indices.push(0, point, point + 1);
       else indices.push(0, point + 1, point);
     }
   }
-  if (closed && recipe.capEnd !== false) {
+  if (closed && recipe.capEnd !== false && (recipe.capRings ?? 0) > 0) {
+    appendDenseCap(sections.at(-1), false);
+  } else if (closed && recipe.capEnd !== false) {
     const offset = (sections.length - 1) * profileSize;
     for (let point = 1; point < profileSize - 1; point += 1) {
       if (reverseWinding) indices.push(offset, offset + point + 1, offset + point);
       else indices.push(offset, offset + point, offset + point + 1);
     }
   }
-  return { positions, indices };
+  return { positions, indices, uvs };
 }
 
 function triangleMesh(recipe) {
@@ -173,12 +235,14 @@ function triangleMesh(recipe) {
     case 'indexedMesh': return {
       positions: Array.from({ length: recipe.positions.length / 3 }, (_, index) => recipe.positions.slice(index * 3, index * 3 + 3)),
       indices: [...recipe.indices],
+      ...(Array.isArray(recipe.uvs) ? { uvs: Array.from({ length: recipe.uvs.length / 2 }, (_, index) => recipe.uvs.slice(index * 2, index * 2 + 2)) } : {}),
     };
     case 'editableMesh': {
       const result = triangulateEditableMesh(recipe).recipe;
       return {
         positions: Array.from({ length: result.positions.length / 3 }, (_, index) => result.positions.slice(index * 3, index * 3 + 3)),
         indices: [...result.indices],
+        ...(result.uvs ? { uvs: Array.from({ length: result.uvs.length / 2 }, (_, index) => result.uvs.slice(index * 2, index * 2 + 2)) } : {}),
       };
     }
     default: return null;
@@ -199,6 +263,7 @@ export function realizeSurfaceTriangles({ recipe, matrix, entityId }) {
     localPositions: mesh.positions.map(point => [...point]),
     worldPositions: mesh.positions.map(point => transformPointByMatrix(matrix, point)),
     indices: [...mesh.indices],
+    ...(mesh.uvs ? { uvs: mesh.uvs.map(uv => [...uv]) } : {}),
   };
 }
 
@@ -223,7 +288,14 @@ export function projectSurfaceAnchors({ recipe, matrix, seedPoints, entityId }) 
       const distanceSquared = lengthSquared(subtract(seedPoint, point));
       if (best && distanceSquared >= best.distanceSquared) continue;
       const normal = normalize(cross(subtract(b, a), subtract(c, a)));
-      best = { point, normal, distanceSquared, triangleIndex: offset / 3, barycentric: barycentric(point, a, b, c) };
+      const weights = barycentric(point, a, b, c);
+      const uv = mesh.uvs ? [0, 1].map(axis => weights.reduce(
+        (sum, weight, index) => sum + weight * mesh.uvs[vertices[index]][axis], 0,
+      )) : null;
+      best = {
+        point, normal, distanceSquared, triangleIndex: offset / 3, barycentric: weights,
+        ...(uv ? { parametric: { kind: 'surfaceUv', uv } } : {}),
+      };
     }
     if (!best) {
       const error = new Error(`Surface anchoring found no non-empty triangle surface on ${entityId}.`);
@@ -231,6 +303,42 @@ export function projectSurfaceAnchors({ recipe, matrix, seedPoints, entityId }) 
     }
     return best;
   });
+}
+
+/** Re-evaluates a topology-independent UV anchor against regenerated surface tessellation. */
+export function resolveParametricSurfaceAnchor({ recipe, matrix, anchor, entityId }) {
+  if (anchor?.parametric?.kind !== 'surfaceUv' || !Array.isArray(anchor.parametric.uv)) {
+    const error = new Error('A stable surface anchor requires a surfaceUv parametric coordinate.');
+    error.code = 'plainform_parametric_anchor_required'; throw error;
+  }
+  const mesh = triangleMesh(recipe);
+  if (!mesh?.uvs) {
+    const error = new Error(`Regenerated surface ${entityId} has no deterministic UV parameterization.`);
+    error.code = 'plainform_parametric_anchor_unavailable'; throw error;
+  }
+  const positions = mesh.positions.map(point => transformPointByMatrix(matrix, point));
+  let best = null;
+  for (let offset = 0; offset < mesh.indices.length; offset += 3) {
+    const vertices = mesh.indices.slice(offset, offset + 3);
+    const weights = barycentric2d(anchor.parametric.uv, ...vertices.map(index => mesh.uvs[index]));
+    if (!weights || weights.some(value => value < -1e-7 || value > 1 + 1e-7)) continue;
+    const [a, b, c] = vertices.map(index => positions[index]);
+    const normal = normalize(cross(subtract(b, a), subtract(c, a)));
+    const alignment = Array.isArray(anchor.normal) ? dot(normal, anchor.normal) : 0;
+    if (best && alignment <= best.alignment) continue;
+    const point = [0, 1, 2].map(axis => weights.reduce(
+      (sum, weight, index) => sum + weight * positions[vertices[index]][axis], 0,
+    ));
+    best = { point, normal, alignment, triangleIndex: offset / 3, barycentric: weights };
+  }
+  if (!best) {
+    const error = new Error(`Surface UV anchor [${anchor.parametric.uv.join(', ')}] is outside regenerated surface ${entityId}.`);
+    error.code = 'plainform_parametric_anchor_outside'; throw error;
+  }
+  return {
+    point: best.point, normal: best.normal, triangleIndex: best.triangleIndex,
+    barycentric: best.barycentric, parametric: structuredClone(anchor.parametric),
+  };
 }
 
 function endpointDistanceSquared(left, right) { return lengthSquared(subtract(left, right)); }

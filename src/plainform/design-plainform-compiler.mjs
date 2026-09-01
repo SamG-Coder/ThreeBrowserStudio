@@ -11,6 +11,7 @@ import {
 import { SemanticSurfaceRegistry } from './semantic-surface.mjs';
 import { deformAlongSurfaceCurve, deformSurfaceRegion } from './semantic-surface-deformation.mjs';
 import { shellSurface } from './semantic-surface-shell.mjs';
+import { refineSurfaceRegion } from './semantic-surface-refinement.mjs';
 import { openSurfaceAlongCurve, splitSurfaceAlongCurve } from './semantic-surface-split.mjs';
 import {
   angleBetweenSurfaceReferences,
@@ -270,6 +271,41 @@ function profileBounds(points) {
   return { width: Math.max(...xs) - Math.min(...xs), depth: Math.max(...zs) - Math.min(...zs) };
 }
 
+function hairCardRecipe(points, width, tipScale = 0.1) {
+  if (!Array.isArray(points) || points.length < 2) {
+    const error = new Error('A hair card requires a guide with at least two points.');
+    error.code = 'plainform_hair_guide'; throw error;
+  }
+  const positions = []; const uvs = []; const indices = [];
+  let previousSide = [1, 0, 0];
+  for (let index = 0; index < points.length; index += 1) {
+    const before = points[Math.max(0, index - 1)]; const after = points[Math.min(points.length - 1, index + 1)];
+    const tangent = normalizeVector(after.map((value, axis) => value - before[axis]));
+    const helper = Math.abs(tangent[2]) < 0.9 ? [0, 0, 1] : [0, 1, 0];
+    let side = normalizeVector([
+      tangent[1] * helper[2] - tangent[2] * helper[1],
+      tangent[2] * helper[0] - tangent[0] * helper[2],
+      tangent[0] * helper[1] - tangent[1] * helper[0],
+    ]);
+    if (side.reduce((sum, value, axis) => sum + value * previousSide[axis], 0) < 0) side = side.map(value => -value);
+    previousSide = side;
+    const progress = index / Math.max(1, points.length - 1); const halfWidth = width * 0.5 * (1 + (tipScale - 1) * progress);
+    positions.push(...points[index].map((value, axis) => value - side[axis] * halfWidth));
+    positions.push(...points[index].map((value, axis) => value + side[axis] * halfWidth));
+    uvs.push(0, progress, 1, progress);
+    if (index > 0) {
+      const previous = (index - 1) * 2; const current = index * 2;
+      indices.push(previous, previous + 1, current, previous + 1, current + 1, current);
+    }
+  }
+  return { kind: 'indexedMesh', positions, indices, uvs };
+}
+
+function normalizeVector(vector) {
+  const magnitude = Math.hypot(...vector);
+  return magnitude > 1e-12 ? vector.map(value => value / magnitude) : [1, 0, 0];
+}
+
 function splitNames(value) {
   return value.split(/\s*(?:,|\band\b)\s*/iu).map(key).filter(Boolean);
 }
@@ -406,13 +442,23 @@ export class DesignPlainformCompiler {
         ?? lofts.find(loft => loft.entityId === generatedId)
         ?? surfacePatches.find(patch => patch.entityId === generatedId);
     };
-    const unitRecipe = primitiveKind => primitiveKind === 'box'
-      ? { kind: 'box', width: 1, height: 1, depth: 1 }
-      : primitiveKind === 'cylinder'
-        ? { kind: 'cylinder', radiusTop: 1, radiusBottom: 1, height: 1, radialSegments: 32 }
-        : { kind: 'plane', width: 1, height: 1 };
+    const persistentAnchor = (anchor, seedPoint) => ({
+      seedPoint: [...seedPoint], projectedPoint: [...anchor.point], normal: [...anchor.normal],
+      triangleIndex: anchor.triangleIndex, barycentric: [...anchor.barycentric],
+      ...(anchor.parametric ? { parametric: structuredClone(anchor.parametric) } : {}),
+    });
+    const unitRecipe = primitiveKind => {
+      switch (primitiveKind) {
+        case 'box': return { kind: 'box', width: 1, height: 1, depth: 1 };
+        case 'cylinder': return { kind: 'cylinder', radiusTop: 1, radiusBottom: 1, height: 1, radialSegments: 32 };
+        case 'sphere': return { kind: 'sphere', radius: 0.5, widthSegments: 48, heightSegments: 24 };
+        case 'cone': return { kind: 'cone', radius: 0.5, height: 1, radialSegments: 32 };
+        default: return { kind: 'plane', width: 1, height: 1 };
+      }
+    };
     const loftRecipe = loft => ({
       kind: 'loft', sections: loft.profile.sections, closedProfile: true, capStart: true, capEnd: true,
+      capRings: loft.capRings ?? 0,
       profileResolution: loft.profile.points.length,
       subdivisions: loft.continuity === 'positional' ? 0 : 3,
       alignProfile: 'closest', continuity: loft.continuity,
@@ -442,7 +488,9 @@ export class DesignPlainformCompiler {
         return {
           entityId: generated.id,
           matrix: composeTransformMatrix(generated.transform),
-          recipe: generatedResource?.recipe ?? unitRecipe(generated.metadata?.plainformDesign?.primitive),
+          recipe: generatedResource?.recipe ?? unitRecipe(
+            generated.metadata?.plainformDesign?.geometryKind ?? generated.metadata?.plainformDesign?.primitive,
+          ),
           geometryId,
         };
       }
@@ -479,7 +527,10 @@ export class DesignPlainformCompiler {
       const owner = boundaryOwner(phrase);
       return semanticDeformationStates.get(owner.entityId) ?? owner;
     };
-    const addEntity = ({ id, name, kind: primitiveKind, dimensions, position, rotation = [0, 0, 0], materialId }) => {
+    const addEntity = ({
+      id, name, kind: primitiveKind, shape = primitiveKind, dimensions, position, rotation = [0, 0, 0], materialId,
+      parentId = rootId, extraComponents = {}, metadata = {},
+    }) => {
       if (entities.length >= MAX_DESIGN_ENTITIES) {
         const error = new Error(`Design Plainform creates at most ${MAX_DESIGN_ENTITIES} entities per program.`);
         error.code = 'plainform_design_entity_limit';
@@ -499,20 +550,32 @@ export class DesignPlainformCompiler {
         ? [dimensions.width, dimensions.height, dimensions.depth]
         : primitiveKind === 'cylinder'
           ? [dimensions.radius, dimensions.height, dimensions.radius]
-          : [dimensions.width, dimensions.height, 1];
-      const transform = semanticFrame
+          : primitiveKind === 'sphere'
+            ? [dimensions.width, dimensions.height, dimensions.depth]
+            : primitiveKind === 'cone'
+              ? [dimensions.diameter, dimensions.height, dimensions.diameter]
+              : [dimensions.width, dimensions.height, 1];
+      const transform = semanticFrame && parentId === rootId
         ? relativeEntityTransform(composeTransformMatrix(rootTransform), composeTransformMatrix({ position, rotation, scale }))
         : { position, rotation, scale };
       entities.push({
-        id, kind: 'mesh', name, parentId: rootId,
+        id, kind: 'mesh', name, parentId,
         transform,
-        components: { mesh: { geometryId, ...(materialId ? { materialId } : {}) } },
-        metadata: { plainformDesign: { primitive: primitiveKind, dimensions } },
+        components: { mesh: { geometryId, ...(materialId ? { materialId } : {}) }, ...extraComponents },
+        metadata: { plainformDesign: {
+          primitive: shape,
+          ...(shape === primitiveKind ? {} : { geometryKind: primitiveKind }),
+          dimensions,
+          ...metadata,
+        } },
       });
       aliases[key(name)] = [id];
     };
 
-    const addGeneratedSolid = ({ id, name, recipe, position = [0, 0, 0], rotation = [0, 0, 0], materialId }) => {
+    const addGeneratedSolid = ({
+      id, name, recipe, position = [0, 0, 0], rotation = [0, 0, 0], materialId,
+      authoredInDesignFrame = false, metadata = {},
+    }) => {
       if (entities.length >= MAX_DESIGN_ENTITIES) {
         const error = new Error(`Design Plainform creates at most ${MAX_DESIGN_ENTITIES} entities per program.`);
         error.code = 'plainform_design_entity_limit'; throw error;
@@ -526,11 +589,17 @@ export class DesignPlainformCompiler {
       }
       ids.add(id); ids.add(geometryId);
       generatedResources.push({ resourceType: 'geometries', resource: { id: geometryId, recipe } });
+      const transform = authoredInDesignFrame && semanticFrame
+        ? relativeEntityTransform(
+          composeTransformMatrix(rootTransform),
+          composeTransformMatrix({ position, rotation, scale: [1, 1, 1] }),
+        )
+        : { position, rotation, scale: [1, 1, 1] };
       entities.push({
         id, kind: 'mesh', name, parentId: rootId,
-        transform: { position, rotation, scale: [1, 1, 1] },
+        transform,
         components: { mesh: { geometryId, ...(materialId ? { materialId } : {}) } },
-        metadata: { plainformDesign: { primitive: recipe.kind } },
+        metadata: { plainformDesign: { primitive: recipe.kind, ...metadata } },
       });
       aliases[key(name)] = [id];
     };
@@ -661,7 +730,7 @@ export class DesignPlainformCompiler {
           interpretations.push(`Defined ${curvedProfile[2] ? 'smooth ' : ''}${mirrorAxis ? `symmetric ${authoredMirrorAxis}-centreline ` : ''}profile “${name}” through ${points.length} evaluated points.`);
           continue;
         }
-        const guideStatement = statement.match(/^create a (?:(smooth)\s+)?guide curve called (.+?) through (.+)$/iu);
+        const guideStatement = statement.match(/^create a (?:(smooth)\s+)?guide curve called (.+?) through (.+?)(?:,? following point (\d+) of (?:the )?profile (.+))?$/iu);
         if (guideStatement) {
           const name = key(guideStatement[2]);
           let points = loftPointGroups(guideStatement[3], scope, `Guide ${name}`);
@@ -671,8 +740,24 @@ export class DesignPlainformCompiler {
           if (guideStatement[1]) {
             points = smoothOpenPoints(points);
           }
-          guides.set(name, { name, points });
-          interpretations.push(`Defined guide curve “${name}” through ${points.length} evaluated points.`);
+          let profileName;
+          let profileIndex;
+          if (guideStatement[4]) {
+            profileName = key(guideStatement[5]);
+            const profile = profiles.get(profileName);
+            if (!profile) {
+              const error = new Error(`Unknown profile “${guideStatement[5]}” for guide “${name}”.`);
+              error.code = 'plainform_unknown_profile'; throw error;
+            }
+            const oneBasedIndex = Number(guideStatement[4]);
+            if (!Number.isSafeInteger(oneBasedIndex) || oneBasedIndex < 1 || oneBasedIndex > profile.points.length) {
+              const error = new Error(`Guide “${name}” must follow a profile point from 1 through ${profile.points.length}.`);
+              error.code = 'plainform_guide_profile_point'; throw error;
+            }
+            profileIndex = oneBasedIndex - 1;
+          }
+          guides.set(name, { name, points, ...(profileName ? { profileName, profileIndex } : {}) });
+          interpretations.push(`Defined guide curve “${name}” through ${points.length} evaluated points${profileName ? `, following point ${profileIndex + 1} of profile “${profileName}”` : ''}.`);
           continue;
         }
         const surfaceCurveStatement = statement.match(/^create a (?:(closed)\s+)?surface curve called (.+?) on (.+?) through surface points nearest to (local|design) points (.+)$/iu);
@@ -706,10 +791,7 @@ export class DesignPlainformCompiler {
             name, ownerEntityId: owner.entityId, coordinateSpace, closed,
             anchorMode: 'nearestSurface', authoredPoints: authoredPoints.map(point => [...point]),
             points, normals: projected.map(anchor => anchor.normal),
-            anchors: projected.map((anchor, index) => ({
-              seedPoint: [...seedPoints[index]], projectedPoint: [...anchor.point], normal: [...anchor.normal],
-              triangleIndex: anchor.triangleIndex, barycentric: [...anchor.barycentric],
-            })),
+            anchors: projected.map((anchor, index) => persistentAnchor(anchor, seedPoints[index])),
           });
           interpretations.push(`Created ${closed ? 'closed ' : ''}surface curve $${name} on ${owner.entityId} with ${points.length} bounded anchors.`);
           continue;
@@ -738,10 +820,7 @@ export class DesignPlainformCompiler {
             name, ownerEntityId: owner.entityId, coordinateSpace: 'design', closed: true,
             anchorMode: 'nearestSurface', authoredPoints: seedPoints.map(point => [...point]),
             points: projected.map(anchor => anchor.point), normals: projected.map(anchor => anchor.normal),
-            anchors: projected.map((anchor, index) => ({
-              seedPoint: [...seedPoints[index]], projectedPoint: [...anchor.point], normal: [...anchor.normal],
-              triangleIndex: anchor.triangleIndex, barycentric: [...anchor.barycentric],
-            })),
+            anchors: projected.map((anchor, index) => persistentAnchor(anchor, seedPoints[index])),
             projection: { kind: 'profile', profile: profile.name, position, rotation },
           });
           interpretations.push(`Projected profile “${profile.name}” onto ${owner.entityId} as closed surface curve $${name}.`);
@@ -762,10 +841,7 @@ export class DesignPlainformCompiler {
             name, ownerEntityId: owner.entityId, coordinateSpace: 'design', closed: Boolean(sourceReference.closed),
             anchorMode: 'nearestSurface', authoredPoints: seedPoints.map(point => [...point]),
             points: projected.map(anchor => anchor.point), normals: projected.map(anchor => anchor.normal),
-            anchors: projected.map((anchor, index) => ({
-              seedPoint: [...seedPoints[index]], projectedPoint: [...anchor.point], normal: [...anchor.normal],
-              triangleIndex: anchor.triangleIndex, barycentric: [...anchor.barycentric],
-            })),
+            anchors: projected.map((anchor, index) => persistentAnchor(anchor, seedPoints[index])),
             projection: { kind: 'surfaceReference', source: { name: sourceReference.name, kind: sourceReference.referenceKind } },
           });
           interpretations.push(`Projected $${sourceReference.name} onto ${owner.entityId} as surface curve $${name}.`);
@@ -786,6 +862,28 @@ export class DesignPlainformCompiler {
           });
           semanticSurfaces.addCurve(curve);
           interpretations.push(`Created surface-space offset curve $${name} ${distance} metres from $${sourceReference.name}.`);
+          continue;
+        }
+        const refineRegionStatement = statement.match(/^subdivide (?:the )?surface region (.+?) locally by (\d+) levels?(?:,? then relax it for (\d+) iterations? with strength (.+))?$/iu);
+        if (refineRegionStatement) {
+          const region = semanticSurfaces.resolveRegion(refineRegionStatement[1]);
+          const owner = semanticDeformationOwner(region.ownerEntityId);
+          const levels = Number(refineRegionStatement[2]);
+          const relaxIterations = refineRegionStatement[3] ? Number(refineRegionStatement[3]) : 0;
+          const relaxStrength = refineRegionStatement[4]
+            ? scalar(refineRegionStatement[4], scope, 'Surface relaxation strength') : 0.5;
+          const result = refineSurfaceRegion({
+            owner, region, levels, relaxIterations, relaxStrength,
+            resolveReference: name => semanticSurfaces.resolveReference(name),
+          });
+          owner.recipe = result.recipe;
+          const intent = {
+            kind: 'localRefinement', ownerEntityId: owner.entityId, region: region.name,
+            levels, relaxIterations, relaxStrength,
+            refinedFaceCount: result.refinedFaceCount, refinedVertexCount: result.refinedVertexCount,
+          };
+          semanticSurfaces.addDeformation(intent);
+          interpretations.push(`Subdivided surface region “${region.name}” by ${levels} levels and relaxed it for ${relaxIterations} iterations.`);
           continue;
         }
         const mirrorStatement = statement.match(/^create (.+?) as the mirror of (.+?) across the (x|y|z|right|up|forward) centre plane(?: with id ([a-z0-9][a-z0-9._/-]*))?$/iu);
@@ -813,10 +911,9 @@ export class DesignPlainformCompiler {
               name: boundaryReferenceKey(targetName), ownerEntityId: owner.entityId,
               coordinateSpace: 'design', closed: Boolean(reference.closed), anchorMode: 'nearestSurface',
               authoredPoints: seedPoints.map(point => [...point]), points: projected.map(anchor => anchor.point),
-              normals: projected.map(anchor => anchor.normal), anchors: projected.map((anchor, index) => ({
-                seedPoint: [...seedPoints[index]], projectedPoint: [...anchor.point], normal: [...anchor.normal],
-                triangleIndex: anchor.triangleIndex, barycentric: [...anchor.barycentric],
-              })), projection: { kind: 'mirror', source: reference.name, axis },
+              normals: projected.map(anchor => anchor.normal),
+              anchors: projected.map((anchor, index) => persistentAnchor(anchor, seedPoints[index])),
+              projection: { kind: 'mirror', source: reference.name, axis },
             };
             if (reference.referenceKind === 'surfaceCurve') semanticSurfaces.addCurve(mirrored);
             else boundaries.set(mirrored.name, mirrored);
@@ -972,10 +1069,7 @@ export class DesignPlainformCompiler {
             name, ownerEntityId: owner.entityId, coordinateSpace, anchorMode: 'nearestSurface',
             authoredPoints: authoredPoints.map(point => [...point]),
             points, normals: projected.map(anchor => anchor.normal),
-            anchors: projected.map((anchor, index) => ({
-              seedPoint: [...seedPoints[index]], projectedPoint: [...anchor.point], normal: [...anchor.normal],
-              triangleIndex: anchor.triangleIndex, barycentric: [...anchor.barycentric],
-            })),
+            anchors: projected.map((anchor, index) => persistentAnchor(anchor, seedPoints[index])),
           });
           interpretations.push(`Anchored boundary $${name} to the nearest surface of ${owner.entityId} at ${points.length} bounded samples.`);
           continue;
@@ -1178,6 +1272,125 @@ export class DesignPlainformCompiler {
           continue;
         }
 
+        const sphere = statement.match(/^create a sphere called (.+?)(?: with id ([a-z0-9{}._/-]+))?,? with radius (.+?)(?=,\s*cent(?:er|r)ed|,\s*using material|$)(?:,? cent(?:er|r)ed at (\[.+?\]))?(?:,? using material ([a-z0-9][a-z0-9._/-]*))?$/iu);
+        if (sphere) {
+          autoNumber += 1;
+          const name = interpolate(quoteName(sphere[1]), scope);
+          const radius = finitePositive(length(sphere[3], scope, 'Sphere radius'), 'Sphere radius');
+          addEntity({
+            id: sphere[2] ? interpolate(sphere[2], scope) : `entity/${designSlug}/${slug(name)}-${String(autoNumber).padStart(3, '0')}`,
+            name, kind: 'sphere', shape: 'sphere',
+            dimensions: { width: radius * 2, height: radius * 2, depth: radius * 2, radius },
+            position: sphere[4] ? designVector(sphere[4], scope, 'length', 'Sphere centre') : [0, 0, 0],
+            materialId: sphere[5],
+          });
+          continue;
+        }
+
+        const ellipsoid = statement.match(/^create an ellipsoid called (.+?)(?: with id ([a-z0-9{}._/-]+))?,? with width (.+?)(?=,\s*height),\s*height (.+?)(?=,\s*(?:and )?depth),\s*(?:and )?depth (.+?)(?=,\s*cent(?:er|r)ed|,\s*rotated|,\s*using material|$)(?:,? cent(?:er|r)ed at (\[.+?\]))?(?:,? rotated by (\[.+?\]))?(?:,? using material ([a-z0-9][a-z0-9._/-]*))?$/iu);
+        if (ellipsoid) {
+          autoNumber += 1;
+          const name = interpolate(quoteName(ellipsoid[1]), scope);
+          addEntity({
+            id: ellipsoid[2] ? interpolate(ellipsoid[2], scope) : `entity/${designSlug}/${slug(name)}-${String(autoNumber).padStart(3, '0')}`,
+            name, kind: 'sphere', shape: 'ellipsoid',
+            dimensions: {
+              width: length(ellipsoid[3], scope, 'Ellipsoid width'),
+              height: length(ellipsoid[4], scope, 'Ellipsoid height'),
+              depth: length(ellipsoid[5], scope, 'Ellipsoid depth'),
+            },
+            position: ellipsoid[6] ? designVector(ellipsoid[6], scope, 'length', 'Ellipsoid centre') : [0, 0, 0],
+            rotation: ellipsoid[7] ? evaluateDesignVector(ellipsoid[7], scope, 'angle') : [0, 0, 0],
+            materialId: ellipsoid[8],
+          });
+          continue;
+        }
+
+        const eyePair = statement.match(/^create a coordinated eye pair called (.+?) with id ([a-z0-9][a-z0-9._/-]*),? cent(?:er|r)ed at (\[.+?\]), separated by (.+?), with eye width (.+?), eye height (.+?), (?:and )?eye depth (.+?), looking at (\[.+?\])(?:,? using material ([a-z0-9][a-z0-9._/-]*))?$/iu);
+        if (eyePair) {
+          const name = quoteName(eyePair[1]); const assemblyId = eyePair[2];
+          const centre = designVector(eyePair[3], scope, 'length', 'Eye-pair centre');
+          const separation = finitePositive(length(eyePair[4], scope, 'Eye separation'), 'Eye separation');
+          const dimensions = {
+            width: finitePositive(length(eyePair[5], scope, 'Eye width'), 'Eye width'),
+            height: finitePositive(length(eyePair[6], scope, 'Eye height'), 'Eye height'),
+            depth: finitePositive(length(eyePair[7], scope, 'Eye depth'), 'Eye depth'),
+          };
+          const targetPosition = designVector(eyePair[8], scope, 'length', 'Shared gaze target');
+          const targetId = `${assemblyId}/gaze-target`; const leftId = `${assemblyId}/left`; const rightId = `${assemblyId}/right`;
+          for (const id of [assemblyId, targetId, leftId, rightId]) {
+            if (occupied.has(id) || ids.has(id)) {
+              const error = new Error(`Coordinated eye ID ${id} already exists.`); error.code = 'plainform_id_conflict'; throw error;
+            }
+          }
+          ids.add(assemblyId); ids.add(targetId);
+          const rootMatrix = composeTransformMatrix(rootTransform);
+          const groupTransform = semanticFrame
+            ? relativeEntityTransform(rootMatrix, composeTransformMatrix({ position: centre, rotation: [0, 0, 0], scale: [1, 1, 1] }))
+            : { position: centre, rotation: [0, 0, 0], scale: [1, 1, 1] };
+          const targetTransform = semanticFrame
+            ? relativeEntityTransform(rootMatrix, composeTransformMatrix({ position: targetPosition, rotation: [0, 0, 0], scale: [1, 1, 1] }))
+            : { position: targetPosition, rotation: [0, 0, 0], scale: [1, 1, 1] };
+          entities.push({ id: assemblyId, kind: 'group', name, parentId: rootId, transform: groupTransform, metadata: { plainformDesign: { primitive: 'coordinatedEyePair', targetId, separation, dimensions } } });
+          entities.push({ id: targetId, kind: 'group', name: `${name} gaze target`, parentId: rootId, transform: targetTransform, visible: false, metadata: { plainformDesign: { primitive: 'gazeTarget', eyePairId: assemblyId } } });
+          addEntity({
+            id: leftId, name: `${name} left eye`, kind: 'sphere', shape: 'ellipsoid', dimensions,
+            position: [-separation / 2, 0, 0], parentId: assemblyId, materialId: eyePair[9],
+            extraComponents: { constraints: [{ id: `${leftId}/look-at`, type: 'lookAt', targetId }] },
+            metadata: { eyePairId: assemblyId, gazeTargetId: targetId, side: 'left' },
+          });
+          addEntity({
+            id: rightId, name: `${name} right eye`, kind: 'sphere', shape: 'ellipsoid', dimensions,
+            position: [separation / 2, 0, 0], parentId: assemblyId, materialId: eyePair[9],
+            extraComponents: { constraints: [{ id: `${rightId}/look-at`, type: 'lookAt', targetId }] },
+            metadata: { eyePairId: assemblyId, gazeTargetId: targetId, side: 'right' },
+          });
+          aliases[key(name)] = [leftId, rightId];
+          interpretations.push(`Created coordinated eye pair “${name}” with shared gaze target ${targetId}.`);
+          continue;
+        }
+
+        const capsule = statement.match(/^create a capsule called (.+?)(?: with id ([a-z0-9{}._/-]+))?,? with radius (.+?) and body length (.+?)(?=,\s*cent(?:er|r)ed|,\s*rotated|,\s*aligned|,\s*using material|$)(?:,? cent(?:er|r)ed at (\[.+?\]))?(?:,? rotated by (\[.+?\]))?(?:,? aligned along (?:the )?(right|left|up|down|forward|backward)(?: axis| direction)?)?(?:,? using material ([a-z0-9][a-z0-9._/-]*))?$/iu);
+        if (capsule) {
+          autoNumber += 1;
+          const name = interpolate(quoteName(capsule[1]), scope);
+          const radius = finitePositive(length(capsule[3], scope, 'Capsule radius'), 'Capsule radius');
+          const bodyLength = finitePositive(length(capsule[4], scope, 'Capsule body length'), 'Capsule body length');
+          addGeneratedSolid({
+            id: capsule[2] ? interpolate(capsule[2], scope) : `entity/${designSlug}/${slug(name)}-${String(autoNumber).padStart(3, '0')}`,
+            name,
+            recipe: { kind: 'capsule', radius, length: bodyLength, capSegments: 12, radialSegments: 24 },
+            position: capsule[5] ? designVector(capsule[5], scope, 'length', 'Capsule centre') : [0, 0, 0],
+            rotation: capsule[6]
+              ? evaluateDesignVector(capsule[6], scope, 'angle')
+              : capsule[7] ? semanticAxisRotation(capsule[7].toLowerCase()) : [0, 0, 0],
+            materialId: capsule[8], authoredInDesignFrame: true,
+            metadata: { dimensions: { radius, bodyLength, totalHeight: bodyLength + radius * 2 } },
+          });
+          continue;
+        }
+
+        const taperedCylinder = statement.match(/^create a tapered cylinder called (.+?)(?: with id ([a-z0-9{}._/-]+))?,? with bottom radius (.+?),\s*top radius (.+?),\s*(?:and )?height (.+?)(?=,\s*cent(?:er|r)ed|,\s*rotated|,\s*aligned|,\s*using material|$)(?:,? cent(?:er|r)ed at (\[.+?\]))?(?:,? rotated by (\[.+?\]))?(?:,? aligned along (?:the )?(right|left|up|down|forward|backward)(?: axis| direction)?)?(?:,? using material ([a-z0-9][a-z0-9._/-]*))?$/iu);
+        if (taperedCylinder) {
+          autoNumber += 1;
+          const name = interpolate(quoteName(taperedCylinder[1]), scope);
+          const radiusBottom = finitePositive(length(taperedCylinder[3], scope, 'Tapered cylinder bottom radius'), 'Tapered cylinder bottom radius');
+          const radiusTop = finitePositive(length(taperedCylinder[4], scope, 'Tapered cylinder top radius'), 'Tapered cylinder top radius');
+          const height = finitePositive(length(taperedCylinder[5], scope, 'Tapered cylinder height'), 'Tapered cylinder height');
+          addGeneratedSolid({
+            id: taperedCylinder[2] ? interpolate(taperedCylinder[2], scope) : `entity/${designSlug}/${slug(name)}-${String(autoNumber).padStart(3, '0')}`,
+            name,
+            recipe: { kind: 'cylinder', radiusTop, radiusBottom, height, radialSegments: 32 },
+            position: taperedCylinder[6] ? designVector(taperedCylinder[6], scope, 'length', 'Tapered cylinder centre') : [0, 0, 0],
+            rotation: taperedCylinder[7]
+              ? evaluateDesignVector(taperedCylinder[7], scope, 'angle')
+              : taperedCylinder[8] ? semanticAxisRotation(taperedCylinder[8].toLowerCase()) : [0, 0, 0],
+            materialId: taperedCylinder[9], authoredInDesignFrame: true,
+            metadata: { primitive: 'taperedCylinder', dimensions: { radiusBottom, radiusTop, height } },
+          });
+          continue;
+        }
+
         const cylinder = statement.match(/^create a cylinder called (.+?)(?: with id ([a-z0-9{}._/-]+))?,? with radius (.+?)(?=\s+and height)\s+and height (.+?)(?=,\s*cent(?:er|r)ed|,\s*rotated|,\s*aligned|,\s*using material|$)(?:,? cent(?:er|r)ed at (\[.+?\]))?(?:,? rotated by (\[.+?\]))?(?:,? aligned along (?:the )?(right|left|up|down|forward|backward)(?: axis| direction)?)?(?:,? using material ([a-z0-9][a-z0-9._/-]*))?$/iu);
         if (cylinder) {
           autoNumber += 1;
@@ -1239,7 +1452,36 @@ export class DesignPlainformCompiler {
           continue;
         }
 
-        const loft = statement.match(/^loft a (?:watertight )?(?:solid )?called (.+?) with id ([a-z0-9][a-z0-9._/-]*) through all sections of (.+?)(?:,? following (.+?))?(?:,? with (positional|tangent|curvature) continuity)?(?:,? using material ([a-z0-9][a-z0-9._/-]*))?$/iu);
+        const hairCard = statement.match(/^groom a hair card called (.+?) with id ([a-z0-9][a-z0-9._/-]*) along (?:guide )?(.+?), with width (.+?), tapering to (.+?)(?:,? using material ([a-z0-9][a-z0-9._/-]*))?$/iu);
+        if (hairCard) {
+          const guide = guides.get(key(hairCard[3]));
+          if (!guide) { const error = new Error(`Unknown hair-card guide “${hairCard[3]}”.`); error.code = 'plainform_unknown_guide'; throw error; }
+          const width = finitePositive(length(hairCard[4], scope, 'Hair-card width'), 'Hair-card width');
+          const tipScale = scalar(hairCard[5], scope, 'Hair-card tip scale');
+          if (tipScale < 0 || tipScale > 1) { const error = new Error('Hair-card tip scale must be from 0 to 100 percent.'); error.code = 'plainform_hair_taper'; throw error; }
+          addGeneratedSolid({
+            id: hairCard[2], name: quoteName(hairCard[1]), recipe: hairCardRecipe(guide.points, width, tipScale),
+            materialId: hairCard[6], metadata: { primitive: 'hairCard', guide: guide.name, width, tipScale, deterministicUvs: true },
+          });
+          interpretations.push(`Groomed UV-mapped hair card “${quoteName(hairCard[1])}” along guide “${guide.name}”.`);
+          continue;
+        }
+
+        const hairStrand = statement.match(/^groom a hair strand called (.+?) with id ([a-z0-9][a-z0-9._/-]*) along (?:guide )?(.+?), with radius (.+?)(?:,? using material ([a-z0-9][a-z0-9._/-]*))?$/iu);
+        if (hairStrand) {
+          const guide = guides.get(key(hairStrand[3]));
+          if (!guide) { const error = new Error(`Unknown hair-strand guide “${hairStrand[3]}”.`); error.code = 'plainform_unknown_guide'; throw error; }
+          const radius = finitePositive(length(hairStrand[4], scope, 'Hair-strand radius'), 'Hair-strand radius');
+          addGeneratedSolid({
+            id: hairStrand[2], name: quoteName(hairStrand[1]),
+            recipe: { kind: 'tube', points: guide.points.map(point => [...point]), tubularSegments: Math.min(256, Math.max(16, guide.points.length * 8)), radius, radialSegments: 6, closed: false, curveType: 'centripetal', tension: 0.5 },
+            materialId: hairStrand[5], metadata: { primitive: 'hairStrand', guide: guide.name, radius, deterministicUvs: true },
+          });
+          interpretations.push(`Groomed tubular hair strand “${quoteName(hairStrand[1])}” along guide “${guide.name}”.`);
+          continue;
+        }
+
+        const loft = statement.match(/^loft a (?:watertight )?(?:solid )?called (.+?) with id ([a-z0-9][a-z0-9._/-]*) through all sections of (.+?)(?:,? with (\d+) cap rings)?(?:,? following (.+?))?(?:,? with (positional|tangent|curvature) continuity)?(?:,? using material ([a-z0-9][a-z0-9._/-]*))?$/iu);
         if (loft) {
           const profile = profiles.get(key(loft[3]));
           if (!profile || profile.sections.length < 2) {
@@ -1251,18 +1493,31 @@ export class DesignPlainformCompiler {
             const error = new Error(`Loft ID ${entityId} or ${geometryId} already exists.`); error.code = 'plainform_id_conflict'; throw error;
           }
           ids.add(entityId); ids.add(geometryId);
-          const guideNames = loft[4] ? splitNames(loft[4]) : [];
+          const capRings = loft[4] ? Number(loft[4]) : 0;
+          if (!Number.isSafeInteger(capRings) || capRings < 0 || capRings > 32) {
+            const error = new Error('A loft supports 0 to 32 regularly tessellated cap rings.');
+            error.code = 'plainform_loft_cap_rings'; throw error;
+          }
+          const guideNames = loft[5] ? splitNames(loft[5]) : [];
           const guideCurves = guideNames.map((name) => {
             const guide = guides.get(name);
             if (!guide) { const error = new Error(`Unknown guide curve “${name}”.`); error.code = 'plainform_unknown_guide'; throw error; }
-            return { name: guide.name, points: guide.points.map(point => [...point]) };
+            if (guide.profileName && guide.profileName !== profile.name) {
+              const error = new Error(`Guide “${guide.name}” follows profile “${guide.profileName}”, so it cannot guide loft profile “${profile.name}”.`);
+              error.code = 'plainform_guide_profile_mismatch'; throw error;
+            }
+            return {
+              name: guide.name,
+              points: guide.points.map(point => [...point]),
+              ...(guide.profileIndex === undefined ? {} : { profileIndex: guide.profileIndex }),
+            };
           });
           lofts.push({
             entityId, geometryId, name: quoteName(loft[1]), profile,
-            guideCurves, continuity: loft[5]?.toLowerCase() ?? 'positional', materialId: loft[6], modifiers: [],
+            guideCurves, capRings, continuity: loft[6]?.toLowerCase() ?? 'positional', materialId: loft[7], modifiers: [],
           });
           aliases[key(loft[1])] = [entityId];
-          interpretations.push(`Will loft “${quoteName(loft[1])}” with ${guideCurves.length} guide curves and ${loft[5]?.toLowerCase() ?? 'positional'} continuity.`);
+          interpretations.push(`Will loft “${quoteName(loft[1])}” with ${capRings} cap rings, ${guideCurves.length} guide curves, and ${loft[6]?.toLowerCase() ?? 'positional'} continuity.`);
           continue;
         }
 
@@ -1603,6 +1858,36 @@ export class DesignPlainformCompiler {
           continue;
         }
 
+        const fairUnionStatement = statement.match(/^fair (.+?) into (.+?) over (\$[a-z0-9][a-z0-9._/-]*) within (.+?), removing hidden intersecting surfaces, with (tangent|curvature) continuity$/iu);
+        if (fairUnionStatement) {
+          const tool = generatedEntity(fairUnionStatement[1]); const target = generatedEntity(fairUnionStatement[2]);
+          if (!tool || !target) {
+            const error = new Error('Fair union requires both intersecting solids to be generated earlier in the same Design program.');
+            error.code = 'plainform_fair_union_operand'; throw error;
+          }
+          const boundary = semanticSurfaces.resolveReference(fairUnionStatement[3]);
+          if (![tool.id ?? tool.entityId, target.id ?? target.entityId].includes(boundary.ownerEntityId)) {
+            const error = new Error(`${fairUnionStatement[3]} must belong to one fair-union operand.`);
+            error.code = 'plainform_attach_boundary_owner'; throw error;
+          }
+          const radius = finitePositive(length(fairUnionStatement[4], scope, 'Fair-union radius'), 'Fair-union radius');
+          const continuity = fairUnionStatement[5].toLowerCase();
+          const toolBounds = surfaceBounds(boundaryOwner(tool.id ?? tool.entityId));
+          const targetBounds = surfaceBounds(boundaryOwner(target.id ?? target.entityId));
+          const overlap = toolBounds.max.map((value, axis) => Math.min(value, targetBounds.max[axis]) - Math.max(toolBounds.min[axis], targetBounds.min[axis]));
+          if (overlap.some(value => value <= 1e-9)) {
+            const error = new Error('Fair union requires genuinely intersecting solid bounds.');
+            error.code = 'plainform_attach_no_intersection'; throw error;
+          }
+          booleanCommands.push({
+            operation: 'union', toolId: tool.id ?? tool.entityId, targetId: target.id ?? target.entityId,
+            attachment: { boundaryReference: boundary.name, continuity, removesHiddenIntersectingSurfaces: true, fairingRadius: radius },
+            fairing: { points: boundary.points.map(point => [...point]), radius, iterations: continuity === 'curvature' ? 6 : 3, strength: continuity === 'curvature' ? 0.4 : 0.25, continuity },
+          });
+          interpretations.push(`Will fair ${tool.id ?? tool.entityId} into ${target.id ?? target.entityId} over $${boundary.name} within ${radius} metres.`);
+          continue;
+        }
+
         const relationalPlacement = statement.match(/^place (.+?) cent(?:er|r)ed at (.+?)(?:,? aligning its local (x|y|z) axis with (.+))?$/iu);
         if (relationalPlacement) {
           const generated = generatedEntity(relationalPlacement[1]);
@@ -1703,11 +1988,7 @@ export class DesignPlainformCompiler {
 
     const resources = [...geometryKinds].map(kind => ({
       resourceType: 'geometries',
-      resource: { id: `geometry/plainform-design/${designSlug}/${kind}-unit`, recipe: kind === 'box'
-        ? { kind: 'box', width: 1, height: 1, depth: 1 }
-        : kind === 'cylinder'
-          ? { kind: 'cylinder', radiusTop: 1, radiusBottom: 1, height: 1, radialSegments: 32 }
-          : { kind: 'plane', width: 1, height: 1 } },
+      resource: { id: `geometry/plainform-design/${designSlug}/${kind}-unit`, recipe: unitRecipe(kind) },
     }));
     for (const loft of lofts) resources.push({
       resourceType: 'geometries',
@@ -1775,7 +2056,7 @@ export class DesignPlainformCompiler {
       id: loft.entityId, kind: 'mesh', name: loft.name, parentId: rootId,
       components: { mesh: { geometryId: loft.geometryId, ...(loft.materialId ? { materialId: loft.materialId } : {}) } },
       metadata: { plainformDesign: {
-        primitive: 'loft', profile: loft.profile.name, continuity: loft.continuity,
+        primitive: 'loft', profile: loft.profile.name, continuity: loft.continuity, capRings: loft.capRings,
         guides: loft.guideCurves.map(guide => guide.name), modifiers: loft.modifiers,
       } },
     })), ...surfacePatches.map(patch => ({
@@ -1833,7 +2114,7 @@ export class DesignPlainformCompiler {
           : target.components.mesh.geometryId;
         const resultResource = { resourceType: 'geometries', resource: {
           id: resultGeometryId,
-          recipe: { kind: 'csg', operation: command.operation, operands },
+          recipe: { kind: 'csg', operation: command.operation, operands, ...(command.fairing ? { fairing: command.fairing } : {}) },
         } };
         if (sharedTarget) {
           if (resourceById.has(resultGeometryId)) {
@@ -1882,6 +2163,7 @@ export class DesignPlainformCompiler {
               anchors: boundary.anchors.map(anchor => ({
                 seedPoint: [...anchor.seedPoint], projectedPoint: [...anchor.projectedPoint], normal: [...anchor.normal],
                 triangleIndex: anchor.triangleIndex, barycentric: [...anchor.barycentric],
+                ...(anchor.parametric ? { parametric: structuredClone(anchor.parametric) } : {}),
               })),
             } : {}),
           })),

@@ -8,6 +8,7 @@ function cloneAnchor(anchor) {
     normal: [...anchor.normal],
     triangleIndex: anchor.triangleIndex,
     barycentric: [...anchor.barycentric],
+    ...(anchor.parametric ? { parametric: structuredClone(anchor.parametric) } : {}),
   };
 }
 

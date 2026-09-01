@@ -331,6 +331,29 @@ operations.
   subject-specific nouns. Diagnose weak authored
   documentation first; extend the compiler/runtime only when the intended form
   cannot reasonably be expressed with those general capabilities.
+- Use the built-in natural rounded forms when they are the honest base shape:
+  spheres use radius; ellipsoids use width/height/depth; capsules use radius
+  and body length; tapered cylinders use bottom radius, top radius, and height.
+  Prefer `Set ... scale to [x, y, z]` only for intentional per-axis object
+  proportions; every axis must remain positive.
+- When a loft guide must control a specific silhouette landmark, append
+  `following point N of profile <name>` to its declaration. Point numbers are
+  one-based in Plainform and validated against that exact profile. Do not rely
+  on nearest-point guide binding for a critical anatomical or manufactured
+  landmark.
+- Request `with N cap rings` only when a closed loft end needs actual local
+  topology for anchors or deformation; 1–32 creates concentric cap topology
+  and UVs, while omission preserves the compatible fan cap.
+- Use named surface regions before local refinement. `Subdivide the surface
+  region ... locally by ...` is bounded to four levels and may include explicit
+  relaxation iterations/strength; never describe smooth shading as remeshing.
+- For intersecting generated parts requiring a softened join, use `Fair ...
+  into ... over $boundary within ...` with tangent or curvature continuity.
+  It is a bounded welded CSG fairing radius, not a global exact surface solver.
+- Use a coordinated eye pair when both eyes must share one gaze target. Groom
+  hair cards or strands from named guides; cards provide root-to-tip UVs and
+  strands provide bounded tube topology. Do not emit per-strand unrestricted
+  code or thousands of independent operations.
 - For every new spatial or manufactured Design Plainform program, append
   `using the right-up-forward design frame`. Treat right as world +X, up as
   world +Y, and forward as world +Z. Let the compiler map profiles and lofts

@@ -80,7 +80,7 @@ function pointInClosedCurve(point, curve) {
   return inside;
 }
 
-function regionWeight(point, region, resolveReference, falloff) {
+export function surfaceRegionWeight(point, region, resolveReference, falloff) {
   if (region.definition.kind === 'surfaceRadius') {
     const distance = Math.hypot(...subtract(point, region.definition.center));
     if (distance <= region.definition.radius) return 1;
@@ -138,6 +138,7 @@ function deform({ owner, amount, influence }) {
       kind: 'indexedMesh',
       positions: worldPositions.flatMap(point => transformPointByMatrix(inverse, point)),
       indices: [...mesh.indices],
+      ...(mesh.uvs ? { uvs: mesh.uvs.flat() } : {}),
     },
     affectedVertexCount,
   };
@@ -156,6 +157,6 @@ export function deformAlongSurfaceCurve({ owner, curve, amount, falloff }) {
 export function deformSurfaceRegion({ owner, region, resolveReference, amount, falloff }) {
   return deform({
     owner, amount,
-    influence(point) { return { weight: regionWeight(point, region, resolveReference, falloff) }; },
+    influence(point) { return { weight: surfaceRegionWeight(point, region, resolveReference, falloff) }; },
   });
 }

@@ -338,6 +338,54 @@ function geometryPolygons(geometry, transform) {
   return polygons;
 }
 
+function planarUvs(values) {
+  const points = Array.from({ length: values.length / 3 }, (_, index) => values.slice(index * 3, index * 3 + 3));
+  const spans = [0, 1, 2].map(axis => {
+    const axisValues = points.map(point => point[axis]); return Math.max(...axisValues) - Math.min(...axisValues);
+  });
+  const axes = [0, 1, 2].sort((a, b) => spans[b] - spans[a]).slice(0, 2);
+  const bounds = axes.map(axis => {
+    const axisValues = points.map(point => point[axis]); return [Math.min(...axisValues), Math.max(...axisValues)];
+  });
+  return points.flatMap(point => axes.map((axis, index) => bounds[index][1] - bounds[index][0] > EPSILON
+    ? (point[axis] - bounds[index][0]) / (bounds[index][1] - bounds[index][0]) : 0.5));
+}
+
+function fairOutput(output, fairing) {
+  const points = Array.isArray(fairing?.points) ? fairing.points : [];
+  const { radius, iterations = 4, strength = 0.35 } = fairing ?? {};
+  if (points.length < 2 || !(radius > 0) || !Number.isInteger(iterations) || iterations < 1 || iterations > 16
+      || !(strength > 0 && strength <= 1)) throw new Error('CSG fairing requires boundary points, positive radius, 1–16 iterations, and strength in (0, 1].');
+  const positions = []; const indices = []; const lookup = new Map();
+  for (let offset = 0; offset < output.length; offset += 3) {
+    const point = output.slice(offset, offset + 3); const key = point.map(value => Math.round(value / EPSILON)).join(':');
+    let index = lookup.get(key);
+    if (index === undefined) { index = positions.length; positions.push(point); lookup.set(key, index); }
+    indices.push(index);
+  }
+  const neighbors = Array.from({ length: positions.length }, () => new Set());
+  for (let offset = 0; offset < indices.length; offset += 3) {
+    const [a, b, c] = indices.slice(offset, offset + 3);
+    for (const [first, second] of [[a, b], [b, c], [c, a]]) { neighbors[first].add(second); neighbors[second].add(first); }
+  }
+  const weights = positions.map(point => {
+    const distance = Math.min(...points.map(boundary => Math.hypot(...point.map((value, axis) => value - boundary[axis]))));
+    const t = Math.max(0, Math.min(1, 1 - distance / radius)); return t * t * (3 - 2 * t);
+  });
+  let current = positions;
+  for (let iteration = 0; iteration < iterations; iteration += 1) {
+    const previous = current; current = previous.map(point => [...point]);
+    for (let index = 0; index < previous.length; index += 1) {
+      if (weights[index] <= 0 || neighbors[index].size < 2) continue;
+      const average = [...neighbors[index]].reduce(
+        (sum, neighbor) => sum.map((value, axis) => value + previous[neighbor][axis] / neighbors[index].size), [0, 0, 0],
+      );
+      current[index] = previous[index].map((value, axis) => value + (average[axis] - value) * strength * weights[index]);
+    }
+  }
+  return { positions: current.flat(), indices };
+}
+
 export function createCsgGeometry(THREE, recipe, createOperandGeometry) {
   if (!['union', 'subtract', 'intersect'].includes(recipe.operation)) {
     throw new Error('CSG operation must be union, subtract, or intersect.');
@@ -380,7 +428,11 @@ export function createCsgGeometry(THREE, recipe, createOperandGeometry) {
   if (output.length < 9) throw new Error('CSG operation produced an empty solid.');
   if (output.length / 9 > 2_000_000) throw new Error('CSG output exceeds the 2,000,000 triangle safety limit.');
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(output, 3));
+  const faired = recipe.fairing ? fairOutput(output, recipe.fairing) : null;
+  const finalPositions = faired?.positions ?? output;
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(finalPositions, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(planarUvs(finalPositions), 2));
+  if (faired) geometry.setIndex(faired.indices);
   geometry.computeVertexNormals();
   geometry.computeBoundingBox();
   geometry.computeBoundingSphere();

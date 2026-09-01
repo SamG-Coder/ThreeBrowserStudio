@@ -45,6 +45,7 @@ export const GEOMETRY_PARAMETER_DEFAULTS = Object.freeze({
     closedProfile: true,
     capStart: true,
     capEnd: true,
+    capRings: 0,
     profileResolution: null,
     subdivisions: 0,
     alignProfile: 'authored',
@@ -224,10 +225,14 @@ function proceduralCountEstimate(recipe) {
     const profile = recipe.profileResolution ?? (Array.isArray(firstPoints) ? firstPoints.length : 0);
     const evaluatedSections = Math.max(0, sections - 1) * (Math.max(0, recipe.subdivisions ?? 0) + 1) + (sections > 0 ? 1 : 0);
     const sideTriangles = Math.max(0, evaluatedSections - 1) * profile * 2;
-    const capTriangles = recipe.closedProfile === false ? 0
-      : (recipe.capStart === false ? 0 : Math.max(0, profile - 2))
-        + (recipe.capEnd === false ? 0 : Math.max(0, profile - 2));
-    return { vertices: evaluatedSections * profile, triangles: sideTriangles + capTriangles };
+    const capCount = recipe.closedProfile === false ? 0
+      : Number(recipe.capStart !== false) + Number(recipe.capEnd !== false);
+    const capRings = Math.max(0, recipe.capRings ?? 0);
+    const capTriangles = capRings > 0
+      ? capCount * profile * (capRings * 2 + 1)
+      : capCount * Math.max(0, profile - 2);
+    const capVertices = capRings > 0 ? capCount * (profile * (capRings + 1) + 1) : 0;
+    return { vertices: evaluatedSections * profile + capVertices, triangles: sideTriangles + capTriangles };
   }
   if (recipe.kind === 'csg') {
     return { vertices: MAX_RUNTIME_GEOMETRY_VERTICES, triangles: MAX_RUNTIME_GEOMETRY_TRIANGLES };
@@ -291,6 +296,7 @@ export function normalizeGeometryRecipe(resource = {}) {
     recipe.closedProfile = bool(source.closedProfile, defaults.closedProfile);
     recipe.capStart = bool(source.capStart, defaults.capStart);
     recipe.capEnd = bool(source.capEnd, defaults.capEnd);
+    recipe.capRings = integer(source.capRings, defaults.capRings, 0, 32);
     recipe.profileResolution = source.profileResolution == null
       ? null
       : integer(source.profileResolution, 8, 3, GEOMETRY_CONTROL_POINT_LIMITS.loftPointsPerSection);
@@ -316,6 +322,13 @@ export function normalizeGeometryRecipe(resource = {}) {
           } } : {}),
         }))
       : source.operands;
+    recipe.fairing = source.fairing ? {
+      points: clonePoints(source.fairing.points),
+      radius: finite(source.fairing.radius, 0),
+      iterations: integer(source.fairing.iterations, 4, 1, 16),
+      strength: boundedFinite(source.fairing.strength, 0.35, Number.EPSILON, 1, 'CSG fairing strength'),
+      continuity: source.fairing.continuity ?? 'curvature',
+    } : null;
   } else if (source.kind === 'shape' || source.kind === 'extrude') {
     recipe.points = clonePoints(source.points ?? source.contour ?? defaults.points);
     recipe.holes = cloneContours(recipe.holes);
@@ -694,13 +707,65 @@ function loftGeometry(THREE, recipe) {
       else indices.push(a, b, d, b, c, d);
     }
   }
-  if (closed && recipe.capStart !== false) {
+  const appendDenseCap = (sectionPoints, isStart) => {
+    const ringCount = integer(recipe.capRings, 0, 0, 32);
+    const center = sectionPoints.reduce(
+      (sum, point) => sum.map((value, axis) => value + point[axis] / profileSize), [0, 0, 0],
+    );
+    const spans = [0, 1, 2].map(axis => {
+      const values = sectionPoints.map(point => point[axis]);
+      return Math.max(...values) - Math.min(...values);
+    });
+    const uvAxes = [0, 1, 2].sort((a, b) => spans[b] - spans[a]).slice(0, 2);
+    const uvBounds = uvAxes.map(axis => {
+      const values = sectionPoints.map(point => point[axis]);
+      return [Math.min(...values), Math.max(...values)];
+    });
+    const capUv = point => uvAxes.map((axis, index) => {
+      const [minimum, maximum] = uvBounds[index];
+      return maximum - minimum > 1e-12 ? (point[axis] - minimum) / (maximum - minimum) : 0.5;
+    });
+    const rings = [];
+    for (let ring = 0; ring <= ringCount; ring += 1) {
+      const factor = 1 - ring / (ringCount + 1);
+      const start = positions.length / 3;
+      rings.push(start);
+      for (const point of sectionPoints) {
+        const value = center.map((component, axis) => component + (point[axis] - component) * factor);
+        positions.push(...value); uvs.push(...capUv(value));
+      }
+    }
+    for (let ring = 0; ring < ringCount; ring += 1) {
+      const outer = rings[ring]; const inner = rings[ring + 1];
+      for (let point = 0; point < profileSize; point += 1) {
+        const next = (point + 1) % profileSize;
+        const quad = [outer + point, outer + next, inner + point, outer + next, inner + next, inner + point];
+        const reverse = isStart ? !reverseWinding : reverseWinding;
+        if (reverse) indices.push(...quad.reverse()); else indices.push(...quad);
+      }
+    }
+    const centerIndex = positions.length / 3;
+    positions.push(...center); uvs.push(...capUv(center));
+    const inner = rings.at(-1);
+    for (let point = 0; point < profileSize; point += 1) {
+      const next = (point + 1) % profileSize;
+      const triangle = [inner + point, inner + next, centerIndex];
+      const reverse = isStart ? !reverseWinding : reverseWinding;
+      if (reverse) triangle.reverse();
+      indices.push(...triangle);
+    }
+  };
+  if (closed && recipe.capStart !== false && (recipe.capRings ?? 0) > 0) {
+    appendDenseCap(sections[0], true);
+  } else if (closed && recipe.capStart !== false) {
     for (let point = 1; point < profileSize - 1; point += 1) {
       if (reverseWinding) indices.push(0, point, point + 1);
       else indices.push(0, point + 1, point);
     }
   }
-  if (closed && recipe.capEnd !== false) {
+  if (closed && recipe.capEnd !== false && (recipe.capRings ?? 0) > 0) {
+    appendDenseCap(sections.at(-1), false);
+  } else if (closed && recipe.capEnd !== false) {
     const offset = (sections.length - 1) * profileSize;
     for (let point = 1; point < profileSize - 1; point += 1) {
       if (reverseWinding) indices.push(offset, offset + point + 1, offset + point);

@@ -275,6 +275,19 @@ test('loft v2 resamples named transformed rings, interpolates sections, and emit
   assert.ok(Math.max(...loft.attributes.position.array.filter((_, index) => index % 3 === 2)) >= 3);
 });
 
+test('dense loft caps add regular concentric topology without changing the default cap path', () => {
+  const sections = [
+    [[-1, 0, -1], [1, 0, -1], [1, 0, 1], [-1, 0, 1]],
+    [[-1, 1, -1], [1, 1, -1], [1, 1, 1], [-1, 1, 1]],
+  ];
+  const legacy = createGeometry(FAKE_THREE, { kind: 'loft', sections, capStart: true, capEnd: true });
+  const dense = createGeometry(FAKE_THREE, { kind: 'loft', sections, capStart: true, capEnd: true, capRings: 2 });
+  assert.equal(legacy.attributes.position.count, 8);
+  assert.equal(dense.attributes.position.count, 34);
+  assert.equal(dense.attributes.uv.count, dense.attributes.position.count);
+  assert.equal(dense.index.length / 3, 48);
+});
+
 test('guided lofts apply deterministic rails, local form modifiers, and continuity interpolation', () => {
   const baseSections = [
     [[-1, 0, -1], [1, 0, -1], [1, 0, 1], [-1, 0, 1]],
@@ -313,9 +326,16 @@ test('CSG recipes deterministically subtract, union, and intersect authored soli
       operands: [{ recipe: cube(0) }, { recipe: cube(0.75) }],
     });
     assert.ok(geometry.attributes.position.count >= 3, operation);
+    assert.equal(geometry.attributes.uv.count, geometry.attributes.position.count);
     assert.equal(geometry.normalsComputed, true);
     assert.equal(geometry.boundingBoxComputed, true);
   }
+  const faired = createGeometry(FAKE_THREE, {
+    kind: 'csg', operation: 'union', operands: [{ recipe: cube(0) }, { recipe: cube(0.75) }],
+    fairing: { points: [[0.25, -1, 0], [0.25, 1, 0]], radius: 1, iterations: 2, strength: 0.3, continuity: 'curvature' },
+  });
+  assert.ok(faired.index.length > 0);
+  assert.equal(faired.attributes.uv.count, faired.attributes.position.count);
   assert.throws(() => createGeometry(FAKE_THREE, {
     kind: 'csg', operation: 'xor', operands: [{ recipe: cube(0) }, { recipe: cube(1) }],
   }), /union, subtract, or intersect/u);

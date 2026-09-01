@@ -559,11 +559,21 @@ export class PlainformCompiler {
           interpretation.push(`Will rotate ${selection.ids.length} entities by ${angle.value} radians.`);
           continue;
         }
+        const scaleEachByAxis = statement.match(/^set the scale of (?:each|the) (.+?) to (\[.+\])$/iu);
+        if (scaleEachByAxis) {
+          const selection = transformSelection(context, project, scaleEachByAxis[1]);
+          const scale = vectorExpression(scaleEachByAxis[2], new Map(), 'scalar');
+          if (scale.some(value => value <= 0)) fail('plainform_invalid_scale', 'Every scale axis must be greater than zero.');
+          push({ op: 'entity.transformMany', entityIds: selection.ids, expectedEntitySetHash: selection.hash, mode: 'set', transform: { scale } });
+          interpretation.push(`Will set ${selection.ids.length} entity scales independently to [${scale.join(', ')}].`);
+          continue;
+        }
         const scaleEach = statement.match(/^set the scale of (?:each|the) (.+?) to (.+)$/iu);
         if (scaleEach) {
           const selection = transformSelection(context, project, scaleEach[1]);
           const scale = evaluatePlainformMath(scaleEach[2]);
           if (scale.dimension !== 'scalar') fail('plainform_dimension_mismatch', 'Scale must be dimensionless.');
+          if (scale.value <= 0) fail('plainform_invalid_scale', 'Scale must be greater than zero.');
           push({ op: 'entity.transformMany', entityIds: selection.ids, expectedEntitySetHash: selection.hash, mode: 'set', transform: { scale: [scale.value, scale.value, scale.value] } });
           interpretation.push(`Will set ${selection.ids.length} entity scales to ${scale.value}.`);
           continue;
@@ -849,10 +859,17 @@ export class PlainformCompiler {
                 delete transform.quaternion;
                 changed = true; continue;
               }
+              const scaleItByAxis = line.match(/^set its scale to (\[.+\])$/iu);
+              if (scaleItByAxis) {
+                const scale = vectorExpression(scaleItByAxis[1], variables, 'scalar');
+                if (scale.some(value => value <= 0)) fail('plainform_invalid_scale', 'Every scale axis must be greater than zero.');
+                transform.scale = scale; changed = true; continue;
+              }
               const scaleIt = line.match(/^set its scale uniformly to (.+)$/iu);
               if (scaleIt) {
                 const scale = evaluatePlainformMath(scaleIt[1], variables);
                 if (scale.dimension !== 'scalar') fail('plainform_dimension_mismatch', 'Scale must be dimensionless.');
+                if (scale.value <= 0) fail('plainform_invalid_scale', 'Scale must be greater than zero.');
                 transform.scale = [scale.value, scale.value, scale.value]; changed = true; continue;
               }
               const inheritShape = line.match(/^make it (.+?) as long and (.+?) as thick as its parent$/iu);

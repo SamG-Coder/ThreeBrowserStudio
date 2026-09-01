@@ -162,7 +162,10 @@ Object Plainform supports exact named entity references, named selections,
 spatial relations, transforms, bounded iteration, grouping, prefab creation
 and `$prefab-name` reuse, and face grids. Singular references and selections
 can both be transformed, for example `Move the tower up by 2 metres` and
-`Rotate each facade panel around y by 0.1 radians`.
+`Rotate each facade panel around y by 0.1 radians`. Set independent object
+scale axes with `Set the scale of the leaf to [1.4, 0.7, 0.25]`; inside a
+`For each` block, use `Set its scale to [x, y, z]`. Every axis must remain
+positive. The older `... scale uniformly to ...` wording remains supported.
 
 Design Plainform begins with `Design a <kind> called <name> with id <stable-id>`.
 For new spatial or manufactured designs, append `using the right-up-forward
@@ -173,8 +176,9 @@ The compiler owns the internal loft mapping and root transform, so never add a
 manual corrective rotation. Headers without the suffix retain the legacy
 XZ-profile/Y-loft behavior for compatibility.
 Use it for unit-checked parametric solids: named dimensions, bounded integer
-loops, trigonometric/easing expressions, exact box and rotatable cylinder
-primitives, arbitrary or symmetric smooth profiles, independently controlled
+loops, trigonometric/easing expressions, exact boxes, spheres, ellipsoids,
+capsules, cylinders, and tapered cylinders, arbitrary or symmetric smooth
+profiles, independently controlled
 loft sections, open guide curves, positional/tangent/curvature interpolation,
 bounded local bulge/pinch/offset shaping, bevelled profile extrusion, and
 deterministic union/subtract/intersect. For the remaining cross-object surface
@@ -189,6 +193,72 @@ top-level parameters, and boundary declarations in metadata. Use the full
 exact grammar and coordinate conventions in
 `skills/threebrowser-studio-mcp/references/plainform.md`; do not infer
 unsupported CAD verbs from open-ended prose.
+
+Rounded primitives use explicit anatomical/manufactured dimensions instead of
+post-hoc mesh distortion: spheres take a radius; ellipsoids take width, height,
+and depth; capsules take a radius and unambiguous `body length`; tapered
+cylinders take bottom radius, top radius, and height. They accept stable IDs,
+centres, rotations or semantic-axis alignment where meaningful, and the same
+optional material clause as boxes and cylinders.
+
+Guide binding is explicit when silhouette identity matters. Append `following
+point <one-based-index> of profile <name>` to a guide-curve declaration. The
+compiler validates the profile and stores the exact zero-based runtime
+`profileIndex`; a guide bound to one profile cannot silently guide another.
+Omitting the phrase preserves the compatible nearest-profile-point behavior.
+
+Closed lofts keep their legacy fan caps by default. For deformation-ready end
+surfaces, append `with <1..32> cap rings` before guide and continuity clauses.
+Studio duplicates the cap boundary, creates regular concentric rings plus a
+centre vertex, budgets the additional topology, and emits planar cap UVs while
+preserving longitudinal side UVs.
+
+Surface anchors store triangle/barycentric evidence and, whenever the source
+has deterministic coordinates, an interpolated `surfaceUv` parameter. Derived
+indexed deformations preserve these UVs. Sphere, cylinder, loft, hair-card,
+fair-union, and ordinary indexed results therefore remain usable by UV-driven
+skin/detail materials without an unrelated unwrap step.
+
+Refine an already named deterministic region with:
+
+`Subdivide the surface region cheek locally by 2 levels, then relax it for 4
+iterations with strength 35 percent.`
+
+The compiler selects region-centroid triangles, shares edge midpoints, limits
+refinement to four levels and 250,000 vertices, preserves UV interpolation,
+and holds the refinement boundary during bounded Laplacian relaxation.
+
+Intersecting generated parts may request a genuinely evaluated fair union:
+
+`Fair Nose Form into Head Shell over $nose-join within 12 millimetres,
+removing hidden intersecting surfaces, with curvature continuity.`
+
+This performs the bounded union, welds coincident output vertices, smooths only
+inside the named boundary radius with continuity-specific iterations, and
+generates deterministic planar UVs. It remains a bounded approximation, not a
+global NURBS solver; the named boundary and radius are mandatory.
+
+Create coordinated gaze without guessing two rotations independently:
+
+`Create a coordinated eye pair called Portrait Eyes with id entity/eyes,
+centred at [0 centimetres right, 3 centimetres up, 8 centimetres forward],
+separated by 7 centimetres, with eye width 3 centimetres, eye height 1.5
+centimetres, and eye depth 1.8 centimetres, looking at [0 centimetres right,
+3 centimetres up, 1 metre forward].`
+
+This creates a stable group, left/right ellipsoid meshes, and one hidden shared
+gaze-target entity referenced by both canonical `lookAt` constraints.
+
+Hair grooming consumes ordinary reusable guide curves:
+
+- `Groom a hair card called Fringe with id entity/fringe along guide fringe
+  path, with width 3 centimetres, tapering to 10 percent.`
+- `Groom a hair strand called Flyaway with id entity/flyaway along guide
+  flyaway path, with radius 0.6 millimetres.`
+
+Cards are bounded transported tapered ribbons with deterministic root-to-tip
+UVs. Strands are bounded six-sided tubes. Both accept the ordinary optional
+material clause and remain canonical geometry resources.
 
 Design Plainform can also annotate an existing project-owned surface without
 creating another mesh. `Create a surface curve called ... on ... through
@@ -290,7 +360,8 @@ smooth shading can soften lighting across faces but cannot repair a coarse
 silhouette. Prefer named relationships and measured placement over unrelated
 guessed world coordinates when parts must remain visually attached.
 Remember that controlled sections preserve one base profile's topology: author
-silhouette landmarks in that profile, use separate guides for their longitudinal
+silhouette landmarks in that profile, bind important guides to exact one-based
+profile points, use separate guides for their longitudinal
 paths, and state mirrored local modifiers on both sides. Prove booleans first on
 a low-complexity representative part such as a cylinder annulus.
 Loft statements accept the same optional `using material <material-id>` clause
