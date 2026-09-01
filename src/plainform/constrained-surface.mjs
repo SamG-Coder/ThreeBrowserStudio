@@ -249,8 +249,23 @@ function triangleMesh(recipe) {
   }
 }
 
+function withDeterministicUvs(mesh) {
+  if (!mesh || mesh.uvs) return mesh;
+  const extents = [0, 1, 2].map(axis => {
+    const values = mesh.positions.map(point => point[axis]); return { axis, minimum: Math.min(...values), maximum: Math.max(...values), extent: Math.max(...values) - Math.min(...values) };
+  }).sort((left, right) => right.extent - left.extent || left.axis - right.axis);
+  const [u, v] = extents;
+  return {
+    ...mesh,
+    uvs: mesh.positions.map(point => [
+      u.extent > 1e-12 ? (point[u.axis] - u.minimum) / u.extent : 0.5,
+      v.extent > 1e-12 ? (point[v.axis] - v.minimum) / v.extent : 0.5,
+    ]),
+  };
+}
+
 export function realizeSurfaceTriangles({ recipe, matrix, entityId }) {
-  const mesh = triangleMesh(recipe);
+  const mesh = withDeterministicUvs(triangleMesh(recipe));
   if (!mesh) {
     const error = new Error(`Semantic surface deformation is unavailable for ${recipe?.kind ?? 'unknown'} geometry on ${entityId}. Realize it to indexed or editable geometry first.`);
     error.code = 'plainform_surface_deformation_unavailable'; throw error;
@@ -268,7 +283,7 @@ export function realizeSurfaceTriangles({ recipe, matrix, entityId }) {
 }
 
 export function projectSurfaceAnchors({ recipe, matrix, seedPoints, entityId }) {
-  const mesh = triangleMesh(recipe);
+  const mesh = withDeterministicUvs(triangleMesh(recipe));
   if (!mesh) {
     const error = new Error(`Surface anchoring is unavailable for ${recipe?.kind ?? 'unknown'} geometry on ${entityId}. Realize it to indexed or editable geometry first.`);
     error.code = 'plainform_surface_anchor_unavailable'; throw error;
@@ -311,7 +326,7 @@ export function resolveParametricSurfaceAnchor({ recipe, matrix, anchor, entityI
     const error = new Error('A stable surface anchor requires a surfaceUv parametric coordinate.');
     error.code = 'plainform_parametric_anchor_required'; throw error;
   }
-  const mesh = triangleMesh(recipe);
+  const mesh = withDeterministicUvs(triangleMesh(recipe));
   if (!mesh?.uvs) {
     const error = new Error(`Regenerated surface ${entityId} has no deterministic UV parameterization.`);
     error.code = 'plainform_parametric_anchor_unavailable'; throw error;

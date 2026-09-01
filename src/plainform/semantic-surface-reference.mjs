@@ -1,5 +1,5 @@
 import { invertTransformMatrix, transformPointByMatrix } from '../core/transform-math.mjs';
-import { projectSurfaceAnchors } from './constrained-surface.mjs';
+import { projectSurfaceAnchors } from './evaluated-surface.mjs';
 
 const add = (left, right) => left.map((value, axis) => value + right[axis]);
 const subtract = (left, right) => left.map((value, axis) => value - right[axis]);
@@ -97,6 +97,9 @@ export function offsetSurfaceCurve({ owner, curve, distance, name, side = 'left'
     anchors: projected.map((anchor, index) => ({
       seedPoint: [...seedPoints[index]], projectedPoint: [...anchor.point], normal: [...anchor.normal],
       triangleIndex: anchor.triangleIndex, barycentric: [...anchor.barycentric],
+      ...(anchor.parametric ? { parametric: structuredClone(anchor.parametric) } : {}),
+      surface: structuredClone(anchor.surface), tangentFrame: structuredClone(anchor.tangentFrame),
+      health: structuredClone(anchor.health),
     })),
     projection: { kind: 'surfaceOffset', source: curve.name, distance: distance * sign, side },
   };

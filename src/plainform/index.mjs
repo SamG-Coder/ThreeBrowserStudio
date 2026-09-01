@@ -31,3 +31,4 @@ export {
   splitTriangleEdge,
   validateConformingTriangleMesh,
 } from './conforming-remesh.mjs';
+export { EvaluatedSurface, createEvaluatedSurface, inspectSurfaceAnchorHealth } from './evaluated-surface.mjs';

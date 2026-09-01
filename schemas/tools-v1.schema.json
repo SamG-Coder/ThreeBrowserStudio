@@ -157,7 +157,8 @@
               "lookCatalog",
               "lightingDigest",
               "plainformCatalog",
-              "plainformAst"
+              "plainformAst",
+              "anchorHealth"
             ]
           },
           "selector": {

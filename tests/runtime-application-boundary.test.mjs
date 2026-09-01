@@ -1743,6 +1743,15 @@ test('three_studio_apply commits surface anchors, four boundary controls, and so
   assert.equal(patch.metadata.plainformDesign.sourceTangency, true);
   assert.equal(patch.recipe.sections.length, 4);
   assert.equal(patch.recipe.continuity, 'positional');
+  const health = await application.dispatch('three_studio_inspect', {
+    protocolVersion: 'three-studio/1', sessionId: application.sessionId,
+    projectId: 'project/active', query: 'anchorHealth',
+    selector: { ids: ['entity/runtime-surface-constraints'] }, limit: 20,
+  });
+  assert.equal(health.success, true);
+  assert.equal(health.total, 6);
+  assert.ok(health.anchors.every(anchor => anchor.health.status === 'projected'));
+  assert.ok(health.anchors.every(anchor => anchor.surface.id === anchor.ownerEntityId));
 });
 
 test('three_studio_apply persists surface curves and semantic regions through the kernel', async (t) => {

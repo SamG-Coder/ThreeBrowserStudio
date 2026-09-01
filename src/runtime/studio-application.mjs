@@ -2121,6 +2121,7 @@ export class StudioApplication {
         lightingDigest: true,
         plainformCatalog: true,
         plainformAst: true,
+        anchorHealth: true,
         persistentPlainformDesigns: true,
         loftSectionDigest: true,
         materialLookPatch: true,
@@ -2813,6 +2814,23 @@ export class StudioApplication {
             return summary;
           }),
         },
+      };
+    }
+    if (params.query === 'anchorHealth') {
+      const entityId = params.selector.ids[0]; const { entity } = new ProjectIndex(document).getEntity(entityId);
+      const design = entity.metadata?.plainformDesign ?? {};
+      const references = [...(design.boundaries ?? []), ...(design.surfaceCurves ?? [])];
+      const anchors = references.flatMap(reference => (reference.anchors ?? []).map((anchor, index) => ({
+        reference: reference.name,
+        ownerEntityId: reference.ownerEntityId,
+        index,
+        surface: anchor.surface ?? null,
+        parametric: anchor.parametric ?? null,
+        health: anchor.health ?? { status: anchor.parametric ? 'remapped' : 'projected', distance: null },
+      })));
+      return {
+        success: true, revision: document.revision, entityId,
+        total: anchors.length, anchors: anchors.slice(0, params.limit), truncated: anchors.length > params.limit,
       };
     }
     if (params.query === 'lightingDigest') return {

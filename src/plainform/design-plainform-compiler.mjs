@@ -5,9 +5,9 @@ import { composeTransformMatrix, relativeEntityTransform, transformPointByMatrix
 import {
   buildConstrainedPatchSections,
   matchBoundaryDirection,
-  projectSurfaceAnchors,
   realizeSurfaceTriangles,
 } from './constrained-surface.mjs';
+import { projectSurfaceAnchors } from './evaluated-surface.mjs';
 import { SemanticSurfaceRegistry } from './semantic-surface.mjs';
 import { deformAlongSurfaceCurve, deformSurfaceRegion } from './semantic-surface-deformation.mjs';
 import { shellSurface } from './semantic-surface-shell.mjs';
@@ -446,6 +446,9 @@ export class DesignPlainformCompiler {
       seedPoint: [...seedPoint], projectedPoint: [...anchor.point], normal: [...anchor.normal],
       triangleIndex: anchor.triangleIndex, barycentric: [...anchor.barycentric],
       ...(anchor.parametric ? { parametric: structuredClone(anchor.parametric) } : {}),
+      ...(anchor.surface ? { surface: structuredClone(anchor.surface) } : {}),
+      ...(anchor.tangentFrame ? { tangentFrame: structuredClone(anchor.tangentFrame) } : {}),
+      ...(anchor.health ? { health: structuredClone(anchor.health) } : {}),
     });
     const unitRecipe = primitiveKind => {
       switch (primitiveKind) {
@@ -2198,6 +2201,9 @@ export class DesignPlainformCompiler {
                 seedPoint: [...anchor.seedPoint], projectedPoint: [...anchor.projectedPoint], normal: [...anchor.normal],
                 triangleIndex: anchor.triangleIndex, barycentric: [...anchor.barycentric],
                 ...(anchor.parametric ? { parametric: structuredClone(anchor.parametric) } : {}),
+                ...(anchor.surface ? { surface: structuredClone(anchor.surface) } : {}),
+                ...(anchor.tangentFrame ? { tangentFrame: structuredClone(anchor.tangentFrame) } : {}),
+                ...(anchor.health ? { health: structuredClone(anchor.health) } : {}),
               })),
             } : {}),
           })),

@@ -447,6 +447,9 @@ Create a constrained surface patch called Lid with id entity/lid between $brow-r
     assert.equal(boundary.anchors.length, 3);
     assert.ok(boundary.anchors.every(anchor => Number.isInteger(anchor.triangleIndex)));
     assert.ok(boundary.anchors.every(anchor => Math.abs(anchor.barycentric.reduce((sum, value) => sum + value, 0) - 1) < 1e-9));
+    assert.ok(boundary.anchors.every(anchor => anchor.surface.id === boundary.ownerEntityId));
+    assert.ok(boundary.anchors.every(anchor => anchor.health.status === 'projected'));
+    assert.ok(boundary.anchors.every(anchor => Math.abs(Math.hypot(...anchor.tangentFrame.normal) - 1) < 1e-9));
   }
   const patchResource = compiled.operations[0].items
     .find(item => item.resource.metadata?.plainformDesign?.primitive === 'surfacePatch').resource;

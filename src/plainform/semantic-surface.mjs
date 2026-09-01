@@ -9,6 +9,9 @@ function cloneAnchor(anchor) {
     triangleIndex: anchor.triangleIndex,
     barycentric: [...anchor.barycentric],
     ...(anchor.parametric ? { parametric: structuredClone(anchor.parametric) } : {}),
+    ...(anchor.surface ? { surface: structuredClone(anchor.surface) } : {}),
+    ...(anchor.tangentFrame ? { tangentFrame: structuredClone(anchor.tangentFrame) } : {}),
+    ...(anchor.health ? { health: structuredClone(anchor.health) } : {}),
   };
 }
 

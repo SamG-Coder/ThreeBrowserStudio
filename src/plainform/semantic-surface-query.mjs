@@ -1,4 +1,5 @@
-import { projectSurfaceAnchors, realizeSurfaceTriangles } from './constrained-surface.mjs';
+import { realizeSurfaceTriangles } from './constrained-surface.mjs';
+import { projectSurfaceAnchors } from './evaluated-surface.mjs';
 
 const subtract = (left, right) => left.map((value, axis) => value - right[axis]);
 const dot = (left, right) => left.reduce((sum, value, axis) => sum + value * right[axis], 0);

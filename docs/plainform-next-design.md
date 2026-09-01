@@ -2,7 +2,7 @@
 
 Status: proposed contributor design
 
-Implementation progress: Stages 0–3 are live. Studio tokenizes
+Implementation progress: Stages 0–4 are live. Studio tokenizes
 exact source spans, classifies a representative typed AST through a statement
 registry, exposes `plainformCatalog` and `plainformAst` through the existing
 inspect tool, and explicitly marks unmigrated sentences as legacy fallbacks.
@@ -14,7 +14,11 @@ now creates deterministic conforming transition triangles, preserves and
 remaps vertex/detail attributes, constrains region boundaries, tangentially
 relaxes and reprojects to the source surface, and records manifold, winding,
 triangle-quality, face-set, and anchor-drift evidence. Later stages remain
-proposals.
+The shared evaluated-surface contract now supplies deterministic UVs, position,
+normal and tangent frames, semantic ancestry, bounded reprojection, and explicit
+`exact`, `remapped`, `projected`, or `broken` anchor health. `anchorHealth`
+exposes retained anchor status through the existing inspect tool. Later stages
+remain proposals.
 
 This document defines a staged extension of Plainform. It is not a statement
 that every capability described here is already available. Live

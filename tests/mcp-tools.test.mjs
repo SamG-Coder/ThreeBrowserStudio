@@ -262,7 +262,7 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
     'unresolvedResources', 'unusedResources', 'graphCatalog', 'playState',
     'latestEvidence', 'blenderCatalog', 'beautyDigest', 'projectVisibility',
     'operationCatalog', 'geometryCatalog', 'lookCatalog', 'lightingDigest',
-    'plainformCatalog', 'plainformAst',
+    'plainformCatalog', 'plainformAst', 'anchorHealth',
   ]);
   assert.deepEqual(OPERATION_TYPES, [
     'scene.create', 'scene.patch', 'scene.delete', 'scene.clear', 'scene.setActive',
@@ -349,6 +349,7 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
   assert.equal(TOOL_CONTRACT.features.lightingDigest, true);
   assert.equal(TOOL_CONTRACT.features.plainformCatalog, true);
   assert.equal(TOOL_CONTRACT.features.plainformAst, true);
+  assert.equal(TOOL_CONTRACT.features.anchorHealth, true);
   assert.equal(TOOL_CONTRACT.features.persistentPlainformDesigns, true);
   assert.equal(operationSchema.safeParse({
     op: 'plainform.design.create', designId: 'design/tree', source: 'Design a tree called Tree with id entity/tree.',

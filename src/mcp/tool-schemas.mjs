@@ -122,6 +122,7 @@ export const INSPECT_QUERIES = Object.freeze([
   'latestEvidence', 'blenderCatalog', 'beautyDigest', 'projectVisibility',
   'operationCatalog', 'geometryCatalog', 'lookCatalog', 'lightingDigest',
   'plainformCatalog', 'plainformAst',
+  'anchorHealth',
 ]);
 
 const inspectProbeSchema = z.object({
@@ -199,7 +200,7 @@ export const inspectSchema = z.object({
   preset: z.enum(['summary', 'authoring', 'full']).optional().default('full'),
   ...responseProjectionFields,
 }).strict().superRefine((value, context) => {
-  if (['meshElements', 'meshSelection', 'meshQuality', 'graphDigest', 'modifierDigest'].includes(value.query) && value.selector?.ids?.length !== 1) {
+  if (['meshElements', 'meshSelection', 'meshQuality', 'graphDigest', 'modifierDigest', 'anchorHealth'].includes(value.query) && value.selector?.ids?.length !== 1) {
     context.addIssue({
       code: 'custom',
       path: ['selector', 'ids'],
@@ -1713,6 +1714,7 @@ const TOOL_CONTRACT_FEATURES = Object.freeze({
   lightingDigest: true,
   plainformCatalog: true,
   plainformAst: true,
+  anchorHealth: true,
   persistentPlainformDesigns: true,
   sameTransactionCameraFrame: true,
   cameraDistanceScale: true,
