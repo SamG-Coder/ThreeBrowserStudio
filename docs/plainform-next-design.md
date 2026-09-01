@@ -1,35 +1,21 @@
 # Plainform next: persistent natural-language design
 
-Status: proposed contributor design
+Status: implemented contributor contract
 
-Implementation progress: Stages 0–4 are live. Studio tokenizes
-exact source spans, classifies a representative typed AST through a statement
-registry, exposes `plainformCatalog` and `plainformAst` through the existing
-inspect tool, and explicitly marks unmigrated sentences as legacy fallbacks.
-Versioned `plainformDesign` assets now retain source, AST, parameters,
-dependencies, output hashes, ownership, and lowering-plan identity. Guarded
-create, patch, regenerate, detach, and conflict-resolution operations lower
-atomically through the existing apply tool. Local semantic-region refinement
-now creates deterministic conforming transition triangles, preserves and
-remaps vertex/detail attributes, constrains region boundaries, tangentially
-relaxes and reprojects to the source surface, and records manifold, winding,
-triangle-quality, face-set, and anchor-drift evidence. Later stages remain
-The shared evaluated-surface contract now supplies deterministic UVs, position,
-normal and tangent frames, semantic ancestry, bounded reprojection, and explicit
-`exact`, `remapped`, `projected`, or `broken` anchor health. `anchorHealth`
-exposes retained anchor status through the existing inspect tool. Later stages
-Stage 5's bounded transition solver is also live for deterministic loop
-correspondence, G0/G1 targets, iteration budgets, and area, inversion, tangent,
-boundary-deviation, and local-grid intersection evidence. Legacy curvature
-wording is explicitly reported as a bounded G1 approximation until source
-curvature tensors can prove G2; it is never silently labelled as achieved G2.
-Stage 6 now recognizes a mature mountain-pine description and builds a seeded,
-bounded semantic skeleton before geometry. Trunk, whorl, major-branch, and
-second-order paths use stable IDs; height, age, seed, envelope, sparse-side,
-tropism, taper, collar, deadwood, and asymmetry data remain canonical, while a
-growth report exposes tiers, path/order counts, envelope, and estimated
-triangles during preview. Structural paths are separate from the Stage 7
-foliage layer. Later stages remain proposals.
+Implementation progress: Stages 0–12 are live. Studio has a tokenized,
+source-spanned typed front end with explicit legacy fallbacks; versioned and
+guarded design assets; deterministic local refinement, evaluated surfaces,
+anchors, and bounded transition solving; seeded botanical skeletons; groom and
+pine-needle fields; guarded semantic shader editing; executable event sheets;
+one retained form contract for native and browser hosts; semantic hero-shot
+composition; and eight pinned no-GPU regression designs. Authored changes still
+lower through the existing coarse MCP tools and the canonical project kernel.
+
+The ordinary test gate pins AST meaning, dependency topology, semantic
+identity, operation hashes, topology and budget metrics, and approved evidence
+views. Native GPU visual acceptance remains the separate runtime exercise
+defined in Stage 12; image similarity supports that review but does not replace
+the document, topology, validation, or identity gates.
 
 This document defines a staged extension of Plainform. It is not a statement
 that every capability described here is already available. Live
