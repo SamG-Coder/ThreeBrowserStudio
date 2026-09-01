@@ -624,11 +624,15 @@ backward. Dedicated diff and revision-compare actions are not exposed.
 
 ### 9. `three_studio_job`
 
-This is an explicit reserved slot so the nine-tool topology need not change.
-It currently exposes no start/inspect/cancel action and returns
-`job_not_implemented`; `status.capabilities.jobs` is false. Asset import,
-texture/mesh bakes, reconstruction, lightmaps, and packaging are future job
-kinds, not callable operations.
+The ninth slot exposes bounded, typed jobs without admitting a generic process
+runner. `textureBake` deterministically compiles one procedural graph output
+through the guarded kernel. `sceneExport` writes an active scene or exact
+entity subtree as glTF/GLB. When a machine-local rehearsal root is configured,
+`rehearsalRun` invokes exactly `tools/rehearsal-sidecar/src/cli.mjs` with
+`shell: false`, a minimal environment, and a repository-relative run-spec path;
+the response is reduced to verified bundle evidence. Arbitrary commands,
+reconstruction, lightmaps, mesh bakes, whole-project/application export, and
+packaging remain unavailable.
 
 ## Shared request and response contract
 
@@ -637,7 +641,8 @@ an idempotency key, and a human-readable label. Undo/redo, non-query Play
 controls, and project mutations carry the correlation fields required by their
 schemas; project create/open have no meaningful prior project revision. Read
 actions accept the bounded connection/target fields declared by their own
-schemas. There is currently no long-running job request.
+schemas. Jobs carry the same exact project, revision, and idempotency guards as
+other stateful requests and honor bridge cancellation.
 
 Responses are action-specific. Committed `apply`/undo/redo responses include
 the revision, transaction ID, resolved IDs, changed/deleted IDs, compact diff,

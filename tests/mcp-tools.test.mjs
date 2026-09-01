@@ -145,7 +145,7 @@ test('checked-in JSON contract is generated exactly from compact live schemas', 
   }));
   const encoder = new TextEncoder();
   assert.ok(encoder.encode(JSON.stringify(TOOL_INPUT_SCHEMAS.three_studio_apply)).byteLength <= 73_000);
-  assert.ok(encoder.encode(JSON.stringify(TOOL_INPUT_SCHEMAS)).byteLength <= 85_000);
+  assert.ok(encoder.encode(JSON.stringify(TOOL_INPUT_SCHEMAS)).byteLength <= 86_000);
 });
 
 test('modifier schemas expose every strict per-type control and mirror the checked-in contract', async () => {
@@ -273,7 +273,8 @@ test('MCP contract exposes only the live inspect and mutation slice', () => {
     'lighting.rig.create',
     'modifier.create', 'modifier.patch', 'modifier.move', 'modifier.delete', 'modifier.stack.edit',
     'geometry.edit', 'geometry.realize', 'geometry.loft.edit', 'geometry.selection.edit',
-    'material.variant.create', 'material.look.create', 'material.look.patch',
+  'material.variant.create', 'material.look.create', 'material.look.patch',
+  'artifact.json.patch',
     'resource.create', 'resource.createMany', 'resource.patch', 'resource.delete',
   ]);
   assert.equal(inspectSchema.safeParse({ query: 'selector', selector: { tag: 'hero' }, include: ['tree', 'transform', 'bounds', 'references'] }).success, true);
@@ -601,6 +602,73 @@ test('project, play, and history mutation actions require correlation metadata',
     action: 'sceneExport', projectId: 'project/demo', format: 'fbx', baseRevision: 4,
     idempotencyKey: 'export-car-0002', label: 'Export unsupported',
   }).success, false);
+});
+
+test('project artifact exchange requires revision, content, and destination guards', () => {
+  const common = {
+    protocolVersion: 'three-studio/1',
+    sessionId: 'live-session',
+    projectId: 'project/demo',
+    baseRevision: 3,
+    idempotencyKey: 'artifact-exchange-1',
+    label: 'Exchange the rehearsal artifact',
+  };
+  assert.equal(projectSchema.safeParse({
+    ...common,
+    action: 'artifactImport',
+    path: 'examples/hero-chamber.labyrinth.json',
+    artifactId: 'artifact/hero-chamber',
+    schemaId: 'project-labyrinth/labyrinth-spec@0.1.0',
+    expectedFileSha256: 'a'.repeat(64),
+  }).success, true);
+  assert.equal(projectSchema.safeParse({
+    ...common,
+    action: 'artifactExport',
+    path: 'examples/hero-chamber.labyrinth.json',
+    artifactId: 'artifact/hero-chamber',
+    expectedArtifactHash: 'b'.repeat(64),
+    expectedFileSha256: 'a'.repeat(64),
+  }).success, true);
+  assert.equal(projectSchema.safeParse({
+    ...common,
+    action: 'artifactExport',
+    path: '../outside.json',
+    artifactId: 'artifact/hero-chamber',
+    expectedArtifactHash: 'b'.repeat(64),
+  }).success, false);
+});
+
+test('artifact JSON patches are exact guarded replacements in the existing apply tool', () => {
+  const result = applySchema.safeParse({
+    protocolVersion: 'three-studio/1',
+    sessionId: 'live-session',
+    projectId: 'project/demo',
+    baseRevision: 3,
+    idempotencyKey: 'artifact-patch-1',
+    label: 'Move the split-link shuttle',
+    operations: [{
+      op: 'artifact.json.patch',
+      artifactId: 'artifact/hero-chamber',
+      pointer: '/poses/2/overrides/0/transform/position/0',
+      value: 7,
+      expectedArtifactHash: 'b'.repeat(64),
+    }],
+  });
+  assert.equal(result.success, true);
+});
+
+test('rehearsal jobs accept only a repository-relative run-spec reference', () => {
+  const common = {
+    action: 'rehearsalRun',
+    projectId: 'project/demo',
+    runSpecReference: 'run-specs/p1-hero-chamber.run.json',
+    baseRevision: 3,
+    idempotencyKey: 'rehearsal-run-1',
+    label: 'Run the authoritative rehearsal',
+  };
+  assert.equal(jobSchema.safeParse(common).success, true);
+  assert.equal(jobSchema.safeParse({ ...common, runSpecReference: '../escape.json' }).success, false);
+  assert.equal(jobSchema.safeParse({ ...common, command: 'pwsh -File anything.ps1' }).success, false);
 });
 
 test('registered handler forwards exact tool name and cancellation signal', async () => {

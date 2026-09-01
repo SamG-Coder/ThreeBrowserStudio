@@ -161,6 +161,8 @@ Use it only after both status and the current tool schema expose it.
 - `three_studio_job` `sceneExport` writes a Three.js-loadable glTF/GLB of the
   active scene or an exact entity subtree. Shader-graph looks export as authored
   PBR factors (and a bound albedo map when present), not compiled TSL.
+- A configured `three_studio_job` `rehearsalRun` is not a command runner:
+  provide only its repository-relative run-spec path.
 - Create with `template: "blank"` for an empty scene. Use `scene.clear` with
   the inspected `sceneHash` to wipe the current scene without the starter
   composition. `template: "starter"` remains the optional lit primitive stage.
@@ -377,8 +379,10 @@ operations.
 
 - Use project-relative logical asset IDs, never arbitrary absolute paths in
   scene documents.
-- Asset import jobs are unavailable in the current slice; do not place
-  arbitrary absolute paths into a project as a workaround.
+- General asset import jobs are unavailable. The project tool may exchange a
+  schema- and hash-guarded JSON artifact beneath the configured rehearsal root;
+  do not place absolute paths into a project or use this seam for arbitrary
+  files.
 - Record source, license/provenance, colour role, and importer settings.
 - Do not overwrite a user-authored script or asset without inspecting it and
   making the replacement explicit in the transaction label.

@@ -2,13 +2,15 @@ import { spawn } from "node:child_process";
 import { rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveRuntimeRoot } from "./runtime-path.mjs";
+import { readStudioLocalConfig, resolveRuntimeRoot } from "./runtime-path.mjs";
 import { defaultSessionMarkerPath, readSessionMarker } from "../src/bridge/index.mjs";
 
 const studioRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const entry = path.join(studioRoot, "site-entry.mjs");
+const localConfig = await readStudioLocalConfig({ studioRoot });
 const runtime = await resolveRuntimeRoot({ studioRoot });
 const projectArgument = process.argv.slice(2).find(argument => !argument.startsWith("--"));
+const rehearsalRoot = process.env.THREE_STUDIO_REHEARSAL_ROOT || localConfig.rehearsalRoot;
 
 console.error(`[ThreeBrowser Studio] runtime: ${runtime.root}`);
 console.error(`[ThreeBrowser Studio] entry: ${entry}`);
@@ -19,6 +21,7 @@ const child = spawn(process.execPath, [runtime.launcher, entry], {
     ...process.env,
     THREE_STUDIO_ROOT: studioRoot,
     ...(projectArgument ? { THREE_STUDIO_PROJECT: path.resolve(projectArgument) } : {}),
+    ...(rehearsalRoot ? { THREE_STUDIO_REHEARSAL_ROOT: rehearsalRoot } : {}),
   },
   stdio: "inherit",
   windowsHide: false,

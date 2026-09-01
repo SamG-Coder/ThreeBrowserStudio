@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -304,7 +305,7 @@ async function saveProject(projectRoot, document) {
   await new AtomicProjectStore(projectRoot).save(document);
 }
 
-async function applicationFixture(t, { document } = {}) {
+async function applicationFixture(t, { document, environment = {} } = {}) {
   const studioRoot = await mkdtemp(path.join(os.tmpdir(), 'three-studio-app-boundary-'));
   const activeRoot = path.join(studioRoot, 'projects', 'active');
   await saveProject(activeRoot, document ?? createProjectDocument({
@@ -312,8 +313,6 @@ async function applicationFixture(t, { document } = {}) {
     name: 'Active',
   }));
 
-  const previousStudioRoot = process.env.THREE_STUDIO_ROOT;
-  process.env.THREE_STUDIO_ROOT = studioRoot;
   const THREE = fakeThree();
   const TSL = fakeTsl();
   const viewport = fakeViewport();
@@ -322,9 +321,8 @@ async function applicationFixture(t, { document } = {}) {
     TSL,
     viewport,
     markerPath: path.join(studioRoot, 'session', 'live-session.json'),
+    environment: { ...process.env, THREE_STUDIO_ROOT: studioRoot, ...environment },
   });
-  if (previousStudioRoot === undefined) delete process.env.THREE_STUDIO_ROOT;
-  else process.env.THREE_STUDIO_ROOT = previousStudioRoot;
 
   t.after(async () => {
     await application.dispose();
@@ -478,6 +476,121 @@ test('project creation cannot escape the managed root or overwrite a populated d
     rejectsWithCode('project_destination_not_empty'),
   );
   assert.equal(await readFile(sentinelPath, 'utf8'), 'user-owned');
+});
+
+test('project artifact actions import, revision-edit, export, save, and reload canonical JSON', async (t) => {
+  const repositoryRoot = await mkdtemp(path.join(os.tmpdir(), 'three-studio-rehearsal-root-'));
+  t.after(() => rm(repositoryRoot, { recursive: true, force: true }));
+  await mkdir(path.join(repositoryRoot, 'examples'));
+  const reference = 'examples/hero-chamber.labyrinth.json';
+  const sourcePath = path.join(repositoryRoot, ...reference.split('/'));
+  const original = '{\n  "schemaVersion": "0.1.0",\n  "poses": [{"id":"split-link","position":[6,0,0]}],\n  "validation": {"maxModules":32}\n}\n';
+  const sha256 = value => createHash('sha256').update(value).digest('hex');
+  await writeFile(sourcePath, original);
+  const { application, activeRoot } = await applicationFixture(t, {
+    environment: { THREE_STUDIO_REHEARSAL_ROOT: repositoryRoot },
+  });
+
+  const imported = await application.dispatch('three_studio_project', {
+    action: 'artifactImport',
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    baseRevision: 0,
+    path: reference,
+    artifactId: 'artifact/hero-chamber',
+    schemaId: 'project-labyrinth/labyrinth-spec@0.1.0',
+    expectedFileSha256: sha256(original),
+    idempotencyKey: 'artifact-import-0001',
+    label: 'Import the hero chamber manifest',
+  });
+  assert.equal(imported.revision, 1);
+  const artifact = application.kernel.document.resources.assets['artifact/hero-chamber'];
+  assert.equal(artifact.document.poses[0].position[0], 6);
+
+  const edited = await application.dispatch('three_studio_apply', {
+    protocolVersion: 'three-studio/1',
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    baseRevision: 1,
+    idempotencyKey: 'artifact-edit-0001',
+    label: 'Move the split-link shuttle',
+    operations: [{
+      op: 'artifact.json.patch',
+      artifactId: 'artifact/hero-chamber',
+      pointer: '/poses/0/position/0',
+      value: 7,
+      expectedArtifactHash: contentHash(artifact),
+    }],
+  });
+  assert.equal(edited.revision, 2);
+  const editedArtifact = application.kernel.document.resources.assets['artifact/hero-chamber'];
+
+  const exported = await application.dispatch('three_studio_project', {
+    action: 'artifactExport',
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    baseRevision: 2,
+    path: reference,
+    artifactId: 'artifact/hero-chamber',
+    expectedArtifactHash: contentHash(editedArtifact),
+    expectedFileSha256: sha256(original),
+    idempotencyKey: 'artifact-export-0001',
+    label: 'Export the edited hero chamber manifest',
+  });
+  assert.equal(exported.revision, 2);
+  assert.equal(await readFile(sourcePath, 'utf8'), original.replace('[6,0,0]', '[7,0,0]'));
+
+  await application.dispatch('three_studio_project', {
+    action: 'save', sessionId: application.sessionId, projectId: 'project/active', baseRevision: 2,
+    idempotencyKey: 'artifact-save-0001', label: 'Save the artifact-bearing project',
+  });
+  const persisted = await new AtomicProjectStore(activeRoot).load();
+  assert.equal(persisted.document.resources.assets['artifact/hero-chamber'].document.poses[0].position[0], 7);
+});
+
+test('rehearsalRun job invokes the fixed sidecar and advertises scene export plus the configured rehearsal kind', async (t) => {
+  const repositoryRoot = await mkdtemp(path.join(os.tmpdir(), 'three-studio-rehearsal-job-'));
+  t.after(() => rm(repositoryRoot, { recursive: true, force: true }));
+  const cliRoot = path.join(repositoryRoot, 'tools', 'rehearsal-sidecar', 'src');
+  await mkdir(cliRoot, { recursive: true });
+  await writeFile(path.join(cliRoot, 'cli.mjs'), `
+    import { createInterface } from 'node:readline';
+    createInterface({ input: process.stdin, crlfDelay: Infinity }).once('line', line => {
+      const request = JSON.parse(line);
+      process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: request.id, result: {
+        runId: 'run-from-studio', exitCode: 0, reason: 'completed',
+        bundle: { bundleId: 'a'.repeat(64), manifest: {
+          outcome: 'passed', git: { commit: 'b'.repeat(40), dirty: false },
+          source: { path: 'examples/hero.json', sha256: 'c'.repeat(64) },
+          stateDigest: { algorithm: 'SHA-256', digest: 'd'.repeat(64) },
+          assertions: [{ id: 'game.assertion', owner: 'game', passed: true }],
+          captures: [{ path: 'captures/tick-0.png', sha256: 'e'.repeat(64), requestedAuthoritativeTick: 0, presentedAuthoritativeTick: 0 }]
+        } }
+      } }) + '\\n');
+    });
+  `);
+  const { application } = await applicationFixture(t, {
+    environment: { THREE_STUDIO_REHEARSAL_ROOT: repositoryRoot },
+  });
+  const status = await application.dispatch('three_studio_status', { preset: 'full' });
+  assert.deepEqual(status.capabilities.jobKinds, ['textureBake', 'sceneExport', 'rehearsalRun']);
+  assert.equal(status.capabilities.rehearsal.configured, true);
+
+  const result = await application.dispatch('three_studio_job', {
+    action: 'rehearsalRun',
+    sessionId: application.sessionId,
+    projectId: 'project/active',
+    runSpecReference: 'run-specs/p1-hero-chamber.run.json',
+    baseRevision: 0,
+    idempotencyKey: 'rehearsal-job-0001',
+    label: 'Run the authoritative rehearsal',
+  });
+  assert.equal(result.success, true);
+  assert.equal(result.revision, 0);
+  assert.equal(result.job.action, 'rehearsalRun');
+  assert.equal(result.job.runId, 'run-from-studio');
+  assert.equal(result.job.bundle.bundleId, 'a'.repeat(64));
+  assert.equal(Object.hasOwn(result.job, 'stagingDirectory'), false);
 });
 
 test('project-scoped requests reject a mismatched stable project ID', async (t) => {
