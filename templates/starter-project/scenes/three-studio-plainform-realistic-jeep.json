@@ -1,0 +1,5901 @@
+{
+  "kind": "ThreeStudioProjectPack",
+  "protocolVersion": "three-studio/1",
+  "formatVersion": 1,
+  "exportedAt": "2026-09-02T05:01:04.000Z",
+  "document": {
+    "kind": "ThreeStudioProject",
+    "protocolVersion": "three-studio/1",
+    "formatVersion": 1,
+    "projectId": "project/plainform-realistic-jeep-20260902",
+    "name": "Plainform Realistic Jeep",
+    "revision": 13,
+    "savedRevision": 13,
+    "activeSceneId": "scene/main",
+    "sceneOrder": [
+      "scene/main"
+    ],
+    "scenes": {
+      "scene/main": {
+        "id": "scene/main",
+        "name": "Main Scene",
+        "rootEntityIds": [
+          "entity/jeep/ground",
+          "camera/jeep-hero",
+          "entity/lighting/jeep-outdoor",
+          "entity/jeep",
+          "entity/jeep/front-axle",
+          "entity/jeep/rear-axle",
+          "entity/jeep/spare-carrier",
+          "entity/jeep/steering-column",
+          "entity/jeep/steering-pivot",
+          "entity/jeep-details",
+          "camera/jeep-cabin",
+          "camera/jeep-front"
+        ],
+        "entities": {
+          "entity/jeep/ground": {
+            "id": "entity/jeep/ground",
+            "kind": "mesh",
+            "name": "Packed Dirt Ground",
+            "parentId": null,
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                -1.5707963267948966,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/jeep/ground",
+                "materialId": "material/jeep/ground",
+                "castShadow": false,
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "camera/jeep-hero": {
+            "id": "camera/jeep-hero",
+            "kind": "perspectiveCamera",
+            "name": "Jeep Hero Camera",
+            "parentId": null,
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                7.526892774379578,
+                2.49931540291801,
+                5.290070426926463
+              ],
+              "rotation": [
+                -0.2706289384261059,
+                0.9323556096865879,
+                0.2192078496199007
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "camera": {
+                "fov": 38,
+                "near": 3.269955971768854,
+                "far": 21.579574738431425,
+                "aspect": 1.7777777777777777,
+                "presentationAspect": 1.7777777777777777,
+                "framing": {
+                  "fit": "contain",
+                  "aspect": 1.7777777777777777,
+                  "padding": 1.16,
+                  "direction": [
+                    -0.8030259790488277,
+                    -0.15931820661424598,
+                    -0.5742534161969715
+                  ],
+                  "distance": 9.373162227323045,
+                  "radius": 3.051603127777095,
+                  "lockPreviewAspect": true,
+                  "bounds": {
+                    "min": [
+                      -1.11,
+                      1.3113021724020513e-8,
+                      -2.255000005364418
+                    ],
+                    "max": [
+                      1.11,
+                      2.012,
+                      2.07
+                    ]
+                  },
+                  "targetIds": [
+                    "entity/jeep",
+                    "entity/jeep-details",
+                    "entity/jeep/front-axle",
+                    "entity/jeep/rear-axle",
+                    "entity/jeep/spare-carrier"
+                  ]
+                }
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/lighting/jeep-outdoor": {
+            "id": "entity/lighting/jeep-outdoor",
+            "kind": "group",
+            "name": "outdoor lighting rig",
+            "parentId": null,
+            "children": [
+              "entity/lighting/jeep-outdoor/sky",
+              "entity/lighting/jeep-outdoor/sun"
+            ],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {},
+            "tags": [
+              "lighting",
+              "lighting-rig"
+            ],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/lighting/jeep-outdoor/sky": {
+            "id": "entity/lighting/jeep-outdoor/sky",
+            "kind": "hemisphereLight",
+            "name": "Outdoor sky fill",
+            "parentId": "entity/lighting/jeep-outdoor",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "light": {
+                "color": [
+                  0.55,
+                  0.72,
+                  1
+                ],
+                "groundColor": [
+                  0.18,
+                  0.14,
+                  0.09
+                ],
+                "intensity": 0.7875000000000001,
+                "castShadow": false
+              }
+            },
+            "tags": [
+              "lighting",
+              "rig-outdoor"
+            ],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/lighting/jeep-outdoor/sun": {
+            "id": "entity/lighting/jeep-outdoor/sun",
+            "kind": "directionalLight",
+            "name": "Outdoor sun",
+            "parentId": "entity/lighting/jeep-outdoor",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                -16,
+                25.6,
+                12.8
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "light": {
+                "color": [
+                  1,
+                  0.84,
+                  0.62
+                ],
+                "intensity": 2.52,
+                "castShadow": true,
+                "shadowMapSize": 2048,
+                "shadowBias": -0.0002,
+                "shadowNormalBias": 0.02
+              }
+            },
+            "tags": [
+              "lighting",
+              "rig-outdoor"
+            ],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep": {
+            "id": "entity/jeep",
+            "kind": "group",
+            "name": "Trail Jeep",
+            "parentId": null,
+            "children": [
+              "entity/jeep/body"
+            ],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                -1.5707963267948966,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "animation": {
+                "actionId": "animation/jeep/steer-and-roll"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "version": 1,
+                "kind": "vehicle",
+                "source": "Design a vehicle called Trail Jeep with id entity/jeep using the right-up-forward design frame.\nCreate a symmetric smooth profile called body section through [0 metres right, 65 centimetres up], [72 centimetres right, 64 centimetres up], [78 centimetres right, 30 centimetres up], [84 centimetres right, 4 centimetres up], [88 centimetres right, 24 centimetres down], [82 centimetres right, 62 centimetres down], [28 centimetres right, 65 centimetres down], [0 metres right, 65 centimetres down].\nSmooth profile body section with 36 samples.\nAdd a controlled section of body section at 1.92 metres backward, width 1.54 metres, height 1.18 metres, offset vertically by 1.12 metres.\nAdd a controlled section of body section at 1.55 metres backward, width 1.68 metres, height 1.28 metres, offset vertically by 1.16 metres.\nAdd a controlled section of body section at 1.23 metres backward, width 1.72 metres, height 1.28 metres, offset vertically by 1.16 metres.\nAdd a controlled section of body section at 0.55 metres backward, width 1.80 metres, height 1.30 metres, offset vertically by 1.17 metres.\nAdd a controlled section of body section at 0.15 metres forward, width 1.84 metres, height 1.30 metres, offset vertically by 1.17 metres.\nAdd a controlled section of body section at 0.68 metres forward, width 1.78 metres, height 1.28 metres, offset vertically by 1.16 metres.\nAdd a controlled section of body section at 0.92 metres forward, width 1.70 metres, height 0.90 metres, offset vertically by 0.98 metres.\nAdd a controlled section of body section at 1.22 metres forward, width 1.62 metres, height 0.64 metres, offset vertically by 0.90 metres.\nAdd a controlled section of body section at 1.55 metres forward, width 1.56 metres, height 0.56 metres, offset vertically by 0.86 metres.\nAdd a controlled section of body section at 1.92 metres forward, width 1.48 metres, height 0.50 metres, offset vertically by 0.76 metres.\nLoft a watertight solid called Body Shell with id entity/jeep/body through all sections of body section, with positional continuity, using material material/jeep/paint.\nPinch Body Shell inward around [80 centimetres right, 70 centimetres up, 1.23 metres forward] by 7 centimetres within 38 centimetres.\nPinch Body Shell inward around [80 centimetres left, 70 centimetres up, 1.23 metres forward] by 7 centimetres within 38 centimetres.\nPinch Body Shell inward around [80 centimetres right, 70 centimetres up, 1.23 metres backward] by 7 centimetres within 38 centimetres.\nPinch Body Shell inward around [80 centimetres left, 70 centimetres up, 1.23 metres backward] by 7 centimetres within 38 centimetres.",
+                "variables": {},
+                "designFrame": {
+                  "name": "right-up-forward",
+                  "worldAxes": {
+                    "right": "+X",
+                    "up": "+Y",
+                    "forward": "+Z"
+                  },
+                  "internalLoftAxes": {
+                    "right": "+X",
+                    "up": "+Z",
+                    "forward": "-Y"
+                  }
+                },
+                "boundaries": [],
+                "surfaceCurves": [],
+                "surfaceRegions": [],
+                "surfaceDeformations": [],
+                "constraints": []
+              }
+            }
+          },
+          "entity/jeep/body": {
+            "id": "entity/jeep/body",
+            "kind": "mesh",
+            "name": "Body Shell",
+            "parentId": "entity/jeep",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/trail-jeep/body-shell",
+                "materialId": "material/jeep/paint"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "loft",
+                "profile": "body section",
+                "continuity": "positional",
+                "capRings": 0,
+                "guides": [],
+                "modifiers": [
+                  {
+                    "kind": "pinch",
+                    "center": [
+                      0.8,
+                      -1.23,
+                      0.7000000000000001
+                    ],
+                    "amount": 0.07,
+                    "radius": 0.38
+                  },
+                  {
+                    "kind": "pinch",
+                    "center": [
+                      -0.8,
+                      -1.23,
+                      0.7000000000000001
+                    ],
+                    "amount": 0.07,
+                    "radius": 0.38
+                  },
+                  {
+                    "kind": "pinch",
+                    "center": [
+                      0.8,
+                      1.23,
+                      0.7000000000000001
+                    ],
+                    "amount": 0.07,
+                    "radius": 0.38
+                  },
+                  {
+                    "kind": "pinch",
+                    "center": [
+                      -0.8,
+                      1.23,
+                      0.7000000000000001
+                    ],
+                    "amount": 0.07,
+                    "radius": 0.38
+                  }
+                ]
+              }
+            }
+          },
+          "entity/jeep/wheel-fl": {
+            "id": "entity/jeep/wheel-fl",
+            "kind": "mesh",
+            "name": "Front Left Tire",
+            "parentId": "entity/jeep/spin-fl",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                1.5707963267948963
+              ],
+              "scale": [
+                1.0000000000000002,
+                1.0000000000000002,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/jeep/tire",
+                "materialId": "material/jeep/rubber",
+                "castShadow": true,
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep/rim-fl": {
+            "id": "entity/jeep/rim-fl",
+            "kind": "mesh",
+            "name": "Front Left Rim",
+            "parentId": "entity/jeep/spin-fl",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                1.5707963267948963
+              ],
+              "scale": [
+                1.0000000000000002,
+                1.0000000000000002,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/jeep/rim",
+                "materialId": "material/jeep/chrome",
+                "castShadow": true,
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep/hub-fl": {
+            "id": "entity/jeep/hub-fl",
+            "kind": "mesh",
+            "name": "Front Left Hub",
+            "parentId": "entity/jeep/spin-fl",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                1.5707963267948963
+              ],
+              "scale": [
+                1.0000000000000002,
+                1.0000000000000002,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/jeep/hub",
+                "materialId": "material/jeep/steel",
+                "castShadow": true,
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep/wheel-fr": {
+            "id": "entity/jeep/wheel-fr",
+            "kind": "mesh",
+            "name": "Front Right Tire",
+            "parentId": "entity/jeep/spin-fr",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                1.5707963267948963
+              ],
+              "scale": [
+                1.0000000000000002,
+                1.0000000000000002,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/jeep/tire",
+                "materialId": "material/jeep/rubber",
+                "castShadow": true,
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep/rim-fr": {
+            "id": "entity/jeep/rim-fr",
+            "kind": "mesh",
+            "name": "Front Right Rim",
+            "parentId": "entity/jeep/spin-fr",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                1.5707963267948963
+              ],
+              "scale": [
+                1.0000000000000002,
+                1.0000000000000002,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/jeep/rim",
+                "materialId": "material/jeep/chrome",
+                "castShadow": true,
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep/hub-fr": {
+            "id": "entity/jeep/hub-fr",
+            "kind": "mesh",
+            "name": "Front Right Hub",
+            "parentId": "entity/jeep/spin-fr",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                1.5707963267948963
+              ],
+              "scale": [
+                1.0000000000000002,
+                1.0000000000000002,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/jeep/hub",
+                "materialId": "material/jeep/steel",
+                "castShadow": true,
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep/wheel-rl": {
+            "id": "entity/jeep/wheel-rl",
+            "kind": "mesh",
+            "name": "Rear Left Tire",
+            "parentId": "entity/jeep/hub-group-rl",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                1.5707963267948963
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/jeep/tire",
+                "materialId": "material/jeep/rubber",
+                "castShadow": true,
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep/rim-rl": {
+            "id": "entity/jeep/rim-rl",
+            "kind": "mesh",
+            "name": "Rear Left Rim",
+            "parentId": "entity/jeep/hub-group-rl",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                1.5707963267948963
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/jeep/rim",
+                "materialId": "material/jeep/chrome",
+                "castShadow": true,
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep/hub-rl": {
+            "id": "entity/jeep/hub-rl",
+            "kind": "mesh",
+            "name": "Rear Left Hub",
+            "parentId": "entity/jeep/hub-group-rl",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                1.5707963267948963
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/jeep/hub",
+                "materialId": "material/jeep/steel",
+                "castShadow": true,
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep/wheel-rr": {
+            "id": "entity/jeep/wheel-rr",
+            "kind": "mesh",
+            "name": "Rear Right Tire",
+            "parentId": "entity/jeep/hub-group-rr",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                1.5707963267948963
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/jeep/tire",
+                "materialId": "material/jeep/rubber",
+                "castShadow": true,
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep/rim-rr": {
+            "id": "entity/jeep/rim-rr",
+            "kind": "mesh",
+            "name": "Rear Right Rim",
+            "parentId": "entity/jeep/hub-group-rr",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                1.5707963267948963
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/jeep/rim",
+                "materialId": "material/jeep/chrome",
+                "castShadow": true,
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep/hub-rr": {
+            "id": "entity/jeep/hub-rr",
+            "kind": "mesh",
+            "name": "Rear Right Hub",
+            "parentId": "entity/jeep/hub-group-rr",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                1.5707963267948963
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/jeep/hub",
+                "materialId": "material/jeep/steel",
+                "castShadow": true,
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep/front-axle-tube": {
+            "id": "entity/jeep/front-axle-tube",
+            "kind": "mesh",
+            "name": "Front Axle Tube",
+            "parentId": "entity/jeep/front-axle",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                1.5707963267948963
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/jeep/axle-tube",
+                "materialId": "material/jeep/steel",
+                "castShadow": true,
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep/rear-axle-tube": {
+            "id": "entity/jeep/rear-axle-tube",
+            "kind": "mesh",
+            "name": "Rear Axle Tube",
+            "parentId": "entity/jeep/rear-axle",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                1.5707963267948963
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/jeep/axle-tube",
+                "materialId": "material/jeep/steel",
+                "castShadow": true,
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep/spare": {
+            "id": "entity/jeep/spare",
+            "kind": "mesh",
+            "name": "Spare Tire",
+            "parentId": "entity/jeep/spare-carrier",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/jeep/tire",
+                "materialId": "material/jeep/rubber",
+                "castShadow": true,
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep/spare-rim": {
+            "id": "entity/jeep/spare-rim",
+            "kind": "mesh",
+            "name": "Spare Rim",
+            "parentId": "entity/jeep/spare-carrier",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/jeep/rim",
+                "materialId": "material/jeep/chrome",
+                "castShadow": true,
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep/steering-column": {
+            "id": "entity/jeep/steering-column",
+            "kind": "mesh",
+            "name": "Steering Column",
+            "parentId": null,
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                -0.36,
+                1.08,
+                0.48
+              ],
+              "rotation": [
+                -0.52,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/jeep/steering-column",
+                "materialId": "material/jeep/plastic",
+                "castShadow": true,
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep/steering-wheel": {
+            "id": "entity/jeep/steering-wheel",
+            "kind": "mesh",
+            "name": "Steering Wheel",
+            "parentId": "entity/jeep/steering-pivot",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/jeep/steering-wheel",
+                "materialId": "material/jeep/plastic",
+                "castShadow": true,
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep/steering-spoke-a": {
+            "id": "entity/jeep/steering-spoke-a",
+            "kind": "mesh",
+            "name": "Steering Spoke A",
+            "parentId": "entity/jeep/steering-pivot",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/jeep/steering-spoke",
+                "materialId": "material/jeep/plastic",
+                "castShadow": true,
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep/steering-spoke-b": {
+            "id": "entity/jeep/steering-spoke-b",
+            "kind": "mesh",
+            "name": "Steering Spoke B",
+            "parentId": "entity/jeep/steering-pivot",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                -1.5707963267948974,
+                1.0471975511965976,
+                -3.141592653589793
+              ],
+              "scale": [
+                1.0000000000000002,
+                1,
+                1.0000000000000002
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/jeep/steering-spoke",
+                "materialId": "material/jeep/plastic",
+                "castShadow": true,
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep/steering-spoke-c": {
+            "id": "entity/jeep/steering-spoke-c",
+            "kind": "mesh",
+            "name": "Steering Spoke C",
+            "parentId": "entity/jeep/steering-pivot",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                -1.5707963267948974,
+                -1.0471975511965976,
+                -3.141592653589793
+              ],
+              "scale": [
+                1.0000000000000002,
+                1,
+                1.0000000000000002
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/jeep/steering-spoke",
+                "materialId": "material/jeep/plastic",
+                "castShadow": true,
+                "receiveShadow": true
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep/knuckle-fl": {
+            "id": "entity/jeep/knuckle-fl",
+            "kind": "group",
+            "name": "Front Left Knuckle",
+            "parentId": "entity/jeep/front-axle",
+            "children": [
+              "entity/jeep/spin-fl"
+            ],
+            "visible": true,
+            "transform": {
+              "position": [
+                -0.82,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {},
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep/knuckle-fr": {
+            "id": "entity/jeep/knuckle-fr",
+            "kind": "group",
+            "name": "Front Right Knuckle",
+            "parentId": "entity/jeep/front-axle",
+            "children": [
+              "entity/jeep/spin-fr"
+            ],
+            "visible": true,
+            "transform": {
+              "position": [
+                0.82,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {},
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep/hub-group-rl": {
+            "id": "entity/jeep/hub-group-rl",
+            "kind": "group",
+            "name": "Rear Left Wheel Hub",
+            "parentId": "entity/jeep/rear-axle",
+            "children": [
+              "entity/jeep/wheel-rl",
+              "entity/jeep/rim-rl",
+              "entity/jeep/hub-rl"
+            ],
+            "visible": true,
+            "transform": {
+              "position": [
+                -0.82,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {},
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep/hub-group-rr": {
+            "id": "entity/jeep/hub-group-rr",
+            "kind": "group",
+            "name": "Rear Right Wheel Hub",
+            "parentId": "entity/jeep/rear-axle",
+            "children": [
+              "entity/jeep/wheel-rr",
+              "entity/jeep/rim-rr",
+              "entity/jeep/hub-rr"
+            ],
+            "visible": true,
+            "transform": {
+              "position": [
+                0.82,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {},
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep/steering-pivot": {
+            "id": "entity/jeep/steering-pivot",
+            "kind": "group",
+            "name": "Steering Wheel Pivot",
+            "parentId": null,
+            "children": [
+              "entity/jeep/steering-wheel",
+              "entity/jeep/steering-spoke-a",
+              "entity/jeep/steering-spoke-b",
+              "entity/jeep/steering-spoke-c"
+            ],
+            "visible": true,
+            "transform": {
+              "position": [
+                -0.36,
+                1.22,
+                0.36
+              ],
+              "rotation": [
+                -0.52,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {},
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep/front-axle": {
+            "id": "entity/jeep/front-axle",
+            "kind": "group",
+            "name": "Front Solid Axle",
+            "parentId": null,
+            "children": [
+              "entity/jeep/knuckle-fl",
+              "entity/jeep/knuckle-fr",
+              "entity/jeep/front-axle-tube"
+            ],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0.42,
+                1.23
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {},
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep/rear-axle": {
+            "id": "entity/jeep/rear-axle",
+            "kind": "group",
+            "name": "Rear Solid Axle",
+            "parentId": null,
+            "children": [
+              "entity/jeep/hub-group-rl",
+              "entity/jeep/hub-group-rr",
+              "entity/jeep/rear-axle-tube"
+            ],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0.42,
+                -1.23
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {},
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep/spare-carrier": {
+            "id": "entity/jeep/spare-carrier",
+            "kind": "group",
+            "name": "Spare Tire Carrier",
+            "parentId": null,
+            "children": [
+              "entity/jeep/spare",
+              "entity/jeep/spare-rim"
+            ],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0.95,
+                -2.12
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {},
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep-details": {
+            "id": "entity/jeep-details",
+            "kind": "group",
+            "name": "Jeep Details",
+            "parentId": null,
+            "children": [
+              "entity/jeep/front-bumper",
+              "entity/jeep/rear-bumper",
+              "entity/jeep/skid",
+              "entity/jeep/fender-fl",
+              "entity/jeep/fender-fr",
+              "entity/jeep/fender-rl",
+              "entity/jeep/fender-rr",
+              "entity/jeep/grille-panel",
+              "entity/jeep/grille-bar-1",
+              "entity/jeep/grille-bar-2",
+              "entity/jeep/grille-bar-3",
+              "entity/jeep/grille-bar-4",
+              "entity/jeep/grille-bar-5",
+              "entity/jeep/grille-bar-6",
+              "entity/jeep/grille-bar-7",
+              "entity/jeep/headlight-l",
+              "entity/jeep/headlight-r",
+              "entity/jeep/headlight-ring-l",
+              "entity/jeep/headlight-ring-r",
+              "entity/jeep/tail-l",
+              "entity/jeep/tail-r",
+              "entity/jeep/windshield",
+              "entity/jeep/rear-window",
+              "entity/jeep/window-l",
+              "entity/jeep/window-r",
+              "entity/jeep/mirror-arm-l",
+              "entity/jeep/mirror-l",
+              "entity/jeep/mirror-arm-r",
+              "entity/jeep/mirror-r",
+              "entity/jeep/roll-l",
+              "entity/jeep/roll-r",
+              "entity/jeep/roll-top"
+            ],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                -1.5707963267948966,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {},
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "version": 1,
+                "kind": "vehicle",
+                "source": "Design a vehicle called Jeep Details with id entity/jeep-details using the right-up-forward design frame.\nCreate a box called Front Bumper with id entity/jeep/front-bumper, with width 1.60 metres, height 16 centimetres, and depth 18 centimetres, centred at [0 metres right, 42 centimetres up, 1.98 metres forward], using material material/jeep/steel.\nCreate a box called Rear Bumper with id entity/jeep/rear-bumper, with width 1.50 metres, height 14 centimetres, and depth 16 centimetres, centred at [0 metres right, 44 centimetres up, 1.98 metres backward], using material material/jeep/steel.\nCreate a box called Skid Plate with id entity/jeep/skid, with width 78 centimetres, height 4 centimetres, and depth 1.15 metres, centred at [0 metres right, 38 centimetres up, 1.35 metres forward], using material material/jeep/steel.\nCreate a box called Front Left Fender with id entity/jeep/fender-fl, with width 18 centimetres, height 34 centimetres, and depth 72 centimetres, centred at [93 centimetres left, 78 centimetres up, 1.23 metres forward], using material material/jeep/plastic.\nCreate a box called Front Right Fender with id entity/jeep/fender-fr, with width 18 centimetres, height 34 centimetres, and depth 72 centimetres, centred at [93 centimetres right, 78 centimetres up, 1.23 metres forward], using material material/jeep/plastic.\nCreate a box called Rear Left Fender with id entity/jeep/fender-rl, with width 18 centimetres, height 34 centimetres, and depth 72 centimetres, centred at [93 centimetres left, 78 centimetres up, 1.23 metres backward], using material material/jeep/plastic.\nCreate a box called Rear Right Fender with id entity/jeep/fender-rr, with width 18 centimetres, height 34 centimetres, and depth 72 centimetres, centred at [93 centimetres right, 78 centimetres up, 1.23 metres backward], using material material/jeep/plastic.\nCreate a box called Grille Panel with id entity/jeep/grille-panel, with width 72 centimetres, height 38 centimetres, and depth 4 centimetres, centred at [0 metres right, 84 centimetres up, 1.935 metres forward], using material material/jeep/plastic.\nCreate a box called Grille Bar 1 with id entity/jeep/grille-bar-1, with width 3.2 centimetres, height 32 centimetres, and depth 5 centimetres, centred at [24 centimetres left, 84 centimetres up, 1.955 metres forward], using material material/jeep/steel.\nCreate a box called Grille Bar 2 with id entity/jeep/grille-bar-2, with width 3.2 centimetres, height 32 centimetres, and depth 5 centimetres, centred at [16 centimetres left, 84 centimetres up, 1.955 metres forward], using material material/jeep/steel.\nCreate a box called Grille Bar 3 with id entity/jeep/grille-bar-3, with width 3.2 centimetres, height 32 centimetres, and depth 5 centimetres, centred at [8 centimetres left, 84 centimetres up, 1.955 metres forward], using material material/jeep/steel.\nCreate a box called Grille Bar 4 with id entity/jeep/grille-bar-4, with width 3.2 centimetres, height 32 centimetres, and depth 5 centimetres, centred at [0 metres right, 84 centimetres up, 1.955 metres forward], using material material/jeep/steel.\nCreate a box called Grille Bar 5 with id entity/jeep/grille-bar-5, with width 3.2 centimetres, height 32 centimetres, and depth 5 centimetres, centred at [8 centimetres right, 84 centimetres up, 1.955 metres forward], using material material/jeep/steel.\nCreate a box called Grille Bar 6 with id entity/jeep/grille-bar-6, with width 3.2 centimetres, height 32 centimetres, and depth 5 centimetres, centred at [16 centimetres right, 84 centimetres up, 1.955 metres forward], using material material/jeep/steel.\nCreate a box called Grille Bar 7 with id entity/jeep/grille-bar-7, with width 3.2 centimetres, height 32 centimetres, and depth 5 centimetres, centred at [24 centimetres right, 84 centimetres up, 1.955 metres forward], using material material/jeep/steel.\nCreate a cylinder called Left Headlight with id entity/jeep/headlight-l, with radius 9 centimetres and height 8 centimetres, centred at [50 centimetres left, 84 centimetres up, 1.94 metres forward], aligned along the forward axis, using material material/jeep/lens.\nCreate a cylinder called Right Headlight with id entity/jeep/headlight-r, with radius 9 centimetres and height 8 centimetres, centred at [50 centimetres right, 84 centimetres up, 1.94 metres forward], aligned along the forward axis, using material material/jeep/lens.\nCreate a cylinder called Left Headlight Ring with id entity/jeep/headlight-ring-l, with radius 10 centimetres and height 3 centimetres, centred at [50 centimetres left, 84 centimetres up, 1.90 metres forward], aligned along the forward axis, using material material/jeep/plastic.\nCreate a cylinder called Right Headlight Ring with id entity/jeep/headlight-ring-r, with radius 10 centimetres and height 3 centimetres, centred at [50 centimetres right, 84 centimetres up, 1.90 metres forward], aligned along the forward axis, using material material/jeep/plastic.\nCreate a box called Left Tail Lamp with id entity/jeep/tail-l, with width 14 centimetres, height 18 centimetres, and depth 6 centimetres, centred at [72 centimetres left, 88 centimetres up, 1.94 metres backward], using material material/jeep/tail.\nCreate a box called Right Tail Lamp with id entity/jeep/tail-r, with width 14 centimetres, height 18 centimetres, and depth 6 centimetres, centred at [72 centimetres right, 88 centimetres up, 1.94 metres backward], using material material/jeep/tail.\nCreate a box called Windshield with id entity/jeep/windshield, with width 1.42 metres, height 70 centimetres, and depth 2.2 centimetres, centred at [0 metres right, 1.46 metres up, 86 centimetres forward], rotated by [32 degrees, 0 degrees, 0 degrees], using material material/jeep/glass.\nCreate a box called Rear Window with id entity/jeep/rear-window, with width 1.28 metres, height 52 centimetres, and depth 2 centimetres, centred at [0 metres right, 1.42 metres up, 1.90 metres backward], using material material/jeep/glass.\nCreate a box called Left Side Window with id entity/jeep/window-l, with width 2 centimetres, height 42 centimetres, and depth 88 centimetres, centred at [90 centimetres left, 1.38 metres up, 8 centimetres forward], using material material/jeep/glass.\nCreate a box called Right Side Window with id entity/jeep/window-r, with width 2 centimetres, height 42 centimetres, and depth 88 centimetres, centred at [90 centimetres right, 1.38 metres up, 8 centimetres forward], using material material/jeep/glass.\nCreate a cylinder called Left Mirror Arm with id entity/jeep/mirror-arm-l, with radius 1.6 centimetres and height 14 centimetres, centred at [96 centimetres left, 1.22 metres up, 62 centimetres forward], aligned along the right axis, using material material/jeep/plastic.\nCreate a box called Left Mirror with id entity/jeep/mirror-l, with width 6 centimetres, height 12 centimetres, and depth 18 centimetres, centred at [1.08 metres left, 1.22 metres up, 62 centimetres forward], using material material/jeep/plastic.\nCreate a cylinder called Right Mirror Arm with id entity/jeep/mirror-arm-r, with radius 1.6 centimetres and height 14 centimetres, centred at [96 centimetres right, 1.22 metres up, 62 centimetres forward], aligned along the right axis, using material material/jeep/plastic.\nCreate a box called Right Mirror with id entity/jeep/mirror-r, with width 6 centimetres, height 12 centimetres, and depth 18 centimetres, centred at [1.08 metres right, 1.22 metres up, 62 centimetres forward], using material material/jeep/plastic.\nCreate a cylinder called Roll Bar Left with id entity/jeep/roll-l, with radius 3.2 centimetres and height 58 centimetres, centred at [52 centimetres left, 1.72 metres up, 12 centimetres backward], aligned along the up axis, using material material/jeep/steel.\nCreate a cylinder called Roll Bar Right with id entity/jeep/roll-r, with radius 3.2 centimetres and height 58 centimetres, centred at [52 centimetres right, 1.72 metres up, 12 centimetres backward], aligned along the up axis, using material material/jeep/steel.\nCreate a cylinder called Roll Bar Top with id entity/jeep/roll-top, with radius 3.2 centimetres and height 1.08 metres, centred at [0 metres right, 1.98 metres up, 12 centimetres backward], aligned along the right axis, using material material/jeep/steel.",
+                "variables": {},
+                "designFrame": {
+                  "name": "right-up-forward",
+                  "worldAxes": {
+                    "right": "+X",
+                    "up": "+Y",
+                    "forward": "+Z"
+                  },
+                  "internalLoftAxes": {
+                    "right": "+X",
+                    "up": "+Z",
+                    "forward": "-Y"
+                  }
+                },
+                "boundaries": [],
+                "surfaceCurves": [],
+                "surfaceRegions": [],
+                "surfaceDeformations": [],
+                "constraints": []
+              }
+            }
+          },
+          "entity/jeep/front-bumper": {
+            "id": "entity/jeep/front-bumper",
+            "kind": "mesh",
+            "name": "Front Bumper",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -1.98,
+                0.42000000000000043
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                1.6,
+                0.16,
+                0.18
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/box-unit",
+                "materialId": "material/jeep/steel"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 1.6,
+                  "height": 0.16,
+                  "depth": 0.18
+                }
+              }
+            }
+          },
+          "entity/jeep/rear-bumper": {
+            "id": "entity/jeep/rear-bumper",
+            "kind": "mesh",
+            "name": "Rear Bumper",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                1.98,
+                0.43999999999999956
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                1.5,
+                0.14,
+                0.16
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/box-unit",
+                "materialId": "material/jeep/steel"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 1.5,
+                  "height": 0.14,
+                  "depth": 0.16
+                }
+              }
+            }
+          },
+          "entity/jeep/skid": {
+            "id": "entity/jeep/skid",
+            "kind": "mesh",
+            "name": "Skid Plate",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -1.35,
+                0.3800000000000003
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.78,
+                0.04,
+                1.15
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/box-unit",
+                "materialId": "material/jeep/steel"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 0.78,
+                  "height": 0.04,
+                  "depth": 1.15
+                }
+              }
+            }
+          },
+          "entity/jeep/fender-fl": {
+            "id": "entity/jeep/fender-fl",
+            "kind": "mesh",
+            "name": "Front Left Fender",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                -0.93,
+                -1.2299999999999998,
+                0.7800000000000002
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.12,
+                0.2,
+                0.58
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/box-unit",
+                "materialId": "material/jeep/plastic"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 0.18,
+                  "height": 0.34,
+                  "depth": 0.72
+                }
+              }
+            }
+          },
+          "entity/jeep/fender-fr": {
+            "id": "entity/jeep/fender-fr",
+            "kind": "mesh",
+            "name": "Front Right Fender",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0.93,
+                -1.2299999999999998,
+                0.7800000000000002
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.12,
+                0.2,
+                0.58
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/box-unit",
+                "materialId": "material/jeep/plastic"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 0.18,
+                  "height": 0.34,
+                  "depth": 0.72
+                }
+              }
+            }
+          },
+          "entity/jeep/fender-rl": {
+            "id": "entity/jeep/fender-rl",
+            "kind": "mesh",
+            "name": "Rear Left Fender",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                -0.93,
+                1.2300000000000002,
+                0.7799999999999998
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.12,
+                0.2,
+                0.58
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/box-unit",
+                "materialId": "material/jeep/plastic"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 0.18,
+                  "height": 0.34,
+                  "depth": 0.72
+                }
+              }
+            }
+          },
+          "entity/jeep/fender-rr": {
+            "id": "entity/jeep/fender-rr",
+            "kind": "mesh",
+            "name": "Rear Right Fender",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0.93,
+                1.2300000000000002,
+                0.7799999999999998
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.12,
+                0.2,
+                0.58
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/box-unit",
+                "materialId": "material/jeep/plastic"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 0.18,
+                  "height": 0.34,
+                  "depth": 0.72
+                }
+              }
+            }
+          },
+          "entity/jeep/grille-panel": {
+            "id": "entity/jeep/grille-panel",
+            "kind": "mesh",
+            "name": "Grille Panel",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -1.9349999999999998,
+                0.8400000000000004
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.72,
+                0.38,
+                0.04
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/box-unit",
+                "materialId": "material/jeep/plastic"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 0.72,
+                  "height": 0.38,
+                  "depth": 0.04
+                }
+              }
+            }
+          },
+          "entity/jeep/grille-bar-1": {
+            "id": "entity/jeep/grille-bar-1",
+            "kind": "mesh",
+            "name": "Grille Bar 1",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                -0.24,
+                -1.9549999999999998,
+                0.8400000000000004
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.032,
+                0.32,
+                0.05
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/box-unit",
+                "materialId": "material/jeep/steel"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 0.032,
+                  "height": 0.32,
+                  "depth": 0.05
+                }
+              }
+            }
+          },
+          "entity/jeep/grille-bar-2": {
+            "id": "entity/jeep/grille-bar-2",
+            "kind": "mesh",
+            "name": "Grille Bar 2",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                -0.16,
+                -1.9549999999999998,
+                0.8400000000000004
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.032,
+                0.32,
+                0.05
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/box-unit",
+                "materialId": "material/jeep/steel"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 0.032,
+                  "height": 0.32,
+                  "depth": 0.05
+                }
+              }
+            }
+          },
+          "entity/jeep/grille-bar-3": {
+            "id": "entity/jeep/grille-bar-3",
+            "kind": "mesh",
+            "name": "Grille Bar 3",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                -0.08,
+                -1.9549999999999998,
+                0.8400000000000004
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.032,
+                0.32,
+                0.05
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/box-unit",
+                "materialId": "material/jeep/steel"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 0.032,
+                  "height": 0.32,
+                  "depth": 0.05
+                }
+              }
+            }
+          },
+          "entity/jeep/grille-bar-4": {
+            "id": "entity/jeep/grille-bar-4",
+            "kind": "mesh",
+            "name": "Grille Bar 4",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -1.9549999999999998,
+                0.8400000000000004
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.032,
+                0.32,
+                0.05
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/box-unit",
+                "materialId": "material/jeep/steel"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 0.032,
+                  "height": 0.32,
+                  "depth": 0.05
+                }
+              }
+            }
+          },
+          "entity/jeep/grille-bar-5": {
+            "id": "entity/jeep/grille-bar-5",
+            "kind": "mesh",
+            "name": "Grille Bar 5",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0.08,
+                -1.9549999999999998,
+                0.8400000000000004
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.032,
+                0.32,
+                0.05
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/box-unit",
+                "materialId": "material/jeep/steel"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 0.032,
+                  "height": 0.32,
+                  "depth": 0.05
+                }
+              }
+            }
+          },
+          "entity/jeep/grille-bar-6": {
+            "id": "entity/jeep/grille-bar-6",
+            "kind": "mesh",
+            "name": "Grille Bar 6",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0.16,
+                -1.9549999999999998,
+                0.8400000000000004
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.032,
+                0.32,
+                0.05
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/box-unit",
+                "materialId": "material/jeep/steel"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 0.032,
+                  "height": 0.32,
+                  "depth": 0.05
+                }
+              }
+            }
+          },
+          "entity/jeep/grille-bar-7": {
+            "id": "entity/jeep/grille-bar-7",
+            "kind": "mesh",
+            "name": "Grille Bar 7",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0.24,
+                -1.9549999999999998,
+                0.8400000000000004
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.032,
+                0.32,
+                0.05
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/box-unit",
+                "materialId": "material/jeep/steel"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 0.032,
+                  "height": 0.32,
+                  "depth": 0.05
+                }
+              }
+            }
+          },
+          "entity/jeep/headlight-l": {
+            "id": "entity/jeep/headlight-l",
+            "kind": "mesh",
+            "name": "Left Headlight",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                -0.5,
+                -1.9399999999999997,
+                0.8400000000000004
+              ],
+              "rotation": [
+                3.1415926535897927,
+                0,
+                0
+              ],
+              "scale": [
+                0.09,
+                0.08,
+                0.09
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/cylinder-unit",
+                "materialId": "material/jeep/lens"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "cylinder",
+                "dimensions": {
+                  "radius": 0.09,
+                  "height": 0.08
+                }
+              }
+            }
+          },
+          "entity/jeep/headlight-r": {
+            "id": "entity/jeep/headlight-r",
+            "kind": "mesh",
+            "name": "Right Headlight",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0.5,
+                -1.9399999999999997,
+                0.8400000000000004
+              ],
+              "rotation": [
+                3.1415926535897927,
+                0,
+                0
+              ],
+              "scale": [
+                0.09,
+                0.08,
+                0.09
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/cylinder-unit",
+                "materialId": "material/jeep/lens"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "cylinder",
+                "dimensions": {
+                  "radius": 0.09,
+                  "height": 0.08
+                }
+              }
+            }
+          },
+          "entity/jeep/headlight-ring-l": {
+            "id": "entity/jeep/headlight-ring-l",
+            "kind": "mesh",
+            "name": "Left Headlight Ring",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                -0.5,
+                -1.8999999999999997,
+                0.8400000000000004
+              ],
+              "rotation": [
+                3.1415926535897927,
+                0,
+                0
+              ],
+              "scale": [
+                0.1,
+                0.03,
+                0.1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/cylinder-unit",
+                "materialId": "material/jeep/plastic"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "cylinder",
+                "dimensions": {
+                  "radius": 0.1,
+                  "height": 0.03
+                }
+              }
+            }
+          },
+          "entity/jeep/headlight-ring-r": {
+            "id": "entity/jeep/headlight-ring-r",
+            "kind": "mesh",
+            "name": "Right Headlight Ring",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0.5,
+                -1.8999999999999997,
+                0.8400000000000004
+              ],
+              "rotation": [
+                3.1415926535897927,
+                0,
+                0
+              ],
+              "scale": [
+                0.1,
+                0.03,
+                0.1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/cylinder-unit",
+                "materialId": "material/jeep/plastic"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "cylinder",
+                "dimensions": {
+                  "radius": 0.1,
+                  "height": 0.03
+                }
+              }
+            }
+          },
+          "entity/jeep/tail-l": {
+            "id": "entity/jeep/tail-l",
+            "kind": "mesh",
+            "name": "Left Tail Lamp",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                -0.72,
+                1.9400000000000002,
+                0.8799999999999996
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.14,
+                0.18,
+                0.06
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/box-unit",
+                "materialId": "material/jeep/tail"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 0.14,
+                  "height": 0.18,
+                  "depth": 0.06
+                }
+              }
+            }
+          },
+          "entity/jeep/tail-r": {
+            "id": "entity/jeep/tail-r",
+            "kind": "mesh",
+            "name": "Right Tail Lamp",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0.72,
+                1.9400000000000002,
+                0.8799999999999996
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.14,
+                0.18,
+                0.06
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/box-unit",
+                "materialId": "material/jeep/tail"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 0.14,
+                  "height": 0.18,
+                  "depth": 0.06
+                }
+              }
+            }
+          },
+          "entity/jeep/windshield": {
+            "id": "entity/jeep/windshield",
+            "kind": "mesh",
+            "name": "Windshield",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -0.8599999999999997,
+                1.4600000000000002
+              ],
+              "rotation": [
+                2.129301687433082,
+                0,
+                0
+              ],
+              "scale": [
+                1.42,
+                0.7000000000000001,
+                0.022000000000000002
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/box-unit",
+                "materialId": "material/jeep/glass"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 1.42,
+                  "height": 0.7000000000000001,
+                  "depth": 0.022000000000000002
+                }
+              }
+            }
+          },
+          "entity/jeep/rear-window": {
+            "id": "entity/jeep/rear-window",
+            "kind": "mesh",
+            "name": "Rear Window",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                1.9000000000000001,
+                1.4199999999999995
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                1.28,
+                0.52,
+                0.02
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/box-unit",
+                "materialId": "material/jeep/glass"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 1.28,
+                  "height": 0.52,
+                  "depth": 0.02
+                }
+              }
+            }
+          },
+          "entity/jeep/window-l": {
+            "id": "entity/jeep/window-l",
+            "kind": "mesh",
+            "name": "Left Side Window",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                -0.9,
+                -0.0799999999999997,
+                1.38
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.02,
+                0.42,
+                0.88
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/box-unit",
+                "materialId": "material/jeep/glass"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 0.02,
+                  "height": 0.42,
+                  "depth": 0.88
+                }
+              }
+            }
+          },
+          "entity/jeep/window-r": {
+            "id": "entity/jeep/window-r",
+            "kind": "mesh",
+            "name": "Right Side Window",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0.9,
+                -0.0799999999999997,
+                1.38
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.02,
+                0.42,
+                0.88
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/box-unit",
+                "materialId": "material/jeep/glass"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 0.02,
+                  "height": 0.42,
+                  "depth": 0.88
+                }
+              }
+            }
+          },
+          "entity/jeep/mirror-arm-l": {
+            "id": "entity/jeep/mirror-arm-l",
+            "kind": "mesh",
+            "name": "Left Mirror Arm",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                -0.96,
+                -0.6199999999999998,
+                1.2200000000000002
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                -1.5707963267948963
+              ],
+              "scale": [
+                0.016,
+                0.14,
+                0.016
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/cylinder-unit",
+                "materialId": "material/jeep/plastic"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "cylinder",
+                "dimensions": {
+                  "radius": 0.016,
+                  "height": 0.14
+                }
+              }
+            }
+          },
+          "entity/jeep/mirror-l": {
+            "id": "entity/jeep/mirror-l",
+            "kind": "mesh",
+            "name": "Left Mirror",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                -1.08,
+                -0.6199999999999998,
+                1.2200000000000002
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.06,
+                0.12,
+                0.18
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/box-unit",
+                "materialId": "material/jeep/plastic"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 0.06,
+                  "height": 0.12,
+                  "depth": 0.18
+                }
+              }
+            }
+          },
+          "entity/jeep/mirror-arm-r": {
+            "id": "entity/jeep/mirror-arm-r",
+            "kind": "mesh",
+            "name": "Right Mirror Arm",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0.96,
+                -0.6199999999999998,
+                1.2200000000000002
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                -1.5707963267948963
+              ],
+              "scale": [
+                0.016,
+                0.14,
+                0.016
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/cylinder-unit",
+                "materialId": "material/jeep/plastic"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "cylinder",
+                "dimensions": {
+                  "radius": 0.016,
+                  "height": 0.14
+                }
+              }
+            }
+          },
+          "entity/jeep/mirror-r": {
+            "id": "entity/jeep/mirror-r",
+            "kind": "mesh",
+            "name": "Right Mirror",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                1.08,
+                -0.6199999999999998,
+                1.2200000000000002
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.06,
+                0.12,
+                0.18
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/box-unit",
+                "materialId": "material/jeep/plastic"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 0.06,
+                  "height": 0.12,
+                  "depth": 0.18
+                }
+              }
+            }
+          },
+          "entity/jeep/roll-l": {
+            "id": "entity/jeep/roll-l",
+            "kind": "mesh",
+            "name": "Roll Bar Left",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                -0.52,
+                0.12000000000000038,
+                1.72
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.032,
+                0.58,
+                0.032
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/cylinder-unit",
+                "materialId": "material/jeep/steel"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "cylinder",
+                "dimensions": {
+                  "radius": 0.032,
+                  "height": 0.58
+                }
+              }
+            }
+          },
+          "entity/jeep/roll-r": {
+            "id": "entity/jeep/roll-r",
+            "kind": "mesh",
+            "name": "Roll Bar Right",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0.52,
+                0.12000000000000038,
+                1.72
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.032,
+                0.58,
+                0.032
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/cylinder-unit",
+                "materialId": "material/jeep/steel"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "cylinder",
+                "dimensions": {
+                  "radius": 0.032,
+                  "height": 0.58
+                }
+              }
+            }
+          },
+          "entity/jeep/roll-top": {
+            "id": "entity/jeep/roll-top",
+            "kind": "mesh",
+            "name": "Roll Bar Top",
+            "parentId": "entity/jeep-details",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0.12000000000000044,
+                1.98
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                -1.5707963267948963
+              ],
+              "scale": [
+                0.032,
+                1.08,
+                0.032
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/jeep-details/cylinder-unit",
+                "materialId": "material/jeep/steel"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "cylinder",
+                "dimensions": {
+                  "radius": 0.032,
+                  "height": 1.08
+                }
+              }
+            }
+          },
+          "entity/jeep/spin-fl": {
+            "id": "entity/jeep/spin-fl",
+            "kind": "group",
+            "name": "Front Left Wheel Spin",
+            "parentId": "entity/jeep/knuckle-fl",
+            "children": [
+              "entity/jeep/wheel-fl",
+              "entity/jeep/rim-fl",
+              "entity/jeep/hub-fl"
+            ],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {},
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/jeep/spin-fr": {
+            "id": "entity/jeep/spin-fr",
+            "kind": "group",
+            "name": "Front Right Wheel Spin",
+            "parentId": "entity/jeep/knuckle-fr",
+            "children": [
+              "entity/jeep/wheel-fr",
+              "entity/jeep/rim-fr",
+              "entity/jeep/hub-fr"
+            ],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {},
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "camera/jeep-cabin": {
+            "id": "camera/jeep-cabin",
+            "kind": "perspectiveCamera",
+            "name": "Steering Wheel Cabin Camera",
+            "parentId": null,
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                -1.0637395573464348,
+                1.2670679506402012,
+                1.5456594981153617
+              ],
+              "rotation": [
+                -0.14050598907003492,
+                -0.5455968662294058,
+                -0.07326480769208626
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "camera": {
+                "fov": 48,
+                "near": 0.39684986120513766,
+                "far": 10.396849861205137,
+                "aspect": 1.7777777777777777,
+                "presentationAspect": 1.7777777777777777,
+                "framing": {
+                  "fit": "contain",
+                  "aspect": 1.7777777777777777,
+                  "padding": 1.35,
+                  "direction": [
+                    0.5189283947328853,
+                    -0.11971220728891932,
+                    -0.8463937077778673
+                  ],
+                  "distance": 1.3561400079266808,
+                  "radius": 0.47964507336077156,
+                  "lockPreviewAspect": true,
+                  "bounds": {
+                    "min": [
+                      -0.5509999996423721,
+                      0.8868266149842301,
+                      0.19222540954194345
+                    ],
+                    "max": [
+                      -0.16900000035762786,
+                      1.3226162588127413,
+                      0.6034368475388409
+                    ]
+                  },
+                  "targetIds": [
+                    "entity/jeep/steering-pivot",
+                    "entity/jeep/steering-column"
+                  ]
+                }
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "camera/jeep-front": {
+            "id": "camera/jeep-front",
+            "kind": "perspectiveCamera",
+            "name": "Jeep Front Axle Camera",
+            "parentId": null,
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                2.9881761000227507,
+                0.973334103395263,
+                6.31383900720194
+              ],
+              "rotation": [
+                -0.09376389640500433,
+                0.5480402855151778,
+                0.048956964859464706
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "camera": {
+                "fov": 32,
+                "near": 2.724128672006821,
+                "far": 12.72412867200682,
+                "aspect": 1.7777777777777777,
+                "presentationAspect": 1.7777777777777777,
+                "framing": {
+                  "fit": "contain",
+                  "aspect": 1.7777777777777777,
+                  "padding": 1.2,
+                  "direction": [
+                    -0.5210155216606691,
+                    -0.07991469396917271,
+                    -0.8497978982537403
+                  ],
+                  "distance": 5.735291897827398,
+                  "radius": 1.5055816129102886,
+                  "lockPreviewAspect": true,
+                  "bounds": {
+                    "min": [
+                      -0.9550000053644181,
+                      1.3113021668509361e-8,
+                      0.8100000131130218
+                    ],
+                    "max": [
+                      0.9550000053644181,
+                      1.03,
+                      2.07
+                    ]
+                  },
+                  "targetIds": [
+                    "entity/jeep/front-axle",
+                    "entity/jeep/grille-panel",
+                    "entity/jeep/headlight-l",
+                    "entity/jeep/headlight-r",
+                    "entity/jeep/front-bumper"
+                  ]
+                }
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          }
+        },
+        "rootCollectionIds": [],
+        "collections": {},
+        "settings": {
+          "background": {
+            "mode": "color",
+            "color": [
+              0.035,
+              0.045,
+              0.06
+            ],
+            "colorSpace": "linear-srgb"
+          },
+          "environment": null,
+          "fog": null,
+          "activeCameraId": "camera/jeep-hero",
+          "timeline": {
+            "frameStart": 1,
+            "frameEnd": 250,
+            "currentFrame": 1,
+            "framesPerSecond": 24
+          }
+        },
+        "scriptIds": [],
+        "metadata": {}
+      }
+    },
+    "resources": {
+      "geometries": {
+        "geometry/jeep/ground": {
+          "id": "geometry/jeep/ground",
+          "kind": "geometry",
+          "name": "Packed Dirt Ground",
+          "recipe": {
+            "kind": "plane",
+            "width": 24,
+            "height": 24,
+            "widthSegments": 1,
+            "heightSegments": 1
+          },
+          "metadata": {}
+        },
+        "geometry/plainform-design/trail-jeep/body-shell": {
+          "id": "geometry/plainform-design/trail-jeep/body-shell",
+          "recipe": {
+            "kind": "loft",
+            "sections": [
+              {
+                "id": "section/body-section-001",
+                "points": [
+                  [
+                    0,
+                    0,
+                    0.65
+                  ],
+                  [
+                    0.3106404320987654,
+                    0,
+                    0.6628793724279834
+                  ],
+                  [
+                    0.6039094650205761,
+                    0,
+                    0.6645876200274349
+                  ],
+                  [
+                    0.7674305555555556,
+                    0,
+                    0.6009432870370371
+                  ],
+                  [
+                    0.790042438271605,
+                    0,
+                    0.4640387088477367
+                  ],
+                  [
+                    0.77883487654321,
+                    0,
+                    0.317999078360768
+                  ],
+                  [
+                    0.8007291666666668,
+                    0,
+                    0.20809027777777783
+                  ],
+                  [
+                    0.8247942386831273,
+                    0,
+                    0.11150205761316866
+                  ],
+                  [
+                    0.8461003943758572,
+                    0,
+                    0.010673439643347155
+                  ],
+                  [
+                    0.8674999999999999,
+                    0,
+                    -0.0925
+                  ],
+                  [
+                    0.8792468278463649,
+                    0,
+                    -0.20386338305898505
+                  ],
+                  [
+                    0.8837242798353911,
+                    0,
+                    -0.34779320987654355
+                  ],
+                  [
+                    0.8794791666666665,
+                    0,
+                    -0.5158159722222221
+                  ],
+                  [
+                    0.8007248799725653,
+                    0,
+                    -0.6304911479766803
+                  ],
+                  [
+                    0.5981005658436211,
+                    0,
+                    -0.6587448559670782
+                  ],
+                  [
+                    0.36178240740740697,
+                    0,
+                    -0.6514612268518517
+                  ],
+                  [
+                    0.20041838134430753,
+                    0,
+                    -0.651950874485597
+                  ],
+                  [
+                    0.0968184156378602,
+                    0,
+                    -0.6513927469135802
+                  ],
+                  [
+                    0,
+                    0,
+                    -0.65
+                  ],
+                  [
+                    -0.09681841563786028,
+                    0,
+                    -0.6513927469135803
+                  ],
+                  [
+                    -0.20041838134430756,
+                    0,
+                    -0.6519508744855967
+                  ],
+                  [
+                    -0.3617824074074081,
+                    0,
+                    -0.6514612268518519
+                  ],
+                  [
+                    -0.5981005658436225,
+                    0,
+                    -0.6587448559670783
+                  ],
+                  [
+                    -0.8007248799725646,
+                    0,
+                    -0.6304911479766808
+                  ],
+                  [
+                    -0.8794791666666666,
+                    0,
+                    -0.5158159722222228
+                  ],
+                  [
+                    -0.8837242798353904,
+                    0,
+                    -0.34779320987654366
+                  ],
+                  [
+                    -0.8792468278463648,
+                    0,
+                    -0.20386338305898502
+                  ],
+                  [
+                    -0.8674999999999999,
+                    0,
+                    -0.09249999999999999
+                  ],
+                  [
+                    -0.8461003943758572,
+                    0,
+                    0.010673439643347155
+                  ],
+                  [
+                    -0.8247942386831275,
+                    0,
+                    0.11150205761316892
+                  ],
+                  [
+                    -0.8007291666666666,
+                    0,
+                    0.20809027777777814
+                  ],
+                  [
+                    -0.7788348765432099,
+                    0,
+                    0.3179990783607687
+                  ],
+                  [
+                    -0.7900424382716049,
+                    0,
+                    0.4640387088477359
+                  ],
+                  [
+                    -0.7674305555555556,
+                    0,
+                    0.6009432870370366
+                  ],
+                  [
+                    -0.6039094650205769,
+                    0,
+                    0.6645876200274345
+                  ],
+                  [
+                    -0.3106404320987658,
+                    0,
+                    0.6628793724279837
+                  ]
+                ],
+                "transform": {
+                  "translation": [
+                    0,
+                    1.92,
+                    1.12
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    0.8713124869030713,
+                    1,
+                    0.8916882351226242
+                  ]
+                }
+              },
+              {
+                "id": "section/body-section-002",
+                "points": [
+                  [
+                    0,
+                    0,
+                    0.65
+                  ],
+                  [
+                    0.3106404320987654,
+                    0,
+                    0.6628793724279834
+                  ],
+                  [
+                    0.6039094650205761,
+                    0,
+                    0.6645876200274349
+                  ],
+                  [
+                    0.7674305555555556,
+                    0,
+                    0.6009432870370371
+                  ],
+                  [
+                    0.790042438271605,
+                    0,
+                    0.4640387088477367
+                  ],
+                  [
+                    0.77883487654321,
+                    0,
+                    0.317999078360768
+                  ],
+                  [
+                    0.8007291666666668,
+                    0,
+                    0.20809027777777783
+                  ],
+                  [
+                    0.8247942386831273,
+                    0,
+                    0.11150205761316866
+                  ],
+                  [
+                    0.8461003943758572,
+                    0,
+                    0.010673439643347155
+                  ],
+                  [
+                    0.8674999999999999,
+                    0,
+                    -0.0925
+                  ],
+                  [
+                    0.8792468278463649,
+                    0,
+                    -0.20386338305898505
+                  ],
+                  [
+                    0.8837242798353911,
+                    0,
+                    -0.34779320987654355
+                  ],
+                  [
+                    0.8794791666666665,
+                    0,
+                    -0.5158159722222221
+                  ],
+                  [
+                    0.8007248799725653,
+                    0,
+                    -0.6304911479766803
+                  ],
+                  [
+                    0.5981005658436211,
+                    0,
+                    -0.6587448559670782
+                  ],
+                  [
+                    0.36178240740740697,
+                    0,
+                    -0.6514612268518517
+                  ],
+                  [
+                    0.20041838134430753,
+                    0,
+                    -0.651950874485597
+                  ],
+                  [
+                    0.0968184156378602,
+                    0,
+                    -0.6513927469135802
+                  ],
+                  [
+                    0,
+                    0,
+                    -0.65
+                  ],
+                  [
+                    -0.09681841563786028,
+                    0,
+                    -0.6513927469135803
+                  ],
+                  [
+                    -0.20041838134430756,
+                    0,
+                    -0.6519508744855967
+                  ],
+                  [
+                    -0.3617824074074081,
+                    0,
+                    -0.6514612268518519
+                  ],
+                  [
+                    -0.5981005658436225,
+                    0,
+                    -0.6587448559670783
+                  ],
+                  [
+                    -0.8007248799725646,
+                    0,
+                    -0.6304911479766808
+                  ],
+                  [
+                    -0.8794791666666666,
+                    0,
+                    -0.5158159722222228
+                  ],
+                  [
+                    -0.8837242798353904,
+                    0,
+                    -0.34779320987654366
+                  ],
+                  [
+                    -0.8792468278463648,
+                    0,
+                    -0.20386338305898502
+                  ],
+                  [
+                    -0.8674999999999999,
+                    0,
+                    -0.09249999999999999
+                  ],
+                  [
+                    -0.8461003943758572,
+                    0,
+                    0.010673439643347155
+                  ],
+                  [
+                    -0.8247942386831275,
+                    0,
+                    0.11150205761316892
+                  ],
+                  [
+                    -0.8007291666666666,
+                    0,
+                    0.20809027777777814
+                  ],
+                  [
+                    -0.7788348765432099,
+                    0,
+                    0.3179990783607687
+                  ],
+                  [
+                    -0.7900424382716049,
+                    0,
+                    0.4640387088477359
+                  ],
+                  [
+                    -0.7674305555555556,
+                    0,
+                    0.6009432870370366
+                  ],
+                  [
+                    -0.6039094650205769,
+                    0,
+                    0.6645876200274345
+                  ],
+                  [
+                    -0.3106404320987658,
+                    0,
+                    0.6628793724279837
+                  ]
+                ],
+                "transform": {
+                  "translation": [
+                    0,
+                    1.55,
+                    1.16
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    0.9505227129851685,
+                    1,
+                    0.9672550347092873
+                  ]
+                }
+              },
+              {
+                "id": "section/body-section-003",
+                "points": [
+                  [
+                    0,
+                    0,
+                    0.65
+                  ],
+                  [
+                    0.3106404320987654,
+                    0,
+                    0.6628793724279834
+                  ],
+                  [
+                    0.6039094650205761,
+                    0,
+                    0.6645876200274349
+                  ],
+                  [
+                    0.7674305555555556,
+                    0,
+                    0.6009432870370371
+                  ],
+                  [
+                    0.790042438271605,
+                    0,
+                    0.4640387088477367
+                  ],
+                  [
+                    0.77883487654321,
+                    0,
+                    0.317999078360768
+                  ],
+                  [
+                    0.8007291666666668,
+                    0,
+                    0.20809027777777783
+                  ],
+                  [
+                    0.8247942386831273,
+                    0,
+                    0.11150205761316866
+                  ],
+                  [
+                    0.8461003943758572,
+                    0,
+                    0.010673439643347155
+                  ],
+                  [
+                    0.8674999999999999,
+                    0,
+                    -0.0925
+                  ],
+                  [
+                    0.8792468278463649,
+                    0,
+                    -0.20386338305898505
+                  ],
+                  [
+                    0.8837242798353911,
+                    0,
+                    -0.34779320987654355
+                  ],
+                  [
+                    0.8794791666666665,
+                    0,
+                    -0.5158159722222221
+                  ],
+                  [
+                    0.8007248799725653,
+                    0,
+                    -0.6304911479766803
+                  ],
+                  [
+                    0.5981005658436211,
+                    0,
+                    -0.6587448559670782
+                  ],
+                  [
+                    0.36178240740740697,
+                    0,
+                    -0.6514612268518517
+                  ],
+                  [
+                    0.20041838134430753,
+                    0,
+                    -0.651950874485597
+                  ],
+                  [
+                    0.0968184156378602,
+                    0,
+                    -0.6513927469135802
+                  ],
+                  [
+                    0,
+                    0,
+                    -0.65
+                  ],
+                  [
+                    -0.09681841563786028,
+                    0,
+                    -0.6513927469135803
+                  ],
+                  [
+                    -0.20041838134430756,
+                    0,
+                    -0.6519508744855967
+                  ],
+                  [
+                    -0.3617824074074081,
+                    0,
+                    -0.6514612268518519
+                  ],
+                  [
+                    -0.5981005658436225,
+                    0,
+                    -0.6587448559670783
+                  ],
+                  [
+                    -0.8007248799725646,
+                    0,
+                    -0.6304911479766808
+                  ],
+                  [
+                    -0.8794791666666666,
+                    0,
+                    -0.5158159722222228
+                  ],
+                  [
+                    -0.8837242798353904,
+                    0,
+                    -0.34779320987654366
+                  ],
+                  [
+                    -0.8792468278463648,
+                    0,
+                    -0.20386338305898502
+                  ],
+                  [
+                    -0.8674999999999999,
+                    0,
+                    -0.09249999999999999
+                  ],
+                  [
+                    -0.8461003943758572,
+                    0,
+                    0.010673439643347155
+                  ],
+                  [
+                    -0.8247942386831275,
+                    0,
+                    0.11150205761316892
+                  ],
+                  [
+                    -0.8007291666666666,
+                    0,
+                    0.20809027777777814
+                  ],
+                  [
+                    -0.7788348765432099,
+                    0,
+                    0.3179990783607687
+                  ],
+                  [
+                    -0.7900424382716049,
+                    0,
+                    0.4640387088477359
+                  ],
+                  [
+                    -0.7674305555555556,
+                    0,
+                    0.6009432870370366
+                  ],
+                  [
+                    -0.6039094650205769,
+                    0,
+                    0.6645876200274345
+                  ],
+                  [
+                    -0.3106404320987658,
+                    0,
+                    0.6628793724279837
+                  ]
+                ],
+                "transform": {
+                  "translation": [
+                    0,
+                    1.23,
+                    1.16
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    0.9731542061514821,
+                    1,
+                    0.9672550347092873
+                  ]
+                }
+              },
+              {
+                "id": "section/body-section-004",
+                "points": [
+                  [
+                    0,
+                    0,
+                    0.65
+                  ],
+                  [
+                    0.3106404320987654,
+                    0,
+                    0.6628793724279834
+                  ],
+                  [
+                    0.6039094650205761,
+                    0,
+                    0.6645876200274349
+                  ],
+                  [
+                    0.7674305555555556,
+                    0,
+                    0.6009432870370371
+                  ],
+                  [
+                    0.790042438271605,
+                    0,
+                    0.4640387088477367
+                  ],
+                  [
+                    0.77883487654321,
+                    0,
+                    0.317999078360768
+                  ],
+                  [
+                    0.8007291666666668,
+                    0,
+                    0.20809027777777783
+                  ],
+                  [
+                    0.8247942386831273,
+                    0,
+                    0.11150205761316866
+                  ],
+                  [
+                    0.8461003943758572,
+                    0,
+                    0.010673439643347155
+                  ],
+                  [
+                    0.8674999999999999,
+                    0,
+                    -0.0925
+                  ],
+                  [
+                    0.8792468278463649,
+                    0,
+                    -0.20386338305898505
+                  ],
+                  [
+                    0.8837242798353911,
+                    0,
+                    -0.34779320987654355
+                  ],
+                  [
+                    0.8794791666666665,
+                    0,
+                    -0.5158159722222221
+                  ],
+                  [
+                    0.8007248799725653,
+                    0,
+                    -0.6304911479766803
+                  ],
+                  [
+                    0.5981005658436211,
+                    0,
+                    -0.6587448559670782
+                  ],
+                  [
+                    0.36178240740740697,
+                    0,
+                    -0.6514612268518517
+                  ],
+                  [
+                    0.20041838134430753,
+                    0,
+                    -0.651950874485597
+                  ],
+                  [
+                    0.0968184156378602,
+                    0,
+                    -0.6513927469135802
+                  ],
+                  [
+                    0,
+                    0,
+                    -0.65
+                  ],
+                  [
+                    -0.09681841563786028,
+                    0,
+                    -0.6513927469135803
+                  ],
+                  [
+                    -0.20041838134430756,
+                    0,
+                    -0.6519508744855967
+                  ],
+                  [
+                    -0.3617824074074081,
+                    0,
+                    -0.6514612268518519
+                  ],
+                  [
+                    -0.5981005658436225,
+                    0,
+                    -0.6587448559670783
+                  ],
+                  [
+                    -0.8007248799725646,
+                    0,
+                    -0.6304911479766808
+                  ],
+                  [
+                    -0.8794791666666666,
+                    0,
+                    -0.5158159722222228
+                  ],
+                  [
+                    -0.8837242798353904,
+                    0,
+                    -0.34779320987654366
+                  ],
+                  [
+                    -0.8792468278463648,
+                    0,
+                    -0.20386338305898502
+                  ],
+                  [
+                    -0.8674999999999999,
+                    0,
+                    -0.09249999999999999
+                  ],
+                  [
+                    -0.8461003943758572,
+                    0,
+                    0.010673439643347155
+                  ],
+                  [
+                    -0.8247942386831275,
+                    0,
+                    0.11150205761316892
+                  ],
+                  [
+                    -0.8007291666666666,
+                    0,
+                    0.20809027777777814
+                  ],
+                  [
+                    -0.7788348765432099,
+                    0,
+                    0.3179990783607687
+                  ],
+                  [
+                    -0.7900424382716049,
+                    0,
+                    0.4640387088477359
+                  ],
+                  [
+                    -0.7674305555555556,
+                    0,
+                    0.6009432870370366
+                  ],
+                  [
+                    -0.6039094650205769,
+                    0,
+                    0.6645876200274345
+                  ],
+                  [
+                    -0.3106404320987658,
+                    0,
+                    0.6628793724279837
+                  ]
+                ],
+                "transform": {
+                  "translation": [
+                    0,
+                    0.55,
+                    1.17
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    1.0184171924841092,
+                    1,
+                    0.9823683946266198
+                  ]
+                }
+              },
+              {
+                "id": "section/body-section-005",
+                "points": [
+                  [
+                    0,
+                    0,
+                    0.65
+                  ],
+                  [
+                    0.3106404320987654,
+                    0,
+                    0.6628793724279834
+                  ],
+                  [
+                    0.6039094650205761,
+                    0,
+                    0.6645876200274349
+                  ],
+                  [
+                    0.7674305555555556,
+                    0,
+                    0.6009432870370371
+                  ],
+                  [
+                    0.790042438271605,
+                    0,
+                    0.4640387088477367
+                  ],
+                  [
+                    0.77883487654321,
+                    0,
+                    0.317999078360768
+                  ],
+                  [
+                    0.8007291666666668,
+                    0,
+                    0.20809027777777783
+                  ],
+                  [
+                    0.8247942386831273,
+                    0,
+                    0.11150205761316866
+                  ],
+                  [
+                    0.8461003943758572,
+                    0,
+                    0.010673439643347155
+                  ],
+                  [
+                    0.8674999999999999,
+                    0,
+                    -0.0925
+                  ],
+                  [
+                    0.8792468278463649,
+                    0,
+                    -0.20386338305898505
+                  ],
+                  [
+                    0.8837242798353911,
+                    0,
+                    -0.34779320987654355
+                  ],
+                  [
+                    0.8794791666666665,
+                    0,
+                    -0.5158159722222221
+                  ],
+                  [
+                    0.8007248799725653,
+                    0,
+                    -0.6304911479766803
+                  ],
+                  [
+                    0.5981005658436211,
+                    0,
+                    -0.6587448559670782
+                  ],
+                  [
+                    0.36178240740740697,
+                    0,
+                    -0.6514612268518517
+                  ],
+                  [
+                    0.20041838134430753,
+                    0,
+                    -0.651950874485597
+                  ],
+                  [
+                    0.0968184156378602,
+                    0,
+                    -0.6513927469135802
+                  ],
+                  [
+                    0,
+                    0,
+                    -0.65
+                  ],
+                  [
+                    -0.09681841563786028,
+                    0,
+                    -0.6513927469135803
+                  ],
+                  [
+                    -0.20041838134430756,
+                    0,
+                    -0.6519508744855967
+                  ],
+                  [
+                    -0.3617824074074081,
+                    0,
+                    -0.6514612268518519
+                  ],
+                  [
+                    -0.5981005658436225,
+                    0,
+                    -0.6587448559670783
+                  ],
+                  [
+                    -0.8007248799725646,
+                    0,
+                    -0.6304911479766808
+                  ],
+                  [
+                    -0.8794791666666666,
+                    0,
+                    -0.5158159722222228
+                  ],
+                  [
+                    -0.8837242798353904,
+                    0,
+                    -0.34779320987654366
+                  ],
+                  [
+                    -0.8792468278463648,
+                    0,
+                    -0.20386338305898502
+                  ],
+                  [
+                    -0.8674999999999999,
+                    0,
+                    -0.09249999999999999
+                  ],
+                  [
+                    -0.8461003943758572,
+                    0,
+                    0.010673439643347155
+                  ],
+                  [
+                    -0.8247942386831275,
+                    0,
+                    0.11150205761316892
+                  ],
+                  [
+                    -0.8007291666666666,
+                    0,
+                    0.20809027777777814
+                  ],
+                  [
+                    -0.7788348765432099,
+                    0,
+                    0.3179990783607687
+                  ],
+                  [
+                    -0.7900424382716049,
+                    0,
+                    0.4640387088477359
+                  ],
+                  [
+                    -0.7674305555555556,
+                    0,
+                    0.6009432870370366
+                  ],
+                  [
+                    -0.6039094650205769,
+                    0,
+                    0.6645876200274345
+                  ],
+                  [
+                    -0.3106404320987658,
+                    0,
+                    0.6628793724279837
+                  ]
+                ],
+                "transform": {
+                  "translation": [
+                    0,
+                    -0.15,
+                    1.17
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    1.0410486856504229,
+                    1,
+                    0.9823683946266198
+                  ]
+                }
+              },
+              {
+                "id": "section/body-section-006",
+                "points": [
+                  [
+                    0,
+                    0,
+                    0.65
+                  ],
+                  [
+                    0.3106404320987654,
+                    0,
+                    0.6628793724279834
+                  ],
+                  [
+                    0.6039094650205761,
+                    0,
+                    0.6645876200274349
+                  ],
+                  [
+                    0.7674305555555556,
+                    0,
+                    0.6009432870370371
+                  ],
+                  [
+                    0.790042438271605,
+                    0,
+                    0.4640387088477367
+                  ],
+                  [
+                    0.77883487654321,
+                    0,
+                    0.317999078360768
+                  ],
+                  [
+                    0.8007291666666668,
+                    0,
+                    0.20809027777777783
+                  ],
+                  [
+                    0.8247942386831273,
+                    0,
+                    0.11150205761316866
+                  ],
+                  [
+                    0.8461003943758572,
+                    0,
+                    0.010673439643347155
+                  ],
+                  [
+                    0.8674999999999999,
+                    0,
+                    -0.0925
+                  ],
+                  [
+                    0.8792468278463649,
+                    0,
+                    -0.20386338305898505
+                  ],
+                  [
+                    0.8837242798353911,
+                    0,
+                    -0.34779320987654355
+                  ],
+                  [
+                    0.8794791666666665,
+                    0,
+                    -0.5158159722222221
+                  ],
+                  [
+                    0.8007248799725653,
+                    0,
+                    -0.6304911479766803
+                  ],
+                  [
+                    0.5981005658436211,
+                    0,
+                    -0.6587448559670782
+                  ],
+                  [
+                    0.36178240740740697,
+                    0,
+                    -0.6514612268518517
+                  ],
+                  [
+                    0.20041838134430753,
+                    0,
+                    -0.651950874485597
+                  ],
+                  [
+                    0.0968184156378602,
+                    0,
+                    -0.6513927469135802
+                  ],
+                  [
+                    0,
+                    0,
+                    -0.65
+                  ],
+                  [
+                    -0.09681841563786028,
+                    0,
+                    -0.6513927469135803
+                  ],
+                  [
+                    -0.20041838134430756,
+                    0,
+                    -0.6519508744855967
+                  ],
+                  [
+                    -0.3617824074074081,
+                    0,
+                    -0.6514612268518519
+                  ],
+                  [
+                    -0.5981005658436225,
+                    0,
+                    -0.6587448559670783
+                  ],
+                  [
+                    -0.8007248799725646,
+                    0,
+                    -0.6304911479766808
+                  ],
+                  [
+                    -0.8794791666666666,
+                    0,
+                    -0.5158159722222228
+                  ],
+                  [
+                    -0.8837242798353904,
+                    0,
+                    -0.34779320987654366
+                  ],
+                  [
+                    -0.8792468278463648,
+                    0,
+                    -0.20386338305898502
+                  ],
+                  [
+                    -0.8674999999999999,
+                    0,
+                    -0.09249999999999999
+                  ],
+                  [
+                    -0.8461003943758572,
+                    0,
+                    0.010673439643347155
+                  ],
+                  [
+                    -0.8247942386831275,
+                    0,
+                    0.11150205761316892
+                  ],
+                  [
+                    -0.8007291666666666,
+                    0,
+                    0.20809027777777814
+                  ],
+                  [
+                    -0.7788348765432099,
+                    0,
+                    0.3179990783607687
+                  ],
+                  [
+                    -0.7900424382716049,
+                    0,
+                    0.4640387088477359
+                  ],
+                  [
+                    -0.7674305555555556,
+                    0,
+                    0.6009432870370366
+                  ],
+                  [
+                    -0.6039094650205769,
+                    0,
+                    0.6645876200274345
+                  ],
+                  [
+                    -0.3106404320987658,
+                    0,
+                    0.6628793724279837
+                  ]
+                ],
+                "transform": {
+                  "translation": [
+                    0,
+                    -0.68,
+                    1.16
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    1.0071014459009524,
+                    1,
+                    0.9672550347092873
+                  ]
+                }
+              },
+              {
+                "id": "section/body-section-007",
+                "points": [
+                  [
+                    0,
+                    0,
+                    0.65
+                  ],
+                  [
+                    0.3106404320987654,
+                    0,
+                    0.6628793724279834
+                  ],
+                  [
+                    0.6039094650205761,
+                    0,
+                    0.6645876200274349
+                  ],
+                  [
+                    0.7674305555555556,
+                    0,
+                    0.6009432870370371
+                  ],
+                  [
+                    0.790042438271605,
+                    0,
+                    0.4640387088477367
+                  ],
+                  [
+                    0.77883487654321,
+                    0,
+                    0.317999078360768
+                  ],
+                  [
+                    0.8007291666666668,
+                    0,
+                    0.20809027777777783
+                  ],
+                  [
+                    0.8247942386831273,
+                    0,
+                    0.11150205761316866
+                  ],
+                  [
+                    0.8461003943758572,
+                    0,
+                    0.010673439643347155
+                  ],
+                  [
+                    0.8674999999999999,
+                    0,
+                    -0.0925
+                  ],
+                  [
+                    0.8792468278463649,
+                    0,
+                    -0.20386338305898505
+                  ],
+                  [
+                    0.8837242798353911,
+                    0,
+                    -0.34779320987654355
+                  ],
+                  [
+                    0.8794791666666665,
+                    0,
+                    -0.5158159722222221
+                  ],
+                  [
+                    0.8007248799725653,
+                    0,
+                    -0.6304911479766803
+                  ],
+                  [
+                    0.5981005658436211,
+                    0,
+                    -0.6587448559670782
+                  ],
+                  [
+                    0.36178240740740697,
+                    0,
+                    -0.6514612268518517
+                  ],
+                  [
+                    0.20041838134430753,
+                    0,
+                    -0.651950874485597
+                  ],
+                  [
+                    0.0968184156378602,
+                    0,
+                    -0.6513927469135802
+                  ],
+                  [
+                    0,
+                    0,
+                    -0.65
+                  ],
+                  [
+                    -0.09681841563786028,
+                    0,
+                    -0.6513927469135803
+                  ],
+                  [
+                    -0.20041838134430756,
+                    0,
+                    -0.6519508744855967
+                  ],
+                  [
+                    -0.3617824074074081,
+                    0,
+                    -0.6514612268518519
+                  ],
+                  [
+                    -0.5981005658436225,
+                    0,
+                    -0.6587448559670783
+                  ],
+                  [
+                    -0.8007248799725646,
+                    0,
+                    -0.6304911479766808
+                  ],
+                  [
+                    -0.8794791666666666,
+                    0,
+                    -0.5158159722222228
+                  ],
+                  [
+                    -0.8837242798353904,
+                    0,
+                    -0.34779320987654366
+                  ],
+                  [
+                    -0.8792468278463648,
+                    0,
+                    -0.20386338305898502
+                  ],
+                  [
+                    -0.8674999999999999,
+                    0,
+                    -0.09249999999999999
+                  ],
+                  [
+                    -0.8461003943758572,
+                    0,
+                    0.010673439643347155
+                  ],
+                  [
+                    -0.8247942386831275,
+                    0,
+                    0.11150205761316892
+                  ],
+                  [
+                    -0.8007291666666666,
+                    0,
+                    0.20809027777777814
+                  ],
+                  [
+                    -0.7788348765432099,
+                    0,
+                    0.3179990783607687
+                  ],
+                  [
+                    -0.7900424382716049,
+                    0,
+                    0.4640387088477359
+                  ],
+                  [
+                    -0.7674305555555556,
+                    0,
+                    0.6009432870370366
+                  ],
+                  [
+                    -0.6039094650205769,
+                    0,
+                    0.6645876200274345
+                  ],
+                  [
+                    -0.3106404320987658,
+                    0,
+                    0.6628793724279837
+                  ]
+                ],
+                "transform": {
+                  "translation": [
+                    0,
+                    -0.92,
+                    0.98
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    0.9618384595683254,
+                    1,
+                    0.6801011962799676
+                  ]
+                }
+              },
+              {
+                "id": "section/body-section-008",
+                "points": [
+                  [
+                    0,
+                    0,
+                    0.65
+                  ],
+                  [
+                    0.3106404320987654,
+                    0,
+                    0.6628793724279834
+                  ],
+                  [
+                    0.6039094650205761,
+                    0,
+                    0.6645876200274349
+                  ],
+                  [
+                    0.7674305555555556,
+                    0,
+                    0.6009432870370371
+                  ],
+                  [
+                    0.790042438271605,
+                    0,
+                    0.4640387088477367
+                  ],
+                  [
+                    0.77883487654321,
+                    0,
+                    0.317999078360768
+                  ],
+                  [
+                    0.8007291666666668,
+                    0,
+                    0.20809027777777783
+                  ],
+                  [
+                    0.8247942386831273,
+                    0,
+                    0.11150205761316866
+                  ],
+                  [
+                    0.8461003943758572,
+                    0,
+                    0.010673439643347155
+                  ],
+                  [
+                    0.8674999999999999,
+                    0,
+                    -0.0925
+                  ],
+                  [
+                    0.8792468278463649,
+                    0,
+                    -0.20386338305898505
+                  ],
+                  [
+                    0.8837242798353911,
+                    0,
+                    -0.34779320987654355
+                  ],
+                  [
+                    0.8794791666666665,
+                    0,
+                    -0.5158159722222221
+                  ],
+                  [
+                    0.8007248799725653,
+                    0,
+                    -0.6304911479766803
+                  ],
+                  [
+                    0.5981005658436211,
+                    0,
+                    -0.6587448559670782
+                  ],
+                  [
+                    0.36178240740740697,
+                    0,
+                    -0.6514612268518517
+                  ],
+                  [
+                    0.20041838134430753,
+                    0,
+                    -0.651950874485597
+                  ],
+                  [
+                    0.0968184156378602,
+                    0,
+                    -0.6513927469135802
+                  ],
+                  [
+                    0,
+                    0,
+                    -0.65
+                  ],
+                  [
+                    -0.09681841563786028,
+                    0,
+                    -0.6513927469135803
+                  ],
+                  [
+                    -0.20041838134430756,
+                    0,
+                    -0.6519508744855967
+                  ],
+                  [
+                    -0.3617824074074081,
+                    0,
+                    -0.6514612268518519
+                  ],
+                  [
+                    -0.5981005658436225,
+                    0,
+                    -0.6587448559670783
+                  ],
+                  [
+                    -0.8007248799725646,
+                    0,
+                    -0.6304911479766808
+                  ],
+                  [
+                    -0.8794791666666666,
+                    0,
+                    -0.5158159722222228
+                  ],
+                  [
+                    -0.8837242798353904,
+                    0,
+                    -0.34779320987654366
+                  ],
+                  [
+                    -0.8792468278463648,
+                    0,
+                    -0.20386338305898502
+                  ],
+                  [
+                    -0.8674999999999999,
+                    0,
+                    -0.09249999999999999
+                  ],
+                  [
+                    -0.8461003943758572,
+                    0,
+                    0.010673439643347155
+                  ],
+                  [
+                    -0.8247942386831275,
+                    0,
+                    0.11150205761316892
+                  ],
+                  [
+                    -0.8007291666666666,
+                    0,
+                    0.20809027777777814
+                  ],
+                  [
+                    -0.7788348765432099,
+                    0,
+                    0.3179990783607687
+                  ],
+                  [
+                    -0.7900424382716049,
+                    0,
+                    0.4640387088477359
+                  ],
+                  [
+                    -0.7674305555555556,
+                    0,
+                    0.6009432870370366
+                  ],
+                  [
+                    -0.6039094650205769,
+                    0,
+                    0.6645876200274345
+                  ],
+                  [
+                    -0.3106404320987658,
+                    0,
+                    0.6628793724279837
+                  ]
+                ],
+                "transform": {
+                  "translation": [
+                    0,
+                    -1.22,
+                    0.9
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    0.9165754732356983,
+                    1,
+                    0.48362751735464365
+                  ]
+                }
+              },
+              {
+                "id": "section/body-section-009",
+                "points": [
+                  [
+                    0,
+                    0,
+                    0.65
+                  ],
+                  [
+                    0.3106404320987654,
+                    0,
+                    0.6628793724279834
+                  ],
+                  [
+                    0.6039094650205761,
+                    0,
+                    0.6645876200274349
+                  ],
+                  [
+                    0.7674305555555556,
+                    0,
+                    0.6009432870370371
+                  ],
+                  [
+                    0.790042438271605,
+                    0,
+                    0.4640387088477367
+                  ],
+                  [
+                    0.77883487654321,
+                    0,
+                    0.317999078360768
+                  ],
+                  [
+                    0.8007291666666668,
+                    0,
+                    0.20809027777777783
+                  ],
+                  [
+                    0.8247942386831273,
+                    0,
+                    0.11150205761316866
+                  ],
+                  [
+                    0.8461003943758572,
+                    0,
+                    0.010673439643347155
+                  ],
+                  [
+                    0.8674999999999999,
+                    0,
+                    -0.0925
+                  ],
+                  [
+                    0.8792468278463649,
+                    0,
+                    -0.20386338305898505
+                  ],
+                  [
+                    0.8837242798353911,
+                    0,
+                    -0.34779320987654355
+                  ],
+                  [
+                    0.8794791666666665,
+                    0,
+                    -0.5158159722222221
+                  ],
+                  [
+                    0.8007248799725653,
+                    0,
+                    -0.6304911479766803
+                  ],
+                  [
+                    0.5981005658436211,
+                    0,
+                    -0.6587448559670782
+                  ],
+                  [
+                    0.36178240740740697,
+                    0,
+                    -0.6514612268518517
+                  ],
+                  [
+                    0.20041838134430753,
+                    0,
+                    -0.651950874485597
+                  ],
+                  [
+                    0.0968184156378602,
+                    0,
+                    -0.6513927469135802
+                  ],
+                  [
+                    0,
+                    0,
+                    -0.65
+                  ],
+                  [
+                    -0.09681841563786028,
+                    0,
+                    -0.6513927469135803
+                  ],
+                  [
+                    -0.20041838134430756,
+                    0,
+                    -0.6519508744855967
+                  ],
+                  [
+                    -0.3617824074074081,
+                    0,
+                    -0.6514612268518519
+                  ],
+                  [
+                    -0.5981005658436225,
+                    0,
+                    -0.6587448559670783
+                  ],
+                  [
+                    -0.8007248799725646,
+                    0,
+                    -0.6304911479766808
+                  ],
+                  [
+                    -0.8794791666666666,
+                    0,
+                    -0.5158159722222228
+                  ],
+                  [
+                    -0.8837242798353904,
+                    0,
+                    -0.34779320987654366
+                  ],
+                  [
+                    -0.8792468278463648,
+                    0,
+                    -0.20386338305898502
+                  ],
+                  [
+                    -0.8674999999999999,
+                    0,
+                    -0.09249999999999999
+                  ],
+                  [
+                    -0.8461003943758572,
+                    0,
+                    0.010673439643347155
+                  ],
+                  [
+                    -0.8247942386831275,
+                    0,
+                    0.11150205761316892
+                  ],
+                  [
+                    -0.8007291666666666,
+                    0,
+                    0.20809027777777814
+                  ],
+                  [
+                    -0.7788348765432099,
+                    0,
+                    0.3179990783607687
+                  ],
+                  [
+                    -0.7900424382716049,
+                    0,
+                    0.4640387088477359
+                  ],
+                  [
+                    -0.7674305555555556,
+                    0,
+                    0.6009432870370366
+                  ],
+                  [
+                    -0.6039094650205769,
+                    0,
+                    0.6645876200274345
+                  ],
+                  [
+                    -0.3106404320987658,
+                    0,
+                    0.6628793724279837
+                  ]
+                ],
+                "transform": {
+                  "translation": [
+                    0,
+                    -1.55,
+                    0.86
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    0.882628233486228,
+                    1,
+                    0.42317407768531323
+                  ]
+                }
+              },
+              {
+                "id": "section/body-section-010",
+                "points": [
+                  [
+                    0,
+                    0,
+                    0.65
+                  ],
+                  [
+                    0.3106404320987654,
+                    0,
+                    0.6628793724279834
+                  ],
+                  [
+                    0.6039094650205761,
+                    0,
+                    0.6645876200274349
+                  ],
+                  [
+                    0.7674305555555556,
+                    0,
+                    0.6009432870370371
+                  ],
+                  [
+                    0.790042438271605,
+                    0,
+                    0.4640387088477367
+                  ],
+                  [
+                    0.77883487654321,
+                    0,
+                    0.317999078360768
+                  ],
+                  [
+                    0.8007291666666668,
+                    0,
+                    0.20809027777777783
+                  ],
+                  [
+                    0.8247942386831273,
+                    0,
+                    0.11150205761316866
+                  ],
+                  [
+                    0.8461003943758572,
+                    0,
+                    0.010673439643347155
+                  ],
+                  [
+                    0.8674999999999999,
+                    0,
+                    -0.0925
+                  ],
+                  [
+                    0.8792468278463649,
+                    0,
+                    -0.20386338305898505
+                  ],
+                  [
+                    0.8837242798353911,
+                    0,
+                    -0.34779320987654355
+                  ],
+                  [
+                    0.8794791666666665,
+                    0,
+                    -0.5158159722222221
+                  ],
+                  [
+                    0.8007248799725653,
+                    0,
+                    -0.6304911479766803
+                  ],
+                  [
+                    0.5981005658436211,
+                    0,
+                    -0.6587448559670782
+                  ],
+                  [
+                    0.36178240740740697,
+                    0,
+                    -0.6514612268518517
+                  ],
+                  [
+                    0.20041838134430753,
+                    0,
+                    -0.651950874485597
+                  ],
+                  [
+                    0.0968184156378602,
+                    0,
+                    -0.6513927469135802
+                  ],
+                  [
+                    0,
+                    0,
+                    -0.65
+                  ],
+                  [
+                    -0.09681841563786028,
+                    0,
+                    -0.6513927469135803
+                  ],
+                  [
+                    -0.20041838134430756,
+                    0,
+                    -0.6519508744855967
+                  ],
+                  [
+                    -0.3617824074074081,
+                    0,
+                    -0.6514612268518519
+                  ],
+                  [
+                    -0.5981005658436225,
+                    0,
+                    -0.6587448559670783
+                  ],
+                  [
+                    -0.8007248799725646,
+                    0,
+                    -0.6304911479766808
+                  ],
+                  [
+                    -0.8794791666666666,
+                    0,
+                    -0.5158159722222228
+                  ],
+                  [
+                    -0.8837242798353904,
+                    0,
+                    -0.34779320987654366
+                  ],
+                  [
+                    -0.8792468278463648,
+                    0,
+                    -0.20386338305898502
+                  ],
+                  [
+                    -0.8674999999999999,
+                    0,
+                    -0.09249999999999999
+                  ],
+                  [
+                    -0.8461003943758572,
+                    0,
+                    0.010673439643347155
+                  ],
+                  [
+                    -0.8247942386831275,
+                    0,
+                    0.11150205761316892
+                  ],
+                  [
+                    -0.8007291666666666,
+                    0,
+                    0.20809027777777814
+                  ],
+                  [
+                    -0.7788348765432099,
+                    0,
+                    0.3179990783607687
+                  ],
+                  [
+                    -0.7900424382716049,
+                    0,
+                    0.4640387088477359
+                  ],
+                  [
+                    -0.7674305555555556,
+                    0,
+                    0.6009432870370366
+                  ],
+                  [
+                    -0.6039094650205769,
+                    0,
+                    0.6645876200274345
+                  ],
+                  [
+                    -0.3106404320987658,
+                    0,
+                    0.6628793724279837
+                  ]
+                ],
+                "transform": {
+                  "translation": [
+                    0,
+                    -1.92,
+                    0.76
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    0.837365247153601,
+                    1,
+                    0.37783399793331535
+                  ]
+                }
+              }
+            ],
+            "closedProfile": true,
+            "capStart": true,
+            "capEnd": true,
+            "capRings": 0,
+            "profileResolution": 36,
+            "subdivisions": 0,
+            "alignProfile": "closest",
+            "continuity": "positional",
+            "guideCurves": [],
+            "modifiers": [
+              {
+                "kind": "pinch",
+                "center": [
+                  0.8,
+                  -1.23,
+                  0.7000000000000001
+                ],
+                "amount": 0.07,
+                "radius": 0.38
+              },
+              {
+                "kind": "pinch",
+                "center": [
+                  -0.8,
+                  -1.23,
+                  0.7000000000000001
+                ],
+                "amount": 0.07,
+                "radius": 0.38
+              },
+              {
+                "kind": "pinch",
+                "center": [
+                  0.8,
+                  1.23,
+                  0.7000000000000001
+                ],
+                "amount": 0.07,
+                "radius": 0.38
+              },
+              {
+                "kind": "pinch",
+                "center": [
+                  -0.8,
+                  1.23,
+                  0.7000000000000001
+                ],
+                "amount": 0.07,
+                "radius": 0.38
+              }
+            ]
+          },
+          "kind": "geometry",
+          "name": "body-shell",
+          "metadata": {}
+        },
+        "geometry/jeep/tire": {
+          "id": "geometry/jeep/tire",
+          "kind": "geometry",
+          "name": "Off-Road Tire",
+          "recipe": {
+            "kind": "lathe",
+            "segments": 48,
+            "points": [
+              [
+                0.2,
+                -0.13
+              ],
+              [
+                0.27,
+                -0.135
+              ],
+              [
+                0.37,
+                -0.128
+              ],
+              [
+                0.412,
+                -0.085
+              ],
+              [
+                0.42,
+                -0.035
+              ],
+              [
+                0.42,
+                0.035
+              ],
+              [
+                0.412,
+                0.085
+              ],
+              [
+                0.37,
+                0.128
+              ],
+              [
+                0.27,
+                0.135
+              ],
+              [
+                0.2,
+                0.13
+              ]
+            ]
+          },
+          "metadata": {}
+        },
+        "geometry/jeep/rim": {
+          "id": "geometry/jeep/rim",
+          "kind": "geometry",
+          "name": "Steel Wheel Rim",
+          "recipe": {
+            "kind": "cylinder",
+            "radiusTop": 0.205,
+            "radiusBottom": 0.205,
+            "height": 0.16,
+            "radialSegments": 32,
+            "heightSegments": 1
+          },
+          "metadata": {}
+        },
+        "geometry/jeep/hub": {
+          "id": "geometry/jeep/hub",
+          "kind": "geometry",
+          "name": "Axle Hub",
+          "recipe": {
+            "kind": "cylinder",
+            "radiusTop": 0.08,
+            "radiusBottom": 0.08,
+            "height": 0.11,
+            "radialSegments": 20
+          },
+          "metadata": {}
+        },
+        "geometry/jeep/axle-tube": {
+          "id": "geometry/jeep/axle-tube",
+          "kind": "geometry",
+          "name": "Solid Axle Tube",
+          "recipe": {
+            "kind": "cylinder",
+            "radiusTop": 0.045,
+            "radiusBottom": 0.045,
+            "height": 1.52,
+            "radialSegments": 16
+          },
+          "metadata": {}
+        },
+        "geometry/jeep/steering-column": {
+          "id": "geometry/jeep/steering-column",
+          "kind": "geometry",
+          "name": "Steering Column",
+          "recipe": {
+            "kind": "cylinder",
+            "radiusTop": 0.018,
+            "radiusBottom": 0.022,
+            "height": 0.42,
+            "radialSegments": 12
+          },
+          "metadata": {}
+        },
+        "geometry/jeep/steering-wheel": {
+          "id": "geometry/jeep/steering-wheel",
+          "kind": "geometry",
+          "name": "Steering Wheel Rim",
+          "recipe": {
+            "kind": "torus",
+            "radius": 0.175,
+            "tube": 0.016,
+            "radialSegments": 10,
+            "tubularSegments": 48
+          },
+          "metadata": {}
+        },
+        "geometry/jeep/steering-spoke": {
+          "id": "geometry/jeep/steering-spoke",
+          "kind": "geometry",
+          "name": "Steering Wheel Spoke",
+          "recipe": {
+            "kind": "box",
+            "width": 0.15,
+            "height": 0.014,
+            "depth": 0.02
+          },
+          "metadata": {}
+        },
+        "geometry/plainform-design/jeep-details/box-unit": {
+          "id": "geometry/plainform-design/jeep-details/box-unit",
+          "recipe": {
+            "kind": "box",
+            "width": 1,
+            "height": 1,
+            "depth": 1
+          },
+          "kind": "geometry",
+          "name": "box-unit",
+          "metadata": {}
+        },
+        "geometry/plainform-design/jeep-details/cylinder-unit": {
+          "id": "geometry/plainform-design/jeep-details/cylinder-unit",
+          "recipe": {
+            "kind": "cylinder",
+            "radiusTop": 1,
+            "radiusBottom": 1,
+            "height": 1,
+            "radialSegments": 32
+          },
+          "kind": "geometry",
+          "name": "cylinder-unit",
+          "metadata": {}
+        }
+      },
+      "materials": {
+        "material/jeep/paint": {
+          "id": "material/jeep/paint",
+          "name": "Automotive Paint",
+          "recipe": {
+            "kind": "physical",
+            "color": "#4a5c28",
+            "roughness": 0.28,
+            "metalness": 0.16,
+            "clearcoat": 1,
+            "clearcoatRoughness": 0.08
+          },
+          "metadata": {
+            "studioLook": "automotivePaint"
+          },
+          "kind": "material"
+        },
+        "material/jeep/rubber": {
+          "id": "material/jeep/rubber",
+          "name": "Rubber",
+          "recipe": {
+            "kind": "physical",
+            "color": "#121416",
+            "roughness": 0.82,
+            "metalness": 0,
+            "clearcoat": 0.04,
+            "clearcoatRoughness": 0.7
+          },
+          "metadata": {
+            "studioLook": "rubber"
+          },
+          "kind": "material"
+        },
+        "material/jeep/steel": {
+          "id": "material/jeep/steel",
+          "name": "Brushed Metal",
+          "recipe": {
+            "kind": "physical",
+            "color": "#5c6168",
+            "roughness": 0.48,
+            "metalness": 1,
+            "anisotropy": 0.18
+          },
+          "metadata": {
+            "studioLook": "brushedMetal"
+          },
+          "kind": "material"
+        },
+        "material/jeep/chrome": {
+          "id": "material/jeep/chrome",
+          "name": "Brushed Metal",
+          "recipe": {
+            "kind": "physical",
+            "color": "#c8ccd1",
+            "roughness": 0.22,
+            "metalness": 1,
+            "anisotropy": 0.22
+          },
+          "metadata": {
+            "studioLook": "brushedMetal"
+          },
+          "kind": "material"
+        },
+        "material/jeep/plastic": {
+          "id": "material/jeep/plastic",
+          "name": "Rubber",
+          "recipe": {
+            "kind": "physical",
+            "color": "#1b1d20",
+            "roughness": 0.52,
+            "metalness": 0,
+            "clearcoat": 0.04,
+            "clearcoatRoughness": 0.7
+          },
+          "metadata": {
+            "studioLook": "rubber"
+          },
+          "kind": "material"
+        },
+        "material/jeep/glass": {
+          "id": "material/jeep/glass",
+          "name": "Glass",
+          "recipe": {
+            "kind": "physical",
+            "color": "#9eb4c8",
+            "roughness": 0.06,
+            "metalness": 0,
+            "transmission": 0,
+            "opacity": 0.32,
+            "ior": 1.5,
+            "thickness": 0.08
+          },
+          "metadata": {
+            "studioLook": "glass"
+          },
+          "opacity": 0.32,
+          "transparent": true,
+          "transmission": 0,
+          "kind": "material"
+        },
+        "material/jeep/lens": {
+          "id": "material/jeep/lens",
+          "name": "Emissive Lens",
+          "recipe": {
+            "kind": "physical",
+            "color": "#f4f0e4",
+            "roughness": 0.12,
+            "metalness": 0,
+            "clearcoat": 0.8,
+            "clearcoatRoughness": 0.08,
+            "emissive": "#fff1c8",
+            "emissiveIntensity": 6
+          },
+          "metadata": {
+            "studioLook": "emissiveLens"
+          },
+          "kind": "material"
+        },
+        "material/jeep/tail": {
+          "id": "material/jeep/tail",
+          "name": "Emissive Lens",
+          "recipe": {
+            "kind": "physical",
+            "color": "#4a0808",
+            "roughness": 0.22,
+            "metalness": 0,
+            "clearcoat": 0.65,
+            "clearcoatRoughness": 0.08,
+            "emissive": "#ff2a12",
+            "emissiveIntensity": 3.2
+          },
+          "metadata": {
+            "studioLook": "emissiveLens"
+          },
+          "kind": "material"
+        },
+        "material/jeep/interior": {
+          "id": "material/jeep/interior",
+          "name": "Fabric",
+          "recipe": {
+            "kind": "physical",
+            "color": "#2c3036",
+            "roughness": 0.88,
+            "metalness": 0,
+            "sheen": 0.7,
+            "sheenRoughness": 0.72,
+            "sheenColor": "#657080"
+          },
+          "metadata": {
+            "studioLook": "fabric"
+          },
+          "kind": "material"
+        },
+        "material/jeep/ground": {
+          "id": "material/jeep/ground",
+          "name": "Rubber",
+          "recipe": {
+            "kind": "physical",
+            "color": "#3a3428",
+            "roughness": 0.94,
+            "metalness": 0,
+            "clearcoat": 0.04,
+            "clearcoatRoughness": 0.7
+          },
+          "metadata": {
+            "studioLook": "rubber"
+          },
+          "kind": "material"
+        }
+      },
+      "textures": {},
+      "graphs": {},
+      "animations": {
+        "animation/jeep/steer-and-roll": {
+          "id": "animation/jeep/steer-and-roll",
+          "kind": "animation",
+          "name": "Jeep Steer and Roll",
+          "formatVersion": 1,
+          "enabled": true,
+          "autoplay": true,
+          "fps": 24,
+          "frameStart": 0,
+          "frameEnd": 96,
+          "loop": "repeat",
+          "tracks": [
+            {
+              "targetId": "entity/jeep/knuckle-fl",
+              "property": "transform.rotation",
+              "interpolation": "smooth",
+              "keyframes": [
+                {
+                  "frame": 0,
+                  "value": [
+                    0,
+                    0,
+                    0
+                  ]
+                },
+                {
+                  "frame": 24,
+                  "value": [
+                    0,
+                    0.4,
+                    0
+                  ]
+                },
+                {
+                  "frame": 48,
+                  "value": [
+                    0,
+                    0,
+                    0
+                  ]
+                },
+                {
+                  "frame": 72,
+                  "value": [
+                    0,
+                    -0.4,
+                    0
+                  ]
+                },
+                {
+                  "frame": 96,
+                  "value": [
+                    0,
+                    0,
+                    0
+                  ]
+                }
+              ]
+            },
+            {
+              "targetId": "entity/jeep/knuckle-fr",
+              "property": "transform.rotation",
+              "interpolation": "smooth",
+              "keyframes": [
+                {
+                  "frame": 0,
+                  "value": [
+                    0,
+                    0,
+                    0
+                  ]
+                },
+                {
+                  "frame": 24,
+                  "value": [
+                    0,
+                    0.4,
+                    0
+                  ]
+                },
+                {
+                  "frame": 48,
+                  "value": [
+                    0,
+                    0,
+                    0
+                  ]
+                },
+                {
+                  "frame": 72,
+                  "value": [
+                    0,
+                    -0.4,
+                    0
+                  ]
+                },
+                {
+                  "frame": 96,
+                  "value": [
+                    0,
+                    0,
+                    0
+                  ]
+                }
+              ]
+            },
+            {
+              "targetId": "entity/jeep/spin-fl",
+              "property": "transform.rotation",
+              "interpolation": "linear",
+              "keyframes": [
+                {
+                  "frame": 0,
+                  "value": [
+                    0,
+                    0,
+                    0
+                  ]
+                },
+                {
+                  "frame": 24,
+                  "value": [
+                    6.283185307179586,
+                    0,
+                    0
+                  ]
+                },
+                {
+                  "frame": 48,
+                  "value": [
+                    12.566370614359172,
+                    0,
+                    0
+                  ]
+                },
+                {
+                  "frame": 72,
+                  "value": [
+                    18.84955592153876,
+                    0,
+                    0
+                  ]
+                },
+                {
+                  "frame": 96,
+                  "value": [
+                    25.132741228718345,
+                    0,
+                    0
+                  ]
+                }
+              ]
+            },
+            {
+              "targetId": "entity/jeep/spin-fr",
+              "property": "transform.rotation",
+              "interpolation": "linear",
+              "keyframes": [
+                {
+                  "frame": 0,
+                  "value": [
+                    0,
+                    0,
+                    0
+                  ]
+                },
+                {
+                  "frame": 24,
+                  "value": [
+                    6.283185307179586,
+                    0,
+                    0
+                  ]
+                },
+                {
+                  "frame": 48,
+                  "value": [
+                    12.566370614359172,
+                    0,
+                    0
+                  ]
+                },
+                {
+                  "frame": 72,
+                  "value": [
+                    18.84955592153876,
+                    0,
+                    0
+                  ]
+                },
+                {
+                  "frame": 96,
+                  "value": [
+                    25.132741228718345,
+                    0,
+                    0
+                  ]
+                }
+              ]
+            },
+            {
+              "targetId": "entity/jeep/hub-group-rl",
+              "property": "transform.rotation",
+              "interpolation": "linear",
+              "keyframes": [
+                {
+                  "frame": 0,
+                  "value": [
+                    0,
+                    0,
+                    0
+                  ]
+                },
+                {
+                  "frame": 24,
+                  "value": [
+                    6.283185307179586,
+                    0,
+                    0
+                  ]
+                },
+                {
+                  "frame": 48,
+                  "value": [
+                    12.566370614359172,
+                    0,
+                    0
+                  ]
+                },
+                {
+                  "frame": 72,
+                  "value": [
+                    18.84955592153876,
+                    0,
+                    0
+                  ]
+                },
+                {
+                  "frame": 96,
+                  "value": [
+                    25.132741228718345,
+                    0,
+                    0
+                  ]
+                }
+              ]
+            },
+            {
+              "targetId": "entity/jeep/hub-group-rr",
+              "property": "transform.rotation",
+              "interpolation": "linear",
+              "keyframes": [
+                {
+                  "frame": 0,
+                  "value": [
+                    0,
+                    0,
+                    0
+                  ]
+                },
+                {
+                  "frame": 24,
+                  "value": [
+                    6.283185307179586,
+                    0,
+                    0
+                  ]
+                },
+                {
+                  "frame": 48,
+                  "value": [
+                    12.566370614359172,
+                    0,
+                    0
+                  ]
+                },
+                {
+                  "frame": 72,
+                  "value": [
+                    18.84955592153876,
+                    0,
+                    0
+                  ]
+                },
+                {
+                  "frame": 96,
+                  "value": [
+                    25.132741228718345,
+                    0,
+                    0
+                  ]
+                }
+              ]
+            },
+            {
+              "targetId": "entity/jeep/steering-pivot",
+              "property": "transform.rotation",
+              "interpolation": "smooth",
+              "keyframes": [
+                {
+                  "frame": 0,
+                  "value": [
+                    -0.52,
+                    0,
+                    0
+                  ]
+                },
+                {
+                  "frame": 24,
+                  "value": [
+                    -0.52,
+                    1.15,
+                    0
+                  ]
+                },
+                {
+                  "frame": 48,
+                  "value": [
+                    -0.52,
+                    0,
+                    0
+                  ]
+                },
+                {
+                  "frame": 72,
+                  "value": [
+                    -0.52,
+                    -1.15,
+                    0
+                  ]
+                },
+                {
+                  "frame": 96,
+                  "value": [
+                    -0.52,
+                    0,
+                    0
+                  ]
+                }
+              ]
+            }
+          ],
+          "metadata": {}
+        }
+      },
+      "prefabs": {},
+      "audio": {},
+      "assets": {}
+    },
+    "scripts": {},
+    "scriptTrustPolicy": "agent-safe",
+    "settings": {
+      "lengthUnit": "metre",
+      "angleUnit": "radian",
+      "timeUnit": "second",
+      "workingColorSpace": "linear-srgb"
+    },
+    "exportSettings": {},
+    "metadata": {
+      "createdAt": "2026-09-02T04:44:11.000Z",
+      "updatedAt": "2026-09-02T04:55:55.000Z",
+      "description": "Empty Studio scene. No starter composition is included."
+    }
+  }
+}
