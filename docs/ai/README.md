@@ -44,6 +44,9 @@ There is no tenth tool. There is no “just write the scene JSON” path.
 8. Save after a milestone the human can see.
 
 Read [MCP patterns](./patterns.md) before a dense mesh, graph, or camera pass.
+Read [Plainform authoring notes](./plainform-authoring-notes.md) before a Design
+loft, Open, Shell, or manufactured bowl. Design lofts are always closed and
+capped; Open on a sphere is a 2D triangle classification, not a CAD rim.
 
 Status and inspect accept bounded dotted field `select` paths, `object` or
 `rows` output, and `ifHash` for compact unchanged polling. Authored brush paths
