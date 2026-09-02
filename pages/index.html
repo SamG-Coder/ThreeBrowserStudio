@@ -5,6 +5,15 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>ThreeBrowser Studio</title>
   <style>
+    :root {
+      color-scheme: dark;
+      --banner-background: rgba(8, 13, 22, 0.96);
+      --banner-border: rgba(126, 176, 232, 0.2);
+      --banner-text: #dce8f7;
+      --banner-muted: #8fa4bc;
+      --banner-accent: #7eb0e8;
+      --banner-hover: #a9d1ff;
+    }
     html, body {
       width: 100%;
       height: 100%;
@@ -14,16 +23,141 @@
       color: #dce8f7;
       font: 15px/1.45 "Segoe UI", sans-serif;
     }
-    canvas { display: block; width: 100%; height: 100%; }
+    body {
+      display: flex;
+      flex-direction: column;
+    }
+    .site-banner {
+      position: relative;
+      z-index: 2000;
+      flex: 0 0 auto;
+      min-height: 58px;
+      box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 10px clamp(14px, 2.4vw, 32px);
+      border-bottom: 1px solid var(--banner-border);
+      background:
+        radial-gradient(circle at 16% -80%, rgba(73, 132, 199, 0.24), transparent 46%),
+        linear-gradient(100deg, var(--banner-background), rgba(12, 22, 35, 0.97));
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.26);
+    }
+    .site-banner__brand {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      min-width: 0;
+    }
+    .site-banner__mark {
+      width: 34px;
+      height: 34px;
+      flex: 0 0 auto;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(126, 176, 232, 0.42);
+      border-radius: 9px;
+      background: linear-gradient(145deg, rgba(126, 176, 232, 0.2), rgba(31, 57, 87, 0.2));
+      color: var(--banner-accent);
+      box-shadow: inset 0 1px rgba(255, 255, 255, 0.08);
+    }
+    .site-banner__mark svg {
+      width: 21px;
+      height: 21px;
+    }
+    .site-banner__title,
+    .site-banner__subtitle {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .site-banner__title {
+      color: var(--banner-text);
+      font-size: 14px;
+      font-weight: 650;
+      letter-spacing: 0.035em;
+    }
+    .site-banner__subtitle {
+      margin-top: 1px;
+      color: var(--banner-muted);
+      font-size: 11px;
+      letter-spacing: 0.025em;
+    }
+    .site-banner__links {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .site-banner__link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 31px;
+      box-sizing: border-box;
+      padding: 6px 10px;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      color: var(--banner-muted);
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1;
+      text-decoration: none;
+      transition: color 140ms ease, background 140ms ease, border-color 140ms ease;
+    }
+    .site-banner__link svg {
+      width: 14px;
+      height: 14px;
+      flex: 0 0 auto;
+    }
+    .site-banner__link:hover,
+    .site-banner__link:focus-visible {
+      border-color: rgba(126, 176, 232, 0.3);
+      background: rgba(126, 176, 232, 0.1);
+      color: var(--banner-hover);
+      outline: none;
+    }
+    .site-banner__link--primary {
+      border-color: rgba(126, 176, 232, 0.28);
+      background: rgba(126, 176, 232, 0.12);
+      color: var(--banner-text);
+    }
+    #studio-viewport {
+      position: relative;
+      flex: 1 1 auto;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      background: #0b1018;
+    }
+    #studio-viewport > canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
     #boot {
-      position: fixed;
+      position: absolute;
       inset: 0;
+      z-index: 10;
       display: grid;
       place-items: center;
       background: #0b1018;
     }
     #boot[hidden] { display: none; }
     #boot p { margin: 0; max-width: 28rem; color: #9fb1c6; }
+    @media (max-width: 760px) {
+      .site-banner {
+        align-items: flex-start;
+        gap: 8px;
+        padding-block: 8px;
+      }
+      .site-banner__subtitle { display: none; }
+      .site-banner__links { gap: 2px; }
+      .site-banner__link { padding-inline: 7px; }
+      .site-banner__link span { display: none; }
+    }
   </style>
   <script type="importmap">
   {
@@ -36,7 +170,45 @@
   </script>
 </head>
 <body>
-  <div id="boot"><p>Starting ThreeBrowser Studio…</p></div>
+  <header class="site-banner" aria-label="ThreeBrowser Studio links">
+    <div class="site-banner__brand">
+      <div class="site-banner__mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+          <path d="M12 2.75 20 7.4v9.2l-8 4.65-8-4.65V7.4L12 2.75Z"/>
+          <path d="m4.25 7.55 7.75 4.5 7.75-4.5M12 12.05v8.75"/>
+        </svg>
+      </div>
+      <div>
+        <div class="site-banner__title">ThreeBrowser Studio</div>
+        <div class="site-banner__subtitle">LLM-first WebGPU authoring in your browser</div>
+      </div>
+    </div>
+    <nav class="site-banner__links" aria-label="Project and technology links">
+      <a class="site-banner__link site-banner__link--primary" href="https://github.com/SamG-Coder/ThreeBrowserStudio" target="_blank" rel="noreferrer">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.88c-2.78.6-3.37-1.18-3.37-1.18-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.35 1.09 2.92.83.09-.65.35-1.09.64-1.34-2.22-.25-4.56-1.11-4.56-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02A9.57 9.57 0 0 1 12 6.81c.85 0 1.71.11 2.51.34 1.91-1.29 2.75-1.02 2.75-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.86v2.77c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg>
+        <span>Repository</span>
+      </a>
+      <a class="site-banner__link" href="https://x.com/SamGCoder" target="_blank" rel="noreferrer">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.24 2.25h3.31l-7.23 8.26 8.5 11.24h-6.66l-5.21-6.82-5.97 6.82H1.67l7.74-8.85L1.25 2.25h6.83l4.71 6.23 5.45-6.23Zm-1.16 17.52h1.83L7.08 4.13H5.11l11.97 15.64Z"/></svg>
+        <span>@SamGCoder</span>
+      </a>
+      <a class="site-banner__link" href="https://github.com/SamG-Coder/threepp/tree/master/ThreeBrowserRuntime" target="_blank" rel="noreferrer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h5"/></svg>
+        <span>Runtime</span>
+      </a>
+      <a class="site-banner__link" href="https://threejs.org/" target="_blank" rel="noreferrer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m12 3 8 14H4L12 3Zm0 0v14M8 10h8"/></svg>
+        <span>Built with Three.js</span>
+      </a>
+      <a class="site-banner__link" href="https://github.com/SamG-Coder/ThreeBrowserStudio/blob/main/THIRD_PARTY_NOTICES.md" target="_blank" rel="noreferrer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 10v6m0-9v.01"/></svg>
+        <span>Credits</span>
+      </a>
+    </nav>
+  </header>
+  <main id="studio-viewport" aria-label="ThreeBrowser Studio WebGPU viewport">
+    <div id="boot"><p>Starting ThreeBrowser Studio…</p></div>
+  </main>
   <script type="module">
     const boot = document.getElementById("boot");
     try {

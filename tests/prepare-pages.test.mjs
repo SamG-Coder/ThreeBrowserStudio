@@ -16,6 +16,10 @@ test('pages artifact keeps the browser shell and does not replace site-entry', a
   const html = await readFile(path.join(output, 'index.html'), 'utf8');
   assert.match(html, /three@0\.184\.0/);
   assert.match(html, /pages\/browser-entry\.mjs/);
+  assert.match(html, /id="studio-viewport"/);
+  assert.match(html, /https:\/\/github\.com\/SamG-Coder\/ThreeBrowserStudio/);
+  assert.match(html, /https:\/\/x\.com\/SamGCoder/);
+  assert.match(html, /Built with Three\.js/);
   const entry = await readFile(path.join(output, 'pages', 'browser-entry.mjs'), 'utf8');
   assert.match(entry, /__THREE_STUDIO_BROWSER_PREVIEW__/);
   assert.match(entry, /src\/viewport\/main\.mjs/);
@@ -29,6 +33,7 @@ test('pages artifact keeps the browser shell and does not replace site-entry', a
   assert.doesNotMatch(main, /^import .*system-typeface/m);
   assert.doesNotMatch(main, /^import .*project-file-transfer-native/m);
   assert.match(main, /const nativeTransfer = !browserHost;/);
+  assert.match(main, /document\.getElementById\('studio-viewport'\)/);
   assert.doesNotMatch(main, /native: Boolean\(application\)/);
   assert.match(main, /Studio project is still loading\. Try again in a moment\./);
   assert.match(

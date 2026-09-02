@@ -76,20 +76,41 @@ document.title = "ThreeBrowser Studio — waiting for project";
 async function main() {
   const host = detectStudioHost();
   const browserPreview = globalThis.__THREE_STUDIO_BROWSER_PREVIEW__ === true;
+  const viewportMount = browserPreview
+    ? document.getElementById('studio-viewport') ?? document.body
+    : document.body;
+  const viewportBounds = () => {
+    if (!browserPreview) {
+      return {
+        left: 0,
+        top: 0,
+        width: Math.max(1, Number(innerWidth) || 1),
+        height: Math.max(1, Number(innerHeight) || 1),
+      };
+    }
+    const bounds = viewportMount?.getBoundingClientRect?.();
+    return {
+      left: Number.isFinite(bounds?.left) ? bounds.left : 0,
+      top: Number.isFinite(bounds?.top) ? bounds.top : 0,
+      width: Math.max(1, Number(bounds?.width ?? viewportMount?.clientWidth ?? innerWidth) || 1),
+      height: Math.max(1, Number(bounds?.height ?? viewportMount?.clientHeight ?? innerHeight) || 1),
+    };
+  };
+  const initialViewport = viewportBounds();
   const renderer = new THREE.WebGPURenderer({
     antialias: true,
     powerPreference: "high-performance",
     ...(host.attached ? { trackTimestamp: true } : {}),
   });
   renderer.setPixelRatio(Math.max(1, Number(globalThis.devicePixelRatio || 1)));
-  renderer.setSize(Math.max(1, innerWidth), Math.max(1, innerHeight));
+  renderer.setSize(initialViewport.width, initialViewport.height);
   applyStudioRenderState(THREE, renderer);
-  renderer.domElement.style.position = "fixed";
+  renderer.domElement.style.position = browserPreview ? "absolute" : "fixed";
   renderer.domElement.style.inset = "auto";
   renderer.domElement.style.left = "0";
   renderer.domElement.style.top = "0";
   renderer.domElement.style.touchAction = "none";
-  document.body.appendChild(renderer.domElement);
+  viewportMount.appendChild(renderer.domElement);
   await renderer.init();
 
   if (!renderer.backend?.isWebGPUBackend) {
@@ -109,7 +130,7 @@ async function main() {
 
   const camera = new THREE.PerspectiveCamera(
     46,
-    Math.max(1, innerWidth) / Math.max(1, innerHeight),
+    initialViewport.width / initialViewport.height,
     0.05,
     2000,
   );
@@ -128,8 +149,7 @@ async function main() {
     onChange() {
       controls.enabled = reviewSession.viewMode !== VIEW_MODE_FOLLOW_SHOT && controllerInput?.active !== true;
       liveFeed?.setViewMode?.(reviewSession.viewMode);
-      const width = Math.max(1, Number(innerWidth) || 1);
-      const height = Math.max(1, Number(innerHeight) || 1);
+      const { width, height } = viewportBounds();
       updateCameraAspect(reviewSession.renderCamera, width / height);
     },
   });
@@ -176,8 +196,12 @@ async function main() {
     THREE,
     scene,
     source: commandTelemetry,
-    width: Math.max(1, innerWidth),
-    height: Math.max(1, innerHeight),
+    width: initialViewport.width,
+    height: initialViewport.height,
+    getViewportOffset: () => {
+      const { left, top } = viewportBounds();
+      return { left, top };
+    },
     pixelRatio: Math.max(1, Number(globalThis.devicePixelRatio || 1)),
     typeface,
     llmSetupTab: true,
@@ -397,8 +421,7 @@ async function main() {
   }
 
   function resize() {
-    const width = Math.max(1, Number(innerWidth) || 1);
-    const height = Math.max(1, Number(innerHeight) || 1);
+    const { width, height } = viewportBounds();
     const pixelRatio = Math.max(1, Number(globalThis.devicePixelRatio || 1));
     updateCameraAspect(reviewSession.renderCamera, width / height);
     liveFeed.resize(width, height, pixelRatio);
@@ -581,7 +604,10 @@ async function main() {
         THREE,
         TSL,
         viewport: viewportApi,
-        getAspect: () => Math.max(1, innerWidth) / Math.max(1, innerHeight),
+        getAspect: () => {
+          const { width, height } = viewportBounds();
+          return width / height;
+        },
       });
       const starterResult = await showStarterProjectFromLocation({
         preview,
@@ -663,8 +689,8 @@ async function main() {
           texture: liveFeed.texture,
           bounds: panelBounds,
           viewport: {
-            width: Math.max(1, Number(innerWidth) || 1),
-            height: Math.max(1, Number(innerHeight) || 1),
+            width: viewportBounds().width,
+            height: viewportBounds().height,
           },
           visible: liveFeed.webGpuPresentation && liveFeed.visible,
         },

@@ -226,6 +226,7 @@ function fixture({
   width = 1000,
   height = 700,
   pixelRatio = 2,
+  getViewportOffset,
   maxVisibleRows = 10,
   llmSetupTab = true,
   localModels = [],
@@ -253,7 +254,7 @@ function fixture({
   const scene = new FakeScene();
   const hud = createMcpLiveFeedWebGpuHud({
     THREE, document, eventTarget, source: telemetry, scene,
-    width, height, pixelRatio, maxVisibleRows, now, llmSetupTab, localModels, promptEnabled,
+    width, height, pixelRatio, getViewportOffset, maxVisibleRows, now, llmSetupTab, localModels, promptEnabled,
     onProjectAction,
     onPlayToggle,
     onExplorerEntitySelect,
@@ -493,6 +494,35 @@ test('pointer hits on the panel steal the event so orbit does not start', () => 
   eventTarget.dispatch('pointerdown', event);
   assert.equal(event.prevented, true);
   assert.equal(event.stopped, true);
+});
+
+test('pointer hit testing accounts for an HTML banner above the browser viewport', () => {
+  const top = 58;
+  const { eventTarget, hud } = fixture({
+    width: 1000,
+    height: 642,
+    pixelRatio: 1,
+    getViewportOffset: () => ({ left: 0, top }),
+  });
+  const bounds = hud.panelBounds;
+  const bannerEvent = {
+    clientX: bounds.left + 24,
+    clientY: bounds.top + 20,
+    prevented: false,
+    preventDefault() { this.prevented = true; },
+    stopPropagation() {},
+    stopImmediatePropagation() {},
+  };
+  eventTarget.dispatch('pointerdown', bannerEvent);
+  assert.equal(bannerEvent.prevented, false, 'the HTML masthead remains independently clickable');
+
+  const panelEvent = {
+    ...bannerEvent,
+    clientY: top + bounds.top + 20,
+    prevented: false,
+  };
+  eventTarget.dispatch('pointerdown', panelEvent);
+  assert.equal(panelEvent.prevented, true, 'the visually shifted retained panel still receives input');
 });
 
 test('HUD does not steal pointer events from a marked Studio DOM overlay', () => {

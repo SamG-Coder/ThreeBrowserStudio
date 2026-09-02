@@ -303,6 +303,7 @@ export function createMcpLiveFeedWebGpuHud({
   width = globalThis.innerWidth ?? 1280,
   height = globalThis.innerHeight ?? 720,
   pixelRatio = globalThis.devicePixelRatio ?? 1,
+  getViewportOffset = () => ({ left: 0, top: 0 }),
   maxVisibleRows = DEFAULT_MAX_VISIBLE_ROWS,
   now = () => Date.now(),
   setIntervalFn = globalThis.setInterval?.bind(globalThis),
@@ -2607,15 +2608,20 @@ export function createMcpLiveFeedWebGpuHud({
 
   const contentPoint = event => {
     const point = eventPoint(event);
-    return { x: point.x - originLeft, y: point.y - originTop };
+    const offset = getViewportOffset?.() ?? {};
+    return {
+      x: point.x - finite(offset.left, 0) - originLeft,
+      y: point.y - finite(offset.top, 0) - originTop,
+    };
   };
 
   const containsEvent = event => {
     if (isStudioOverlayEvent(event)) return false;
     const point = eventPoint(event);
+    const offset = getViewportOffset?.() ?? {};
     return pointInRect(point.x, point.y, {
-      x: originLeft,
-      y: originTop,
+      x: finite(offset.left, 0) + originLeft,
+      y: finite(offset.top, 0) + originTop,
       width: host.width,
       height: host.height,
     });
