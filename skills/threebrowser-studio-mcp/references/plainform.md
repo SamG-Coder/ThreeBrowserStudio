@@ -488,8 +488,14 @@ Shell Body Shell inward by 2.2 millimetres, leaving $intake-outline open.
 ```
 
 `Imprint` records the explicit topology intent. `Open` removes the enclosed
-evaluated surface and creates real boundary edges. The shell statement accepts
-the referenced opening only after that topology stage has succeeded.
+evaluated surface and creates real boundary edges. On a closed solid, a
+planar loop whose flattened disk wraps both poles of a sphere or ellipsoid
+opens the smaller side of the rim plane, so a latitude becomes a bowl rather
+than a band. A rectangle on one box face still uses the 2D hole. The cut
+still follows existing triangles; it does not remesh a CAD-precise rim. The
+shell statement accepts the referenced opening only after that topology stage
+has succeeded. Shelling then thickens the remaining skin and stitches the rim
+to the inner wall so the mouth stays open as a cavity.
 
 For a bounded tangent or curvature connector between two anchored owners, use
 an explicit boundary blend rather than relabelling a CSG union:

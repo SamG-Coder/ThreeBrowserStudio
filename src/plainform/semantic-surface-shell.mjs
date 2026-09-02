@@ -55,7 +55,8 @@ export function shellSurface({ owner, thickness, direction }) {
   }
   const sign = direction === 'inward' ? -1 : 1;
   const normals = vertexNormals(mesh.worldPositions, mesh.indices);
-  if (normals.some(normal => Math.hypot(...normal) <= 1e-12)) {
+  const used = new Set(mesh.indices);
+  if (normals.some((normal, index) => used.has(index) && Math.hypot(...normal) <= 1e-12)) {
     const error = new Error(`Shelling ${owner.entityId} found a degenerate surface normal.`);
     error.code = 'plainform_shell_degenerate_surface'; throw error;
   }

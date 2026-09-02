@@ -1039,6 +1039,25 @@ Create Right Pylon as the mirror of Left Pylon across the x centre plane with id
   assert.ok(entities.some(entity => entity.id === 'entity/right-pylon'));
 });
 
+test('Design Plainform opens a sphere latitude as one cap so the remainder is a bowl', () => {
+  const compiled = new PlainformCompiler().compile(`
+Design a bowl called Opened Sphere with id entity/opened-sphere.
+Create a sphere called Ball with id entity/ball, with radius 50 centimetres.
+Create a closed surface curve called rim on Ball through surface points nearest to design points [0 metres, 0 metres, 50 centimetres], [50 centimetres, 0 metres, 0 metres], [0 metres, 0 metres, -50 centimetres], [-50 centimetres, 0 metres, 0 metres].
+Imprint $rim into Ball.
+Open Ball along $rim.
+`, { project: projectFixture() });
+  const intent = compiled.operations.find(operation => operation.op === 'entity.create').entity.metadata.plainformDesign;
+  const open = intent.surfaceDeformations.find(item => item.kind === 'open');
+  assert.ok(open.removedTriangleCount > 100);
+  assert.ok(open.remainingTriangleCount > 100);
+  const ball = compiled.operations.find(operation => operation.op === 'entity.createMany').items
+    .map(item => item.entity).find(entity => entity.id === 'entity/ball');
+  const recipe = compiled.operations[0].items.map(item => item.resource)
+    .find(resource => resource.id === ball.components.mesh.geometryId).recipe;
+  assert.equal(recipe.kind, 'indexedMesh');
+});
+
 test('Design Plainform opens an imprinted loop and shells the resulting genuine boundary', () => {
   const compiled = new PlainformCompiler().compile(`
 Design a vented panel called Opened Shell with id entity/opened-shell.

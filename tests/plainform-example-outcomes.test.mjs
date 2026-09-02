@@ -177,8 +177,8 @@ Create a sphere called Ball with id entity/ball, with radius 50 centimetres, cen
   almostEqual(facts.size[0], 1, 0.02);
   almostEqual(facts.size[1], 1, 0.02);
   almostEqual(facts.size[2], 1, 0.02);
-  assert.ok(facts.boundaryEdgeCount > 0, 'UV-sphere realization keeps a seam, so it is not manifold-watertight');
-  assert.equal(facts.watertight, false);
+  assert.equal(facts.watertight, true);
+  assert.equal(facts.boundaryEdgeCount, 0);
 });
 
 test('example: ellipsoid is a scaled closed sphere, not an open bowl', () => {
@@ -190,7 +190,7 @@ Create an ellipsoid called Skull with id entity/skull, with width 24 centimetres
   assert.equal(recipe.kind, 'sphere');
   assert.equal(entity.metadata.plainformDesign.primitive, 'ellipsoid');
   assert.deepEqual(entity.transform.scale, [0.24, 0.2, 0.26]);
-  assert.equal(facts.watertight, false);
+  assert.equal(facts.watertight, true);
   almostEqual(facts.size[0], 0.24, 0.01);
   almostEqual(facts.size[1], 0.2, 0.01);
   almostEqual(facts.size[2], 0.26, 0.01);
@@ -283,7 +283,7 @@ Open Housing along $opening.
   assert.ok(facts.size[1] > 1.5, 'box Open must keep the panel height, not collapse to a band');
 });
 
-test('example: Open on a sphere latitude deletes both poles and leaves a jagged band', () => {
+test('example: Open on a sphere latitude removes one cap and keeps a bowl', () => {
   const compiled = compileDesign(`
 Design a study called Sphere Equator Open with id entity/sphere-equator-open.
 Create a sphere called Ball with id entity/ball, with radius 50 centimetres, centred at [0, 0, 0].
@@ -294,14 +294,14 @@ Open Ball along $rim.
   const open = rootOf(compiled).metadata.plainformDesign.surfaceDeformations.find(item => item.kind === 'open');
   const { facts } = inspectEntity(compiled, 'entity/ball');
   assert.equal(facts.watertight, false);
-  assert.ok(open.boundaryEdgeCount > 60, `expected a tessellation zigzag, got ${open.boundaryEdgeCount} edges`);
-  assert.ok(facts.size[1] < 0.75, `remaining Y ${facts.size[1]} is still too tall to be a pole-cut band`);
-  assert.ok(facts.min[1] > -0.45, `south pole remains at ${facts.min[1]}`);
-  assert.ok(facts.max[1] < 0.45, `north pole remains at ${facts.max[1]}`);
-  assert.ok(facts.center[1] < 0.2 && facts.center[1] > -0.2, 'band should sit around the equator');
+  assert.ok(open.boundaryEdgeCount >= 3);
+  assert.ok(facts.size[1] > 0.4, `remaining Y ${facts.size[1]} should be a hemisphere bowl, not a band`);
+  const keepsSouth = facts.min[1] < -0.4;
+  const keepsNorth = facts.max[1] > 0.4;
+  assert.equal(keepsSouth !== keepsNorth, true, `Open should keep exactly one pole, min=${facts.min[1]} max=${facts.max[1]}`);
 });
 
-test('example: galea-style Open+Shell on an ellipsoid is a cuff, not a helmet bowl', () => {
+test('example: galea-style Open+Shell on an ellipsoid keeps the crown as a thick bowl', () => {
   const compiled = compileDesign(`
 Design a helmet called Galea Bowl Attempt with id entity/galea-bowl-attempt using the right-up-forward design frame.
 Create an ellipsoid called Skull Form with id entity/gallic-bowl/skull, with width 24 centimetres, height 20 centimetres, and depth 26 centimetres, centred at [0 metres right, 10 centimetres up, 0 metres forward], using material material/leaf.
@@ -313,11 +313,11 @@ Shell Skull Form inward by 3 millimetres, leaving $rim-opening open.
   const deformations = rootOf(compiled).metadata.plainformDesign.surfaceDeformations;
   assert.deepEqual(deformations.map(item => item.kind), ['imprint', 'open', 'shell']);
   const { facts } = inspectEntity(compiled, 'entity/gallic-bowl/skull');
-  assert.ok(deformations[1].boundaryEdgeCount > 80, `Open edges ${deformations[1].boundaryEdgeCount} should be a zigzag, not a 48-seg latitude`);
-  assert.equal(facts.watertight, true, 'Shell stitches every remaining boundary, so the cuff becomes a hollow closed ring');
-  assert.ok(facts.size[1] < 0.14, `remaining height ${facts.size[1]} still looks like a dome`);
-  assert.ok(facts.max[1] < 0.18, `crown remains at ${facts.max[1]}; a 20 cm ellipsoid centred at 10 cm should reach ~20 cm if the dome survived`);
-  assert.ok(facts.min[1] > 0.03, `chin remains at ${facts.min[1]}`);
+  assert.ok(deformations[1].boundaryEdgeCount >= 3);
+  assert.equal(facts.watertight, true, 'Shell stitches the rim to the inner wall, leaving a thick open bowl');
+  assert.ok(facts.size[1] > 0.1, `remaining height ${facts.size[1]} should keep the dome`);
+  assert.ok(facts.max[1] > 0.16, `crown should survive, maxY=${facts.max[1]}`);
+  assert.ok(facts.min[1] > 0.03 && facts.min[1] < 0.1, `rim should sit near the 6 cm cut, minY=${facts.min[1]}`);
 });
 
 test('example: Imprint alone does not change the sphere mesh', () => {
@@ -343,19 +343,23 @@ Open Housing along $opening.
 Shell Housing inward by 3 centimetres, leaving $opening open.
 `);
   const { facts } = inspectEntity(compiled, 'entity/housing');
-  assert.equal(facts.watertight, true, 'Shell always stitches the Open rim to the inner wall; leaving $opening open does not keep mesh-boundary holes');
+  assert.equal(facts.watertight, true, 'Shell stitches the Open rim to the inner wall so the mouth stays a thick opening');
   assert.equal(facts.boundaryEdgeCount, 0);
   assert.ok(facts.vertexCount >= 16, 'shell should duplicate the opened skin');
   almostEqual(facts.size[0], 2, 0.08);
   almostEqual(facts.size[1], 2, 0.08);
 });
 
-test('example: Shell on a closed Design sphere fails at unused pole-seam vertices', () => {
-  throwsCode(`
+test('example: Shell on a closed Design sphere makes a hollow watertight ball', () => {
+  const compiled = compileDesign(`
 Design a hollow ball called Closed Shell with id entity/closed-shell.
 Create a sphere called Ball with id entity/ball, with radius 50 centimetres.
 Shell Ball inward by 3 centimetres.
-`, 'plainform_shell_degenerate_surface');
+`);
+  const { facts } = inspectEntity(compiled, 'entity/ball');
+  assert.equal(facts.watertight, true);
+  assert.equal(facts.boundaryEdgeCount, 0);
+  almostEqual(facts.size[0], 1, 0.03);
 });
 
 test('example: sweep follows the guide and is a closed tube solid', () => {
@@ -641,7 +645,7 @@ Project profile badge outline onto Housing as housing badge, centred at [0 metre
   assert.ok(curves[0].anchors.length >= 4);
 });
 
-test('example: kernel apply of the sphere-equator Open still stores a band, not a bowl', async () => {
+test('example: kernel apply of the sphere-equator Open stores a bowl, not a band', async () => {
   const compiled = compileDesign(`
 Design a study called Kernel Sphere Open with id entity/kernel-sphere-open.
 Create a sphere called Ball with id entity/kernel-ball, with radius 50 centimetres.
@@ -665,7 +669,6 @@ Open Ball along $rim.
   });
   const facts = meshFacts(mesh);
   assert.equal(facts.watertight, false);
-  assert.ok(facts.size[1] < 0.75);
-  assert.ok(facts.min[1] > -0.45);
-  assert.ok(facts.max[1] < 0.45);
+  assert.ok(facts.size[1] > 0.4);
+  assert.equal((facts.min[1] < -0.4) !== (facts.max[1] > 0.4), true);
 });

@@ -101,24 +101,50 @@ function sphereMesh(recipe) {
   const widthSegments = Math.max(8, Math.min(64, recipe.widthSegments ?? 24));
   const heightSegments = Math.max(4, Math.min(32, recipe.heightSegments ?? 12));
   const radius = recipe.radius ?? 0.5;
-  const positions = [];
-  const uvs = [];
-  for (let row = 0; row <= heightSegments; row += 1) {
+  const positions = [[0, radius, 0]];
+  const uvs = [[0.5, 1]];
+  for (let row = 1; row < heightSegments; row += 1) {
     const theta = row / heightSegments * Math.PI;
-    for (let column = 0; column <= widthSegments; column += 1) {
+    const ring = radius * Math.sin(theta);
+    const y = radius * Math.cos(theta);
+    for (let column = 0; column < widthSegments; column += 1) {
       const phi = column / widthSegments * Math.PI * 2;
-      positions.push([radius * Math.sin(theta) * Math.sin(phi), radius * Math.cos(theta), radius * Math.sin(theta) * Math.cos(phi)]);
+      positions.push([ring * Math.sin(phi), y, ring * Math.cos(phi)]);
       uvs.push([column / widthSegments, 1 - row / heightSegments]);
     }
   }
+  positions.push([0, -radius, 0]);
+  uvs.push([0.5, 0]);
+  const outward = (a, b, c) => {
+    const ab = subtract(positions[b], positions[a]);
+    const ac = subtract(positions[c], positions[a]);
+    const normal = cross(ab, ac);
+    const center = add(add(positions[a], positions[b]), positions[c]).map(value => value / 3);
+    return dot(normal, center) < 0 ? [a, c, b] : [a, b, c];
+  };
   const indices = [];
-  const stride = widthSegments + 1;
-  for (let row = 0; row < heightSegments; row += 1) {
+  const north = 0;
+  const south = positions.length - 1;
+  const ringStart = 1;
+  for (let column = 0; column < widthSegments; column += 1) {
+    const next = (column + 1) % widthSegments;
+    indices.push(...outward(north, ringStart + next, ringStart + column));
+  }
+  for (let row = 0; row < heightSegments - 2; row += 1) {
+    const upper = ringStart + row * widthSegments;
+    const lower = upper + widthSegments;
     for (let column = 0; column < widthSegments; column += 1) {
-      const a = row * stride + column; const b = a + stride;
-      if (row > 0) indices.push(a, b, a + 1);
-      if (row < heightSegments - 1) indices.push(a + 1, b, b + 1);
+      const next = (column + 1) % widthSegments;
+      indices.push(
+        ...outward(upper + column, upper + next, lower + column),
+        ...outward(upper + next, lower + next, lower + column),
+      );
     }
+  }
+  const lastRing = ringStart + (heightSegments - 2) * widthSegments;
+  for (let column = 0; column < widthSegments; column += 1) {
+    const next = (column + 1) % widthSegments;
+    indices.push(...outward(lastRing + column, lastRing + next, south));
   }
   return { positions, indices, uvs };
 }

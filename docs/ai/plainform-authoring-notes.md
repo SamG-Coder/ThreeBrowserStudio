@@ -5,7 +5,8 @@ helmet attempt. Live `three_studio_status` and `AGENT_RULES.md` still win.
 
 These are research heads, not a recipe book. The official sentence families
 live in `skills/threebrowser-studio-mcp/references/plainform.md`. This file
-records what those sentences compile to, and where the English over-promises.
+records what those sentences compile to, and which remaining limits are
+honest tessellation bounds rather than English mismatches.
 
 ## 1. Three dialects, one guarded compile
 
@@ -87,11 +88,7 @@ invent a brow, cheek, or neck silhouette. Put landmarks in the base profile.
 
 `Smooth profile <name> with N samples` also closes. Do not expect an open U.
 
-## 5. Imprint / Open / Split is triangle classification, not CAD trim
-
-This is the head that broke the galea bowl.
-
-### What the English sounds like
+## 5. Imprint / Open / Split follows existing triangles
 
 ```text
 Create a closed surface curve called rim opening on Skull Form through
@@ -101,62 +98,28 @@ Open Skull Form along $rim-opening.
 Shell Skull Form inward by 3 millimetres, leaving $rim-opening open.
 ```
 
-The docs and the advanced-surface test use this family. The test owner is a
-**box**, and the curve is a **rectangle on one planar face**. That is the
-supported case.
-
-### What the compiler does
-
 `Imprint` only records intent. It does not remesh.
 
 `Open` calls `openSurfaceAlongCurve` in
-`src/plainform/semantic-surface-split.mjs`, which is
-`splitSurfaceAlongCurve` then **keep remainder, delete enclosed**.
+`src/plainform/semantic-surface-split.mjs`: keep remainder, delete enclosed.
 
 Two partition paths:
 
 1. **Exact edge loop** — every curve anchor sits on a vertex
    (`barycentric` max ≥ `1 - 1e-7`) and every segment is an existing mesh
-   edge. Then flood-fill triangles, sort the two components by area, and
-   treat the smaller as enclosed. A true UV-sphere latitude *is* such a
-   loop, but nearest-surface seeds almost never land on vertices, so this
-   path is rare.
-2. **Projected fallback** — `splitByProjectedCurve`. Flatten the curve into
-   a 2D polygon using the curve’s average frame, then classify each
-   **triangle centroid** with point-in-polygon. The cut follows existing
-   triangle edges. There is no new rim edge, no geodesic split, no
-   remesh.
+   edge. Flood-fill, smaller area is enclosed.
+2. **Projected fallback** — flatten the curve to a 2D polygon and classify
+   triangle centroids. On a closed solid, a planar loop whose 2D disk wraps
+   more than a flat face hole opens the **smaller side of the rim plane**,
+   so a latitude becomes a bowl. A rectangle on one box face still uses the
+   2D hole.
 
-`plainform_surface_split_requires_edge_loop` is the honest failure when the
-code refuses an interior-crossing exact split. The fallback exists so a
-planar box-face outline still compiles.
+The cut still follows existing triangle edges. A 12-triangle box therefore
+loses a whole face, not an 80 cm CAD hole. The rim is sawtooth until the
+source is denser. There is still no geodesic remesh.
 
-### Why a latitude on an ellipsoid becomes a jagged band
-
-A closed rim around a sphere, flattened to its own plane, is a **disk**.
-Both the crown and the chin project into the interior of that disk. The
-fallback therefore marks **both caps** as enclosed and deletes them. The
-remainder is the equatorial belt. The belt’s boundary is the UV-sphere
-tessellation (Design spheres use `widthSegments: 48`, `heightSegments: 24`
-in `unitRecipe`; realization clamps to 8–64 / 4–32), so both rims are
-sawtooth.
-
-Live evidence, revision 17, `entity/gallic-bowl`: Open reported 122
-boundary edges and Shell 135. A clean 48-segment latitude would be ~48
-edges. 122 is a classified zigzag. The beauty frame
-`artifacts/studio-1788323013893.png` is a shredded metal cuff, not a bowl.
-
-World bounds of that result were Y ∈ [0.05, 0.16] on a 20 cm ellipsoid
-centred at Y = 0.10 — a band, not a 14 cm remaining dome.
-
-### What Open is actually for
-
-Planar openings on a box or panel: intake cutout, door aperture, vent on
-one face. The curve’s flatten-frame matches the face, only that face’s
-triangles fall inside the polygon, and the opposite side stays put.
-
-It is the wrong tool for a spherical cap, helmet rim, cup, or any cut
-whose 2D projection overlaps more than one side of the solid.
+`tests/plainform-example-outcomes.test.mjs` pins the bowl and box-face
+outcomes.
 
 ## 6. Shell thickens; it does not repair a rim
 
@@ -169,18 +132,13 @@ whose 2D projection overlaps more than one side of the solid.
 - rejects thickness ≥ half the smallest non-zero AABB span
   (`plainform_shell_self_intersection_risk`)
 
-`leaving $opening open` only checks that `Open … along $opening` already
-ran. `shellSurface()` then stitches **every** remaining boundary edge to
-the offset inner wall. The mouth stays as a cavity (a cup or hollow
-ring), but the mesh is manifold-closed. It does not leave a raw hole.
+`leaving $opening open` means CAD shell-with-opening: the rim is stitched
+to the inner wall so the mouth stays a thick cavity. The result is
+manifold-closed. It is not a raw unstitched hole.
 
-Shell does not resample, fair, or snap to the authored curve. A sawtooth
-Open stays a sawtooth plate.
-
-A closed Design sphere cannot be shelled. The UV-sphere realization
-leaves unused pole-seam vertices with zero normals, and Shell fails with
-`plainform_shell_degenerate_surface`. Open the surface first so
-`compactRecipe` drops unused vertices, or shell a box / loft instead.
+Shell skips unused vertices when checking normals. Design spheres are
+welded at the poles and seam, so `Create a sphere` then `Shell inward`
+is a hollow ball.
 
 Raise / bulge on a 12-triangle box often hits no vertices
 (`plainform_surface_deformation_empty`). Use a denser realized surface.
@@ -272,11 +230,11 @@ until the silhouette is curved. Judge the PNG, not the explorer tree.
 Honest Design tools for a galea-like object, given the heads above:
 
 - **Skull volume** — ellipsoid or lofted solid. It will be closed.
-- **Face opening** — not Open-on-latitude. A planar box cutout can Open.
-  A spherical rim cannot, until an exact vertex edge-loop path exists.
-- **Plate thickness** — Shell after a *planar* Open, or overlapping
-  solids, or a swept thin closed profile. Shell will not turn a band into
-  a bowl.
+- **Face opening** — Open along a closed rim on the ellipsoid. That now
+  removes the smaller cap and keeps a bowl. The rim follows triangle
+  edges, so keep the source reasonably dense.
+- **Plate thickness** — Shell after that Open. The mouth stays a thick
+  cavity. `Shell inward` also works on a closed sphere.
 - **Cheek / neck / brow** — small lofts or sweeps that hang **down**
   (section offsets), mirrored across X. Landmarks in the base profile.
 - **Open skins** — constrained patches between named rails (eyebrows,
@@ -293,12 +251,11 @@ what it actually is live in
 `tests/plainform-example-outcomes.test.mjs`. Prefer those outcomes over
 remembered English. Confirmed there:
 
-- UV-sphere recipes have a seam, so they are not manifold-watertight.
+- Design spheres are welded and manifold-watertight; `Shell inward` hollows them.
 - Open on a box deletes whole triangles (often the entire face).
-- Open on a sphere latitude deletes both poles and leaves a band.
-- Galea-style Open+Shell is a hollow cuff, not a bowl.
-- Shell stitches every rim; `leaving $opening open` does not keep a hole.
-- Closed Design spheres cannot be shelled (`plainform_shell_degenerate_surface`).
+- Open on a sphere latitude removes the smaller cap and keeps a bowl.
+- Galea-style Open+Shell keeps the crown as a thick bowl.
+- `leaving $opening open` is a thick mouth (stitched rim), not a raw hole.
 - Extrude and capsule recipes cannot later be surface-realized.
 - Raise on a 12-triangle box finds no vertices; a sphere region does.
 - Design emits `entity.createMany`, which the kernel rejects until flattened.

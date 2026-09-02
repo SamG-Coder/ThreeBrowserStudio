@@ -5,7 +5,7 @@ export const PLAINFORM_VISUAL_BENCHMARK_EXPECTATIONS = Object.freeze({
     dependencyGraph: { kinds: { geometry: 2 }, hash: 'd7997bc56f49015e019fb479e260cc106406db9a74818d6363bc97ac9b795437' },
     metrics: { operationCount: 3, resourceCount: 2, entityCount: 2, graphNodeCount: 0, estimatedTriangles: 2528 },
     semanticIds: ['entity/face-patch', 'entity/head', 'scene/main'],
-    semanticIdentityHash: '332aacee464181b9955cd4106e3a3bf31001ad56675b66c727c75b2170e25a27', operationHash: '9d285809ad5e5757ccdb04c9ad96be63807012925f98dc903b34438f8e2ab8db',
+    semanticIdentityHash: '332aacee464181b9955cd4106e3a3bf31001ad56675b66c727c75b2170e25a27', operationHash: 'd234e759167e509792c6abc1dc255a6004a63c9b518ce10c83e48a14429dc12b',
     evidenceViews: [{ id: 'view/front', camera: 'front', semanticTargets: ['head', 'cheek'], hardGate: 'topology' }],
   },
   'eye-assembly': {
