@@ -103,10 +103,10 @@ export function eulerXyzToQuaternion([x = 0, y = 0, z = 0] = []) {
   const cz = Math.cos(z * 0.5);
   const sz = Math.sin(z * 0.5);
   return [
-    (sx * cy * cz) - (cx * sy * sz),
-    (cx * sy * cz) + (sx * cy * sz),
-    (cx * cy * sz) - (sx * sy * cz),
-    (cx * cy * cz) + (sx * sy * sz),
+    (sx * cy * cz) + (cx * sy * sz),
+    (cx * sy * cz) - (sx * cy * sz),
+    (cx * cy * sz) + (sx * sy * cz),
+    (cx * cy * cz) - (sx * sy * sz),
   ];
 }
 

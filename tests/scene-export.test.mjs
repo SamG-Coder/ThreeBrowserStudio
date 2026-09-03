@@ -106,6 +106,14 @@ test('euler XYZ identity is a unit quaternion', () => {
   assert.equal(w, 1);
 });
 
+test('euler XYZ export preserves a compound X/Z rotation', () => {
+  const quaternion = eulerXyzToQuaternion([Math.PI / 2, 0, -Math.PI / 2]);
+  const expected = [0.5, 0.5, -0.5, 0.5];
+  quaternion.forEach((component, index) => {
+    assert.ok(Math.abs(component - expected[index]) < 1e-12);
+  });
+});
+
 test('scene export writes a GLB with hierarchy, PBR, camera, and light', () => {
   const document = triangleProject();
   const exported = exportSceneInterchange(document, { format: 'glb' });
