@@ -1,0 +1,4918 @@
+{
+  "kind": "ThreeStudioProjectPack",
+  "protocolVersion": "three-studio/1",
+  "formatVersion": 1,
+  "exportedAt": "2026-09-03T21:03:51.000Z",
+  "document": {
+    "kind": "ThreeStudioProject",
+    "protocolVersion": "three-studio/1",
+    "formatVersion": 1,
+    "projectId": "project/realistic-corvette",
+    "name": "Realistic Corvette",
+    "revision": 14,
+    "savedRevision": 14,
+    "activeSceneId": "scene/main",
+    "sceneOrder": [
+      "scene/main"
+    ],
+    "scenes": {
+      "scene/main": {
+        "id": "scene/main",
+        "name": "Main Scene",
+        "rootEntityIds": [
+          "entity/ocean",
+          "camera/hero",
+          "rig/north-sea-day",
+          "entity/corvette"
+        ],
+        "entities": {
+          "entity/ocean": {
+            "id": "entity/ocean",
+            "kind": "mesh",
+            "name": "North Sea",
+            "parentId": null,
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                -1.5707963267948966,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/ocean",
+                "materialIds": [
+                  "material/sea-surface"
+                ],
+                "castShadow": false,
+                "receiveShadow": true
+              },
+              "modifiers": [
+                {
+                  "id": "modifier/ocean-swell",
+                  "type": "ocean",
+                  "mode": "displace",
+                  "seed": 41,
+                  "time": 6.4,
+                  "timelineScale": 0,
+                  "spatialSize": 90,
+                  "waveScale": 1.15,
+                  "waveScaleMin": 0.22,
+                  "windVelocity": 13.5,
+                  "waveDirection": 0.55,
+                  "waveAlignment": 0.62,
+                  "choppiness": 1.15,
+                  "damping": 0.38,
+                  "depth": 50,
+                  "waveCount": 10,
+                  "recalculateNormals": true
+                }
+              ]
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "camera/hero": {
+            "id": "camera/hero",
+            "kind": "perspectiveCamera",
+            "name": "Quarter View",
+            "parentId": null,
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                57.19785996416897,
+                23.014403872176935,
+                81.40197594845993
+              ],
+              "rotation": [
+                -0.128326653758052,
+                0.6759666281663078,
+                0.08055671995084773
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "camera": {
+                "type": "perspective",
+                "fov": 32,
+                "near": 0.005,
+                "far": 301.4138546852683,
+                "zoom": 1,
+                "aspect": 1.7777777777777777,
+                "presentationAspect": 1.7777777777777777,
+                "framing": {
+                  "fit": "contain",
+                  "aspect": 1.7777777777777777,
+                  "padding": 1.05,
+                  "direction": [
+                    -0.6256516779961421,
+                    -0.09983341664682817,
+                    -0.7736880939637322
+                  ],
+                  "distance": 91.42125239296756,
+                  "radius": 52.49815057307518,
+                  "lockPreviewAspect": true,
+                  "bounds": {
+                    "min": [
+                      -6.599999904632568,
+                      -1.6249842166900657,
+                      -36.400000000000006
+                    ],
+                    "max": [
+                      6.599999904632568,
+                      29.400000000000002,
+                      57.740882873535156
+                    ]
+                  },
+                  "targetIds": [
+                    "entity/corvette"
+                  ]
+                }
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "rig/north-sea-day": {
+            "id": "rig/north-sea-day",
+            "kind": "group",
+            "name": "outdoor lighting rig",
+            "parentId": null,
+            "children": [
+              "rig/north-sea-day/sky",
+              "rig/north-sea-day/sun"
+            ],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {},
+            "tags": [
+              "lighting",
+              "lighting-rig"
+            ],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "rig/north-sea-day/sky": {
+            "id": "rig/north-sea-day/sky",
+            "kind": "hemisphereLight",
+            "name": "Outdoor sky fill",
+            "parentId": "rig/north-sea-day",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                6,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "light": {
+                "color": [
+                  0.62,
+                  0.78,
+                  1
+                ],
+                "groundColor": [
+                  0.16,
+                  0.18,
+                  0.2
+                ],
+                "intensity": 1.65,
+                "castShadow": false
+              }
+            },
+            "tags": [
+              "lighting",
+              "rig-outdoor"
+            ],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "rig/north-sea-day/sun": {
+            "id": "rig/north-sea-day/sun",
+            "kind": "directionalLight",
+            "name": "Outdoor sun",
+            "parentId": "rig/north-sea-day",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                150,
+                38,
+                88
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "light": {
+                "color": [
+                  1,
+                  0.88,
+                  0.7
+                ],
+                "intensity": 3.8,
+                "castShadow": true,
+                "shadowMapSize": 2048,
+                "shadowBias": -0.0002,
+                "shadowNormalBias": 0.02
+              }
+            },
+            "tags": [
+              "lighting",
+              "rig-outdoor"
+            ],
+            "scriptIds": [],
+            "metadata": {}
+          },
+          "entity/corvette": {
+            "id": "entity/corvette",
+            "kind": "group",
+            "name": "Patrol Corvette",
+            "parentId": null,
+            "children": [
+              "entity/hull",
+              "entity/deck-mid",
+              "entity/deck-aft",
+              "entity/deck-fwd",
+              "entity/house-base",
+              "entity/house-mid",
+              "entity/house-upper",
+              "entity/funnel",
+              "entity/funnel-cap",
+              "entity/hangar",
+              "entity/bridge",
+              "entity/bridge-glass-fwd",
+              "entity/bridge-glass-port",
+              "entity/bridge-glass-stbd",
+              "entity/bridge-roof",
+              "entity/gun-pedestal",
+              "entity/gun-turret",
+              "entity/gun-barrel",
+              "entity/mast",
+              "entity/radar-fwd",
+              "entity/radar-port",
+              "entity/radar-stbd",
+              "entity/radar-air",
+              "entity/missiles-port",
+              "entity/missiles-stbd",
+              "entity/ciws",
+              "entity/helipad-ring",
+              "entity/helipad-h",
+              "entity/nav-port",
+              "entity/nav-stbd",
+              "entity/nav-masthead",
+              "entity/bulbous-bow",
+              "entity/rhib",
+              "entity/raft-port",
+              "entity/raft-stbd",
+              "entity/transom",
+              "entity/ciws-barrels",
+              "entity/windows-base",
+              "entity/windows-mid",
+              "entity/windows-upper",
+              "entity/windows-port",
+              "entity/windows-stbd",
+              "entity/breakwater",
+              "entity/yardarm"
+            ],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                -1.5707963267948966,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {},
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "version": 1,
+                "kind": "warship",
+                "source": "Design a warship called Patrol Corvette with id entity/corvette using the right-up-forward design frame.\nCreate a symmetric smooth profile called hull section through [0 metres right, 4.6 metres up], [6.5 metres right, 4.35 metres up], [6.7 metres right, 2.8 metres up], [6.4 metres right, 0 metres up], [5.6 metres right, 2.0 metres down], [3.0 metres right, 3.15 metres down], [0 metres right, 3.4 metres down], mirrored across the up centreline.\nSmooth profile hull section with 36 samples.\nAdd a controlled section of hull section at 44 metres backward, width 11.6 metres, height 7.2 metres, offset vertically by 10 centimetres.\nAdd a controlled section of hull section at 32 metres backward, width 12.8 metres, height 7.7 metres.\nAdd a controlled section of hull section at 16 metres backward, width 13.2 metres, height 8.0 metres.\nAdd a controlled section of hull section at 1 metre backward, width 13.2 metres, height 8.0 metres.\nAdd a controlled section of hull section at 16 metres forward, width 12.6 metres, height 8.3 metres, offset vertically by 25 centimetres.\nAdd a controlled section of hull section at 30 metres forward, width 8.8 metres, height 8.8 metres, offset vertically by 70 centimetres.\nAdd a controlled section of hull section at 40 metres forward, width 4.6 metres, height 9.2 metres, offset vertically by 1.2 metres.\nAdd a controlled section of hull section at 45 metres forward, width 1.1 metres, height 9.8 metres, offset vertically by 1.7 metres.\nCreate a smooth guide curve called sheer line through [5.8 metres right, 4.2 metres up, 44 metres backward], [6.5 metres right, 4.45 metres up, 16 metres backward], [6.4 metres right, 4.6 metres up, 1 metre backward], [4.4 metres right, 5.5 metres up, 30 metres forward], [1.6 metres right, 6.9 metres up, 42 metres forward], [0.25 metres right, 7.8 metres up, 45 metres forward].\nCreate a smooth guide curve called keel line through [0 metres right, 3.4 metres down, 44 metres backward], [0 metres right, 3.4 metres down, 1 metre backward], [0 metres right, 3.3 metres down, 30 metres forward], [0 metres right, 1.8 metres down, 42 metres forward], [0 metres right, 0.3 metres up, 45.2 metres forward].\nLoft a watertight solid called Hull with id entity/hull through all sections of hull section, with 2 cap rings, following sheer line and keel line, with positional continuity, using material material/hull-haze.\nPreview these changes.\n",
+                "variables": {},
+                "designFrame": {
+                  "name": "right-up-forward",
+                  "worldAxes": {
+                    "right": "+X",
+                    "up": "+Y",
+                    "forward": "+Z"
+                  },
+                  "internalLoftAxes": {
+                    "right": "+X",
+                    "up": "+Z",
+                    "forward": "-Y"
+                  }
+                },
+                "boundaries": [],
+                "surfaceCurves": [],
+                "surfaceRegions": [],
+                "surfaceDeformations": [],
+                "constraints": []
+              }
+            }
+          },
+          "entity/hull": {
+            "id": "entity/hull",
+            "kind": "mesh",
+            "name": "Hull",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                0,
+                0
+              ],
+              "rotation": [
+                0,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/hull",
+                "materialId": "material/hull-haze"
+              },
+              "modifiers": [
+                {
+                  "id": "modifier/hull-normals",
+                  "type": "weightedNormal",
+                  "weighting": "areaAngle",
+                  "influence": 1
+                }
+              ]
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "loft",
+                "profile": "hull section",
+                "continuity": "positional",
+                "capRings": 2,
+                "guides": [
+                  "sheer line",
+                  "keel line"
+                ],
+                "modifiers": []
+              }
+            }
+          },
+          "entity/deck-mid": {
+            "id": "entity/deck-mid",
+            "kind": "mesh",
+            "name": "Mid Weather Deck",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -0.999999999999999,
+                4.58
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                12.1,
+                0.12,
+                24
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/box-unit",
+                "materialId": "material/deck-nonskid"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 12.1,
+                  "height": 0.12,
+                  "depth": 24
+                }
+              }
+            }
+          },
+          "entity/deck-aft": {
+            "id": "entity/deck-aft",
+            "kind": "mesh",
+            "name": "Aft Weather Deck",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                18,
+                4.519999999999996
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                11.2,
+                0.12,
+                20
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/box-unit",
+                "materialId": "material/deck-nonskid"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 11.2,
+                  "height": 0.12,
+                  "depth": 20
+                }
+              }
+            }
+          },
+          "entity/deck-fwd": {
+            "id": "entity/deck-fwd",
+            "kind": "mesh",
+            "name": "Forecastle Deck",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -27.5,
+                5.42
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                6.6,
+                0.12,
+                11
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/box-unit",
+                "materialId": "material/deck-nonskid"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 8.4,
+                  "height": 0.12,
+                  "depth": 16
+                }
+              }
+            }
+          },
+          "entity/house-base": {
+            "id": "entity/house-base",
+            "kind": "mesh",
+            "name": "Superstructure Base",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -10.999999999999998,
+                5.850000000000002
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                8.8,
+                2.5,
+                18.5
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/box-unit",
+                "materialId": "material/hull-haze"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 8.8,
+                  "height": 2.5,
+                  "depth": 18.5
+                }
+              }
+            }
+          },
+          "entity/house-mid": {
+            "id": "entity/house-mid",
+            "kind": "mesh",
+            "name": "Superstructure Mid",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -11.599999999999998,
+                8.250000000000002
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                7.7,
+                2.3,
+                16
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/box-unit",
+                "materialId": "material/hull-haze"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 7.7,
+                  "height": 2.3,
+                  "depth": 16
+                }
+              }
+            }
+          },
+          "entity/house-upper": {
+            "id": "entity/house-upper",
+            "kind": "mesh",
+            "name": "Superstructure Upper",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -12.399999999999999,
+                10.450000000000003
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                6.7,
+                2.1,
+                12.4
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/box-unit",
+                "materialId": "material/hull-haze"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 6.7,
+                  "height": 2.1,
+                  "depth": 12.4
+                }
+              }
+            }
+          },
+          "entity/funnel": {
+            "id": "entity/funnel",
+            "kind": "mesh",
+            "name": "Funnel",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -1.399999999999998,
+                9.2
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                3.6,
+                5.2,
+                5.4
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/box-unit",
+                "materialId": "material/composite-dark"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 3.6,
+                  "height": 5.2,
+                  "depth": 5.4
+                }
+              }
+            }
+          },
+          "entity/funnel-cap": {
+            "id": "entity/funnel-cap",
+            "kind": "mesh",
+            "name": "Funnel Cap",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -1.3999999999999972,
+                12
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                4,
+                0.4,
+                5.8
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/box-unit",
+                "materialId": "material/steel"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 4,
+                  "height": 0.4,
+                  "depth": 5.8
+                }
+              }
+            }
+          },
+          "entity/hangar": {
+            "id": "entity/hangar",
+            "kind": "mesh",
+            "name": "Hangar",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                22,
+                6.499999999999995
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                9.6,
+                3.8,
+                10
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/box-unit",
+                "materialId": "material/hull-haze"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 9.6,
+                  "height": 3.8,
+                  "depth": 10
+                }
+              }
+            }
+          },
+          "entity/bridge": {
+            "id": "entity/bridge",
+            "kind": "mesh",
+            "name": "Bridge House",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -13.599999999999996,
+                12.850000000000003
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                6.4,
+                2.7,
+                7
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/box-unit",
+                "materialId": "material/hull-haze"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 6.4,
+                  "height": 2.7,
+                  "depth": 7
+                }
+              }
+            }
+          },
+          "entity/bridge-glass-fwd": {
+            "id": "entity/bridge-glass-fwd",
+            "kind": "mesh",
+            "name": "Bridge Forward Glass",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -17.179999999999996,
+                12.950000000000003
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                6.05,
+                1.35,
+                0.16
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/box-unit",
+                "materialId": "material/bridge-glass"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 6.05,
+                  "height": 1.35,
+                  "depth": 0.16
+                }
+              }
+            }
+          },
+          "entity/bridge-glass-port": {
+            "id": "entity/bridge-glass-port",
+            "kind": "mesh",
+            "name": "Bridge Port Glass",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                -3.28,
+                -13.599999999999996,
+                12.950000000000003
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.16,
+                1.35,
+                6.4
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/box-unit",
+                "materialId": "material/bridge-glass"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 0.16,
+                  "height": 1.35,
+                  "depth": 6.4
+                }
+              }
+            }
+          },
+          "entity/bridge-glass-stbd": {
+            "id": "entity/bridge-glass-stbd",
+            "kind": "mesh",
+            "name": "Bridge Starboard Glass",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                3.28,
+                -13.599999999999996,
+                12.950000000000003
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.16,
+                1.35,
+                6.4
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/box-unit",
+                "materialId": "material/bridge-glass"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 0.16,
+                  "height": 1.35,
+                  "depth": 6.4
+                }
+              }
+            }
+          },
+          "entity/bridge-roof": {
+            "id": "entity/bridge-roof",
+            "kind": "mesh",
+            "name": "Bridge Roof",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -13.599999999999996,
+                14.290000000000003
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                6.8,
+                0.18,
+                7.4
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/box-unit",
+                "materialId": "material/composite-dark"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 6.8,
+                  "height": 0.18,
+                  "depth": 7.4
+                }
+              }
+            }
+          },
+          "entity/gun-pedestal": {
+            "id": "entity/gun-pedestal",
+            "kind": "mesh",
+            "name": "Gun Pedestal",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -32.4,
+                5.680000000000007
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                1.85,
+                0.55,
+                1.85
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/cylinder-unit",
+                "materialId": "material/steel"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "cylinder",
+                "dimensions": {
+                  "radius": 1.85,
+                  "height": 0.55
+                }
+              }
+            }
+          },
+          "entity/gun-turret": {
+            "id": "entity/gun-turret",
+            "kind": "mesh",
+            "name": "Gun Turret",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -32.4,
+                6.680000000000007
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                1.55,
+                1.45,
+                1.55
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/cylinder-unit",
+                "materialId": "material/composite-dark"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "cylinder",
+                "dimensions": {
+                  "radius": 1.55,
+                  "height": 1.45
+                }
+              }
+            }
+          },
+          "entity/gun-barrel": {
+            "id": "entity/gun-barrel",
+            "kind": "mesh",
+            "name": "Gun Barrel",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -35.7,
+                7.050000000000008
+              ],
+              "rotation": [
+                3.1415926535897927,
+                0,
+                0
+              ],
+              "scale": [
+                0.14,
+                5.8,
+                0.14
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/cylinder-unit",
+                "materialId": "material/steel"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "cylinder",
+                "dimensions": {
+                  "radius": 0.14,
+                  "height": 5.8
+                }
+              }
+            }
+          },
+          "entity/mast": {
+            "id": "entity/mast",
+            "kind": "mesh",
+            "name": "Main Mast",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -13.199999999999994,
+                20.550000000000004
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/main-mast",
+                "materialId": "material/steel"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "taperedCylinder",
+                "dimensions": {
+                  "radiusBottom": 0.42,
+                  "radiusTop": 0.16,
+                  "height": 12.4
+                }
+              }
+            }
+          },
+          "entity/radar-fwd": {
+            "id": "entity/radar-fwd",
+            "kind": "mesh",
+            "name": "Forward Radar",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -13.849999999999994,
+                24.200000000000003
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                2.6,
+                2.8,
+                0.28
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/box-unit",
+                "materialId": "material/composite-dark"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 2.6,
+                  "height": 2.8,
+                  "depth": 0.28
+                }
+              }
+            }
+          },
+          "entity/radar-port": {
+            "id": "entity/radar-port",
+            "kind": "mesh",
+            "name": "Port Radar",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                -0.7000000000000001,
+                -13.199999999999994,
+                23.800000000000004
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.28,
+                2.4,
+                2.2
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/box-unit",
+                "materialId": "material/composite-dark"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 0.28,
+                  "height": 2.4,
+                  "depth": 2.2
+                }
+              }
+            }
+          },
+          "entity/radar-stbd": {
+            "id": "entity/radar-stbd",
+            "kind": "mesh",
+            "name": "Starboard Radar",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0.7000000000000001,
+                -13.199999999999994,
+                23.800000000000004
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.28,
+                2.4,
+                2.2
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/box-unit",
+                "materialId": "material/composite-dark"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 0.28,
+                  "height": 2.4,
+                  "depth": 2.2
+                }
+              }
+            }
+          },
+          "entity/radar-air": {
+            "id": "entity/radar-air",
+            "kind": "mesh",
+            "name": "Air Search Radar",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -13.199999999999994,
+                27.050000000000004
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                1.35,
+                0.22,
+                1.35
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/cylinder-unit",
+                "materialId": "material/steel"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "cylinder",
+                "dimensions": {
+                  "radius": 1.35,
+                  "height": 0.22
+                }
+              }
+            }
+          },
+          "entity/missiles-port": {
+            "id": "entity/missiles-port",
+            "kind": "mesh",
+            "name": "Port Missile Deck",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                -3.35,
+                -2.199999999999999,
+                5.200000000000001
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                1.5,
+                1.15,
+                5.6
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/box-unit",
+                "materialId": "material/composite-dark"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 1.5,
+                  "height": 1.15,
+                  "depth": 5.6
+                }
+              }
+            }
+          },
+          "entity/missiles-stbd": {
+            "id": "entity/missiles-stbd",
+            "kind": "mesh",
+            "name": "Starboard Missile Deck",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                3.35,
+                -2.199999999999999,
+                5.200000000000001
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                1.5,
+                1.15,
+                5.6
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/box-unit",
+                "materialId": "material/composite-dark"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 1.5,
+                  "height": 1.15,
+                  "depth": 5.6
+                }
+              }
+            }
+          },
+          "entity/ciws": {
+            "id": "entity/ciws",
+            "kind": "mesh",
+            "name": "Close-In Turret",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                8.000000000000002,
+                7.199999999999998
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.9500000000000001,
+                1.2,
+                0.9500000000000001
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/cylinder-unit",
+                "materialId": "material/steel"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "cylinder",
+                "dimensions": {
+                  "radius": 0.9500000000000001,
+                  "height": 1.2
+                }
+              }
+            }
+          },
+          "entity/helipad-ring": {
+            "id": "entity/helipad-ring",
+            "kind": "mesh",
+            "name": "Helipad Ring",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                32,
+                4.719999999999993
+              ],
+              "rotation": [
+                3.1415926535897927,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/helipad-ring",
+                "materialId": "material/helipad-mark"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "torus",
+                "dimensions": {
+                  "radius": 5.1,
+                  "tube": 0.09
+                }
+              }
+            }
+          },
+          "entity/helipad-h": {
+            "id": "entity/helipad-h",
+            "kind": "mesh",
+            "name": "Helipad H Bar",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                32,
+                4.699999999999993
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                3.2,
+                0.06,
+                0.55
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/box-unit",
+                "materialId": "material/helipad-mark"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 3.2,
+                  "height": 0.06,
+                  "depth": 0.55
+                }
+              }
+            }
+          },
+          "entity/nav-port": {
+            "id": "entity/nav-port",
+            "kind": "mesh",
+            "name": "Port Nav Light",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                -4.4,
+                -19.799999999999997,
+                8.400000000000004
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.24,
+                0.24,
+                0.24
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/sphere-unit",
+                "materialId": "material/nav-red"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "sphere",
+                "dimensions": {
+                  "width": 0.24,
+                  "height": 0.24,
+                  "depth": 0.24,
+                  "radius": 0.12
+                }
+              }
+            }
+          },
+          "entity/nav-stbd": {
+            "id": "entity/nav-stbd",
+            "kind": "mesh",
+            "name": "Starboard Nav Light",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                4.4,
+                -19.799999999999997,
+                8.400000000000004
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.24,
+                0.24,
+                0.24
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/sphere-unit",
+                "materialId": "material/nav-green"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "sphere",
+                "dimensions": {
+                  "width": 0.24,
+                  "height": 0.24,
+                  "depth": 0.24,
+                  "radius": 0.12
+                }
+              }
+            }
+          },
+          "entity/nav-masthead": {
+            "id": "entity/nav-masthead",
+            "kind": "mesh",
+            "name": "Masthead Light",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -13.199999999999994,
+                27.500000000000004
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.2,
+                0.2,
+                0.2
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/sphere-unit",
+                "materialId": "material/nav-white"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "sphere",
+                "dimensions": {
+                  "width": 0.2,
+                  "height": 0.2,
+                  "depth": 0.2,
+                  "radius": 0.1
+                }
+              }
+            }
+          },
+          "entity/bulbous-bow": {
+            "id": "entity/bulbous-bow",
+            "kind": "mesh",
+            "name": "Bulbous Bow",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": false,
+            "transform": {
+              "position": [
+                0,
+                -42.4,
+                -1.4999999999999907
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                2.6,
+                2.3,
+                5.8
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/sphere-unit",
+                "materialId": "material/antifouling"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "ellipsoid",
+                "geometryKind": "sphere",
+                "dimensions": {
+                  "width": 2.6,
+                  "height": 2.3,
+                  "depth": 5.8
+                }
+              }
+            }
+          },
+          "entity/rhib": {
+            "id": "entity/rhib",
+            "kind": "mesh",
+            "name": "Starboard RHIB",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                4.6,
+                6.000000000000001,
+                5.699999999999999
+              ],
+              "rotation": [
+                3.1415926535897927,
+                0,
+                0
+              ],
+              "scale": [
+                1,
+                1,
+                1
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/starboard-rhib",
+                "materialId": "material/composite-dark"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "capsule",
+                "dimensions": {
+                  "radius": 0.85,
+                  "bodyLength": 6.4,
+                  "totalHeight": 8.1
+                }
+              }
+            }
+          },
+          "entity/raft-port": {
+            "id": "entity/raft-port",
+            "kind": "mesh",
+            "name": "Port Life Raft",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                -4.55,
+                -7.999999999999999,
+                5.550000000000002
+              ],
+              "rotation": [
+                3.1415926535897927,
+                0,
+                0
+              ],
+              "scale": [
+                0.55,
+                1.9,
+                0.55
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/cylinder-unit",
+                "materialId": "material/helipad-mark"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "cylinder",
+                "dimensions": {
+                  "radius": 0.55,
+                  "height": 1.9
+                }
+              }
+            }
+          },
+          "entity/raft-stbd": {
+            "id": "entity/raft-stbd",
+            "kind": "mesh",
+            "name": "Starboard Life Raft",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                4.55,
+                -7.999999999999999,
+                5.550000000000002
+              ],
+              "rotation": [
+                3.1415926535897927,
+                0,
+                0
+              ],
+              "scale": [
+                0.55,
+                1.9,
+                0.55
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/cylinder-unit",
+                "materialId": "material/helipad-mark"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "cylinder",
+                "dimensions": {
+                  "radius": 0.55,
+                  "height": 1.9
+                }
+              }
+            }
+          },
+          "entity/transom": {
+            "id": "entity/transom",
+            "kind": "mesh",
+            "name": "Transom Flap",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                44.2,
+                3.5999999999999903
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                10.4,
+                1.8,
+                0.4
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/box-unit",
+                "materialId": "material/hull-haze"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 10.4,
+                  "height": 1.8,
+                  "depth": 0.4
+                }
+              }
+            }
+          },
+          "entity/ciws-barrels": {
+            "id": "entity/ciws-barrels",
+            "kind": "mesh",
+            "name": "CIWS Barrels",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                6.800000000000002,
+                7.849999999999998
+              ],
+              "rotation": [
+                3.1415926535897927,
+                0,
+                0
+              ],
+              "scale": [
+                0.08,
+                1.8,
+                0.08
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/cylinder-unit",
+                "materialId": "material/steel"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "cylinder",
+                "dimensions": {
+                  "radius": 0.08,
+                  "height": 1.8
+                }
+              }
+            }
+          },
+          "entity/windows-base": {
+            "id": "entity/windows-base",
+            "kind": "mesh",
+            "name": "Superstructure Base Windows",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -20.32,
+                6.450000000000005
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                8.5,
+                0.9500000000000001,
+                0.14
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/box-unit",
+                "materialId": "material/bridge-glass"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 8.5,
+                  "height": 0.9500000000000001,
+                  "depth": 0.14
+                }
+              }
+            }
+          },
+          "entity/windows-mid": {
+            "id": "entity/windows-mid",
+            "kind": "mesh",
+            "name": "Superstructure Mid Windows",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -19.679999999999996,
+                8.550000000000004
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                7.4,
+                0.85,
+                0.14
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/box-unit",
+                "materialId": "material/bridge-glass"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 7.4,
+                  "height": 0.85,
+                  "depth": 0.14
+                }
+              }
+            }
+          },
+          "entity/windows-upper": {
+            "id": "entity/windows-upper",
+            "kind": "mesh",
+            "name": "Superstructure Upper Windows",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -18.679999999999996,
+                10.700000000000003
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                6.4,
+                0.8,
+                0.14
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/box-unit",
+                "materialId": "material/bridge-glass"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 6.4,
+                  "height": 0.8,
+                  "depth": 0.14
+                }
+              }
+            }
+          },
+          "entity/windows-port": {
+            "id": "entity/windows-port",
+            "kind": "mesh",
+            "name": "Port House Windows",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                -4.46,
+                -10.999999999999998,
+                6.450000000000003
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.12,
+                0.9500000000000001,
+                16
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/box-unit",
+                "materialId": "material/bridge-glass"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 0.12,
+                  "height": 0.9500000000000001,
+                  "depth": 16
+                }
+              }
+            }
+          },
+          "entity/windows-stbd": {
+            "id": "entity/windows-stbd",
+            "kind": "mesh",
+            "name": "Starboard House Windows",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                4.46,
+                -10.999999999999998,
+                6.450000000000003
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                0.12,
+                0.9500000000000001,
+                16
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/box-unit",
+                "materialId": "material/bridge-glass"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 0.12,
+                  "height": 0.9500000000000001,
+                  "depth": 16
+                }
+              }
+            }
+          },
+          "entity/breakwater": {
+            "id": "entity/breakwater",
+            "kind": "mesh",
+            "name": "Breakwater",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -36.2,
+                6.050000000000008
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                0
+              ],
+              "scale": [
+                7.4,
+                1.15,
+                0.38
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/box-unit",
+                "materialId": "material/deck-nonskid"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "box",
+                "dimensions": {
+                  "width": 7.4,
+                  "height": 1.15,
+                  "depth": 0.38
+                }
+              }
+            }
+          },
+          "entity/yardarm": {
+            "id": "entity/yardarm",
+            "kind": "mesh",
+            "name": "Mast Yardarm",
+            "parentId": "entity/corvette",
+            "children": [],
+            "visible": true,
+            "transform": {
+              "position": [
+                0,
+                -13.199999999999994,
+                22.600000000000005
+              ],
+              "rotation": [
+                1.5707963267948963,
+                0,
+                -1.5707963267948963
+              ],
+              "scale": [
+                0.07,
+                4.6,
+                0.07
+              ]
+            },
+            "components": {
+              "mesh": {
+                "geometryId": "geometry/plainform-design/patrol-corvette/cylinder-unit",
+                "materialId": "material/steel"
+              }
+            },
+            "tags": [],
+            "scriptIds": [],
+            "metadata": {
+              "plainformDesign": {
+                "primitive": "cylinder",
+                "dimensions": {
+                  "radius": 0.07,
+                  "height": 4.6
+                }
+              }
+            }
+          }
+        },
+        "rootCollectionIds": [],
+        "collections": {},
+        "settings": {
+          "background": {
+            "mode": "color",
+            "color": [
+              0.035,
+              0.045,
+              0.06
+            ],
+            "colorSpace": "linear-srgb"
+          },
+          "environment": null,
+          "fog": null,
+          "activeCameraId": "camera/hero",
+          "timeline": {
+            "frameStart": 1,
+            "frameEnd": 250,
+            "currentFrame": 1,
+            "framesPerSecond": 24
+          },
+          "rtx": {
+            "enabled": true,
+            "lighting": true,
+            "shadows": true,
+            "ambientOcclusion": true,
+            "directionalSampleCount": 8,
+            "aoSampleCount": 4,
+            "directionalAngularRadius": 0.0065,
+            "shadowStrength": 0.72,
+            "aoStrength": 0.16,
+            "aoRadius": 3.5,
+            "maxDistance": 400,
+            "rayBias": 0.12
+          }
+        },
+        "scriptIds": [],
+        "metadata": {}
+      }
+    },
+    "resources": {
+      "geometries": {
+        "geometry/ocean": {
+          "id": "geometry/ocean",
+          "kind": "geometry",
+          "name": "North Sea Surface",
+          "recipe": {
+            "kind": "plane",
+            "width": 520,
+            "height": 520,
+            "widthSegments": 80,
+            "heightSegments": 80
+          },
+          "metadata": {}
+        },
+        "geometry/plainform-design/patrol-corvette/hull": {
+          "id": "geometry/plainform-design/patrol-corvette/hull",
+          "recipe": {
+            "kind": "loft",
+            "sections": [
+              {
+                "id": "section/hull-section-001",
+                "points": [
+                  [
+                    0,
+                    0,
+                    4.6
+                  ],
+                  [
+                    2.3963541666666663,
+                    0,
+                    4.60138888888889
+                  ],
+                  [
+                    4.8036458333333325,
+                    0,
+                    4.548611111111111
+                  ],
+                  [
+                    6.5,
+                    0,
+                    4.35
+                  ],
+                  [
+                    7.055208333333334,
+                    0,
+                    3.975954861111111
+                  ],
+                  [
+                    6.900347222222222,
+                    0,
+                    3.4573784722222216
+                  ],
+                  [
+                    6.7,
+                    0,
+                    2.8
+                  ],
+                  [
+                    6.655555555555556,
+                    0,
+                    1.9308159722222218
+                  ],
+                  [
+                    6.555555555555558,
+                    0,
+                    0.9191840277777779
+                  ],
+                  [
+                    6.4,
+                    0,
+                    0
+                  ],
+                  [
+                    6.236284722222223,
+                    0,
+                    -0.7573784722222224
+                  ],
+                  [
+                    6.019270833333332,
+                    0,
+                    -1.4259548611111112
+                  ],
+                  [
+                    5.6,
+                    0,
+                    -2
+                  ],
+                  [
+                    4.882291666666667,
+                    0,
+                    -2.479600694444444
+                  ],
+                  [
+                    3.962152777777775,
+                    0,
+                    -2.864843750000001
+                  ],
+                  [
+                    3,
+                    0,
+                    -3.15
+                  ],
+                  [
+                    2.0298611111111113,
+                    0,
+                    -3.318749999999999
+                  ],
+                  [
+                    1.0145833333333354,
+                    0,
+                    -3.3868055555555547
+                  ],
+                  [
+                    0,
+                    0,
+                    -3.4
+                  ],
+                  [
+                    -1.014583333333335,
+                    0,
+                    -3.386805555555556
+                  ],
+                  [
+                    -2.0298611111111122,
+                    0,
+                    -3.3187500000000005
+                  ],
+                  [
+                    -3,
+                    0,
+                    -3.15
+                  ],
+                  [
+                    -3.96215277777778,
+                    0,
+                    -2.8648437499999995
+                  ],
+                  [
+                    -4.882291666666665,
+                    0,
+                    -2.4796006944444455
+                  ],
+                  [
+                    -5.6,
+                    0,
+                    -2
+                  ],
+                  [
+                    -6.019270833333331,
+                    0,
+                    -1.4259548611111132
+                  ],
+                  [
+                    -6.236284722222223,
+                    0,
+                    -0.7573784722222234
+                  ],
+                  [
+                    -6.4,
+                    0,
+                    0
+                  ],
+                  [
+                    -6.555555555555557,
+                    0,
+                    0.9191840277777795
+                  ],
+                  [
+                    -6.6555555555555586,
+                    0,
+                    1.9308159722222262
+                  ],
+                  [
+                    -6.7,
+                    0,
+                    2.8
+                  ],
+                  [
+                    -6.900347222222223,
+                    0,
+                    3.457378472222223
+                  ],
+                  [
+                    -7.055208333333334,
+                    0,
+                    3.9759548611111097
+                  ],
+                  [
+                    -6.5,
+                    0,
+                    4.35
+                  ],
+                  [
+                    -4.8036458333333405,
+                    0,
+                    4.54861111111111
+                  ],
+                  [
+                    -2.396354166666671,
+                    0,
+                    4.601388888888889
+                  ]
+                ],
+                "transform": {
+                  "translation": [
+                    0,
+                    44,
+                    0.1
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    0.822087701166396,
+                    1,
+                    0.8998437771220273
+                  ]
+                }
+              },
+              {
+                "id": "section/hull-section-002",
+                "points": [
+                  [
+                    0,
+                    0,
+                    4.6
+                  ],
+                  [
+                    2.3963541666666663,
+                    0,
+                    4.60138888888889
+                  ],
+                  [
+                    4.8036458333333325,
+                    0,
+                    4.548611111111111
+                  ],
+                  [
+                    6.5,
+                    0,
+                    4.35
+                  ],
+                  [
+                    7.055208333333334,
+                    0,
+                    3.975954861111111
+                  ],
+                  [
+                    6.900347222222222,
+                    0,
+                    3.4573784722222216
+                  ],
+                  [
+                    6.7,
+                    0,
+                    2.8
+                  ],
+                  [
+                    6.655555555555556,
+                    0,
+                    1.9308159722222218
+                  ],
+                  [
+                    6.555555555555558,
+                    0,
+                    0.9191840277777779
+                  ],
+                  [
+                    6.4,
+                    0,
+                    0
+                  ],
+                  [
+                    6.236284722222223,
+                    0,
+                    -0.7573784722222224
+                  ],
+                  [
+                    6.019270833333332,
+                    0,
+                    -1.4259548611111112
+                  ],
+                  [
+                    5.6,
+                    0,
+                    -2
+                  ],
+                  [
+                    4.882291666666667,
+                    0,
+                    -2.479600694444444
+                  ],
+                  [
+                    3.962152777777775,
+                    0,
+                    -2.864843750000001
+                  ],
+                  [
+                    3,
+                    0,
+                    -3.15
+                  ],
+                  [
+                    2.0298611111111113,
+                    0,
+                    -3.318749999999999
+                  ],
+                  [
+                    1.0145833333333354,
+                    0,
+                    -3.3868055555555547
+                  ],
+                  [
+                    0,
+                    0,
+                    -3.4
+                  ],
+                  [
+                    -1.014583333333335,
+                    0,
+                    -3.386805555555556
+                  ],
+                  [
+                    -2.0298611111111122,
+                    0,
+                    -3.3187500000000005
+                  ],
+                  [
+                    -3,
+                    0,
+                    -3.15
+                  ],
+                  [
+                    -3.96215277777778,
+                    0,
+                    -2.8648437499999995
+                  ],
+                  [
+                    -4.882291666666665,
+                    0,
+                    -2.4796006944444455
+                  ],
+                  [
+                    -5.6,
+                    0,
+                    -2
+                  ],
+                  [
+                    -6.019270833333331,
+                    0,
+                    -1.4259548611111132
+                  ],
+                  [
+                    -6.236284722222223,
+                    0,
+                    -0.7573784722222234
+                  ],
+                  [
+                    -6.4,
+                    0,
+                    0
+                  ],
+                  [
+                    -6.555555555555557,
+                    0,
+                    0.9191840277777795
+                  ],
+                  [
+                    -6.6555555555555586,
+                    0,
+                    1.9308159722222262
+                  ],
+                  [
+                    -6.7,
+                    0,
+                    2.8
+                  ],
+                  [
+                    -6.900347222222223,
+                    0,
+                    3.457378472222223
+                  ],
+                  [
+                    -7.055208333333334,
+                    0,
+                    3.9759548611111097
+                  ],
+                  [
+                    -6.5,
+                    0,
+                    4.35
+                  ],
+                  [
+                    -4.8036458333333405,
+                    0,
+                    4.54861111111111
+                  ],
+                  [
+                    -2.396354166666671,
+                    0,
+                    4.601388888888889
+                  ]
+                ],
+                "transform": {
+                  "translation": [
+                    0,
+                    32,
+                    0
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    0.9071312564594715,
+                    1,
+                    0.962332928311057
+                  ]
+                }
+              },
+              {
+                "id": "section/hull-section-003",
+                "points": [
+                  [
+                    0,
+                    0,
+                    4.6
+                  ],
+                  [
+                    2.3963541666666663,
+                    0,
+                    4.60138888888889
+                  ],
+                  [
+                    4.8036458333333325,
+                    0,
+                    4.548611111111111
+                  ],
+                  [
+                    6.5,
+                    0,
+                    4.35
+                  ],
+                  [
+                    7.055208333333334,
+                    0,
+                    3.975954861111111
+                  ],
+                  [
+                    6.900347222222222,
+                    0,
+                    3.4573784722222216
+                  ],
+                  [
+                    6.7,
+                    0,
+                    2.8
+                  ],
+                  [
+                    6.655555555555556,
+                    0,
+                    1.9308159722222218
+                  ],
+                  [
+                    6.555555555555558,
+                    0,
+                    0.9191840277777779
+                  ],
+                  [
+                    6.4,
+                    0,
+                    0
+                  ],
+                  [
+                    6.236284722222223,
+                    0,
+                    -0.7573784722222224
+                  ],
+                  [
+                    6.019270833333332,
+                    0,
+                    -1.4259548611111112
+                  ],
+                  [
+                    5.6,
+                    0,
+                    -2
+                  ],
+                  [
+                    4.882291666666667,
+                    0,
+                    -2.479600694444444
+                  ],
+                  [
+                    3.962152777777775,
+                    0,
+                    -2.864843750000001
+                  ],
+                  [
+                    3,
+                    0,
+                    -3.15
+                  ],
+                  [
+                    2.0298611111111113,
+                    0,
+                    -3.318749999999999
+                  ],
+                  [
+                    1.0145833333333354,
+                    0,
+                    -3.3868055555555547
+                  ],
+                  [
+                    0,
+                    0,
+                    -3.4
+                  ],
+                  [
+                    -1.014583333333335,
+                    0,
+                    -3.386805555555556
+                  ],
+                  [
+                    -2.0298611111111122,
+                    0,
+                    -3.3187500000000005
+                  ],
+                  [
+                    -3,
+                    0,
+                    -3.15
+                  ],
+                  [
+                    -3.96215277777778,
+                    0,
+                    -2.8648437499999995
+                  ],
+                  [
+                    -4.882291666666665,
+                    0,
+                    -2.4796006944444455
+                  ],
+                  [
+                    -5.6,
+                    0,
+                    -2
+                  ],
+                  [
+                    -6.019270833333331,
+                    0,
+                    -1.4259548611111132
+                  ],
+                  [
+                    -6.236284722222223,
+                    0,
+                    -0.7573784722222234
+                  ],
+                  [
+                    -6.4,
+                    0,
+                    0
+                  ],
+                  [
+                    -6.555555555555557,
+                    0,
+                    0.9191840277777795
+                  ],
+                  [
+                    -6.6555555555555586,
+                    0,
+                    1.9308159722222262
+                  ],
+                  [
+                    -6.7,
+                    0,
+                    2.8
+                  ],
+                  [
+                    -6.900347222222223,
+                    0,
+                    3.457378472222223
+                  ],
+                  [
+                    -7.055208333333334,
+                    0,
+                    3.9759548611111097
+                  ],
+                  [
+                    -6.5,
+                    0,
+                    4.35
+                  ],
+                  [
+                    -4.8036458333333405,
+                    0,
+                    4.54861111111111
+                  ],
+                  [
+                    -2.396354166666671,
+                    0,
+                    4.601388888888889
+                  ]
+                ],
+                "transform": {
+                  "translation": [
+                    0,
+                    16,
+                    0
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    0.9354791082238298,
+                    1,
+                    0.9998264190244748
+                  ]
+                }
+              },
+              {
+                "id": "section/hull-section-004",
+                "points": [
+                  [
+                    0,
+                    0,
+                    4.6
+                  ],
+                  [
+                    2.3963541666666663,
+                    0,
+                    4.60138888888889
+                  ],
+                  [
+                    4.8036458333333325,
+                    0,
+                    4.548611111111111
+                  ],
+                  [
+                    6.5,
+                    0,
+                    4.35
+                  ],
+                  [
+                    7.055208333333334,
+                    0,
+                    3.975954861111111
+                  ],
+                  [
+                    6.900347222222222,
+                    0,
+                    3.4573784722222216
+                  ],
+                  [
+                    6.7,
+                    0,
+                    2.8
+                  ],
+                  [
+                    6.655555555555556,
+                    0,
+                    1.9308159722222218
+                  ],
+                  [
+                    6.555555555555558,
+                    0,
+                    0.9191840277777779
+                  ],
+                  [
+                    6.4,
+                    0,
+                    0
+                  ],
+                  [
+                    6.236284722222223,
+                    0,
+                    -0.7573784722222224
+                  ],
+                  [
+                    6.019270833333332,
+                    0,
+                    -1.4259548611111112
+                  ],
+                  [
+                    5.6,
+                    0,
+                    -2
+                  ],
+                  [
+                    4.882291666666667,
+                    0,
+                    -2.479600694444444
+                  ],
+                  [
+                    3.962152777777775,
+                    0,
+                    -2.864843750000001
+                  ],
+                  [
+                    3,
+                    0,
+                    -3.15
+                  ],
+                  [
+                    2.0298611111111113,
+                    0,
+                    -3.318749999999999
+                  ],
+                  [
+                    1.0145833333333354,
+                    0,
+                    -3.3868055555555547
+                  ],
+                  [
+                    0,
+                    0,
+                    -3.4
+                  ],
+                  [
+                    -1.014583333333335,
+                    0,
+                    -3.386805555555556
+                  ],
+                  [
+                    -2.0298611111111122,
+                    0,
+                    -3.3187500000000005
+                  ],
+                  [
+                    -3,
+                    0,
+                    -3.15
+                  ],
+                  [
+                    -3.96215277777778,
+                    0,
+                    -2.8648437499999995
+                  ],
+                  [
+                    -4.882291666666665,
+                    0,
+                    -2.4796006944444455
+                  ],
+                  [
+                    -5.6,
+                    0,
+                    -2
+                  ],
+                  [
+                    -6.019270833333331,
+                    0,
+                    -1.4259548611111132
+                  ],
+                  [
+                    -6.236284722222223,
+                    0,
+                    -0.7573784722222234
+                  ],
+                  [
+                    -6.4,
+                    0,
+                    0
+                  ],
+                  [
+                    -6.555555555555557,
+                    0,
+                    0.9191840277777795
+                  ],
+                  [
+                    -6.6555555555555586,
+                    0,
+                    1.9308159722222262
+                  ],
+                  [
+                    -6.7,
+                    0,
+                    2.8
+                  ],
+                  [
+                    -6.900347222222223,
+                    0,
+                    3.457378472222223
+                  ],
+                  [
+                    -7.055208333333334,
+                    0,
+                    3.9759548611111097
+                  ],
+                  [
+                    -6.5,
+                    0,
+                    4.35
+                  ],
+                  [
+                    -4.8036458333333405,
+                    0,
+                    4.54861111111111
+                  ],
+                  [
+                    -2.396354166666671,
+                    0,
+                    4.601388888888889
+                  ]
+                ],
+                "transform": {
+                  "translation": [
+                    0,
+                    1,
+                    0
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    0.9354791082238298,
+                    1,
+                    0.9998264190244748
+                  ]
+                }
+              },
+              {
+                "id": "section/hull-section-005",
+                "points": [
+                  [
+                    0,
+                    0,
+                    4.6
+                  ],
+                  [
+                    2.3963541666666663,
+                    0,
+                    4.60138888888889
+                  ],
+                  [
+                    4.8036458333333325,
+                    0,
+                    4.548611111111111
+                  ],
+                  [
+                    6.5,
+                    0,
+                    4.35
+                  ],
+                  [
+                    7.055208333333334,
+                    0,
+                    3.975954861111111
+                  ],
+                  [
+                    6.900347222222222,
+                    0,
+                    3.4573784722222216
+                  ],
+                  [
+                    6.7,
+                    0,
+                    2.8
+                  ],
+                  [
+                    6.655555555555556,
+                    0,
+                    1.9308159722222218
+                  ],
+                  [
+                    6.555555555555558,
+                    0,
+                    0.9191840277777779
+                  ],
+                  [
+                    6.4,
+                    0,
+                    0
+                  ],
+                  [
+                    6.236284722222223,
+                    0,
+                    -0.7573784722222224
+                  ],
+                  [
+                    6.019270833333332,
+                    0,
+                    -1.4259548611111112
+                  ],
+                  [
+                    5.6,
+                    0,
+                    -2
+                  ],
+                  [
+                    4.882291666666667,
+                    0,
+                    -2.479600694444444
+                  ],
+                  [
+                    3.962152777777775,
+                    0,
+                    -2.864843750000001
+                  ],
+                  [
+                    3,
+                    0,
+                    -3.15
+                  ],
+                  [
+                    2.0298611111111113,
+                    0,
+                    -3.318749999999999
+                  ],
+                  [
+                    1.0145833333333354,
+                    0,
+                    -3.3868055555555547
+                  ],
+                  [
+                    0,
+                    0,
+                    -3.4
+                  ],
+                  [
+                    -1.014583333333335,
+                    0,
+                    -3.386805555555556
+                  ],
+                  [
+                    -2.0298611111111122,
+                    0,
+                    -3.3187500000000005
+                  ],
+                  [
+                    -3,
+                    0,
+                    -3.15
+                  ],
+                  [
+                    -3.96215277777778,
+                    0,
+                    -2.8648437499999995
+                  ],
+                  [
+                    -4.882291666666665,
+                    0,
+                    -2.4796006944444455
+                  ],
+                  [
+                    -5.6,
+                    0,
+                    -2
+                  ],
+                  [
+                    -6.019270833333331,
+                    0,
+                    -1.4259548611111132
+                  ],
+                  [
+                    -6.236284722222223,
+                    0,
+                    -0.7573784722222234
+                  ],
+                  [
+                    -6.4,
+                    0,
+                    0
+                  ],
+                  [
+                    -6.555555555555557,
+                    0,
+                    0.9191840277777795
+                  ],
+                  [
+                    -6.6555555555555586,
+                    0,
+                    1.9308159722222262
+                  ],
+                  [
+                    -6.7,
+                    0,
+                    2.8
+                  ],
+                  [
+                    -6.900347222222223,
+                    0,
+                    3.457378472222223
+                  ],
+                  [
+                    -7.055208333333334,
+                    0,
+                    3.9759548611111097
+                  ],
+                  [
+                    -6.5,
+                    0,
+                    4.35
+                  ],
+                  [
+                    -4.8036458333333405,
+                    0,
+                    4.54861111111111
+                  ],
+                  [
+                    -2.396354166666671,
+                    0,
+                    4.601388888888889
+                  ]
+                ],
+                "transform": {
+                  "translation": [
+                    0,
+                    -16,
+                    0.25
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    0.8929573305772921,
+                    1,
+                    1.0373199097378927
+                  ]
+                }
+              },
+              {
+                "id": "section/hull-section-006",
+                "points": [
+                  [
+                    0,
+                    0,
+                    4.6
+                  ],
+                  [
+                    2.3963541666666663,
+                    0,
+                    4.60138888888889
+                  ],
+                  [
+                    4.8036458333333325,
+                    0,
+                    4.548611111111111
+                  ],
+                  [
+                    6.5,
+                    0,
+                    4.35
+                  ],
+                  [
+                    7.055208333333334,
+                    0,
+                    3.975954861111111
+                  ],
+                  [
+                    6.900347222222222,
+                    0,
+                    3.4573784722222216
+                  ],
+                  [
+                    6.7,
+                    0,
+                    2.8
+                  ],
+                  [
+                    6.655555555555556,
+                    0,
+                    1.9308159722222218
+                  ],
+                  [
+                    6.555555555555558,
+                    0,
+                    0.9191840277777779
+                  ],
+                  [
+                    6.4,
+                    0,
+                    0
+                  ],
+                  [
+                    6.236284722222223,
+                    0,
+                    -0.7573784722222224
+                  ],
+                  [
+                    6.019270833333332,
+                    0,
+                    -1.4259548611111112
+                  ],
+                  [
+                    5.6,
+                    0,
+                    -2
+                  ],
+                  [
+                    4.882291666666667,
+                    0,
+                    -2.479600694444444
+                  ],
+                  [
+                    3.962152777777775,
+                    0,
+                    -2.864843750000001
+                  ],
+                  [
+                    3,
+                    0,
+                    -3.15
+                  ],
+                  [
+                    2.0298611111111113,
+                    0,
+                    -3.318749999999999
+                  ],
+                  [
+                    1.0145833333333354,
+                    0,
+                    -3.3868055555555547
+                  ],
+                  [
+                    0,
+                    0,
+                    -3.4
+                  ],
+                  [
+                    -1.014583333333335,
+                    0,
+                    -3.386805555555556
+                  ],
+                  [
+                    -2.0298611111111122,
+                    0,
+                    -3.3187500000000005
+                  ],
+                  [
+                    -3,
+                    0,
+                    -3.15
+                  ],
+                  [
+                    -3.96215277777778,
+                    0,
+                    -2.8648437499999995
+                  ],
+                  [
+                    -4.882291666666665,
+                    0,
+                    -2.4796006944444455
+                  ],
+                  [
+                    -5.6,
+                    0,
+                    -2
+                  ],
+                  [
+                    -6.019270833333331,
+                    0,
+                    -1.4259548611111132
+                  ],
+                  [
+                    -6.236284722222223,
+                    0,
+                    -0.7573784722222234
+                  ],
+                  [
+                    -6.4,
+                    0,
+                    0
+                  ],
+                  [
+                    -6.555555555555557,
+                    0,
+                    0.9191840277777795
+                  ],
+                  [
+                    -6.6555555555555586,
+                    0,
+                    1.9308159722222262
+                  ],
+                  [
+                    -6.7,
+                    0,
+                    2.8
+                  ],
+                  [
+                    -6.900347222222223,
+                    0,
+                    3.457378472222223
+                  ],
+                  [
+                    -7.055208333333334,
+                    0,
+                    3.9759548611111097
+                  ],
+                  [
+                    -6.5,
+                    0,
+                    4.35
+                  ],
+                  [
+                    -4.8036458333333405,
+                    0,
+                    4.54861111111111
+                  ],
+                  [
+                    -2.396354166666671,
+                    0,
+                    4.601388888888889
+                  ]
+                ],
+                "transform": {
+                  "translation": [
+                    0,
+                    -30,
+                    0.7000000000000001
+                  ],
+                  "rotation": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    0.6236527388158867,
+                    1,
+                    1.0998090609269224
+                  ]
+                }
+              },
+              {
+                "id": "section/hull-section-007",
+                "points": [
+                  [
+                    0,
+                    0,
+                    4.6
+                  ],
+                  [
+                    2.3963541666666663,
+                    0,
+                    4.60138888888889
+                  ],
+                  [
+                    4.8036458333333325,
+                    0,
+                    4.548611111111111
+                  ],
+                  [
+                    6.5,
+                    0,
+                    4.35
+                  ],
+                  [
+                    7.055208333333334,
+                    0,
+                    3.975954861111111
+                  ],
+                  [
+                    6.900347222222222,
+                    0,
+                    3.4573784722222216
+                  ],
+                  [
+                    6.7,
+                    0,
+                    2.8
+                  ],
+                  [
+                    6.655555555555556,
+                    0,
+                    1.9308159722222218
+                  ],
+                  [
+                    6.555555555555558,
+                    0,
+                    0.9191840277777779
+                  ],
+                  [
+                    6.4,
+                    0,
+                    0
+                  ],
+                  [
+                    6.236284722222223,
+                    0,
+                    -0.7573784722222224
+                  ],
+                  [
+                    6.019270833333332,
+                    0,
+                    -1.4259548611111112
+                  ],
+                  [
+                    5.6,
+                    0,
+                    -2
+                  ],
+                  [
+                    4.882291666666667,
+                    0,
+                    -2.479600694444444
+                  ],
+                  [
+                    3.962152777777775,
+                    0,
+                    -2.864843750000001
+                  ],
+                  [
+                    3,
+                    0,
+                    -3.15
+                  ],
+                  [
+                    2.0298611111111113,
+                    0,
+                    -3.318749999999999
+                  ],
+                  [
+                    1.0145833333333354,
+                    0,
+                    -3.3868055555555547
+                  ],
+                  [
+                    0,
+                    0,
+                    -3.4
+                  ],
+                  [
+                    -1.014583333333335,
+                    0,
+                    -3.386805555555556
+                  ],
+                  [
+                    -2.0298611111111122,
+                    0,
+                    -3.3187500000000005
+                  ],
+                  [
+                    -3,
+                    0,
+                    -3.15
+                  ],
+                  [
+                    -3.96215277777778,
+                    0,
+                    -2.8648437499999995
+                  ],
+                  [
+                    -4.882291666666665,
+                    0,
+                    -2.4796006944444455
+                  ],
+                  [
+                    -5.6,
+                    0,
+                    -2
+                  ],
+                  [
+                    -6.019270833333331,
+                    0,
+                    -1.4259548611111132
+                  ],
+                  [
+                    -6.236284722222223,
+                    0,
+                    -0.7573784722222234
+                  ],
+                  [
+                    -6.4,
+                    0,
+                    0
+                  ],
+                  [
+                    -6.555555555555557,
+                    0,
+                    0.9191840277777795
+                  ],
+                  [
+                    -6.6555555555555586,
+                    0,
+                    1.9308159722222262
+                  ],
+                  [
+                    -6.7,
+                    0,
+                    2.8
+                  ],
+                  [
+                    -6.900347222222223,
+                    0,
+                    3.457378472222223
+                  ],
+                  [
+                    -7.055208333333334,
+                    0,
+                    3.9759548611111097
+                  ],
+                  [
+                    -6.5,
+                    0,
+                    4.35
+                  ],
+                  [
+                    -4.8036458333333405,
+                    0,
+                    4.54861111111111
+                  ],
+                  [
+                    -2.396354166666671,
+                    0,
+                    4.601388888888889
+                  ]
+                ],
+                "transform": {
+                  "translation": [
+                    0,
+                    -38,
+                    0.45
+                  ],
+                  "rotation": [
+                    0.12,
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    0.38,
+                    1,
+                    1.08
+                  ]
+                }
+              },
+              {
+                "id": "section/hull-section-008",
+                "points": [
+                  [
+                    0,
+                    0,
+                    4.6
+                  ],
+                  [
+                    2.3963541666666663,
+                    0,
+                    4.60138888888889
+                  ],
+                  [
+                    4.8036458333333325,
+                    0,
+                    4.548611111111111
+                  ],
+                  [
+                    6.5,
+                    0,
+                    4.35
+                  ],
+                  [
+                    7.055208333333334,
+                    0,
+                    3.975954861111111
+                  ],
+                  [
+                    6.900347222222222,
+                    0,
+                    3.4573784722222216
+                  ],
+                  [
+                    6.7,
+                    0,
+                    2.8
+                  ],
+                  [
+                    6.655555555555556,
+                    0,
+                    1.9308159722222218
+                  ],
+                  [
+                    6.555555555555558,
+                    0,
+                    0.9191840277777779
+                  ],
+                  [
+                    6.4,
+                    0,
+                    0
+                  ],
+                  [
+                    6.236284722222223,
+                    0,
+                    -0.7573784722222224
+                  ],
+                  [
+                    6.019270833333332,
+                    0,
+                    -1.4259548611111112
+                  ],
+                  [
+                    5.6,
+                    0,
+                    -2
+                  ],
+                  [
+                    4.882291666666667,
+                    0,
+                    -2.479600694444444
+                  ],
+                  [
+                    3.962152777777775,
+                    0,
+                    -2.864843750000001
+                  ],
+                  [
+                    3,
+                    0,
+                    -3.15
+                  ],
+                  [
+                    2.0298611111111113,
+                    0,
+                    -3.318749999999999
+                  ],
+                  [
+                    1.0145833333333354,
+                    0,
+                    -3.3868055555555547
+                  ],
+                  [
+                    0,
+                    0,
+                    -3.4
+                  ],
+                  [
+                    -1.014583333333335,
+                    0,
+                    -3.386805555555556
+                  ],
+                  [
+                    -2.0298611111111122,
+                    0,
+                    -3.3187500000000005
+                  ],
+                  [
+                    -3,
+                    0,
+                    -3.15
+                  ],
+                  [
+                    -3.96215277777778,
+                    0,
+                    -2.8648437499999995
+                  ],
+                  [
+                    -4.882291666666665,
+                    0,
+                    -2.4796006944444455
+                  ],
+                  [
+                    -5.6,
+                    0,
+                    -2
+                  ],
+                  [
+                    -6.019270833333331,
+                    0,
+                    -1.4259548611111132
+                  ],
+                  [
+                    -6.236284722222223,
+                    0,
+                    -0.7573784722222234
+                  ],
+                  [
+                    -6.4,
+                    0,
+                    0
+                  ],
+                  [
+                    -6.555555555555557,
+                    0,
+                    0.9191840277777795
+                  ],
+                  [
+                    -6.6555555555555586,
+                    0,
+                    1.9308159722222262
+                  ],
+                  [
+                    -6.7,
+                    0,
+                    2.8
+                  ],
+                  [
+                    -6.900347222222223,
+                    0,
+                    3.457378472222223
+                  ],
+                  [
+                    -7.055208333333334,
+                    0,
+                    3.9759548611111097
+                  ],
+                  [
+                    -6.5,
+                    0,
+                    4.35
+                  ],
+                  [
+                    -4.8036458333333405,
+                    0,
+                    4.54861111111111
+                  ],
+                  [
+                    -2.396354166666671,
+                    0,
+                    4.601388888888889
+                  ]
+                ],
+                "transform": {
+                  "translation": [
+                    0,
+                    -43,
+                    0.55
+                  ],
+                  "rotation": [
+                    0.22,
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    0.14,
+                    1,
+                    1.1
+                  ]
+                }
+              },
+              {
+                "id": "section/hull-section-009",
+                "points": [
+                  [
+                    0,
+                    0,
+                    4.6
+                  ],
+                  [
+                    2.3963541666666663,
+                    0,
+                    4.60138888888889
+                  ],
+                  [
+                    4.8036458333333325,
+                    0,
+                    4.548611111111111
+                  ],
+                  [
+                    6.5,
+                    0,
+                    4.35
+                  ],
+                  [
+                    7.055208333333334,
+                    0,
+                    3.975954861111111
+                  ],
+                  [
+                    6.900347222222222,
+                    0,
+                    3.4573784722222216
+                  ],
+                  [
+                    6.7,
+                    0,
+                    2.8
+                  ],
+                  [
+                    6.655555555555556,
+                    0,
+                    1.9308159722222216
+                  ],
+                  [
+                    6.555555555555558,
+                    0,
+                    0.919184027777778
+                  ],
+                  [
+                    6.4,
+                    0,
+                    0
+                  ],
+                  [
+                    6.236284722222223,
+                    0,
+                    -0.7573784722222224
+                  ],
+                  [
+                    6.019270833333332,
+                    0,
+                    -1.4259548611111112
+                  ],
+                  [
+                    5.6,
+                    0,
+                    -2
+                  ],
+                  [
+                    4.882291666666667,
+                    0,
+                    -2.479600694444444
+                  ],
+                  [
+                    3.962152777777775,
+                    0,
+                    -2.864843750000001
+                  ],
+                  [
+                    3,
+                    0,
+                    -3.15
+                  ],
+                  [
+                    2.0298611111111113,
+                    0,
+                    -3.318749999999999
+                  ],
+                  [
+                    1.0145833333333354,
+                    0,
+                    -3.3868055555555547
+                  ],
+                  [
+                    0,
+                    0,
+                    -3.4
+                  ],
+                  [
+                    -1.014583333333335,
+                    0,
+                    -3.386805555555556
+                  ],
+                  [
+                    -2.029861111111112,
+                    0,
+                    -3.3187500000000005
+                  ],
+                  [
+                    -3,
+                    0,
+                    -3.15
+                  ],
+                  [
+                    -3.96215277777778,
+                    0,
+                    -2.8648437499999995
+                  ],
+                  [
+                    -4.882291666666665,
+                    0,
+                    -2.4796006944444455
+                  ],
+                  [
+                    -5.6,
+                    0,
+                    -2
+                  ],
+                  [
+                    -6.019270833333331,
+                    0,
+                    -1.4259548611111132
+                  ],
+                  [
+                    -6.236284722222223,
+                    0,
+                    -0.7573784722222234
+                  ],
+                  [
+                    -6.4,
+                    0,
+                    0
+                  ],
+                  [
+                    -6.555555555555557,
+                    0,
+                    0.9191840277777796
+                  ],
+                  [
+                    -6.6555555555555586,
+                    0,
+                    1.9308159722222265
+                  ],
+                  [
+                    -6.7,
+                    0,
+                    2.8
+                  ],
+                  [
+                    -6.900347222222223,
+                    0,
+                    3.457378472222223
+                  ],
+                  [
+                    -7.055208333333334,
+                    0,
+                    3.9759548611111097
+                  ],
+                  [
+                    -6.5,
+                    0,
+                    4.35
+                  ],
+                  [
+                    -4.8036458333333405,
+                    0,
+                    4.54861111111111
+                  ],
+                  [
+                    -2.396354166666671,
+                    0,
+                    4.601388888888889
+                  ]
+                ],
+                "transform": {
+                  "translation": [
+                    0,
+                    -46.2,
+                    0.62
+                  ],
+                  "rotation": [
+                    0.3,
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    0.04,
+                    1,
+                    1.06
+                  ]
+                }
+              },
+              {
+                "id": "section/hull-section-010",
+                "points": [
+                  [
+                    0,
+                    0,
+                    4.6
+                  ],
+                  [
+                    2.3963541666666663,
+                    0,
+                    4.60138888888889
+                  ],
+                  [
+                    4.8036458333333325,
+                    0,
+                    4.548611111111111
+                  ],
+                  [
+                    6.5,
+                    0,
+                    4.35
+                  ],
+                  [
+                    7.055208333333334,
+                    0,
+                    3.975954861111111
+                  ],
+                  [
+                    6.900347222222222,
+                    0,
+                    3.4573784722222216
+                  ],
+                  [
+                    6.7,
+                    0,
+                    2.8
+                  ],
+                  [
+                    6.655555555555556,
+                    0,
+                    1.9308159722222216
+                  ],
+                  [
+                    6.555555555555558,
+                    0,
+                    0.919184027777778
+                  ],
+                  [
+                    6.4,
+                    0,
+                    0
+                  ],
+                  [
+                    6.236284722222223,
+                    0,
+                    -0.7573784722222224
+                  ],
+                  [
+                    6.019270833333332,
+                    0,
+                    -1.4259548611111112
+                  ],
+                  [
+                    5.6,
+                    0,
+                    -2
+                  ],
+                  [
+                    4.882291666666667,
+                    0,
+                    -2.479600694444444
+                  ],
+                  [
+                    3.962152777777775,
+                    0,
+                    -2.864843750000001
+                  ],
+                  [
+                    3,
+                    0,
+                    -3.15
+                  ],
+                  [
+                    2.0298611111111113,
+                    0,
+                    -3.318749999999999
+                  ],
+                  [
+                    1.0145833333333354,
+                    0,
+                    -3.3868055555555547
+                  ],
+                  [
+                    0,
+                    0,
+                    -3.4
+                  ],
+                  [
+                    -1.014583333333335,
+                    0,
+                    -3.386805555555556
+                  ],
+                  [
+                    -2.029861111111112,
+                    0,
+                    -3.3187500000000005
+                  ],
+                  [
+                    -3,
+                    0,
+                    -3.15
+                  ],
+                  [
+                    -3.96215277777778,
+                    0,
+                    -2.8648437499999995
+                  ],
+                  [
+                    -4.882291666666665,
+                    0,
+                    -2.4796006944444455
+                  ],
+                  [
+                    -5.6,
+                    0,
+                    -2
+                  ],
+                  [
+                    -6.019270833333331,
+                    0,
+                    -1.4259548611111132
+                  ],
+                  [
+                    -6.236284722222223,
+                    0,
+                    -0.7573784722222234
+                  ],
+                  [
+                    -6.4,
+                    0,
+                    0
+                  ],
+                  [
+                    -6.555555555555557,
+                    0,
+                    0.9191840277777796
+                  ],
+                  [
+                    -6.6555555555555586,
+                    0,
+                    1.9308159722222265
+                  ],
+                  [
+                    -6.7,
+                    0,
+                    2.8
+                  ],
+                  [
+                    -6.900347222222223,
+                    0,
+                    3.457378472222223
+                  ],
+                  [
+                    -7.055208333333334,
+                    0,
+                    3.9759548611111097
+                  ],
+                  [
+                    -6.5,
+                    0,
+                    4.35
+                  ],
+                  [
+                    -4.8036458333333405,
+                    0,
+                    4.54861111111111
+                  ],
+                  [
+                    -2.396354166666671,
+                    0,
+                    4.601388888888889
+                  ]
+                ],
+                "transform": {
+                  "translation": [
+                    0,
+                    -48,
+                    0.7
+                  ],
+                  "rotation": [
+                    0.38,
+                    0,
+                    0
+                  ],
+                  "scale": [
+                    0.01,
+                    1,
+                    1.02
+                  ]
+                }
+              }
+            ],
+            "closedProfile": true,
+            "capStart": true,
+            "capEnd": true,
+            "capRings": 2,
+            "profileResolution": 36,
+            "subdivisions": 2,
+            "alignProfile": "closest",
+            "continuity": "positional",
+            "guideCurves": [
+              {
+                "name": "sheer line",
+                "points": [
+                  [
+                    5.8,
+                    44,
+                    4.2
+                  ],
+                  [
+                    5.920366565299581,
+                    39.53669762472261,
+                    4.239553710857238
+                  ],
+                  [
+                    6.0984712747595955,
+                    33.07618969343306,
+                    4.296675433549765
+                  ],
+                  [
+                    6.288082518287171,
+                    25.882140215336566,
+                    4.36057779238925
+                  ],
+                  [
+                    6.44296868578943,
+                    19.21821319963837,
+                    4.420473411687352
+                  ],
+                  [
+                    6.526859538094848,
+                    14.27969096737076,
+                    4.46407906632695
+                  ],
+                  [
+                    6.589693433056628,
+                    10.992931700501355,
+                    4.478852634174406
+                  ],
+                  [
+                    6.6192405687515405,
+                    8.43971398043889,
+                    4.485407249116463
+                  ],
+                  [
+                    6.581597764444809,
+                    5.7262266787211304,
+                    4.509940823539081
+                  ],
+                  [
+                    6.44286183940166,
+                    1.9586586668858406,
+                    4.5786512698282245
+                  ],
+                  [
+                    6.17491575573272,
+                    -3.6792142681022404,
+                    4.70576970493959
+                  ],
+                  [
+                    5.792405687515412,
+                    -10.856003945097395,
+                    4.874504808087449
+                  ],
+                  [
+                    5.329144407002548,
+                    -18.501273937700336,
+                    5.0766294074134946
+                  ],
+                  [
+                    4.819035094928908,
+                    -25.536286677077328,
+                    5.304438234568915
+                  ],
+                  [
+                    4.29286183940166,
+                    -30.90778334840142,
+                    5.551376674611654
+                  ],
+                  [
+                    3.690104380701898,
+                    -34.71069285772993,
+                    5.8421632284047025
+                  ],
+                  [
+                    3.026423933590861,
+                    -37.512944850826,
+                    6.166852962932523
+                  ],
+                  [
+                    2.371167913207859,
+                    -39.622750061642144,
+                    6.4946248047998685
+                  ],
+                  [
+                    1.7936837346922003,
+                    -41.34831922413084,
+                    6.79465768061149
+                  ],
+                  [
+                    1.342422125421222,
+                    -42.857318977562265,
+                    7.048705514917399
+                  ],
+                  [
+                    0.9699186323662369,
+                    -43.82756636804471,
+                    7.285534642886496
+                  ],
+                  [
+                    0.6657351853373884,
+                    -44.38481137503082,
+                    7.497912385962029
+                  ],
+                  [
+                    0.4267896769951511,
+                    -44.71398043889209,
+                    7.673510314785897
+                  ],
+                  [
+                    0.25000000000000044,
+                    -45,
+                    7.8000000000000025
+                  ]
+                ]
+              },
+              {
+                "name": "keel line",
+                "points": [
+                  [
+                    0,
+                    44,
+                    -3.4
+                  ],
+                  [
+                    0,
+                    37.55853622977111,
+                    -3.4017495261699953
+                  ],
+                  [
+                    0,
+                    28.313165184429216,
+                    -3.405131943431987
+                  ],
+                  [
+                    0,
+                    17.803469893570494,
+                    -3.4073480099139815
+                  ],
+                  [
+                    0,
+                    7.56903338679108,
+                    -3.4055984837439857
+                  ],
+                  [
+                    0,
+                    -0.9399329348301481,
+                    -3.398935704913253
+                  ],
+                  [
+                    0,
+                    -8.49992710307625,
+                    -3.4165476016912084
+                  ],
+                  [
+                    0,
+                    -15.593380959323515,
+                    -3.4418574136171456
+                  ],
+                  [
+                    0,
+                    -22.024347572532434,
+                    -3.4384749963551537
+                  ],
+                  [
+                    0,
+                    -27.596880011663508,
+                    -3.370010205569325
+                  ],
+                  [
+                    0,
+                    -32.10733343052923,
+                    -3.20406764834524
+                  ],
+                  [
+                    0,
+                    -35.49412450794576,
+                    -2.950269718617874
+                  ],
+                  [
+                    0,
+                    -38.01501676629246,
+                    -2.6325557661466683
+                  ],
+                  [
+                    0,
+                    -39.955532876512606,
+                    -2.2733197259075664
+                  ],
+                  [
+                    0,
+                    -41.6011955095495,
+                    -1.8949555328765124
+                  ],
+                  [
+                    0,
+                    -43.03152062982942,
+                    -1.47996792535355
+                  ],
+                  [
+                    0,
+                    -43.962735092579095,
+                    -0.9803907275112995
+                  ],
+                  [
+                    0,
+                    -44.53004811196967,
+                    -0.466817320309083
+                  ],
+                  [
+                    0,
+                    -44.89021723283277,
+                    -0.01482723429071342
+                  ],
+                  [
+                    0,
+                    -45.199999999999996,
+                    0.2999999999999998
+                  ]
+                ]
+              }
+            ],
+            "modifiers": []
+          },
+          "kind": "geometry",
+          "name": "hull",
+          "metadata": {}
+        },
+        "geometry/plainform-design/patrol-corvette/box-unit": {
+          "id": "geometry/plainform-design/patrol-corvette/box-unit",
+          "recipe": {
+            "kind": "box",
+            "width": 1,
+            "height": 1,
+            "depth": 1
+          },
+          "kind": "geometry",
+          "name": "box-unit",
+          "metadata": {}
+        },
+        "geometry/plainform-design/patrol-corvette/cylinder-unit": {
+          "id": "geometry/plainform-design/patrol-corvette/cylinder-unit",
+          "recipe": {
+            "kind": "cylinder",
+            "radiusTop": 1,
+            "radiusBottom": 1,
+            "height": 1,
+            "radialSegments": 32
+          },
+          "kind": "geometry",
+          "name": "cylinder-unit",
+          "metadata": {}
+        },
+        "geometry/plainform-design/patrol-corvette/sphere-unit": {
+          "id": "geometry/plainform-design/patrol-corvette/sphere-unit",
+          "recipe": {
+            "kind": "sphere",
+            "radius": 0.5,
+            "widthSegments": 48,
+            "heightSegments": 24
+          },
+          "kind": "geometry",
+          "name": "sphere-unit",
+          "metadata": {}
+        },
+        "geometry/plainform-design/patrol-corvette/main-mast": {
+          "id": "geometry/plainform-design/patrol-corvette/main-mast",
+          "recipe": {
+            "kind": "cylinder",
+            "radiusTop": 0.16,
+            "radiusBottom": 0.42,
+            "height": 12.4,
+            "radialSegments": 32
+          },
+          "kind": "geometry",
+          "name": "main-mast",
+          "metadata": {}
+        },
+        "geometry/plainform-design/patrol-corvette/helipad-ring": {
+          "id": "geometry/plainform-design/patrol-corvette/helipad-ring",
+          "recipe": {
+            "kind": "torus",
+            "radius": 5.1,
+            "tube": 0.09,
+            "radialSegments": 16,
+            "tubularSegments": 48
+          },
+          "kind": "geometry",
+          "name": "helipad-ring",
+          "metadata": {}
+        },
+        "geometry/plainform-design/patrol-corvette/starboard-rhib": {
+          "id": "geometry/plainform-design/patrol-corvette/starboard-rhib",
+          "recipe": {
+            "kind": "capsule",
+            "radius": 0.85,
+            "length": 6.4,
+            "capSegments": 12,
+            "radialSegments": 24
+          },
+          "kind": "geometry",
+          "name": "starboard-rhib",
+          "metadata": {}
+        }
+      },
+      "materials": {
+        "material/hull-haze": {
+          "id": "material/hull-haze",
+          "name": "Automotive Paint",
+          "recipe": {
+            "kind": "physical",
+            "color": "#7b838c",
+            "roughness": 0.38,
+            "metalness": 0.12,
+            "clearcoat": 0.24,
+            "clearcoatRoughness": 0.26,
+            "anisotropy": 0
+          },
+          "metadata": {
+            "studioLook": "automotivePaint"
+          },
+          "kind": "material"
+        },
+        "material/deck-nonskid": {
+          "id": "material/deck-nonskid",
+          "name": "Rubber",
+          "recipe": {
+            "kind": "physical",
+            "color": "#3a4046",
+            "roughness": 0.84,
+            "metalness": 0,
+            "clearcoat": 0.04,
+            "clearcoatRoughness": 0.7
+          },
+          "metadata": {
+            "studioLook": "rubber"
+          },
+          "kind": "material"
+        },
+        "material/antifouling": {
+          "id": "material/antifouling",
+          "name": "Automotive Paint",
+          "recipe": {
+            "kind": "physical",
+            "color": "#6e2c22",
+            "roughness": 0.62,
+            "metalness": 0.04,
+            "clearcoat": 0.04,
+            "clearcoatRoughness": 0.55,
+            "anisotropy": 0
+          },
+          "metadata": {
+            "studioLook": "automotivePaint"
+          },
+          "kind": "material"
+        },
+        "material/boot-topping": {
+          "id": "material/boot-topping",
+          "name": "Rubber",
+          "recipe": {
+            "kind": "physical",
+            "color": "#16181a",
+            "roughness": 0.7,
+            "metalness": 0.05,
+            "clearcoat": 0.04,
+            "clearcoatRoughness": 0.7
+          },
+          "metadata": {
+            "studioLook": "rubber"
+          },
+          "kind": "material"
+        },
+        "material/bridge-glass": {
+          "id": "material/bridge-glass",
+          "name": "Glass",
+          "recipe": {
+            "kind": "physical",
+            "color": "#1a2836",
+            "roughness": 0.08,
+            "metalness": 0,
+            "transmission": 0,
+            "opacity": 0.32,
+            "ior": 1.5,
+            "thickness": 0.08
+          },
+          "metadata": {
+            "studioLook": "glass"
+          },
+          "opacity": 0.32,
+          "transparent": true,
+          "transmission": 0,
+          "kind": "material"
+        },
+        "material/steel": {
+          "id": "material/steel",
+          "name": "Brushed Metal",
+          "recipe": {
+            "kind": "physical",
+            "color": "#7a828c",
+            "roughness": 0.46,
+            "metalness": 1,
+            "anisotropy": 0.08
+          },
+          "metadata": {
+            "studioLook": "brushedMetal"
+          },
+          "kind": "material"
+        },
+        "material/composite-dark": {
+          "id": "material/composite-dark",
+          "name": "Rubber",
+          "recipe": {
+            "kind": "physical",
+            "color": "#2a2e33",
+            "roughness": 0.58,
+            "metalness": 0.12,
+            "clearcoat": 0.04,
+            "clearcoatRoughness": 0.7
+          },
+          "metadata": {
+            "studioLook": "rubber"
+          },
+          "kind": "material"
+        },
+        "material/sea-surface": {
+          "id": "material/sea-surface",
+          "name": "Glass",
+          "recipe": {
+            "kind": "physical",
+            "color": "#1c5a78",
+            "roughness": 0.18,
+            "metalness": 0.04,
+            "transmission": 0,
+            "opacity": 0.96,
+            "ior": 1.5,
+            "thickness": 0.08,
+            "clearcoat": 0.9,
+            "clearcoatRoughness": 0.1
+          },
+          "metadata": {
+            "studioLook": "glass"
+          },
+          "opacity": 0.96,
+          "transparent": true,
+          "transmission": 0,
+          "kind": "material"
+        },
+        "material/helipad-mark": {
+          "id": "material/helipad-mark",
+          "name": "Rubber",
+          "recipe": {
+            "kind": "physical",
+            "color": "#c9b45a",
+            "roughness": 0.7,
+            "metalness": 0,
+            "clearcoat": 0.04,
+            "clearcoatRoughness": 0.7
+          },
+          "metadata": {
+            "studioLook": "rubber"
+          },
+          "kind": "material"
+        },
+        "material/nav-red": {
+          "id": "material/nav-red",
+          "name": "Emissive Lens",
+          "recipe": {
+            "kind": "physical",
+            "color": "#3a0404",
+            "roughness": 0.2,
+            "metalness": 0,
+            "clearcoat": 0.65,
+            "clearcoatRoughness": 0.08,
+            "emissive": "#ff1a1a",
+            "emissiveIntensity": 6
+          },
+          "metadata": {
+            "studioLook": "emissiveLens"
+          },
+          "kind": "material"
+        },
+        "material/nav-green": {
+          "id": "material/nav-green",
+          "name": "Emissive Lens",
+          "recipe": {
+            "kind": "physical",
+            "color": "#043a12",
+            "roughness": 0.2,
+            "metalness": 0,
+            "clearcoat": 0.65,
+            "clearcoatRoughness": 0.08,
+            "emissive": "#1aff66",
+            "emissiveIntensity": 6
+          },
+          "metadata": {
+            "studioLook": "emissiveLens"
+          },
+          "kind": "material"
+        },
+        "material/nav-white": {
+          "id": "material/nav-white",
+          "name": "Emissive Lens",
+          "recipe": {
+            "kind": "physical",
+            "color": "#2a2a28",
+            "roughness": 0.2,
+            "metalness": 0,
+            "clearcoat": 0.65,
+            "clearcoatRoughness": 0.08,
+            "emissive": "#fff4d6",
+            "emissiveIntensity": 5
+          },
+          "metadata": {
+            "studioLook": "emissiveLens"
+          },
+          "kind": "material"
+        }
+      },
+      "textures": {},
+      "graphs": {},
+      "animations": {},
+      "prefabs": {},
+      "audio": {},
+      "assets": {}
+    },
+    "scripts": {},
+    "scriptTrustPolicy": "agent-safe",
+    "settings": {
+      "lengthUnit": "metre",
+      "angleUnit": "radian",
+      "timeUnit": "second",
+      "workingColorSpace": "linear-srgb"
+    },
+    "exportSettings": {},
+    "metadata": {
+      "createdAt": "2026-09-03T20:49:18.000Z",
+      "updatedAt": "2026-09-03T21:01:51.000Z",
+      "description": "Empty Studio scene. No starter composition is included."
+    }
+  }
+}
