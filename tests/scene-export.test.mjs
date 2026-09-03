@@ -129,6 +129,23 @@ test('scene export writes a GLB with hierarchy, PBR, camera, and light', () => {
   assert.equal(json.extensions.KHR_lights_punctual.lights[0].type, 'directional');
 });
 
+test('scene export preserves every material color format accepted by Studio', () => {
+  const cases = [
+    { value: 0x256b32, expected: [37 / 255, 107 / 255, 50 / 255] },
+    { value: '#7a4e2c', expected: [122 / 255, 78 / 255, 44 / 255] },
+    { value: 'rgb(20, 110, 45)', expected: [20 / 255, 110 / 255, 45 / 255] },
+    { value: 'hsl(120, 50%, 40%)', expected: [0.2, 0.6, 0.2] },
+  ];
+  for (const { value, expected } of cases) {
+    const document = triangleProject();
+    document.resources.materials['material/paint'].recipe.baseColor = value;
+    const json = readGlbJson(exportSceneInterchange(document, { format: 'glb' }).bytes);
+    const paint = json.materials.find(material => material.extras.studioMaterialId === 'material/paint');
+    const actual = paint.pbrMetallicRoughness.baseColorFactor.slice(0, 3);
+    actual.forEach((component, index) => assert.ok(Math.abs(component - expected[index]) < 1e-9));
+  }
+});
+
 test('entity subtree export omits siblings and scene roots outside the group', () => {
   const document = triangleProject();
   const exported = exportSceneInterchange(document, { entityId: 'entity/world', format: 'gltf' });

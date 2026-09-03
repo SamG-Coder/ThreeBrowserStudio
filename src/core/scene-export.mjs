@@ -27,16 +27,53 @@ function finiteNumber(value, fallback) {
   return Number.isFinite(value) ? value : fallback;
 }
 
-function color4(value, alpha = 1) {
-  if (Array.isArray(value) && value.length >= 3) {
-    return [
-      finiteNumber(value[0], 0.7),
-      finiteNumber(value[1], 0.7),
-      finiteNumber(value[2], 0.7),
-      finiteNumber(value[3], alpha),
-    ];
+const CSS_COLOR_NAMES = Object.freeze({
+  aqua: 0x00ffff, black: 0x000000, blue: 0x0000ff, fuchsia: 0xff00ff,
+  gray: 0x808080, green: 0x008000, grey: 0x808080, lime: 0x00ff00,
+  maroon: 0x800000, navy: 0x000080, olive: 0x808000, orange: 0xffa500,
+  purple: 0x800080, red: 0xff0000, silver: 0xc0c0c0, teal: 0x008080,
+  white: 0xffffff, yellow: 0xffff00,
+});
+
+function numericColor(value) {
+  return [((value >> 16) & 255) / 255, ((value >> 8) & 255) / 255, (value & 255) / 255];
+}
+
+function hueToRgb(p, q, t) {
+  let hue = t;
+  if (hue < 0) hue += 1;
+  if (hue > 1) hue -= 1;
+  if (hue < 1 / 6) return p + ((q - p) * 6 * hue);
+  if (hue < 1 / 2) return q;
+  if (hue < 2 / 3) return p + ((q - p) * ((2 / 3) - hue) * 6);
+  return p;
+}
+
+function cssColor(value) {
+  const normalized = value.toLowerCase();
+  if (CSS_COLOR_NAMES[normalized] !== undefined) return numericColor(CSS_COLOR_NAMES[normalized]);
+  const hex = normalized.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/u);
+  if (hex) {
+    const digits = hex[1].length === 3 ? [...hex[1]].map(digit => digit + digit).join('') : hex[1];
+    return numericColor(Number.parseInt(digits, 16));
   }
-  return [0.7, 0.7, 0.7, alpha];
+  const rgb = value.match(/^rgb\(\s*([^,]+)\s*,\s*([^,]+)\s*,\s*([^,]+)\s*\)$/u);
+  if (rgb) {
+    const percent = rgb.slice(1).every(component => component.trim().endsWith('%'));
+    const divisor = percent ? 100 : 255;
+    return rgb.slice(1).map(component => Number.parseFloat(component) / divisor);
+  }
+  const hsl = value.match(/^hsl\(\s*([^,]+)\s*,\s*([^,]+)%\s*,\s*([^,]+)%\s*\)$/u);
+  if (!hsl) return null;
+  const hue = (Number.parseFloat(hsl[1]) % 360) / 360;
+  const saturation = Number.parseFloat(hsl[2]) / 100;
+  const lightness = Number.parseFloat(hsl[3]) / 100;
+  if (saturation === 0) return [lightness, lightness, lightness];
+  const q = lightness < 0.5
+    ? lightness * (1 + saturation)
+    : lightness + saturation - (lightness * saturation);
+  const p = (2 * lightness) - q;
+  return [hueToRgb(p, q, hue + (1 / 3)), hueToRgb(p, q, hue), hueToRgb(p, q, hue - (1 / 3))];
 }
 
 function color3(value, fallback = [1, 1, 1]) {
@@ -47,7 +84,14 @@ function color3(value, fallback = [1, 1, 1]) {
       finiteNumber(value[2], fallback[2]),
     ];
   }
+  if (Number.isInteger(value) && value >= 0 && value <= 0xffffff) return numericColor(value);
+  if (typeof value === 'string') return cssColor(value) ?? [...fallback];
   return [...fallback];
+}
+
+function color4(value, alpha = 1) {
+  const rgb = color3(value, [0.7, 0.7, 0.7]);
+  return [...rgb, Array.isArray(value) ? finiteNumber(value[3], alpha) : alpha];
 }
 
 /** Three.js default Euler XYZ (radians) to glTF quaternion [x, y, z, w]. */
