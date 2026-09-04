@@ -10,7 +10,7 @@ import {
 } from '../src/graphs/index.mjs';
 
 test('v1 catalogs expose the curated shader, texture, and blueprint domains', () => {
-  assert.deepEqual(Object.keys(GRAPH_CATALOGS).sort(), ['blueprint', 'shader', 'texture']);
+  assert.deepEqual(Object.keys(GRAPH_CATALOGS).sort(), ['audio', 'blueprint', 'shader', 'texture']);
   assert.deepEqual(Object.keys(GRAPH_OUTPUTS.shader), [
     'surface', 'baseColor', 'roughness', 'metalness', 'normal', 'emissive', 'opacity', 'alphaTest', 'positionOffset',
   ]);
@@ -20,6 +20,12 @@ test('v1 catalogs expose the curated shader, texture, and blueprint domains', ()
     'voronoi', 'colorRamp', 'arithmetic', 'mix', 'remap', 'warp', 'blur',
     'normalFromHeight', 'channelPack',
   ]) assert.ok(GRAPH_CATALOGS.texture.nodes[type], `missing texture node ${type}`);
+
+  for (const type of [
+    'audio.oscillator', 'audio.noise', 'audio.sequence', 'audio.adsr', 'audio.filter',
+    'audio.formant', 'audio.panner', 'audio.sum',
+  ]) assert.ok(GRAPH_CATALOGS.audio.nodes[type], `missing audio node ${type}`);
+  assert.deepEqual(Object.keys(GRAPH_OUTPUTS.audio), ['mix']);
 
   for (const type of [
     'event.onStart', 'event.onInput', 'time.timer', 'flow.branch', 'flow.boundedLoop',

@@ -21,6 +21,7 @@ import {
   transformPointByMatrix,
 } from '../core/transform-math.mjs';
 import { normalizeEditableMeshRecipe, triangulateEditableMesh } from '../core/editable-mesh.mjs';
+import { createAudioRuntime } from '../audio/audio-runtime.mjs';
 
 const EDITABLE_PRESEAM_MODIFIERS = new Set(['smooth', 'simpleDeform', 'displace']);
 
@@ -309,7 +310,7 @@ function instantiateEntity(THREE, entity, context) {
     object = cameraFor(THREE, entity, context.aspect);
   } else {
     object = lightFor(THREE, entity);
-    if (!object && ['scene', 'group', 'empty', 'gameObject'].includes(entity.kind)) object = new THREE.Group();
+    if (!object && ['scene', 'group', 'empty', 'gameObject', 'audioSource'].includes(entity.kind)) object = new THREE.Group();
     if (!object) throw new Error(`Entity kind ${entity.kind} is not compiled by the lean runtime yet.`);
     if (object.isLight) {
       const lightValues = entity.components?.light ?? {};
@@ -392,7 +393,7 @@ function sceneAppearance(THREE, _TSL, settings = {}) {
  * Compiles a canonical Studio scene into an isolated Three.js subtree. Nothing
  * is attached to the live viewport until the caller swaps this result.
  */
-export function compileSceneDocument({ THREE, TSL, project, sceneId = project.activeSceneId, aspect = 16 / 9 }) {
+export function compileSceneDocument({ THREE, TSL, project, sceneId = project.activeSceneId, aspect = 16 / 9, audioPreview } = {}) {
   const document = project.scenes?.[sceneId];
   if (!document) throw new Error(`Scene ${sceneId} does not exist.`);
   const timeline = document.settings?.timeline ?? {};
@@ -752,6 +753,13 @@ export function compileSceneDocument({ THREE, TSL, project, sceneId = project.ac
     }
     return evaluations;
   };
+  const audioRuntime = createAudioRuntime({
+    project,
+    scene: document,
+    cacheDirectory: audioPreview?.cacheDirectory,
+    writeFile: audioPreview?.writeFile,
+    audioFactory: audioPreview?.audioFactory,
+  });
   const appearance = sceneAppearance(THREE, TSL, document.settings);
   const activeCamera = objects.get(document.settings?.activeCameraId) ?? null;
   const ownedMaterials = new Set([...materials.values(), ...(fallback ? [fallback] : [])]);
@@ -768,6 +776,7 @@ export function compileSceneDocument({ THREE, TSL, project, sceneId = project.ac
     fog: appearance.fog,
     diagnostics,
     animationRuntime,
+    audioRuntime,
     timelineGeometryModifierIds,
     timelineGeometrySampleCount,
     maxTimelineGeometrySamples,
@@ -821,6 +830,7 @@ export function compileSceneDocument({ THREE, TSL, project, sceneId = project.ac
       animationRuntime?.actions.clear();
       animationRuntime?.states.clear();
       animationRuntime = null;
+      audioRuntime?.stop?.();
     },
   };
 }

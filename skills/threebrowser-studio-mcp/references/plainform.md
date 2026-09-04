@@ -42,6 +42,15 @@ entity IDs returned by inspect. A single named reference can be transformed
 directly; use named selections for collective work. Convert a resolved object
 or group into a named prefab, then reuse it with `$name`.
 
+Grouping owns the transform pivot. Without a centre, `Put the canopy leaves
+into a group called "Canopy" with id entity/tree/canopy` places the group at
+the common parent origin. Append `centred at [x, y, z]` for an authored world
+pivot (converted into parent-local TRS). `entity.reparent` keeps local TRS and
+is the wrong tool for a rig; use `Put entity/wheel-fl under entity/hub-fl,
+keeping world pose` so the child's world pose is rewritten relative to the
+parent. Sequential grouping still needs a fresh `selectionHash` after each
+apply.
+
 For grids over an object's face, state orientation independently from
 placement. The default aligns local Z to the face normal. Use one of:
 
@@ -50,6 +59,39 @@ placement. The default aligns local Z to the face normal. Use one of:
 - `aligning each copy's local x axis with the face normal`
 - `aligning each copy's local y axis with the face normal`
 - `aligning each copy's local z axis with the face normal`
+
+Sound Plainform begins with an exact sound header. It does not replace the
+viewport with a DAW; the scene's job is audible play, and the window still
+shows a 3D model of the sound:
+
+```text
+Design a sound called Distant Bell with id audio/distant-bell using the right-up-forward design frame.
+Let tempo be 72 beats per minute.
+Let duration be 4 seconds.
+Create a sine oscillator called Bell at 440 hertz, volume 0.22.
+Shape Bell with attack 8 milliseconds, decay 1.2 seconds, sustain 0, release 0.4 seconds.
+Add a quiet harmonic at 3 times Bell frequency, volume 0.18.
+Create pink noise called Rain, volume 0.16.
+Filter Rain with a low-pass at 800 hertz, resonance 0.4.
+Place Bell 1.5 metres right of the listener and 80 centimetres up.
+Sequence Bell as C4, E4, G4, C5, one note per beat.
+Make it feel warm and muffled.
+Keep peak level below 0 decibels.
+Frame the sound visualization from slightly above at a 50 millimetre lens.
+When Play starts, play Distant Bell.
+Preview this sound.
+```
+
+`Create a sound scene called … with id scene/…` creates or activates a scene
+with `settings.purpose: "sound"` without oscillators. Continue with
+`Continue the sound audio/…`. Inspect `graphCatalog` with
+`selector.kind: "audio"` before dense graph work. Sound programs compile to
+an `audio` graph, an `audio` resource, spatial `audioSource` entities, a
+spectrogram/envelope/harmonic visualization, and a Play event sheet. Units
+include hertz, seconds, milliseconds, beats, beats per minute, and decibels.
+`three_studio_play` bakes a local WAV and auditions it through the native
+HTMLAudioElement; `three_studio_render` captures the 3D visualization. Do
+not author raw Web Audio, Tone.js, or SuperCollider.
 
 Shader Plainform begins with `Create a shader graph called ...`. Use natural
 surface descriptors, typed Principled properties, and named math chains. It
@@ -85,7 +127,19 @@ short header without a frame remains the legacy XZ-profile/Y-loft dialect so
 saved programs continue to compile identically.
 
 It creates a persistent design group and lowers mathematical solids to shared
-geometry resources plus batched entities. Parameters are unit checked. Natural
+geometry resources plus batched entities. That root is a manufacture
+**envelope**, not a vehicle rig: every generated solid is a mesh child of the
+root, whose rotation is `[-π/2, 0, 0]` in the semantic frame. Append generated
+parts to an existing root with:
+
+```text
+Continue the design entity/road-car using the right-up-forward design frame.
+```
+
+A second `Design a …` header always creates a sibling root. Continue rejects a
+missing root, a non-design group, or a stored/requested frame mismatch.
+
+Parameters are unit checked. Natural
 operator words and symbols may be mixed, and named parameters may contain
 spaces:
 
@@ -120,6 +174,24 @@ and a cylinder may say `aligned along the right axis`, `up axis`, or `forward
 axis` (including their opposite directions). Width, height, and depth always
 mean world right, up, and forward size. In the legacy frame, cylinder height
 follows local Y before rotation.
+
+Empty pivot groups and manufactured rounds belong in the same Design program:
+
+```text
+Create a group called Front Hub with id entity/hub-fl, centred at [82 centimetres left, 42 centimetres up, 1.23 metres forward].
+Create a torus called Wheel Rim with id entity/rim, with ring radius 18 centimetres and tube radius 16 millimetres, centred at [82 centimetres left, 42 centimetres up, 1.23 metres forward], aligned along the right axis.
+Lathe profile tire section around the right axis as a solid called Tire with id entity/tire, centred at [82 centimetres left, 42 centimetres up, 1.23 metres forward].
+Put Wheel Rim and Tire under Front Hub, keeping world pose.
+```
+
+A group requires `centred at`; omitting it fails rather than silently using the
+design origin. Default group world rotation is identity, so a group nested
+under another world-identity group stores local identity: Actions can yaw
+local Y to steer and roll local X to spin. `Put … under …` without
+`keeping world pose` fails closed when the child's world pose would jump.
+`entity.reparent` is not a substitute. A capped Design loft is still a solid;
+interior parts that must be photographed need Open/Shell, not a camera inside
+the loaf. Do not add subject-specific axle or steering-wheel nouns.
 
 ### Curved manufactured forms
 

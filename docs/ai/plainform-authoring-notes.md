@@ -17,6 +17,7 @@ Plainform is controlled English for `three_studio_apply`. It never evals.
 | Object | references, selections, layouts | Place and group existing IDs |
 | Design | `Design a … called … with id …` | Manufacture solids, patches, surfaces |
 | Shader | `Create a shader graph called …` | Bounded graph math |
+| Sound | `Design a sound called … with id audio/…` | Audio graph, sound scene, 3D spectrogram |
 
 Inspect `plainformAst` before apply. `legacy.statement` means the sentence
 still uses the compatibility regex path. It is not approval and it is not a
@@ -259,6 +260,39 @@ remembered English. Confirmed there:
 - Extrude and capsule recipes cannot later be surface-realized.
 - Raise on a 12-triangle box finds no vertices; a sphere region does.
 - Design emits `entity.createMany`, which the kernel rejects until flattened.
+
+## 13. Vehicles are envelopes, not rigs
+
+Live jeep build, 2026-09-02. Assembly sentences are now in the compiler;
+the plan is `docs/ai/plainform-assembly-action-plan.md`.
+
+Design Plainform can loft a boxy body in the semantic frame. The design
+root is still `Rx(-π/2)`. Animation on a **mesh child of that root** does
+not use world axes:
+
+| Local axis on a design-root child | World axis |
+| --- | --- |
+| +X | +X (right) |
+| +Y | −Z (backward) |
+| +Z | +Y (up) |
+
+Use the generic assembly sentences instead of typed MCP:
+
+```text
+Create a group called Front Hub with id entity/hub-fl, centred at [82 centimetres left, 42 centimetres up, 1.23 metres forward].
+Put Front Left Tire under Front Hub, keeping world pose.
+Continue the design entity/jeep using the right-up-forward design frame.
+```
+
+A group nested under another world-identity group stores local identity,
+so Actions can yaw local Y and roll local X. `Put … under …` without
+`keeping world pose` fails with `plainform_parent_world_pose_required`
+when the child would jump. `entity.reparent` still keeps local TRS.
+
+A second `Design a …` header still creates a sibling root. Continue.
+
+A Design loft is a capped solid (notes §3). Interior parts that must be
+photographed need Open/Shell; a camera inside the loaf is not an interior.
 
 ## Compiler map
 

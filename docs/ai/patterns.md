@@ -169,6 +169,16 @@ by the compatibility compiler; it does not mean the sentence is invalid. Use
 Tokens are omitted from AST inspection unless `plainform.includeTokens` is
 explicitly true.
 
+Sound Plainform begins with `Design a sound called … with id audio/…` or
+`Create a sound scene called …`. It lowers to an `audio` graph domain, an
+`audio` resource, a scene with `settings.purpose: "sound"`, and a 3D
+visualization (spectrogram heightfield, envelope ribbon, harmonic stacks,
+spatial sources). Play bakes the mix to a local WAV and auditions it through
+the native HTMLAudioElement; Web Audio is a silent host stub. Render still
+captures the visualization. Units include hertz, seconds, beats per minute,
+and decibels.
+Inspect `graphCatalog` with `selector.kind: "audio"` before dense graph edits.
+
 Object Plainform supports exact named entity references, named selections,
 spatial relations, transforms, bounded iteration, grouping, prefab creation
 and `$prefab-name` reuse, and face grids. Singular references and selections
@@ -184,7 +194,12 @@ design frame`. That frame is canonical for AI authoring: right is world +X, up
 is world +Y, and forward is world +Z. Profiles use `[right, up]`; loft stations
 advance forward/backward; primitive width/height/depth mean right/up/forward.
 The compiler owns the internal loft mapping and root transform, so never add a
-manual corrective rotation. Headers without the suffix retain the legacy
+manual corrective rotation. Continue an existing root with
+`Continue the design entity/<id> using the right-up-forward design frame`
+instead of a second Design header. Empty pivot groups and
+`Put … under …, keeping world pose` are the generic rig tools; see
+[plainform-assembly-action-plan.md](./plainform-assembly-action-plan.md).
+Headers without the suffix retain the legacy
 XZ-profile/Y-loft behavior for compatibility.
 Use it for unit-checked parametric solids: named dimensions, bounded integer
 loops, trigonometric/easing expressions, exact boxes, spheres, ellipsoids,
@@ -471,7 +486,15 @@ transaction.
 - IDs are semantic and stable: `market/stall-03`, not runtime UUIDs.
 - **Groups** own transforms. `entity.group` / `entity.ungroup` preserve world
   TRS when they can. Non-uniform scale that would shear must be restructured
-  or baked on purpose.
+  or baked on purpose. `entity.reparent` keeps the child's local TRS; it does
+  **not** preserve world pose. For a pivot (axle, knuckle, steering column),
+  author a Design `Create a group … centred at …` or Object
+  `Put … into a group … centred at [x, y, z]`, then
+  `Put … under …, keeping world pose`. Do not parent animation pivots under a
+  semantic design root unless you have inspected the child's local axes: that
+  root is `Rx(-π/2)`, so local Y is world −Z and local Z is world +Y. Nested
+  world-identity groups created by the new assembly sentences store local
+  identity, so knuckle yaw is local Y and wheel spin is local X.
 - **Collections** are many-to-many folders. Membership never changes
   transforms. Deleting a collection never deletes members.
 - Prefer `layout.pattern` (linear, grid, radial, seeded scatter) when status

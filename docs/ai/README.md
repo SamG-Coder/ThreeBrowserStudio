@@ -44,10 +44,17 @@ There is no tenth tool. There is no “just write the scene JSON” path.
 8. Save after a milestone the human can see.
 
 Read [MCP patterns](./patterns.md) before a dense mesh, graph, or camera pass.
+Sound Plainform (`Design a sound called …`) creates a `purpose: "sound"`
+scene, an audio graph, and a 3D spectrogram visualization. Play bakes a local
+WAV and auditions it through the native HTMLAudioElement; render still
+photographs the visualization.
+
 Read [Plainform authoring notes](./plainform-authoring-notes.md) before a Design
 loft, Open, Shell, or manufactured bowl. Design lofts are always closed and
 capped; Open on a sphere latitude now keeps a bowl, but the cut still follows
-existing triangles.
+existing triangles. For wheeled assemblies and animation pivots, read
+[Plainform assembly action plan](./plainform-assembly-action-plan.md): a Design
+root is an envelope, not a rig.
 
 Status and inspect accept bounded dotted field `select` paths, `object` or
 `rows` output, and `ifHash` for compact unchanged polling. Authored brush paths

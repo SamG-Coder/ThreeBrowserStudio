@@ -143,6 +143,18 @@ test('statement registry rejects duplicate IDs and global matching expressions',
   assert.throws(() => new PlainformStatementRegistry([{ ...item, pattern: /^test$/gu }]), TypeError);
 });
 
+test('Sound programs are a distinct dialect from Design', () => {
+  const ast = parsePlainformProgram([
+    'Design a sound called Chime with id audio/chime using the right-up-forward design frame.',
+    'Create a sine oscillator called Tone at 440 hertz.',
+    'Preview these changes.',
+  ].join('\n'));
+  assert.equal(ast.dialect, 'sound');
+  assert.deepEqual(ast.statements.map(statement => statement.kind), [
+    'sound.header', 'sound.createOscillator', 'request.preview',
+  ]);
+});
+
 test('front-end dialect routing preserves existing Design and Shader lowering exactly', () => {
   const project = emptyProject();
   const designSource = [

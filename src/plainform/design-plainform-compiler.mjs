@@ -1,7 +1,13 @@
 import { evaluateDesignExpression, evaluateDesignVector } from './design-expression.mjs';
 import { ProjectIndex } from '../core/indexes.mjs';
 import { PlainformSpatialResolver } from './spatial-relations.mjs';
-import { composeTransformMatrix, relativeEntityTransform, transformPointByMatrix } from '../core/transform-math.mjs';
+import {
+  composeTransformMatrix,
+  entityWorldMatrix,
+  multiplyTransformMatrices,
+  relativeEntityTransform,
+  transformPointByMatrix,
+} from '../core/transform-math.mjs';
 import {
   buildConstrainedPatchSections,
   matchBoundaryDirection,
@@ -203,6 +209,53 @@ function semanticAxisRotation(direction) {
   }
 }
 
+function groupAxisRotation(direction) {
+  switch (direction) {
+    case 'right': return [0, 0, 0];
+    case 'left': return [0, Math.PI, 0];
+    case 'up': return [0, 0, -Math.PI / 2];
+    case 'down': return [0, 0, Math.PI / 2];
+    case 'forward': return [0, -Math.PI / 2, 0];
+    case 'backward': return [0, Math.PI / 2, 0];
+    default: return [0, 0, 0];
+  }
+}
+
+function torusAxisRotation(direction) {
+  switch (direction) {
+    case 'right': return [0, Math.PI / 2, 0];
+    case 'left': return [0, -Math.PI / 2, 0];
+    case 'up': return [Math.PI / 2, 0, 0];
+    case 'down': return [-Math.PI / 2, 0, 0];
+    case 'forward': return [0, 0, 0];
+    case 'backward': return [0, Math.PI, 0];
+    default: return [0, 0, 0];
+  }
+}
+
+function worldPoseChanged(beforeMatrix, afterMatrix, epsilon = 1e-6) {
+  const beforeOrigin = transformPointByMatrix(beforeMatrix, [0, 0, 0]);
+  const afterOrigin = transformPointByMatrix(afterMatrix, [0, 0, 0]);
+  const beforeAxis = transformPointByMatrix(beforeMatrix, [1, 0, 0]);
+  const afterAxis = transformPointByMatrix(afterMatrix, [1, 0, 0]);
+  return Math.hypot(...beforeOrigin.map((value, axis) => value - afterOrigin[axis])) > epsilon
+    || Math.hypot(...beforeAxis.map((value, axis) => value - afterAxis[axis])) > epsilon;
+}
+
+function orderEntitiesByParent(list, rootId) {
+  const byId = new Map(list.map(entity => [entity.id, entity]));
+  const ordered = [];
+  const seen = new Set();
+  const visit = (entity) => {
+    if (!entity || seen.has(entity.id)) return;
+    seen.add(entity.id);
+    if (entity.parentId && entity.parentId !== rootId && byId.has(entity.parentId)) visit(byId.get(entity.parentId));
+    ordered.push(entity);
+  };
+  for (const entity of list) visit(entity);
+  return ordered;
+}
+
 function profilePoints(source, variables, phrase = 'Profile', frame = LEGACY_DESIGN_FRAME) {
   if (frame === SEMANTIC_DESIGN_FRAME) {
     return semanticVectorGroups(source, variables, { dimensions: 2, phrase })
@@ -342,14 +395,17 @@ function occupiedIds(project) {
 /** A bounded parametric solid-design dialect that lowers to canonical resources and batched entities. */
 export class DesignPlainformCompiler {
   static canCompile(source) {
-    return /^\s*(?:begin\s+)?design\b/iu.test(source);
+    return /^\s*(?:(?:begin\s+)?design\b|continue the design\b)/iu.test(source);
   }
 
   compile(source, { project }) {
     const lines = source.split(/\r?\n/u).map(value => value.trim()).filter(Boolean);
-    const header = clean(lines[0]).match(/^(?:begin\s+)?design (?:a |an )?(.+?) called (?:(?:"([^"]+)")|(.+?)) with id ([a-z0-9][a-z0-9._/-]*)(?: using the (right-up-forward|legacy-xz-y) design frame)?$/iu);
-    if (!header) {
-      const error = new Error('A design must begin with “Design a <kind> called <name> with id entity/<id>.” Append “using the right-up-forward design frame” for canonical AI-oriented coordinates.');
+    const continueHeader = clean(lines[0]).match(/^continue the design ([a-z0-9][a-z0-9._/-]*)(?: using the (right-up-forward|legacy-xz-y) design frame)?$/iu);
+    const header = continueHeader
+      ? null
+      : clean(lines[0]).match(/^(?:begin\s+)?design (?:a |an )?(.+?) called (?:(?:"([^"]+)")|(.+?)) with id ([a-z0-9][a-z0-9._/-]*)(?: using the (right-up-forward|legacy-xz-y) design frame)?$/iu);
+    if (!header && !continueHeader) {
+      const error = new Error('A design must begin with “Design a <kind> called <name> with id entity/<id>.” Continue with “Continue the design entity/<id>.” Append “using the right-up-forward design frame” for canonical AI-oriented coordinates.');
       error.code = 'plainform_design_header';
       throw error;
     }
@@ -360,19 +416,52 @@ export class DesignPlainformCompiler {
         const error = new Error(message); error.code = code; error.details = details; throw error;
       },
     });
-    const designKind = header[1].trim();
-    const designName = header[2] ?? header[3];
-    const rootId = header[4];
-    const designFrame = header[5]?.toLowerCase() ?? LEGACY_DESIGN_FRAME;
-    const rootTransform = designRootTransform(designFrame);
+    const occupied = occupiedIds(project);
+    let continuing = false;
+    let designKind;
+    let designName;
+    let rootId;
+    let designFrame;
+    let rootTransform;
+    if (continueHeader) {
+      continuing = true;
+      rootId = continueHeader[1];
+      const existing = scene.entities?.[rootId];
+      if (!existing) {
+        const error = new Error(`Cannot continue missing design root ${rootId}.`);
+        error.code = 'plainform_continue_not_found';
+        throw error;
+      }
+      if (existing.kind !== 'group' || !existing.metadata?.plainformDesign) {
+        const error = new Error(`${rootId} is not a Design Plainform root.`);
+        error.code = 'plainform_continue_not_a_design';
+        throw error;
+      }
+      const storedFrame = existing.metadata.plainformDesign.designFrame?.name ?? LEGACY_DESIGN_FRAME;
+      const requestedFrame = continueHeader[2]?.toLowerCase();
+      if (requestedFrame && requestedFrame !== storedFrame) {
+        const error = new Error(`Continue design ${rootId} uses the ${storedFrame} frame, not ${requestedFrame}.`);
+        error.code = 'plainform_continue_frame_mismatch';
+        throw error;
+      }
+      designFrame = storedFrame;
+      designKind = existing.metadata.plainformDesign.kind ?? 'design';
+      designName = existing.name ?? rootId;
+      rootTransform = existing.transform ?? designRootTransform(designFrame);
+    } else {
+      designKind = header[1].trim();
+      designName = header[2] ?? header[3];
+      rootId = header[4];
+      designFrame = header[5]?.toLowerCase() ?? LEGACY_DESIGN_FRAME;
+      rootTransform = designRootTransform(designFrame);
+      if (occupied.has(rootId)) {
+        const error = new Error(`The design root ID ${rootId} already exists.`);
+        error.code = 'plainform_id_conflict';
+        throw error;
+      }
+    }
     const semanticFrame = designFrame === SEMANTIC_DESIGN_FRAME;
     const designSlug = slug(designName);
-    const occupied = occupiedIds(project);
-    if (occupied.has(rootId)) {
-      const error = new Error(`The design root ID ${rootId} already exists.`);
-      error.code = 'plainform_id_conflict';
-      throw error;
-    }
 
     const variables = new Map();
     const vectorVariables = new Map();
@@ -382,7 +471,9 @@ export class DesignPlainformCompiler {
     const semanticSurfaces = new SemanticSurfaceRegistry({ boundaries, referenceKey: boundaryReferenceKey });
     const entities = [];
     const aliases = { [key(designName)]: [rootId] };
-    const interpretations = [`Will create the ${designKind} design “${designName}” as ${rootId}.`];
+    const interpretations = continuing
+      ? [`Will continue the ${designKind} design “${designName}” as ${rootId}.`]
+      : [`Will create the ${designKind} design “${designName}” as ${rootId}.`];
     if (semanticFrame) interpretations.push('Will use the semantic right/up/forward frame mapped to canonical X/Y/Z world axes.');
     const geometryKinds = new Set();
     const lofts = [];
@@ -611,6 +702,89 @@ export class DesignPlainformCompiler {
         metadata: { plainformDesign: { primitive: recipe.kind, ...metadata } },
       });
       aliases[key(name)] = [id];
+    };
+
+    const generatedWorldMatrix = (entityId) => {
+      if (entityId === rootId) {
+        if (continuing && scene.entities?.[rootId]) return entityWorldMatrix(scene, rootId);
+        return composeTransformMatrix(rootTransform);
+      }
+      const generated = entities.find(entity => entity.id === entityId);
+      if (generated) {
+        return multiplyTransformMatrices(
+          generatedWorldMatrix(generated.parentId ?? rootId),
+          composeTransformMatrix(generated.transform),
+        );
+      }
+      if (scene.entities?.[entityId]) return entityWorldMatrix(scene, entityId);
+      const error = new Error(`No generated entity matches “${entityId}”.`);
+      error.code = 'plainform_reference_not_found';
+      throw error;
+    };
+
+    const resolveGeneratedId = (phrase) => {
+      const stripped = clean(phrase).replace(/^\$/u, '');
+      if (ids.has(stripped) || occupied.has(stripped)) return stripped;
+      if (aliases[key(stripped)]?.[0]) return aliases[key(stripped)][0];
+      const slugKey = slug(stripped);
+      for (const [name, namedIds] of Object.entries(aliases)) {
+        if (slug(name) === slugKey) return namedIds[0];
+      }
+      const error = new Error(`No exact design reference matches “${phrase}”.`);
+      error.code = 'plainform_reference_not_found';
+      throw error;
+    };
+
+    const addGroup = ({ id, name, position, rotation = [0, 0, 0], parentId = rootId }) => {
+      if (entities.length >= MAX_DESIGN_ENTITIES) {
+        const error = new Error(`Design Plainform creates at most ${MAX_DESIGN_ENTITIES} entities per program.`);
+        error.code = 'plainform_design_entity_limit';
+        throw error;
+      }
+      if (!/^[a-z0-9][a-z0-9._/-]*$/u.test(id)) {
+        const error = new Error(`Generated entity ID “${id}” is not a stable ID.`); error.code = 'plainform_invalid_id'; throw error;
+      }
+      if (occupied.has(id) || ids.has(id)) {
+        const error = new Error(`Generated entity ID ${id} already exists.`); error.code = 'plainform_id_conflict'; throw error;
+      }
+      ids.add(id);
+      const transform = relativeEntityTransform(
+        generatedWorldMatrix(parentId),
+        composeTransformMatrix({ position, rotation, scale: [1, 1, 1] }),
+      );
+      entities.push({
+        id, kind: 'group', name, parentId, transform,
+        metadata: { plainformDesign: { primitive: 'group', worldIdentityAxes: rotation.every(value => Math.abs(value) < 1e-12) } },
+      });
+      aliases[key(name)] = [id];
+    };
+
+    const reparentKeepingWorldPose = (childIds, parentId, { keepingWorldPose }) => {
+      const parentWorld = generatedWorldMatrix(parentId);
+      for (const childId of childIds) {
+        if (childId === parentId) {
+          const error = new Error('A group cannot parent itself.');
+          error.code = 'plainform_hierarchy_cycle';
+          throw error;
+        }
+        const child = entities.find(entity => entity.id === childId);
+        if (!child) {
+          const error = new Error(`Parenting requires a solid or group created in this design: ${childId}.`);
+          error.code = 'plainform_parent_not_generated';
+          throw error;
+        }
+        const childWorld = generatedWorldMatrix(childId);
+        const naiveWorld = multiplyTransformMatrices(parentWorld, composeTransformMatrix(child.transform));
+        if (worldPoseChanged(childWorld, naiveWorld)) {
+          if (!keepingWorldPose) {
+            const error = new Error(`Putting ${childId} under ${parentId} would move it in world space. Append “, keeping world pose”.`);
+            error.code = 'plainform_parent_world_pose_required';
+            throw error;
+          }
+          child.transform = relativeEntityTransform(parentWorld, childWorld);
+        }
+        child.parentId = parentId;
+      }
     };
 
     const execute = (start, end, scope) => {
@@ -1366,6 +1540,79 @@ export class DesignPlainformCompiler {
           continue;
         }
 
+        const group = statement.match(/^create a group called (.+?) with id ([a-z0-9{}._/-]*)(?:,? cent(?:er|r)ed at (\[.+?\]))?(?:,? rotated by (\[.+?\]))?(?:,? aligned along (?:the )?(right|left|up|down|forward|backward)(?: axis| direction)?)?$/iu);
+        if (group) {
+          if (!group[3]) {
+            const error = new Error('A design group requires “centred at [right, up, forward]” so its pivot is an authored world point, not the design origin.');
+            error.code = 'plainform_group_centre_required';
+            throw error;
+          }
+          autoNumber += 1;
+          const name = interpolate(quoteName(group[1]), scope);
+          addGroup({
+            id: interpolate(group[2], scope),
+            name,
+            position: designVector(group[3], scope, 'length', 'Group centre'),
+            rotation: group[4]
+              ? evaluateDesignVector(group[4], scope, 'angle')
+              : group[5] ? groupAxisRotation(group[5].toLowerCase()) : [0, 0, 0],
+          });
+          interpretations.push(`Will create pivot group “${name}” as ${interpolate(group[2], scope)}.`);
+          continue;
+        }
+
+        const parentUnder = statement.match(/^put (.+?) under (.+?)(?:, keeping world pose)?$/iu);
+        if (parentUnder) {
+          const childIds = splitNames(parentUnder[1]).map(resolveGeneratedId);
+          const parentId = resolveGeneratedId(parentUnder[2]);
+          reparentKeepingWorldPose(childIds, parentId, { keepingWorldPose: /keeping world pose$/iu.test(statement) });
+          interpretations.push(`Will parent ${childIds.length} entities under ${parentId}${/keeping world pose$/iu.test(statement) ? ', keeping world pose' : ''}.`);
+          continue;
+        }
+
+        const torus = statement.match(/^create a torus called (.+?)(?: with id ([a-z0-9{}._/-]+))?,? with ring radius (.+?) and tube radius (.+?)(?=,\s*cent(?:er|r)ed|,\s*rotated|,\s*aligned|,\s*using material|$)(?:,? cent(?:er|r)ed at (\[.+?\]))?(?:,? rotated by (\[.+?\]))?(?:,? aligned along (?:the )?(right|left|up|down|forward|backward)(?: axis| direction)?)?(?:,? using material ([a-z0-9][a-z0-9._/-]*))?$/iu);
+        if (torus) {
+          autoNumber += 1;
+          const name = interpolate(quoteName(torus[1]), scope);
+          const radius = finitePositive(length(torus[3], scope, 'Torus ring radius'), 'Torus ring radius');
+          const tube = finitePositive(length(torus[4], scope, 'Torus tube radius'), 'Torus tube radius');
+          addGeneratedSolid({
+            id: torus[2] ? interpolate(torus[2], scope) : `entity/${designSlug}/${slug(name)}-${String(autoNumber).padStart(3, '0')}`,
+            name,
+            recipe: { kind: 'torus', radius, tube, radialSegments: 16, tubularSegments: 48 },
+            position: torus[5] ? designVector(torus[5], scope, 'length', 'Torus centre') : [0, 0, 0],
+            rotation: torus[6]
+              ? evaluateDesignVector(torus[6], scope, 'angle')
+              : torus[7] ? torusAxisRotation(torus[7].toLowerCase()) : [0, 0, 0],
+            materialId: torus[8], authoredInDesignFrame: true,
+            metadata: { primitive: 'torus', dimensions: { radius, tube } },
+          });
+          continue;
+        }
+
+        const lathe = statement.match(/^lathe (?:the )?profile (.+?) around (?:the )?(right|left|up|down|forward|backward)(?: axis| direction)? as a (?:watertight )?(?:solid )?called (.+?) with id ([a-z0-9][a-z0-9._/-]*)(?:,? cent(?:er|r)ed at (\[.+?\]))?(?:,? rotated by (\[.+?\]))?(?:,? using material ([a-z0-9][a-z0-9._/-]*))?$/iu);
+        if (lathe) {
+          const profile = profiles.get(key(lathe[1]));
+          if (!profile) { const error = new Error(`Unknown profile “${lathe[1]}”.`); error.code = 'plainform_unknown_profile'; throw error; }
+          const points = profile.points.map(point => [Math.max(0, Math.abs(point[0])), point[2]]);
+          if (points.length < 2) {
+            const error = new Error(`Lathe profile “${profile.name}” requires at least two points.`);
+            error.code = 'plainform_lathe_profile'; throw error;
+          }
+          addGeneratedSolid({
+            id: lathe[4], name: quoteName(lathe[3]),
+            recipe: { kind: 'lathe', points, segments: 48, phiStart: 0, phiLength: Math.PI * 2 },
+            position: lathe[5] ? designVector(lathe[5], scope, 'length', 'Lathe centre') : [0, 0, 0],
+            rotation: lathe[6]
+              ? evaluateDesignVector(lathe[6], scope, 'angle')
+              : semanticAxisRotation(lathe[2].toLowerCase()),
+            materialId: lathe[7], authoredInDesignFrame: true,
+            metadata: { primitive: 'lathe', profile: profile.name, axis: lathe[2].toLowerCase() },
+          });
+          interpretations.push(`Will lathe profile “${profile.name}” around the ${lathe[2].toLowerCase()} axis as ${lathe[4]}.`);
+          continue;
+        }
+
         const box = statement.match(/^create a box called (.+?)(?: with id ([a-z0-9{}._/-]+))?,? with width (.+?)(?=,\s*height),\s*height (.+?)(?=,\s*(?:and )?depth),\s*(?:and )?depth (.+?)(?=,\s*cent(?:er|r)ed|,\s*rotated|,\s*using material|$)(?:,? cent(?:er|r)ed at (\[.+?\]))?(?:,? rotated by (\[.+?\]))?(?:,? using material ([a-z0-9][a-z0-9._/-]*))?$/iu);
         if (box) {
           autoNumber += 1;
@@ -2098,10 +2345,12 @@ export class DesignPlainformCompiler {
       const error = new Error('A design must create at least one solid, primitive, surface intent, or persistent constraint.'); error.code = 'plainform_empty_design'; throw error;
     }
 
-    const resources = [...geometryKinds].map(kind => ({
-      resourceType: 'geometries',
-      resource: { id: `geometry/plainform-design/${designSlug}/${kind}-unit`, recipe: unitRecipe(kind) },
-    }));
+    const resources = [...geometryKinds]
+      .filter(kind => !occupied.has(`geometry/plainform-design/${designSlug}/${kind}-unit`))
+      .map(kind => ({
+        resourceType: 'geometries',
+        resource: { id: `geometry/plainform-design/${designSlug}/${kind}-unit`, recipe: unitRecipe(kind) },
+      }));
     for (const loft of lofts) resources.push({
       resourceType: 'geometries',
       resource: { id: loft.geometryId, recipe: {
@@ -2165,7 +2414,9 @@ export class DesignPlainformCompiler {
         ...(value.component ? { component: value.component } : {}),
       }]),
     ]);
-    const allEntities = [...entities, ...lofts.map(loft => ({
+    const allEntities = orderEntitiesByParent([
+      ...entities,
+      ...lofts.map(loft => ({
       id: loft.entityId, kind: 'mesh', name: loft.name, parentId: rootId,
       components: { mesh: { geometryId: loft.geometryId, ...(loft.materialId ? { materialId: loft.materialId } : {}) } },
       metadata: { plainformDesign: {
@@ -2184,7 +2435,7 @@ export class DesignPlainformCompiler {
           name: boundary.name, ownerEntityId: boundary.ownerEntityId,
         })),
       } },
-    }))];
+    }))], rootId);
     for (const state of semanticDeformationStates.values()) {
       const generated = allEntities.find(entity => entity.id === state.entityId);
       if (generated) generated.components.mesh.geometryId = state.derivedGeometryId;
@@ -2257,7 +2508,7 @@ export class DesignPlainformCompiler {
     const semanticSurfaceMetadata = semanticSurfaces.toMetadata();
     const operations = [
       ...(resources.length > 0 ? [{ op: 'resource.createMany', items: resources }] : []),
-      { op: 'entity.create', sceneId: scene.id, entity: {
+      ...(continuing ? [] : [{ op: 'entity.create', sceneId: scene.id, entity: {
         id: rootId, kind: 'group', name: designName,
         transform: rootTransform,
         metadata: { plainformDesign: {
@@ -2289,7 +2540,7 @@ export class DesignPlainformCompiler {
           ...(botanicalDesigns.length ? { botanicalDesigns: botanicalDesigns.map(value => structuredClone(value)) } : {}),
           ...(groomDesigns.length ? { groomDesigns: groomDesigns.map(value => structuredClone(value)) } : {}),
         } },
-      } },
+      } }]),
       ...(allEntities.length > 0 ? [{ op: 'entity.createMany', sceneId: scene.id, items: allEntities.map(entity => ({ entity })) }] : []),
       ...[...semanticDeformationStates.values()]
         .filter(state => !allEntities.some(entity => entity.id === state.entityId))
@@ -2297,7 +2548,7 @@ export class DesignPlainformCompiler {
           components: { mesh: { ...state.meshComponent, geometryId: state.derivedGeometryId } },
         } })),
     ];
-    interpretations.push(`Will create ${allEntities.length} meshes using ${resources.length} shared or procedural geometries.`);
+    interpretations.push(`Will create ${allEntities.length} entities using ${resources.length} shared or procedural geometries.`);
     return Object.freeze({
       language: 'plainform-v1', dialect: 'design', source,
       operations: Object.freeze(operations), interpretation: Object.freeze(interpretations),

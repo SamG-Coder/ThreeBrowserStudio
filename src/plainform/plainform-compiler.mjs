@@ -1,6 +1,6 @@
 import { ProjectIndex } from '../core/indexes.mjs';
 import { hashExactEntitySet } from '../core/entity-selection.mjs';
-import { composeTransformMatrix, relativeEntityTransform } from '../core/transform-math.mjs';
+import { composeTransformMatrix, entityWorldMatrix, multiplyTransformMatrices, relativeEntityTransform, transformPointByMatrix } from '../core/transform-math.mjs';
 import { PlainformReferenceContext } from './reference-context.mjs';
 import { PlainformSpatialResolver } from './spatial-relations.mjs';
 import { PlainformAnchorResolver } from './anchor-resolver.mjs';
@@ -11,6 +11,7 @@ import { DesignPlainformCompiler } from './design-plainform-compiler.mjs';
 import { EventPlainformCompiler } from './event-plainform-compiler.mjs';
 import { FormPlainformCompiler } from './form-plainform-compiler.mjs';
 import { CompositionPlainformCompiler } from './composition-plainform-compiler.mjs';
+import { SoundPlainformCompiler } from './sound-plainform-compiler.mjs';
 import { parsePlainformProgram } from './plainform-front-end.mjs';
 
 const TAU = Math.PI * 2;
@@ -366,6 +367,7 @@ export class PlainformCompiler {
     if (typeof source !== 'string' || source.trim().length === 0) fail('plainform_empty', 'Plainform source is empty.');
     const program = this.parse(source);
     if (program.dialect === 'shader') return new ShaderPlainformCompiler().compile(source, { project });
+    if (program.dialect === 'sound') return new SoundPlainformCompiler().compile(source, { project });
     if (program.dialect === 'design') return new DesignPlainformCompiler().compile(source, { project });
     if (program.dialect === 'event') return new EventPlainformCompiler().compile(source, { project });
     if (program.dialect === 'form') return new FormPlainformCompiler().compile(source, { project });
@@ -508,17 +510,62 @@ export class PlainformCompiler {
           interpretation.push(`Laid out a centered ${columns} by ${rows} grid of ${template.entity.id} over the ${face} face of ${reference.entity.id}${outward.value > 0 ? `, offset ${outward.value} metres outward` : ''}${orientationText}.`);
           continue;
         }
-        const group = statement.match(/^put (?:the\s+)?(.+?) (?:into|inside) a group called (?:(?:"([^"]+)")|(.+?)) with id ([a-z0-9][a-z0-9._/-]*)$/iu);
+        const parentUnder = statement.match(/^put (.+?) under (.+?)(?:, keeping world pose)?$/iu);
+        if (parentUnder) {
+          const keepingWorldPose = /keeping world pose$/iu.test(statement);
+          const childRecords = parentUnder[1].split(/\s*(?:,|\band\b)\s*/iu).map(part => part.trim()).filter(Boolean)
+            .flatMap(part => context.records(part));
+          if (childRecords.length === 0) fail('plainform_empty_selection', 'Cannot parent an empty selection.');
+          const parent = context.one(parentUnder[2]);
+          const scene = parent.scene;
+          const parentWorld = entityWorldMatrix(scene, parent.entity.id);
+          for (const record of childRecords) {
+            if (record.scene.id !== scene.id) fail('plainform_cross_scene_selection', 'A parent cannot contain entities from different scenes.');
+            if (record.entity.id === parent.entity.id) fail('plainform_hierarchy_cycle', 'A group cannot parent itself.');
+            const childWorld = entityWorldMatrix(scene, record.entity.id);
+            const naiveWorld = multiplyTransformMatrices(parentWorld, composeTransformMatrix(record.entity.transform ?? {}));
+            const originDelta = transformPointByMatrix(childWorld, [0, 0, 0])
+              .map((value, axis) => value - transformPointByMatrix(naiveWorld, [0, 0, 0])[axis]);
+            const axisDelta = transformPointByMatrix(childWorld, [1, 0, 0])
+              .map((value, axis) => value - transformPointByMatrix(naiveWorld, [1, 0, 0])[axis]);
+            const wouldJump = Math.hypot(...originDelta) > 1e-6 || Math.hypot(...axisDelta) > 1e-6;
+            if (wouldJump && !keepingWorldPose) {
+              fail('plainform_parent_world_pose_required', `Putting ${record.entity.id} under ${parent.entity.id} would move it in world space. Append “, keeping world pose”.`);
+            }
+            push({ op: 'entity.reparent', entityId: record.entity.id, parentId: parent.entity.id });
+            if (wouldJump) {
+              push({
+                op: 'entity.patch', entityId: record.entity.id,
+                patch: { transform: relativeEntityTransform(parentWorld, childWorld) },
+              });
+            }
+          }
+          interpretation.push(`Will parent ${childRecords.length} entities under ${parent.entity.id}${keepingWorldPose ? ', keeping world pose' : ''}.`);
+          continue;
+        }
+        const group = statement.match(/^put (?:the\s+)?(.+?) (?:into|inside) a group called (?:(?:"([^"]+)")|(.+?)) with id ([a-z0-9][a-z0-9._/-]*)(?:,? cent(?:er|r)ed at (\[.+\]))?$/iu);
         if (group) {
           const selection = context.selection(group[1]);
           if (selection.ids.length === 0) fail('plainform_empty_selection', 'Cannot create a group from an empty selection.');
           const sceneIds = new Set(selection.records.map(record => record.scene.id));
           if (sceneIds.size !== 1) fail('plainform_cross_scene_selection', 'A group cannot contain entities from different scenes.');
           const name = group[2] ?? group[3];
+          const scene = selection.records[0].scene;
+          const parentIds = new Set(selection.records.map(record => record.entity.parentId));
+          const parentId = parentIds.size === 1 ? [...parentIds][0] : null;
+          const groupDocument = { id: group[4], kind: 'group', name };
+          if (group[5]) {
+            const worldCentre = vectorExpression(group[5], new Map(), 'length');
+            const parentWorld = parentId ? entityWorldMatrix(scene, parentId) : composeTransformMatrix({});
+            groupDocument.transform = relativeEntityTransform(
+              parentWorld,
+              composeTransformMatrix({ position: worldCentre, rotation: [0, 0, 0], scale: [1, 1, 1] }),
+            );
+          }
           push({
             op: 'entity.group', sceneId: [...sceneIds][0], entityIds: selection.ids,
             expectedEntitySetHash: selection.hash,
-            group: { id: group[4], kind: 'group', name },
+            group: groupDocument,
           });
           interpretation.push(`Will put ${selection.ids.length} entities into group ${group[4]}.`);
           continue;

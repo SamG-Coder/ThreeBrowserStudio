@@ -8,6 +8,9 @@ export const GRAPH_LIMITS = Object.freeze({
   maxShaderCost: 512,
   maxTextureCost: 1024,
   maxBlueprintCost: 4096,
+  maxAudioCost: 512,
+  minAudioDuration: 0.05,
+  maxAudioDuration: 16,
   maxShaderSamplers: 16,
   maxCurveMappings: 12,
   maxGeneratedEntities: 20000,
@@ -24,6 +27,8 @@ const EDGE_KEYS = new Set(['from', 'to']);
 const REF_KEYS = new Set(['nodeId', 'port']);
 const TEXTURE_OUTPUT_REF_KEYS = new Set(['nodeId', 'port', 'colorSpace']);
 const TEXTURE_SETTING_KEYS = new Set(['seed', 'resolution', 'wrapS', 'wrapT', 'minFilter', 'magFilter', 'mode']);
+const AUDIO_SETTING_KEYS = new Set(['sampleRate', 'duration', 'channels']);
+const AUDIO_SAMPLE_RATES = new Set([8000, 16000, 22050, 44100]);
 const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 const STABLE_ID = /^[a-zA-Z0-9][a-zA-Z0-9._/-]{0,127}$/;
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_.-]{0,63}$/;
@@ -401,6 +406,27 @@ function validateTextureSettings(settings, limits, errors) {
   return normalized;
 }
 
+function validateAudioSettings(settings, limits, errors) {
+  const path = '/settings';
+  if (settings === undefined) {
+    return { sampleRate: 22050, duration: 2, channels: 2 };
+  }
+  if (!checkExactKeys(settings, AUDIO_SETTING_KEYS, path, errors)) return { sampleRate: 22050, duration: 2, channels: 2 };
+  const sampleRate = settings.sampleRate;
+  const duration = settings.duration;
+  const channels = settings.channels;
+  if (!AUDIO_SAMPLE_RATES.has(sampleRate)) errors.push(diagnostic('invalid_setting', 'sampleRate must be 8000, 16000, 22050, or 44100.', `${path}/sampleRate`));
+  if (!Number.isFinite(duration) || duration < limits.minAudioDuration || duration > limits.maxAudioDuration) {
+    errors.push(diagnostic('invalid_setting', `duration must be from ${limits.minAudioDuration} to ${limits.maxAudioDuration} seconds.`, `${path}/duration`));
+  }
+  if (channels !== 1 && channels !== 2) errors.push(diagnostic('invalid_setting', 'channels must be 1 or 2.', `${path}/channels`));
+  return {
+    sampleRate: AUDIO_SAMPLE_RATES.has(sampleRate) ? sampleRate : 22050,
+    duration: Number.isFinite(duration) ? duration : 2,
+    channels: channels === 1 ? 1 : 2,
+  };
+}
+
 function topologicalMetrics(nodes, edges) {
   const indegree = new Map(nodes.map((node) => [node.id, 0]));
   const outgoing = new Map(nodes.map((node) => [node.id, []]));
@@ -525,7 +551,7 @@ export function validateGraph(rawGraph, options = {}) {
   if (rawGraph.formatVersion !== 1) errors.push(diagnostic('unsupported_format_version', 'formatVersion must be 1.', '/formatVersion'));
   if (typeof rawGraph.id !== 'string' || !STABLE_ID.test(rawGraph.id)) errors.push(diagnostic('invalid_graph_id', 'Graph id must be a stable project ID.', '/id'));
   const catalog = GRAPH_CATALOGS[rawGraph.domain];
-  if (!catalog) errors.push(diagnostic('unknown_graph_domain', 'domain must be shader, texture, or blueprint.', '/domain'));
+  if (!catalog) errors.push(diagnostic('unknown_graph_domain', 'domain must be shader, texture, blueprint, or audio.', '/domain'));
   if (!Array.isArray(rawGraph.nodes)) errors.push(diagnostic('invalid_type', 'nodes must be an array.', '/nodes'));
   if (!Array.isArray(rawGraph.edges)) errors.push(diagnostic('invalid_type', 'edges must be an array.', '/edges'));
   if (!isPlainObject(rawGraph.outputs)) errors.push(diagnostic('invalid_type', 'outputs must be an object.', '/outputs'));
@@ -540,7 +566,8 @@ export function validateGraph(rawGraph, options = {}) {
 
   let settings;
   if (rawGraph.domain === 'texture') settings = validateTextureSettings(rawGraph.settings, limits, errors);
-  else if (rawGraph.settings !== undefined && (!isPlainObject(rawGraph.settings) || Object.keys(rawGraph.settings).length)) errors.push(diagnostic('settings_not_allowed', 'Only texture graphs accept settings in v1.', '/settings'));
+  else if (rawGraph.domain === 'audio') settings = validateAudioSettings(rawGraph.settings, limits, errors);
+  else if (rawGraph.settings !== undefined && (!isPlainObject(rawGraph.settings) || Object.keys(rawGraph.settings).length)) errors.push(diagnostic('settings_not_allowed', 'Only texture and audio graphs accept settings in v1.', '/settings'));
 
   const nodes = [];
   const nodeById = new Map();
@@ -690,7 +717,10 @@ export function validateGraph(rawGraph, options = {}) {
     if (definition.tags.includes('sampler')) samplers += 1;
     generatedEntities += generatedEntityCount(node);
   }
-  const costLimit = rawGraph.domain === 'shader' ? limits.maxShaderCost : rawGraph.domain === 'texture' ? limits.maxTextureCost : limits.maxBlueprintCost;
+  const costLimit = rawGraph.domain === 'shader' ? limits.maxShaderCost
+    : rawGraph.domain === 'texture' ? limits.maxTextureCost
+      : rawGraph.domain === 'audio' ? limits.maxAudioCost
+        : limits.maxBlueprintCost;
   if (cost > costLimit) errors.push(diagnostic('graph_budget_exceeded', `Graph cost ${cost} exceeds ${costLimit}.`, '/nodes'));
   if (rawGraph.domain === 'shader' && samplers > limits.maxShaderSamplers) errors.push(diagnostic('sampler_budget_exceeded', `Shader uses ${samplers} samplers; maximum is ${limits.maxShaderSamplers}.`, '/nodes'));
   if (generatedEntities > limits.maxGeneratedEntities) errors.push(diagnostic('generated_entity_budget_exceeded', `Blueprint can generate ${generatedEntities} entities; maximum is ${limits.maxGeneratedEntities}.`, '/nodes'));
@@ -725,7 +755,7 @@ export function validateGraph(rawGraph, options = {}) {
     nodes: nodes.sort((a, b) => compareText(a.id, b.id)).map(cloneCanonical),
     edges: edges.sort((a, b) => compareText(`${a.from.nodeId}\u0000${a.from.port}\u0000${a.to.nodeId}\u0000${a.to.port}`, `${b.from.nodeId}\u0000${b.from.port}\u0000${b.to.nodeId}\u0000${b.to.port}`)).map(cloneCanonical),
     outputs: cloneCanonical(normalizedOutputs),
-    ...(rawGraph.domain === 'texture' ? { settings: cloneCanonical(settings) } : {}),
+    ...((rawGraph.domain === 'texture' || rawGraph.domain === 'audio') && settings ? { settings: cloneCanonical(settings) } : {}),
   };
   const metrics = { nodeCount: nodes.length, edgeCount: edges.length, outputCount: Object.keys(normalizedOutputs).length, depth: topo.depth, cost, samplers, generatedEntityUpperBound: generatedEntities, textureMemoryBytes, controlBytes: byteLength };
   return result(errors.length ? null : canonical, errors, warnings, metrics);

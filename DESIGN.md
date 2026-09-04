@@ -368,6 +368,11 @@ wrapping, and anisotropy 4; normalized recipes always carry anisotropy.
 
 ### Blueprint graphs
 
+The typed audio-graph contract, validator, deterministic evaluator, Sound
+Plainform dialect, sound-purpose scenes, and Play audition exist. Audio graphs
+are a fourth graph domain beside shader, texture, and blueprint. They compile
+to PCM for play and to a 3D spectrogram visualization for render evidence.
+
 The typed blueprint-graph contract and validator exist; execution described
 below is planned.
 

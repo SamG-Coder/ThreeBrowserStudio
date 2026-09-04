@@ -50,7 +50,7 @@ export const ENTITY_COMPONENT_CATALOG = Object.freeze([
     enabled: true,
     volume: 1,
     loop: false,
-  }, { runtime: false, requires: ['audio-resource'] }),
+  }, { runtime: true, requires: ['audio-resource'], compatibleKinds: [...ALL_OBJECT_KINDS, 'audioSource'] }),
   entry('logic', 'Logic', 'Runs bounded GameMaker-style blueprint events and actions.', {
     enabled: true,
     graphIds: [],

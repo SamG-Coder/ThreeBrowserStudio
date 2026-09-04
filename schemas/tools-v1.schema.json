@@ -406,7 +406,11 @@
                 "enum": [
                   "object",
                   "design",
-                  "shader"
+                  "shader",
+                  "sound",
+                  "event",
+                  "form",
+                  "composition"
                 ]
               },
               "domain": {

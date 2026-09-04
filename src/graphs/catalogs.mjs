@@ -871,6 +871,138 @@ const execOut = ['out', port('exec')];
 const entityIn = ['entity', port('entityId', { required: true })];
 const valueParam = ['valueType', param('enum', { values: VALUE_TYPES, default: 'float' })];
 
+const audioIn = ['audio', port('audio', { required: true })];
+const audioOut = ['audio', port('audio')];
+const WAVEFORMS = Object.freeze(['sine', 'square', 'sawtooth', 'triangle', 'pulse']);
+const NOISE_COLORS = Object.freeze(['white', 'pink', 'brown']);
+const FILTER_TYPES = Object.freeze(['lowpass', 'highpass', 'bandpass']);
+
+const audioNodes = [
+  node('audio.oscillator', 'Oscillator', 'source', {
+    description: 'Periodic waveform source.',
+    outputs: [audioOut],
+    inputs: [['frequency', port('float')], ['gain', port('float')]],
+    params: [
+      ['waveform', param('enum', { values: WAVEFORMS, default: 'sine' })],
+      ['frequency', param('number', { default: 440, min: 16, max: 8000 })],
+      ['gain', param('number', { default: 0.2, min: 0, max: 1 })],
+      ['startTime', param('number', { default: 0, min: 0, max: 16 })],
+    ],
+  }),
+  node('audio.noise', 'Noise', 'source', {
+    description: 'Seeded noise source.',
+    outputs: [audioOut],
+    inputs: [['gain', port('float')]],
+    params: [
+      ['color', param('enum', { values: NOISE_COLORS, default: 'white' })],
+      ['gain', param('number', { default: 0.12, min: 0, max: 1 })],
+      ['seed', param('integer', { default: 1, min: 1, max: 2147483647 })],
+    ],
+  }),
+  node('audio.sequence', 'Sequence', 'source', {
+    description: 'Bounded note sequence rendered as a monophonic oscillator.',
+    cost: 4,
+    outputs: [audioOut],
+    params: [
+      ['pattern', param('string', { default: 'C4' })],
+      ['waveform', param('enum', { values: WAVEFORMS, default: 'sine' })],
+      ['noteDuration', param('number', { default: 0.5, min: 0.05, max: 4 })],
+      ['gain', param('number', { default: 0.22, min: 0, max: 1 })],
+      ['startTime', param('number', { default: 0, min: 0, max: 16 })],
+    ],
+  }),
+  node('audio.lfo', 'LFO', 'control', {
+    description: 'Low-frequency oscillator for control-rate modulation.',
+    outputs: [['value', port('float')]],
+    params: [
+      ['waveform', param('enum', { values: WAVEFORMS, default: 'sine' })],
+      ['frequency', param('number', { default: 4, min: 0.01, max: 40 })],
+      ['depth', param('number', { default: 1, min: 0, max: 4000 })],
+      ['offset', param('number', { default: 0, min: -8000, max: 8000 })],
+    ],
+  }),
+  node('audio.adsr', 'ADSR Envelope', 'time', {
+    description: 'Amplitude envelope applied to an audio signal.',
+    inputs: [audioIn],
+    outputs: [audioOut],
+    params: [
+      ['attack', param('number', { default: 0.01, min: 0, max: 4 })],
+      ['decay', param('number', { default: 0.12, min: 0, max: 8 })],
+      ['sustain', param('number', { default: 0.7, min: 0, max: 1 })],
+      ['release', param('number', { default: 0.2, min: 0, max: 8 })],
+      ['startTime', param('number', { default: 0, min: 0, max: 16 })],
+      ['hold', param('number', { default: 0, min: 0, max: 16 })],
+    ],
+  }),
+  node('audio.gain', 'Gain', 'process', {
+    inputs: [audioIn, ['gain', port('float')]],
+    outputs: [audioOut],
+    params: [['gain', param('number', { default: 1, min: 0, max: 4 })]],
+  }),
+  node('audio.sum', 'Sum', 'process', {
+    inputs: [['a', port('audio', { required: true })], ['b', port('audio', { required: true })]],
+    outputs: [audioOut],
+  }),
+  node('audio.mix', 'Mix', 'process', {
+    inputs: [['a', port('audio', { required: true })], ['b', port('audio', { required: true })], ['mix', port('float')]],
+    outputs: [audioOut],
+    params: [['mix', param('number', { default: 0.5, min: 0, max: 1 })]],
+  }),
+  node('audio.filter', 'Filter', 'process', {
+    cost: 2,
+    inputs: [audioIn, ['frequency', port('float')]],
+    outputs: [audioOut],
+    params: [
+      ['type', param('enum', { values: FILTER_TYPES, default: 'lowpass' })],
+      ['frequency', param('number', { default: 1200, min: 40, max: 8000 })],
+      ['q', param('number', { default: 0.7, min: 0.1, max: 12 })],
+    ],
+  }),
+  node('audio.formant', 'Vocal Formants', 'process', {
+    description: 'Cascade glottal-tract resonators (F1–F4 plus a nasal pole) approximating a vocal tract.',
+    cost: 5,
+    inputs: [audioIn],
+    outputs: [audioOut],
+    params: [
+      ['f1', param('number', { default: 700, min: 200, max: 1200 })],
+      ['f2', param('number', { default: 1200, min: 600, max: 3000 })],
+      ['f3', param('number', { default: 2500, min: 1500, max: 4000 })],
+      ['q', param('number', { default: 6, min: 1, max: 12 })],
+      ['dry', param('number', { default: 0.12, min: 0, max: 1 })],
+    ],
+  }),
+  node('audio.delay', 'Delay', 'process', {
+    cost: 3,
+    inputs: [audioIn],
+    outputs: [audioOut],
+    params: [
+      ['time', param('number', { default: 0.18, min: 0.001, max: 1 })],
+      ['feedback', param('number', { default: 0.25, min: 0, max: 0.95 })],
+      ['mix', param('number', { default: 0.2, min: 0, max: 1 })],
+    ],
+  }),
+  node('audio.saturate', 'Saturate', 'process', {
+    inputs: [audioIn],
+    outputs: [audioOut],
+    params: [['drive', param('number', { default: 1.4, min: 0.1, max: 8 })]],
+  }),
+  node('audio.pan', 'Pan', 'space', {
+    inputs: [audioIn],
+    outputs: [audioOut],
+    params: [['pan', param('number', { default: 0, min: -1, max: 1 })]],
+  }),
+  node('audio.panner', 'Positional Panner', 'space', {
+    description: 'Equal-power pan and distance attenuation from a listener-relative metre offset.',
+    inputs: [audioIn],
+    outputs: [audioOut],
+    params: [
+      ['x', param('number', { default: 0, min: -20, max: 20 })],
+      ['y', param('number', { default: 0, min: -20, max: 20 })],
+      ['z', param('number', { default: 0, min: -20, max: 20 })],
+    ],
+  }),
+];
+
 const blueprintNodes = [
   node('event.onStart', 'On Start', 'event', { outputs: [execOut], tags: ['event-root'] }),
   node('event.onActivate', 'On Activate', 'event', { outputs: [execOut], tags: ['event-root', 'controller-event'] }),
@@ -961,6 +1093,9 @@ export const GRAPH_OUTPUTS = Object.freeze({
     data: output(['float', 'vec2', 'vec3', 'vec4', 'color'], 'texture', 'none'),
   }),
   blueprint: Object.freeze({}),
+  audio: Object.freeze({
+    mix: output(['audio'], 'audio'),
+  }),
 });
 
 function expandCatalogNodes(nodes) {
@@ -995,6 +1130,7 @@ export const GRAPH_CATALOGS = Object.freeze({
   shader: makeCatalog('shader', shaderNodes),
   texture: makeCatalog('texture', textureNodes),
   blueprint: makeCatalog('blueprint', blueprintNodes),
+  audio: makeCatalog('audio', audioNodes),
 });
 
 export { VALUE_TYPES, NUMERIC_TYPES };

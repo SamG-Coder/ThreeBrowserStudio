@@ -19,7 +19,7 @@ face grids, iteration, transforms, Design solids, surface-anchored and
 four-boundary constrained patches, source-surface tangency, actionable semantic
 regions, surface offsets, topology imprint/opening, transported sweeps,
 reference-derived frames, centre-plane mirroring, uniform boundary clearance,
-or shader math. For a new manufactured Design, use the explicit
+shader math, or Sound graphs and sound-purpose scenes. For a new manufactured Design, use the explicit
 `right-up-forward` design frame documented there: right is world +X, up is
 world +Y, and forward is world +Z. Do not manually rotate the generated root.
 Use Plainform only through `three_studio_apply`; it is another
@@ -191,8 +191,10 @@ before commit.
   shot. Do not treat the window pose as the evidence camera while
   `viewMode` is `review`.
 - Create animation resources through MCP, validate them, then use
-  `three_studio_play` to enter, seek, or step. Report only the behavior actually
-  exposed by status.
+  `three_studio_play` to enter, seek, or step. Sound scenes bake a local WAV
+  and audition it through the native HTMLAudioElement; report only the
+  behavior actually exposed by status. Never treat a `webaudio` backend as
+  audible on this host.
 - Keep authored shaders active in Author and Play modes; do not model quality
   as an on/off preview toggle.
 

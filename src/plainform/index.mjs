@@ -8,6 +8,8 @@ export { ShaderPlainformCompiler, ShaderPlainformError } from './shader-plainfor
 export { EventPlainformCompiler } from './event-plainform-compiler.mjs';
 export { FormPlainformCompiler } from './form-plainform-compiler.mjs';
 export { CompositionPlainformCompiler } from './composition-plainform-compiler.mjs';
+export { SoundPlainformCompiler } from './sound-plainform-compiler.mjs';
+export { interpretSoundFeel } from './sound-feel-vocabulary.mjs';
 export { interpretShaderFeel, SHADER_FEEL_VOCABULARY } from './shader-feel-vocabulary.mjs';
 export { DesignPlainformCompiler } from './design-plainform-compiler.mjs';
 export { DesignExpressionError, evaluateDesignExpression, evaluateDesignVector } from './design-expression.mjs';

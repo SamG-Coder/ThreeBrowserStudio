@@ -192,6 +192,7 @@ function defaultResources() {
 
 function defaultSceneSettings() {
   return {
+    purpose: 'visual',
     background: {
       mode: 'color',
       color: [0.035, 0.045, 0.06],
@@ -200,6 +201,7 @@ function defaultSceneSettings() {
     environment: null,
     fog: null,
     activeCameraId: null,
+    audio: null,
     timeline: {
       frameStart: 1,
       frameEnd: 250,
@@ -403,6 +405,11 @@ export function createSceneDocument(input = {}) {
     timeline: authoredSettings.timeline === undefined
       ? defaults.timeline
       : { ...defaults.timeline, ...authoredSettings.timeline },
+    audio: authoredSettings.audio === undefined
+      ? defaults.audio
+      : authoredSettings.audio === null
+        ? null
+        : { ...(defaults.audio ?? {}), ...authoredSettings.audio },
   };
   return {
     id,

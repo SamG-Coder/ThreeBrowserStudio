@@ -105,7 +105,7 @@ function makeGraphPlan(graph) {
   return { graph, nodes, incoming, outgoing };
 }
 
-export function createLogicControllerRuntime({ project, scene, objects, animationRuntime, setActiveCamera } = {}) {
+export function createLogicControllerRuntime({ project, scene, objects, animationRuntime, audioRuntime, setActiveCamera } = {}) {
   const settings = normalizeControllerSettings(scene);
   const controlledEntity = settings ? scene?.entities?.[settings.entityId] : null;
   const plans = controlledEntity ? graphResources(project, controlledEntity).map(makeGraphPlan) : [];
@@ -261,6 +261,8 @@ export function createLogicControllerRuntime({ project, scene, objects, animatio
       case 'physics.setGravityScale': physics.setGravityScale(targetId, finite(dataValue(plan, node.id, 'scale', context), 1)); break;
       case 'animation.play': animationRuntime?.play?.(node.params?.clipId, { restart: node.params?.restart !== false }); break;
       case 'animation.stop': animationRuntime?.pause?.(node.params?.clipId); break;
+      case 'audio.play': audioRuntime?.play?.(node.params?.audioId, { volume: node.params?.volume ?? 1 }); break;
+      case 'audio.stop': audioRuntime?.stop?.(); break;
       case 'camera.setActive': setActiveCamera?.(dataValue(plan, node.id, 'camera', context)); break;
       case 'camera.lookAt': {
         const camera = entityObject(dataValue(plan, node.id, 'camera', context));

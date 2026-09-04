@@ -1,3 +1,4 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { lstat, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
@@ -1612,6 +1613,7 @@ export class StudioApplication {
       scene,
       objects: this.#compiled?.objects,
       animationRuntime: this.#compiled?.animationRuntime,
+      audioRuntime: this.#compiled?.audioRuntime,
       setActiveCamera: entityId => {
         const camera = this.#compiled?.objects?.get?.(entityId);
         if (!camera?.isCamera) return false;
@@ -1759,7 +1761,19 @@ export class StudioApplication {
   }
 
   async #compile(document) {
-    const compiled = compileSceneDocument({ THREE: this.#THREE, TSL: this.#TSL, project: document, aspect: this.#aspect() });
+    const compiled = compileSceneDocument({
+      THREE: this.#THREE,
+      TSL: this.#TSL,
+      project: document,
+      aspect: this.#aspect(),
+      audioPreview: {
+        cacheDirectory: path.join(this.studioRoot, 'artifacts', 'sound-preview'),
+        writeFile: (filePath, bytes) => {
+          mkdirSync(path.dirname(filePath), { recursive: true });
+          writeFileSync(filePath, bytes);
+        },
+      },
+    });
     const errors = compiled.diagnostics.filter(item => item.severity === 'error');
     if (errors.length) {
       compiled.dispose();
@@ -2093,17 +2107,19 @@ export class StudioApplication {
         liveSceneCompilation: true,
         behaviorRuntime: false,
         controllerRuntime: true,
+        audioRuntime: Boolean(this.#compiled?.audioRuntime),
+        scenePurposes: ['visual', 'sound'],
         logicRuntime: {
           domain: 'blueprint',
           events: ['Create', 'Activate', 'Deactivate', 'Step', 'Fixed Step', 'Key Pressed', 'Key Down', 'Key Up', 'Collision Enter', 'Collision Exit', 'Custom Event'],
-          actions: ['componentQuery', 'state', 'transform', 'visibility', 'speed', 'angularSpeed', 'rigidBody', 'animation', 'cameraControl', 'customEvent'],
+          actions: ['componentQuery', 'state', 'transform', 'visibility', 'speed', 'angularSpeed', 'rigidBody', 'animation', 'audio', 'cameraControl', 'customEvent'],
           globalExitKey: 'Escape',
           runtimeOnly: true,
           limits: LOGIC_CONTROLLER_LIMITS,
         },
         componentRuntime: {
           model: 'entity-components',
-          executable: ['logic', 'camera', 'rigidBody', 'collider', 'animation'],
+          executable: ['logic', 'camera', 'rigidBody', 'collider', 'animation', 'audio'],
           rigidBodyTypes: ['dynamic', 'kinematic', 'static'],
           colliderShapes: ['box', 'sphere', 'ramp', 'mesh'],
           collisionEvents: ['enter', 'exit'],
@@ -2143,11 +2159,12 @@ export class StudioApplication {
           runSpecPolicy: 'configured-root-relative-only',
           shell: false,
         },
-        graphDomains: ['shader', 'texture', 'blueprint'],
+        graphDomains: ['shader', 'texture', 'blueprint', 'audio'],
         entityKinds: [
           'scene', 'group', 'empty', 'gameObject', 'mesh', 'instancedMesh',
           'perspectiveCamera', 'orthographicCamera', 'directionalLight',
           'pointLight', 'spotLight', 'ambientLight', 'areaLight', 'hemisphereLight',
+          'audioSource',
         ],
         geometryRecipes: ['box', 'plane', 'sphere', 'capsule', 'circle', 'cone', 'cylinder', 'torus', 'torusKnot', 'lathe', 'tube', 'loft', 'shape', 'extrude', 'csg', 'explicit', 'indexedMesh', 'editableMesh'],
         geometryEditing: true,
@@ -3135,6 +3152,7 @@ export class StudioApplication {
         requestedPreview: plainform.requestedPreview,
         ...(plainform.shader ? { shader: plainform.shader } : {}),
         ...(plainform.design ? { design: plainform.design } : {}),
+        ...(plainform.sound ? { sound: plainform.sound } : {}),
       } } : {}),
       ...(persistentPlainform ? { plainformDesign: persistentPlainform } : {}),
       authoring: {
@@ -3485,11 +3503,15 @@ export class StudioApplication {
       actions: this.#compiled?.animationStates() ?? [],
       timelineGeometryModifierIds: this.#compiled?.timelineGeometryModifierIds ?? [],
       timelineGeometrySampleCount: this.#compiled?.timelineGeometrySampleCount ?? 0,
+      audio: this.#compiled?.audioRuntime?.status?.() ?? null,
     });
+    const simulation = scene.settings?.purpose === 'sound'
+      ? 'sound-preview-and-timeline'
+      : 'actions-controller-physics-and-timeline-modifiers';
     if (params.action === 'query') return {
       success: true,
       mode: this.#mode,
-      simulation: 'actions-controller-physics-and-timeline-modifiers',
+      simulation,
       ...this.#play,
       ...animationState(),
     };
@@ -3503,6 +3525,7 @@ export class StudioApplication {
         if (action.autoplay) this.#compiled.animationRuntime.play(action.id, { restart: true });
         else this.#compiled.animationRuntime.pause(action.id);
       }
+      this.#compiled?.audioRuntime?.enter({ loop: scene.settings?.audio?.loop === true });
     }
     else if (params.action === 'stop') {
       if (this.#logicController?.active) this.#logicController.stop();
@@ -3513,26 +3536,35 @@ export class StudioApplication {
       for (const action of this.#compiled?.animationRuntime?.actions.values() ?? []) {
         this.#compiled.animationRuntime.pause(action.id);
       }
+      this.#compiled?.audioRuntime?.stop();
       this.#syncControllerState();
     }
-    else if (params.action === 'pause') this.#play.paused = true;
-    else if (params.action === 'resume') this.#play.paused = false;
+    else if (params.action === 'pause') {
+      this.#play.paused = true;
+      this.#compiled?.audioRuntime?.pause();
+    }
+    else if (params.action === 'resume') {
+      this.#play.paused = false;
+      this.#compiled?.audioRuntime?.resume();
+    }
     else if (params.action === 'step') {
       const delta = params.ticks / 60;
       this.#play.tick += params.ticks;
       this.#play.elapsed += delta;
       this.#compiled?.advanceAnimation(delta);
+      this.#compiled?.audioRuntime?.advance(delta);
     }
     else if (params.action === 'seek') {
       this.#play.elapsed = (params.frame - timeline.frameStart) / timeline.framesPerSecond;
       this.#play.tick = Math.round(this.#play.elapsed * 60);
       this.#compiled?.setAnimationTime(this.#play.elapsed);
+      this.#compiled?.audioRuntime?.seek(this.#play.elapsed);
     }
     else if (params.action === 'inject') this.#play.latestInput = { action: params.inputAction, input: params.input };
     return {
       success: true,
       mode: this.#mode,
-      simulation: 'actions-controller-physics-and-timeline-modifiers',
+      simulation,
       ...this.#play,
       ...animationState(),
       revision: this.#kernel.revision,
@@ -3546,6 +3578,7 @@ export class StudioApplication {
     this.#play.elapsed += deltaSeconds;
     this.#play.tick = Math.round(this.#play.elapsed * 60);
     this.#compiled?.advanceAnimation(deltaSeconds, { restorePose: this.#logicController?.active !== true });
+    this.#compiled?.audioRuntime?.advance(deltaSeconds);
     this.#logicController?.update(deltaSeconds);
   }
 

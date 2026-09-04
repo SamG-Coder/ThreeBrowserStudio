@@ -27,7 +27,7 @@ authority. In the current lean slice:
   `scene.rtx.patch`, and reusable `stroke.apply` paths for sculpting,
   color/texture painting, tube curves, and deterministic scatter; apply also
   accepts a `plainform-v1` controlled-English program that lowers object,
-  layout, prefab, and shader intents into these same guarded operations;
+  layout, prefab, shader, design, and sound intents into these same guarded operations;
 - validation is whole-project, interactive document/reference/hierarchy/graph
   validation with budgets;
 - rendering is WebGPU beauty capture through the authored shot and its
@@ -36,8 +36,10 @@ authority. In the current lean slice:
   while evidence and `status.viewport.effectiveCamera` stay on that authored
   shot; native ray-query lighting augments beauty only while the explicit RTX
   status is active;
-- Play evaluates Actions, timeline modifiers, and capability-gated typed
-  blueprint controller graphs. A scene controller selects one exact entity;
+- Play evaluates Actions, timeline modifiers, capability-gated typed
+  blueprint controller graphs, and sound-scene audio graphs. Sound Play
+  bakes a local WAV and auditions it through the native HTMLAudioElement;
+  Web Audio is a silent host stub. A scene controller selects one exact entity;
   Enter (or its authored activation key) starts runtime-only control and the
   globally reserved Escape key stops and restores authored state; and
 - asset import, script authoring/execution, layout modes beyond the live
@@ -361,6 +363,16 @@ operations.
   world +Y, and forward as world +Z. Let the compiler map profiles and lofts
   internally; never manually rotate the generated design root. Omit the suffix
   only when intentionally maintaining a legacy XZ-profile/Y-loft program.
+- A Design root is a manufacture envelope, not a rig. Create empty pivot
+  groups with `Create a group called … with id …, centred at [right, up,
+  forward]`, then `Put … under …, keeping world pose`. Nested world-identity
+  groups store local identity, so Actions can yaw local Y and roll local X.
+  `entity.reparent` keeps local TRS and will throw parts by 90° under a
+  semantic design root; do not use it to assemble a rig. Continue an existing
+  design with `Continue the design entity/…` instead of a second Design
+  header. Do not claim a mesh parented only to the design root is a working
+  axle. Interior parts that must be photographed need an opened/shelled
+  volume; a capped loft is solid.
 - Use graph parameters or material instances for shader variants.
 - Avoid per-object lights when an emissive material or shared light suffices.
 - Keep interactive texture graphs at or below 2048 unless a bake job is

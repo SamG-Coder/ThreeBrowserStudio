@@ -39,8 +39,12 @@ function add(left, right, sign = 1) {
   return quantity(left.value + sign * right.value, dimension);
 }
 
+const RATE_DIMENSIONS = new Set(['time', 'frequency', 'level', 'beats', 'tempo', 'angle']);
+
 function multiply(left, right) {
-  if (left.dimension === 'angle' || right.dimension === 'angle') {
+  if (left.dimension === 'frequency' && right.dimension === 'time') return quantity(left.value * right.value, 'scalar');
+  if (left.dimension === 'time' && right.dimension === 'frequency') return quantity(left.value * right.value, 'scalar');
+  if (RATE_DIMENSIONS.has(left.dimension) || RATE_DIMENSIONS.has(right.dimension)) {
     if (left.dimension === 'scalar') return quantity(left.value * right.value, right.dimension);
     if (right.dimension === 'scalar') return quantity(left.value * right.value, left.dimension);
     fail('plainform_dimension_mismatch', `Cannot multiply ${left.dimension} by ${right.dimension}.`);
@@ -53,10 +57,18 @@ function multiply(left, right) {
 
 function divide(left, right) {
   if (right.value === 0) fail('plainform_math_error', 'Cannot divide by zero.');
-  if (right.dimension === 'angle') fail('plainform_dimension_mismatch', `Cannot divide ${left.dimension} by an angle.`);
-  if (left.dimension === 'angle') {
-    if (right.dimension !== 'scalar') fail('plainform_dimension_mismatch', `Cannot divide an angle by ${right.dimension}.`);
-    return quantity(left.value / right.value, 'angle');
+  if (left.dimension === 'beats' && right.dimension === 'tempo') return quantity((left.value / right.value) * 60, 'time');
+  if (left.dimension === 'scalar' && right.dimension === 'time') return quantity(left.value / right.value, 'frequency');
+  if (left.dimension === 'scalar' && right.dimension === 'frequency') return quantity(left.value / right.value, 'time');
+  if (RATE_DIMENSIONS.has(left.dimension) || RATE_DIMENSIONS.has(right.dimension)) {
+    if (right.dimension === 'angle') fail('plainform_dimension_mismatch', `Cannot divide ${left.dimension} by an angle.`);
+    if (left.dimension === 'angle') {
+      if (right.dimension !== 'scalar') fail('plainform_dimension_mismatch', `Cannot divide an angle by ${right.dimension}.`);
+      return quantity(left.value / right.value, 'angle');
+    }
+    if (right.dimension === 'scalar') return quantity(left.value / right.value, left.dimension);
+    if (left.dimension === right.dimension) return quantity(left.value / right.value, 'scalar');
+    fail('plainform_dimension_mismatch', `Cannot divide ${left.dimension} by ${right.dimension}.`);
   }
   const power = dimensionPower(left.dimension) - dimensionPower(right.dimension);
   const dimension = dimensionFromPower(power);
@@ -96,7 +108,8 @@ function normalizeExpression(source, variables) {
     .replace(/\bthe tangent of\b|\btangent of\b/gu, 'tan ')
     .replace(/\bthe square root of\b|\bsquare root of\b/gu, 'sqrt ')
     .replace(/\bthe absolute value of\b|\babsolute value of\b/gu, 'abs ')
-    .replace(/\binverse lerp\b/gu, 'inverselerp');
+    .replace(/\binverse lerp\b/gu, 'inverselerp')
+    .replace(/\bbeats per minute\b/gu, 'bpm');
   return { value, replacements };
 }
 
@@ -125,6 +138,12 @@ const UNIT = Object.freeze({
   radian: [1, 'angle'], radians: [1, 'angle'], percent: [0.01, 'scalar'],
   square_metres: [1, 'area'], square_centimetres: [0.0001, 'area'],
   cubic_metres: [1, 'volume'], cubic_centimetres: [0.000001, 'volume'],
+  second: [1, 'time'], seconds: [1, 'time'],
+  millisecond: [0.001, 'time'], milliseconds: [0.001, 'time'],
+  hertz: [1, 'frequency'], kilohertz: [1000, 'frequency'],
+  decibel: [1, 'level'], decibels: [1, 'level'],
+  beat: [1, 'beats'], beats: [1, 'beats'],
+  bpm: [1, 'tempo'],
 });
 
 class Parser {

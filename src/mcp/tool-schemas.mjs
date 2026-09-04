@@ -161,7 +161,7 @@ const inspectProjectionSchema = z.object({
 
 const inspectPlainformSchema = z.object({
   source: z.string().min(1).max(32 * 1024).optional(),
-  dialect: z.enum(['object', 'design', 'shader']).optional(),
+  dialect: z.enum(['object', 'design', 'shader', 'sound', 'event', 'form', 'composition']).optional(),
   domain: z.string().min(1).max(80).optional(),
   includeTokens: z.boolean().optional().default(false),
 }).strict();
@@ -1716,6 +1716,9 @@ const TOOL_CONTRACT_FEATURES = Object.freeze({
   plainformAst: true,
   anchorHealth: true,
   persistentPlainformDesigns: true,
+  soundPlainform: true,
+  audioGraphDomain: true,
+  soundScenePurpose: true,
   sameTransactionCameraFrame: true,
   cameraDistanceScale: true,
   meshElements: true,
