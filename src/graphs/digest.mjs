@@ -4,6 +4,7 @@ import { contentHash, isPlainRecord, stableStringify } from '../core/util.mjs';
 import { getGraphNode } from './catalogs.mjs';
 import { GRAPH_SOCKET_CONTRACT, describeSocketLiveness } from './live-sockets.mjs';
 import { validateGraph } from './validator.mjs';
+import { blueprintReachability, describeBlueprintRuntimeSupport } from './blueprint-runtime-support.mjs';
 
 const ENCODER = new TextEncoder();
 const CURSOR_VERSION = 1;
@@ -165,11 +166,12 @@ function compactNode(node, domain, edges, contribution) {
     ...(isPlainRecord(node.inputs) ? { inputs: compactSlice(node.inputs) } : {}),
     ...(socketTruth ? socketTruth : {}),
     contribution: contribution.get(node.id) ?? [],
+    ...(domain === 'blueprint' ? { runtimeSupport: describeBlueprintRuntimeSupport(node) } : {}),
     ...(isPlainRecord(node.layout) ? { layout: compactSlice(node.layout, 32) } : {}),
   };
 }
 
-function graphContribution(nodes, edges, outputs) {
+function graphContribution(nodes, edges, outputs, domain) {
   const incoming = new Map();
   for (const edge of edges) {
     const list = incoming.get(edge.to?.nodeId) ?? [];
@@ -178,6 +180,23 @@ function graphContribution(nodes, edges, outputs) {
   }
   const byNode = new Map(nodes.map(node => [node.id, []]));
   const byOutput = {};
+  const byEvent = {};
+  if (domain === 'blueprint') {
+    const reachability = blueprintReachability(nodes, edges);
+    for (const [eventId, entry] of reachability.byEvent) {
+      const nodeIds = [...entry.nodeIds].sort(compareText);
+      if (Object.keys(byEvent).length < 16) byEvent[eventId] = {
+        rootNodeId: eventId,
+        reachableNodeCount: nodeIds.length,
+        executionNodeCount: entry.executionNodeIds.size,
+        dataDependencyCount: nodeIds.length - entry.executionNodeIds.size,
+        nodeIds: nodeIds.slice(0, 16),
+        truncated: nodeIds.length > 16,
+        contentHash: contentHash(nodeIds),
+      };
+      for (const nodeId of nodeIds) byNode.get(nodeId).push(`event:${eventId}`);
+    }
+  }
   for (const [outputName, endpoint] of Object.entries(outputs ?? {}).sort(([a], [b]) => compareText(a, b))) {
     const root = endpoint?.nodeId;
     const visited = new Set();
@@ -202,6 +221,11 @@ function graphContribution(nodes, edges, outputs) {
     byNode,
     summary: {
       outputs: byOutput,
+      ...(domain === 'blueprint' ? {
+        basis: 'event-flow-and-data-dependencies', events: byEvent,
+        eventCount: nodes.filter(node => getGraphNode('blueprint', node.type)?.tags?.includes('event-root')).length,
+        eventsTruncated: nodes.filter(node => getGraphNode('blueprint', node.type)?.tags?.includes('event-root')).length > 16,
+      } : {}),
       contributingNodeCount: nodes.length - unusedNodeIds.length,
       unusedNodeCount: unusedNodeIds.length,
       unusedNodeIds: unusedNodeIds.length <= 128 ? unusedNodeIds : unusedNodeIds.slice(0, 128),
@@ -318,7 +342,7 @@ export function buildGraphDigest(resourceOrGraph, options = {}) {
     .filter(isPlainRecord)
     .slice()
     .sort((first, second) => compareText(edgeKey(first), edgeKey(second)));
-  const contribution = graphContribution(nodes, edges, inspectedGraph.outputs);
+  const contribution = graphContribution(nodes, edges, inspectedGraph.outputs, inspectedGraph.domain);
   const nodeLimit = finiteInteger(options.nodeLimit, DEFAULT_NODE_LIMIT, 0, 256);
   const edgeLimit = finiteInteger(options.edgeLimit, DEFAULT_EDGE_LIMIT, 0, 1024);
   if (nodeLimit === 0 && edgeLimit === 0) {

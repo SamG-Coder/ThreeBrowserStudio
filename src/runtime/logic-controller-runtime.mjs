@@ -7,6 +7,32 @@ const MAX_EMITTED_EVENTS = 64;
 
 const finite = (value, fallback = 0) => Number.isFinite(value) ? value : fallback;
 const cloneValue = value => value === undefined ? undefined : structuredClone(value);
+const MAX_MATH_VALUE = 1e12;
+
+function scalarMath(operation, a, b, c) {
+  a = finite(a); b = finite(b); c = finite(c);
+  let value;
+  switch (operation) {
+    case 'add': value = a + b; break;
+    case 'subtract': value = a - b; break;
+    case 'multiply': value = a * b; break;
+    case 'divide': value = b === 0 ? 0 : a / b; break;
+    case 'min': value = Math.min(a, b); break;
+    case 'max': value = Math.max(a, b); break;
+    case 'clamp': value = Math.max(Math.min(b, c), Math.min(Math.max(b, c), a)); break;
+    case 'abs': value = Math.abs(a); break;
+    case 'negate': value = -a; break;
+    case 'sign': value = Math.sign(a); break;
+    case 'sqrt': value = a < 0 ? 0 : Math.sqrt(a); break;
+    case 'sin': value = Math.sin(a); break;
+    case 'cos': value = Math.cos(a); break;
+    case 'tan': value = Math.tan(a); break;
+    case 'atan': value = Math.atan(a); break;
+    default: value = 0;
+  }
+  if (Number.isNaN(value)) return 0;
+  return Math.max(-MAX_MATH_VALUE, Math.min(MAX_MATH_VALUE, value));
+}
 
 function keyCode(value) {
   const text = String(value ?? '').trim();
@@ -143,6 +169,11 @@ export function createLogicControllerRuntime({ project, scene, objects, animatio
     let value;
     switch (node?.type) {
       case 'value.constant': value = node.params?.value; break;
+      case 'input.keyHeld': {
+        const held = heldKeys.has(keyCode(node.params?.key));
+        value = source.port === 'held' ? held : Number(held);
+        break;
+      }
       case 'entity.self': value = context.selfId; break;
       case 'entity.reference': value = node.params?.entityId; break;
       case 'component.has': {
@@ -155,6 +186,7 @@ export function createLogicControllerRuntime({ project, scene, objects, animatio
         value = physics.getVelocity(entityId);
         break;
       }
+      case 'motion.getSpeed': value = motion.get(dataValue(plan, node.id, 'entity', context, stack) ?? context.selfId)?.speed ?? 0; break;
       case 'state.get': value = stateFor(context.selfId).get(node.params?.key); break;
       case 'entity.getProperty': {
         const entityId = dataValue(plan, node.id, 'entity', context, stack);
@@ -165,7 +197,8 @@ export function createLogicControllerRuntime({ project, scene, objects, animatio
         break;
       }
       case 'event.onFixedUpdate':
-      case 'event.onUpdate': value = source.port === 'delta' ? context.delta : undefined; break;
+      case 'event.onUpdate':
+      case 'event.onKeyDown': value = source.port === 'delta' ? context.delta : undefined; break;
       case 'event.onInput': value = source.port === 'pressed' ? context.pressed : context.value; break;
       case 'event.onEvent': value = context.payload; break;
       case 'event.payloadNumber': {
@@ -174,6 +207,14 @@ export function createLogicControllerRuntime({ project, scene, objects, animatio
         break;
       }
       case 'value.add': value = finite(dataValue(plan, node.id, 'a', context, stack)) + finite(dataValue(plan, node.id, 'b', context, stack)); break;
+      case 'value.math': value = scalarMath(node.params?.operation,
+        dataValue(plan, node.id, 'a', context, stack),
+        dataValue(plan, node.id, 'b', context, stack),
+        dataValue(plan, node.id, 'c', context, stack)); break;
+      case 'value.select': value = dataValue(plan, node.id,
+        dataValue(plan, node.id, 'condition', context, stack) === true ? 'whenTrue' : 'whenFalse', context, stack); break;
+      case 'vector.compose': value = ['x', 'y', 'z'].map(axis => finite(dataValue(plan, node.id, axis, context, stack))); break;
+      case 'vector.component': value = vec3(dataValue(plan, node.id, 'vector', context, stack))['xyz'.indexOf(node.params?.component)] ?? 0; break;
       case 'compare.values': {
         const a = dataValue(plan, node.id, 'a', context, stack); const b = dataValue(plan, node.id, 'b', context, stack);
         value = ({ equal: () => a === b, notEqual: () => a !== b, less: () => a < b, lessEqual: () => a <= b, greater: () => a > b, greaterEqual: () => a >= b })[node.params?.operation]?.() ?? false;
@@ -484,6 +525,7 @@ export function createLogicControllerRuntime({ project, scene, objects, animatio
 }
 
 export const LOGIC_CONTROLLER_LIMITS = Object.freeze({
+  maxMathValue: MAX_MATH_VALUE,
   fixedStep: FIXED_STEP,
   maxFixedStepsPerFrame: MAX_FIXED_STEPS,
   maxExecutionsPerEvent: MAX_EXECUTIONS_PER_EVENT,

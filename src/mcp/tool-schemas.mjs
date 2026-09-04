@@ -14,6 +14,7 @@ import {
   EDITABLE_MESH_ATTRIBUTE_LIMITS,
 } from '../core/editable-mesh-attributes.mjs';
 import { DATA_TEXTURE_LIMITS } from '../core/image-texture.mjs';
+import { ENTITY_COMPONENT_IDS } from '../core/component-catalog.mjs';
 import {
   SCULPT_STROKE_BRUSHES,
   STROKE_BLEND_MODES,
@@ -1291,8 +1292,8 @@ const directOperations = [
   operation('entity.create', { sceneId: reference, entity: jsonObjectSchema, alias: alias.optional(), index: insertionIndex.optional() }),
   operation('entity.createMany', { sceneId: reference, items: z.array(entityCreateBatchItem).min(1).max(128) }),
   operation('entity.patch', { entityId: reference, patch: jsonObjectSchema }),
-  operation('entity.component.attach', { entityId: reference, component: identifier, value: jsonObjectSchema }),
-  operation('entity.component.remove', { entityId: reference, component: identifier }),
+  operation('entity.component.attach', { entityId: reference, component: z.enum(ENTITY_COMPONENT_IDS), value: jsonObjectSchema }),
+  operation('entity.component.remove', { entityId: reference, component: z.enum(ENTITY_COMPONENT_IDS) }),
   operation('entity.patchMany', { entityIds: exactEntityReferences, patch: jsonObjectSchema, expectedEntitySetHash: hash }),
   operation('entity.transformMany', {
     entityIds: exactEntityReferences,
@@ -1543,7 +1544,7 @@ export const SCENE_EXPORT_FORMATS = Object.freeze(['glb', 'gltf']);
 
 export const jobSchema = z.object({
   ...connectionFields,
-  action: z.enum(['textureBake', 'sceneExport', 'rehearsalRun']),
+  action: z.enum(['textureBake', 'sceneExport', 'sceneImport', 'rehearsalRun']),
   projectId: identifier,
   graphId: identifier.optional(),
   textureId: identifier.optional(),
@@ -1553,11 +1554,28 @@ export const jobSchema = z.object({
   entityId: identifier.optional(),
   format: z.enum(SCENE_EXPORT_FORMATS).optional(),
   runSpecReference: z.string().min(1).max(1024).optional(),
+  sourcePath: z.string().min(1).max(1024).optional(),
+  expectedFileSha256: hash.optional(),
+  idPrefix: identifier.optional(),
+  dryRun: z.boolean().optional(),
+  candidateToken: hash.optional(),
   name: z.string().min(1).max(160).optional(),
   baseRevision: nonNegativeInteger,
   idempotencyKey,
   label,
 }).strict().superRefine((value, context) => {
+  if (value.action === 'sceneImport') {
+    for (const field of ['sourcePath', 'expectedFileSha256', 'sceneId', 'idPrefix']) {
+      if (value[field] === undefined) context.addIssue({ code:'custom', path:[field], message:`${field} is required for sceneImport.` });
+    }
+    for (const field of ['graphId','textureId','output','resolution','entityId','format','runSpecReference']) {
+      if(value[field] !== undefined) context.addIssue({code:'custom',path:[field],message:`${field} is not accepted for sceneImport.`});
+    }
+    return;
+  }
+  for (const field of ['sourcePath','expectedFileSha256','idPrefix','dryRun','candidateToken']) {
+    if(value[field] !== undefined) context.addIssue({code:'custom',path:[field],message:`${field} is only accepted for sceneImport.`});
+  }
   if (value.action === 'textureBake') {
     for (const field of ['graphId', 'textureId', 'output', 'resolution']) {
       if (value[field] === undefined) context.addIssue({ code: 'custom', path: [field], message: `${field} is required for textureBake.` });
@@ -1615,6 +1633,13 @@ export const projectSchema = z.object({
   if (value.action === 'artifactExport' && value.expectedArtifactHash === undefined) context.addIssue({ code: 'custom', path: ['expectedArtifactHash'], message: 'expectedArtifactHash is required for artifactExport.' });
 });
 
+const controllerKeyCode = z.string().min(1).max(64).regex(/^[A-Za-z0-9]+$/u);
+const playControllerInputs = Object.freeze({
+  keyDown: z.object({ code: controllerKeyCode, repeat: z.boolean().optional() }).strict(),
+  keyUp: z.object({ code: controllerKeyCode }).strict(),
+  releaseKeys: z.object({}).strict(),
+});
+
 export const playSchema = z.object({
   ...connectionFields,
   projectId: identifier.optional(),
@@ -1624,7 +1649,7 @@ export const playSchema = z.object({
   label: label.optional(),
   ticks: z.number().int().min(1).max(10_000).optional().default(1),
   frame: z.number().int().min(-1_000_000).max(1_000_000).optional(),
-  inputAction: z.string().min(1).max(160).optional(),
+  inputAction: z.string().min(1).max(160).optional().describe('keyDown or keyUp routes input.code through the live keyboard controller; keyDown accepts input.repeat. releaseKeys releases held controller keys. Other names only record input.'),
   input: jsonObjectSchema.optional().default({}),
 }).strict().superRefine((value, context) => {
   if (value.action === 'query') return;
@@ -1632,6 +1657,12 @@ export const playSchema = z.object({
     if (value[field] === undefined) context.addIssue({ code: 'custom', path: [field], message: `${field} is required for ${value.action}.` });
   }
   if (value.action === 'inject' && value.inputAction === undefined) context.addIssue({ code: 'custom', path: ['inputAction'], message: 'inputAction is required to inject input.' });
+  if (value.action === 'inject' && Object.hasOwn(playControllerInputs, value.inputAction)) {
+    const parsed = playControllerInputs[value.inputAction].safeParse(value.input);
+    if (!parsed.success) for (const issue of parsed.error.issues) {
+      context.addIssue({ ...issue, path: ['input', ...issue.path] });
+    }
+  }
   if (value.action === 'seek' && value.frame === undefined) context.addIssue({ code: 'custom', path: ['frame'], message: 'frame is required to seek.' });
 });
 

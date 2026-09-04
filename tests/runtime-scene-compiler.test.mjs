@@ -171,6 +171,8 @@ function fakeThree() {
     MeshStandardNodeMaterial: Material,
     RGBAFormat: 'rgba-format',
     UnsignedByteType: 'unsigned-byte',
+    HalfFloatType: 'half-float',
+    EquirectangularReflectionMapping: 'equirectangular-reflection',
     ClampToEdgeWrapping: 'clamp-wrap',
     RepeatWrapping: 'repeat-wrap',
     MirroredRepeatWrapping: 'mirror-wrap',
@@ -217,6 +219,26 @@ function fakeTsl() {
     },
   };
 }
+
+test('compiled environments are isolated candidate resources and dispose without changing authored state', () => {
+  const THREE = fakeThree();
+  const project = createProjectDocument({ projectId: 'project/studio-environment' });
+  const scene = project.scenes[project.activeSceneId];
+  scene.settings.environment = { mode: 'studio', intensity: 0.65 };
+  const authored = JSON.stringify(project);
+  const first = compileSceneDocument({ THREE, TSL: fakeTsl(), project });
+  const second = compileSceneDocument({ THREE, TSL: fakeTsl(), project });
+  assert.notEqual(first.environment, second.environment);
+  assert.equal(first.environment.arguments[0].byteLength, 512 * 256 * 8);
+  assert.equal(first.environment.mapping, THREE.EquirectangularReflectionMapping);
+  const firstTexture = first.environment;
+  first.dispose();
+  first.dispose();
+  assert.equal(firstTexture.disposeCount, 1);
+  assert.equal(second.environment.disposeCount, 0);
+  assert.equal(JSON.stringify(project), authored);
+  second.dispose();
+});
 
 function entity(id, kind, options = {}) {
   return {
@@ -636,6 +658,48 @@ test('editable deformation modifiers evaluate before UV seam triangulation', () 
   assert.deepEqual(compiled.objects.get('entity/quad').geometry.userData.studioAppliedGeometryModifiers, ['modifier/smooth']);
   baseline.dispose();
   compiled.dispose();
+});
+
+test('editable solidify and subdivision compile before material and UV seam expansion', () => {
+  const recipe = {
+    kind: 'editableMesh', positions: [-1,-1,0, 0,-1,0, 0,1,0, -1,1,0, 1,-1,0, 1,1,0],
+    faceOffsets: [0,4,8], cornerVertexIndices: [0,1,2,3, 1,4,5,2],
+    uvLayers: { paint: [0,0,1,0,1,1,0,1, 10,0,11,0,11,1,10,1] }, activeUvLayer: 'paint',
+    faceMaterialIndices: [0,1],
+  };
+  const modifiers = [
+    { id: 'modifier/shell', type: 'solidify', thickness: 0.2 },
+    { id: 'modifier/subdivision', type: 'subdivision', scheme: 'simple', levels: 1 },
+  ];
+  const project = createProjectDocument({
+    projectId: 'project/editable-shell',
+    resources: { geometries: [{ id: 'geometry/panel', recipe }], materials: [{ id: 'material/a' }, { id: 'material/b' }] },
+    scenes: [{ id: 'scene/main', entities: [entity('entity/panel', 'mesh', { components: {
+      mesh: { geometryId: 'geometry/panel', materialIds: ['material/a', 'material/b'] }, modifiers,
+    } })] }],
+  });
+  const snapshot = structuredClone(project);
+  for (const finalModifier of [null, { id: 'modifier/normal', type: 'weightedNormal' },
+    { id: 'modifier/ocean', type: 'ocean', mode: 'displace', waveScale: 0.01, waveCount: 1 }]) {
+    const candidate = structuredClone(project);
+    if (finalModifier) candidate.scenes['scene/main'].entities['entity/panel'].components.modifiers.push(finalModifier);
+    const compiled = compileSceneDocument({ THREE: fakeThree(), TSL: fakeTsl(), project: candidate });
+    const geometry = compiled.objects.get('entity/panel').geometry;
+    assert.equal(geometry.getIndex().count / 3, 80, 'the shared UV seam must not produce internal rim walls');
+    assert.deepEqual(geometry.userData.studioAppliedGeometryModifiers, [...modifiers, ...(finalModifier ? [finalModifier] : [])].map(m => m.id));
+    assert.deepEqual(new Set(geometry.groups.map(g => g.materialIndex)), new Set([0,1]));
+    assert.equal(geometry.userData.studioTriangleMaterialIndices.filter(v => v === 0).length, 40);
+    assert.equal(geometry.userData.studioTriangleMaterialIndices.filter(v => v === 1).length, 40);
+    assert.equal(geometry.getAttribute('uv').count, geometry.getAttribute('position').count);
+    assert.ok(geometry.getAttribute('position').array.every(Number.isFinite));
+    if (finalModifier?.type === 'ocean') {
+      assert.ok(compiled.diagnostics.some(d => d.code === 'runtime_dynamic_geometry_rtx_excluded'));
+      compiled.setAnimationTime?.(1);
+    } else assert.deepEqual(compiled.diagnostics, []);
+    compiled.dispose();
+    assert.equal(geometry.disposeCount, 1);
+  }
+  assert.deepEqual(project, snapshot);
 });
 
 test('bake and order boundaries show only the exact evaluable modifier prefix', () => {

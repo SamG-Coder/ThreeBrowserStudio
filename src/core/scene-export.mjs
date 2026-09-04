@@ -1,4 +1,5 @@
 import { triangulateEditableMesh } from './editable-mesh.mjs';
+import { EDITABLE_POLYGON_MODIFIERS, evaluateEditableMeshModifierStack } from './editable-mesh-modifiers.mjs';
 import { StudioError } from './errors.mjs';
 import { evaluateGeometryModifierStack } from './geometry-modifier-evaluator.mjs';
 import { decodeDataTexturePixels } from './image-texture.mjs';
@@ -239,6 +240,17 @@ function resolveIndexedMesh(document, entity, { tessellate } = {}) {
   }
   const recipe = recipeOf(resource);
   const kind = recipe.kind ?? recipe.type ?? resource.geometryKind;
+  const plan = analyzeViewportModifierStack(entity, { sourceKind: kind });
+  let geometryModifiers = plan.geometryModifiers;
+  let editableRecipe = recipe;
+  if (kind === 'editableMesh' && geometryModifiers.length > 0) {
+    const firstIndexed = geometryModifiers.findIndex(modifier => !EDITABLE_POLYGON_MODIFIERS.has(modifier.type));
+    const prefixLength = firstIndexed < 0 ? geometryModifiers.length : firstIndexed;
+    if (prefixLength > 0) {
+      editableRecipe = evaluateEditableMeshModifierStack(recipe, geometryModifiers.slice(0, prefixLength), { target: 'viewport' }).recipe;
+      geometryModifiers = geometryModifiers.slice(prefixLength);
+    }
+  }
   let indexed = null;
   if (kind === 'indexedMesh' || kind === 'explicit') {
     indexed = {
@@ -246,17 +258,19 @@ function resolveIndexedMesh(document, entity, { tessellate } = {}) {
       indices: asArray(recipe.indices),
       normals: Array.isArray(recipe.normals) ? recipe.normals : null,
       uvs: Array.isArray(recipe.uvs) ? recipe.uvs : null,
+      colors: Array.isArray(recipe.colors) ? recipe.colors : null,
       triangleMaterialIndices: Array.isArray(recipe.triangleMaterialIndices)
         ? recipe.triangleMaterialIndices
         : null,
     };
   } else if (kind === 'editableMesh') {
-    const compiled = triangulateEditableMesh(recipe);
+    const compiled = triangulateEditableMesh(editableRecipe);
     indexed = {
       positions: compiled.recipe.positions,
       indices: compiled.recipe.indices,
       normals: compiled.recipe.normals ?? null,
       uvs: compiled.recipe.uvs ?? null,
+      colors: compiled.recipe.colors ?? null,
       triangleMaterialIndices: compiled.triangleMaterialIndices ?? compiled.recipe.triangleMaterialIndices ?? null,
     };
   } else if (typeof tessellate === 'function') {
@@ -267,6 +281,7 @@ function resolveIndexedMesh(document, entity, { tessellate } = {}) {
         indices: tessellated.indices,
         normals: Array.isArray(tessellated.normals) ? tessellated.normals : null,
         uvs: Array.isArray(tessellated.uvs) ? tessellated.uvs : null,
+        colors: Array.isArray(tessellated.colors) ? tessellated.colors : null,
         triangleMaterialIndices: Array.isArray(tessellated.triangleMaterialIndices)
           ? tessellated.triangleMaterialIndices
           : null,
@@ -279,21 +294,24 @@ function resolveIndexedMesh(document, entity, { tessellate } = {}) {
   if (indexed.positions.length < 9 || indexed.indices.length < 3) {
     return { skipped: { entityId: entity.id, reason: 'geometry-empty', geometryId } };
   }
-  const plan = analyzeViewportModifierStack(entity, { sourceKind: kind });
-  if (plan.hasActiveGeometryModifiers) {
+  if (geometryModifiers.length > 0) {
     const evaluated = evaluateGeometryModifierStack({
       kind: 'indexedMesh',
       positions: indexed.positions,
       indices: indexed.indices,
       ...(indexed.normals ? { normals: indexed.normals } : {}),
       ...(indexed.uvs ? { uvs: indexed.uvs } : {}),
-    }, plan.geometryModifiers, { target: 'viewport', unsupported: 'skip' });
+      ...(indexed.colors ? { colors: indexed.colors } : {}),
+      ...(indexed.triangleMaterialIndices ? { triangleMaterialIndices: indexed.triangleMaterialIndices } : {}),
+    }, geometryModifiers, { target: 'viewport', unsupported: 'skip' });
     indexed = {
       ...indexed,
       positions: evaluated.recipe.positions,
       indices: evaluated.recipe.indices,
       normals: evaluated.recipe.normals ?? indexed.normals,
       uvs: evaluated.recipe.uvs ?? indexed.uvs,
+      colors: evaluated.recipe.colors ?? indexed.colors,
+      triangleMaterialIndices: evaluated.recipe.triangleMaterialIndices ?? null,
     };
   }
   if (!indexed.normals || indexed.normals.length !== indexed.positions.length) {
@@ -602,6 +620,11 @@ export function exportSceneInterchange(document, {
       }
       if (Array.isArray(indexed.uvs) && indexed.uvs.length === (indexed.positions.length / 3) * 2) {
         attributes.TEXCOORD_0 = addAccessor(gltf, writer, indexed.uvs, { type: 'VEC2' });
+      }
+      if (indexed.colors) {
+        attributes.COLOR_0 = addAccessor(gltf, writer, indexed.colors, {
+          type: indexed.colors.length === (indexed.positions.length / 3) * 4 ? 'VEC4' : 'VEC3',
+        });
       }
       return {
         attributes,

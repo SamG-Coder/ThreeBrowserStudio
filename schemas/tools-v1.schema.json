@@ -1005,7 +1005,15 @@
                           "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
                         },
                         "component": {
-                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                          "type": "string",
+                          "enum": [
+                            "rigidBody",
+                            "collider",
+                            "animation",
+                            "audio",
+                            "logic",
+                            "camera"
+                          ]
                         },
                         "value": {
                           "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema1"
@@ -1030,7 +1038,15 @@
                           "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema6"
                         },
                         "component": {
-                          "$ref": "#/$defs/toolSchemas/three_studio_apply/$defs/__schema0"
+                          "type": "string",
+                          "enum": [
+                            "rigidBody",
+                            "collider",
+                            "animation",
+                            "audio",
+                            "logic",
+                            "camera"
+                          ]
                         }
                       },
                       "required": [
@@ -7517,6 +7533,7 @@
             "enum": [
               "textureBake",
               "sceneExport",
+              "sceneImport",
               "rehearsalRun"
             ]
           },
@@ -7565,6 +7582,23 @@
             "minLength": 1,
             "maxLength": 1024
           },
+          "sourcePath": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "expectedFileSha256": {
+            "$ref": "#/$defs/toolSchemas/three_studio_job/$defs/__schema1"
+          },
+          "idPrefix": {
+            "$ref": "#/$defs/toolSchemas/three_studio_job/$defs/__schema0"
+          },
+          "dryRun": {
+            "type": "boolean"
+          },
+          "candidateToken": {
+            "$ref": "#/$defs/toolSchemas/three_studio_job/$defs/__schema1"
+          },
           "name": {
             "type": "string",
             "minLength": 1,
@@ -7601,6 +7635,12 @@
             "minLength": 1,
             "maxLength": 160,
             "pattern": "^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?(?:\\/[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?)*$"
+          },
+          "__schema1": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "pattern": "^[a-f0-9]{64}$"
           }
         }
       },
@@ -7759,6 +7799,7 @@
             "maximum": 1000000
           },
           "inputAction": {
+            "description": "keyDown or keyUp routes input.code through the live keyboard controller; keyDown accepts input.repeat. releaseKeys releases held controller keys. Other names only record input.",
             "type": "string",
             "minLength": 1,
             "maxLength": 160

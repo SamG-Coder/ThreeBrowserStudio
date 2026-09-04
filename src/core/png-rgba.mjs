@@ -143,11 +143,14 @@ export function decodePngRgba(buffer) {
   if (idat.length === 0) throw new StudioError('png_invalid', 'PNG is missing IDAT.');
   let raw;
   try {
-    raw = inflateSync(idat);
+    raw = inflateSync(idat, { maxOutputLength: height * (1 + width * (colorType === 6 ? 4 : 3)) });
   } catch {
     throw new StudioError('png_invalid', 'PNG IDAT could not be inflated.');
   }
   const bytesPerPixel = colorType === 6 ? 4 : 3;
+  if (raw.length !== height * (1 + width * bytesPerPixel)) {
+    throw new StudioError('png_invalid', 'PNG decompressed scanline length does not match IHDR.');
+  }
   const pixels = unfilter(raw, width, height, bytesPerPixel);
   return {
     width,

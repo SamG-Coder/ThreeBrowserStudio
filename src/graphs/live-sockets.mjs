@@ -1,5 +1,6 @@
 import { getGraphNode } from './catalogs.mjs';
 import { stableStringify } from '../core/util.mjs';
+import { describeBlueprintRuntimeSupport } from './blueprint-runtime-support.mjs';
 
 export const GRAPH_SOCKET_CONTRACT = 'full-vs-default+live';
 export const PIXEL_QUANTUM = 1 / 255;
@@ -189,6 +190,7 @@ function describePrincipledSocket(node, port, incoming) {
  * `incoming` is a Set/Map of connected input port names.
  */
 export function describeSocketLiveness(node, domain, port, incoming) {
+  if (domain === 'blueprint') return describeBlueprintRuntimeSupport(node, port);
   const compiled = isCompiledShaderNodeType(domain, node?.type);
   if (!compiled) {
     return { compiled: false, live: false, reason: 'catalog-only-node' };

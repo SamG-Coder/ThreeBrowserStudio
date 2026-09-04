@@ -17,10 +17,10 @@ export const MAX_BAKE_BOUNDARY_PARAMETER_BYTES = 24 * 1024;
 export const LIVE_INSTANCE_MODIFIER_TYPES = Object.freeze(['array', 'mirror', 'pattern']);
 export const LIVE_EDITABLE_MESH_GEOMETRY_MODIFIERS = Object.freeze([
   'triangulate', 'smooth', 'weightedNormal', 'displace', 'ocean', 'edgeSplit',
-  'simpleDeform',
+  'simpleDeform', 'solidify', 'subdivision',
 ]);
 const BLOCKED_EDITABLE_MESH_GEOMETRY_MODIFIERS = new Set([
-  'weld', 'subdivision', 'solidify', 'decimate',
+  'weld', 'decimate',
 ]);
 export const BAKE_BOUNDARY_MODIFIER_TYPE = 'bakeBoundary';
 export const AUTHORABLE_MODIFIER_TYPES = Object.freeze([
@@ -375,6 +375,7 @@ export function analyzeViewportModifierStack(entity, { sourceKind = null } = {})
   const geometryModifiers = [];
   let encounteredInstanceModifier = false;
   let timelineGeometryModifier = null;
+  let editableRenderBoundary = null;
   let blocked = null;
   for (let index = 0; index < modifiers.length; index += 1) {
     const modifier = modifiers[index];
@@ -419,6 +420,14 @@ export function analyzeViewportModifierStack(entity, { sourceKind = null } = {})
           reasonCode: 'runtime_modifier_order_unsupported',
           message: `Geometry modifier ${modifier.id} (${modifier.type}) follows an instance modifier and requires baking or reordering.`,
         };
+      } else if (sourceKind === 'editableMesh' && editableRenderBoundary && ['solidify', 'subdivision'].includes(modifier.type)) {
+        blocked = {
+          index,
+          modifierId: modifier.id,
+          modifierType: modifier.type,
+          reasonCode: 'runtime_editable_topology_after_render_boundary',
+          message: `Topology modifier ${modifier.id} (${modifier.type}) follows ${editableRenderBoundary.id}, which expands render seams; move topology modifiers before weightedNormal, edgeSplit, and Ocean.`,
+        };
       } else if (sourceKind === 'editableMesh' && BLOCKED_EDITABLE_MESH_GEOMETRY_MODIFIERS.has(modifier.type)) {
         blocked = {
           index,
@@ -438,6 +447,7 @@ export function analyzeViewportModifierStack(entity, { sourceKind = null } = {})
       if (modifier.type === 'ocean' && (modifier.timelineScale ?? 1) !== 0) {
         timelineGeometryModifier = modifier;
       }
+      if (sourceKind === 'editableMesh' && ['weightedNormal', 'edgeSplit', 'ocean'].includes(modifier.type)) editableRenderBoundary = modifier;
       continue;
     }
     blocked = {

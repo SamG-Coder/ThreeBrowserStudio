@@ -8,8 +8,10 @@ test('MCP initialization carries the LLM-first operating contract', () => {
   assert.match(SERVER_INSTRUCTIONS.slice(0, 512), /Start with three_studio_status/);
   assert.match(SERVER_INSTRUCTIONS.slice(0, 512), /live-refreshed schemas and capability contract/);
   assert.match(SERVER_INSTRUCTIONS.slice(0, 512), /exact inspection digests/);
-  assert.match(SERVER_INSTRUCTIONS.slice(0, 512), /Play evaluates Action animation only/);
-  assert.match(SERVER_INSTRUCTIONS.slice(0, 512), /file-producing jobs remain capability-gated/);
+  assert.match(SERVER_INSTRUCTIONS.slice(0, 512), /Play evaluates Actions, typed controllers, physics/);
+  assert.match(SERVER_INSTRUCTIONS.slice(0, 512), /[Ff]ile-producing jobs remain capability-gated/);
+  assert.match(SERVER_INSTRUCTIONS, /behaviorRuntime describes arbitrary scripts only/);
+  assert.doesNotMatch(SERVER_INSTRUCTIONS, /Never claim gameplay works while behaviorRuntime is false/);
   assert.equal(SERVER_INSTRUCTIONS.slice(0, 512).trimEnd().endsWith('.'), true);
   assert.match(SERVER_INSTRUCTIONS, /Never edit project JSON/);
   assert.match(SERVER_INSTRUCTIONS, /never enable trusted-project mode/);

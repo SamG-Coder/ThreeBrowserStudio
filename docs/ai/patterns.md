@@ -542,6 +542,17 @@ asset node is CPU-bake only; it is not a live WebGPU texture.
 
 No raw WGSL, GLSL, TSL, or `eval` through ordinary apply.
 
+Image-based lighting is optional scene-owned intent. Use `scene.settings.patch`
+with `patch: { environment: { mode: "studio", intensity: 0.6, rotation: 0 } }`
+for three broad reflection softboxes, or `mode: "sky"` for an outdoor gradient.
+The runtime deterministically generates a bounded half-float equirectangular
+texture and WebGPU evaluates its roughness-filtered reflection environment.
+`intensity` is 0–8 and `rotation` is radians from −2π through 2π. Optional
+`skyColor` and `groundColor` are three linear RGB channels from 0 through 1.
+Set `environment: null` to disable. This illuminates standard/physical materials
+without changing the background or adding scene objects. Inspect the native
+capture before increasing intensity; existing direct lights remain active.
+
 ---
 
 ## 9. Cameras and evidence
@@ -597,11 +608,31 @@ nodes activate, follow, aim, and adjust perspective FOV. `rigidBody` and
 and collision enter/exit events. Prefer a root entity for a moving rigid body;
 Use `shape: "ramp"`, a positive `size`, and `slopeAxis: "x" | "-x" | "z" | "-z"`
 for authored jump faces. Use `shape: "mesh"` on a mesh entity to collide against its compiled triangles as a bounded, one-sided static terrain surface. Dynamic mesh colliders, joints, CCD, soft bodies, cloth, fluids, and simulation caches remain unsupported.
-For vehicles and other surface-following bodies, set `rigidBody.alignToSurface: true`; tune `surfaceAlignSpeed` and `maxSurfaceTilt` to smoothly pitch and roll the body toward the live contact normal while preserving authored yaw control.
+For generic surface-following bodies, set `rigidBody.alignToSurface: true`; tune `surfaceAlignSpeed` and `maxSurfaceTilt` to smoothly pitch and roll the body toward the live contact normal while preserving authored yaw control. Do not combine surface alignment with a component that owns pitch and roll; check the component catalog and validation diagnostics for compatible settings.
 
-`behaviorRuntime` remains false: arbitrary scripts do not run. Physics and
-uncatalogued blueprint nodes remain unavailable. Do not send script operations
+`behaviorRuntime` remains false: arbitrary scripts do not run. Unsupported
+physics features and uncatalogued blueprint nodes remain unavailable. Do not send script operations
 through apply or claim capabilities beyond the live controller contract.
+
+For continuous controllers, query the blueprint catalog for `input.keyHeld`
+(boolean `held` and numeric `value`), `value.math`, `value.select`,
+`vector.compose`, `vector.component`, and `motion.getSpeed`. Scalar math has
+finite results bounded to ±1e12; `clamp` takes value `a` and bounds `b`/`c`,
+and invalid division/square roots return zero. Commanded positive speed moves
+along local −Z. Use `event.onFixedUpdate.delta` for integration and persistent
+`state.get`/`state.set` values for smooth controls. Chain actions deliberately:
+a later action reads state and motion values written by the earlier action.
+
+Controller testing uses the existing Play tool. Pause, inject `inputAction: "keyDown"`
+with `input: { code: "Enter" }`, then inject held keys and `step` an exact
+number of 60 Hz ticks. `keyUp` takes the same code; `releaseKeys` clears all
+keys and emits release events. Enter retains an existing pause so tests can
+start without wall-clock motion. Query Play for controller/physics state,
+and inspect exact entities with `include: ["transform"]` for the canonical
+`transform` alongside the compiled local `runtimeTransform`. Resume for live
+input; injected or native Escape restores the authored state. Controller
+`capture.hideHud: true` also hides the transient authoring grid and restores
+its prior visibility on exit.
 
 ---
 
@@ -641,8 +672,13 @@ These fail in this product even when they work in a Three.js snippet.
 | Treat Review fly-cam as the render camera | Authored shot + `camera.frame` |
 | Treat an unchanged PNG as “apply failed” | Read `pixelForecast` and `sockets.live` |
 | Claim gameplay, import, export, or jobs | Status capabilities |
-| Put `C:\...` asset paths in the document | Bounded `dataTexture` or wait for import jobs |
+| Put `C:\...` asset paths in the document | Bounded `dataTexture`, or a checksum-verified local `sceneImport` job that records portable content and provenance |
 | Grow an inspector UI | MCP + the live window |
 
-`three_studio_job` is a reserved ninth slot. It always returns
-`job_not_implemented` in this slice.
+`three_studio_job` supports bounded `textureBake`, `sceneExport`, and
+`sceneImport` actions when reported by status capabilities. Inspect the current
+job schema and capability limits before starting. Local GLB import requires an
+absolute source path and its expected SHA-256; only portable resources and
+filename/hash provenance enter the project. Use the normal dry-run preview and
+candidate-promotion flow. See the [asset-generation import guide](asset-generation-features.md#importing-a-local-glb)
+for the supported subset, budgets, and unsupported features.

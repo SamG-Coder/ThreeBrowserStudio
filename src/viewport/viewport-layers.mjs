@@ -110,7 +110,7 @@ export function createViewportLayers({
     });
   }
 
-  function sync() {
+  function sync({ presentationChanged = true } = {}) {
     if (disposed) return state();
     if (!preview && mode !== VIEWPORT_LAYER_SCENE) mode = VIEWPORT_LAYER_SCENE;
     if (committed?.root) {
@@ -126,7 +126,7 @@ export function createViewportLayers({
       : [presentation];
     studioLighting.visible = showStudioLight
       && !visiblePresentations.some(containsAuthoredLight);
-    onPresentationChange?.(presentation, state());
+    if (presentationChanged) onPresentationChange?.(presentation, state());
     const snapshot = state();
     onStateChange?.(snapshot);
     return snapshot;
@@ -172,12 +172,12 @@ export function createViewportLayers({
 
   function setGridVisible(visible) {
     showGrid = visible === true;
-    return sync();
+    return sync({ presentationChanged: false });
   }
 
   function setStudioLightVisible(visible) {
     showStudioLight = visible === true;
-    return sync();
+    return sync({ presentationChanged: false });
   }
 
   function dispose() {

@@ -105,6 +105,12 @@ test('viewport layers keep the grid transient and make dry-run previews visible'
   assert.equal(layers.studioLighting.visible, true);
   assert.equal(committed.root.visible, true);
   assert.equal(layers.getState().mode, VIEWPORT_LAYER_SCENE);
+  const presentationCount = presentations.length;
+  layers.setGridVisible(false);
+  layers.setGridVisible(true);
+  layers.setStudioLightVisible(false);
+  layers.setStudioLightVisible(true);
+  assert.equal(presentations.length, presentationCount, 'helper toggles must not replace an active controller camera');
 
   layers.setPreview(preview, { label: 'Shape the roof', revision: 4 });
   assert.equal(layers.getState().mode, VIEWPORT_LAYER_PREVIEW);

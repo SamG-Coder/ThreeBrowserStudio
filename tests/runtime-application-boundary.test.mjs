@@ -190,6 +190,7 @@ function fakeThree() {
     Float32BufferAttribute: BufferAttribute,
     BoxGeometry: class extends Disposable {},
     MeshStandardNodeMaterial: class extends Disposable {},
+    MeshPhysicalNodeMaterial: class extends Disposable {},
     FrontSide: 0,
     BackSide: 1,
     DoubleSide: 2,
@@ -388,6 +389,105 @@ test('controller camera activation switches the visible viewport from Review to 
   assert.equal(viewport.renderCamera, viewport.authoredCamera);
 });
 
+test('play input drives the real controller with deterministic paused stepping and exact exit restoration', async (t) => {
+  const graph = {
+    formatVersion: 1, id: 'graph/step-drive', domain: 'blueprint', outputs: {},
+    nodes: [
+      { id: 'down', type: 'event.onKeyPressed', params: { key: 'KeyW' } },
+      { id: 'up', type: 'event.onKeyUp', params: { key: 'KeyW' } },
+      { id: 'self', type: 'entity.self', params: {} },
+      { id: 'drive', type: 'motion.setSpeed', params: {}, inputs: { speed: 12 } },
+      { id: 'halt', type: 'motion.setSpeed', params: {}, inputs: { speed: 0 } },
+    ],
+    edges: [
+      ['down', 'out', 'drive', 'in'], ['self', 'entity', 'drive', 'entity'],
+      ['up', 'out', 'halt', 'in'], ['self', 'entity', 'halt', 'entity'],
+    ].map(([fromNode, fromPort, toNode, toPort]) => ({ from: { nodeId: fromNode, port: fromPort }, to: { nodeId: toNode, port: toPort } })),
+  };
+  const document = createProjectDocument({
+    projectId: 'project/active', name: 'Controller stepping',
+    scenes: [{
+      id: 'scene/main',
+      settings: { controller: { enabled: true, entityId: 'entity/car', activationKey: 'Enter', capture: { keyboard: true, hideHud: true } } },
+      entities: [{ id: 'entity/car', kind: 'group', components: { logic: { graphIds: [graph.id] } } }],
+    }],
+    resources: { graphs: [{ id: graph.id, kind: 'graph', graph }] },
+  });
+  const { application, viewport } = await applicationFixture(t, { document });
+  const authoredDocument = structuredClone(application.document);
+  const car = viewport.committedLayer.objects.get('entity/car');
+  let sequence = 0;
+  const request = fields => ({
+    sessionId: application.sessionId, projectId: 'project/active', baseRevision: 0,
+    idempotencyKey: `controller-play-${++sequence}`, label: 'Exercise typed controller', ...fields,
+  });
+  const play = fields => application.dispatch('three_studio_play', request(fields));
+
+  await play({ action: 'pause' });
+  const activation = await play({ action: 'inject', inputAction: 'keyDown', input: { code: 'Enter' } });
+  assert.equal(activation.mode, 'play');
+  assert.equal(activation.paused, true);
+  assert.equal(activation.controller.active, true);
+  assert.equal(activation.controller.capture.hideHud, true);
+  await play({ action: 'inject', inputAction: 'keyDown', input: { code: 'KeyW' } });
+  application.update(5);
+  assert.equal(car.position.z, 0);
+  const stepRequest = request({ action: 'step', ticks: 120 });
+  const stepped = await application.dispatch('three_studio_play', stepRequest);
+  assert.equal(stepped.tick, 120);
+  assert.ok(Math.abs(stepped.elapsed - 2) < 1e-10);
+  assert.ok(Math.abs(car.position.z + 24) < 1e-10);
+  assert.deepEqual(stepped.controller.heldKeys, ['KeyW']);
+  assert.equal(stepped.paused, true);
+  const pose = await application.dispatch('three_studio_inspect', {
+    query: 'selector', selector: { ids: ['entity/car'] }, include: ['transform'],
+  });
+  assert.deepEqual(pose.entities[0].transform.position, [0, 0, 0]);
+  assert.ok(Math.abs(pose.entities[0].runtimeTransform.position[2] + 24) < 1e-10);
+  assert.deepEqual(pose.entities[0].runtimeTransform.rotation, [0, 0, 0]);
+  const steppedPosition = car.position.z;
+  application.update(5);
+  await application.dispatch('three_studio_play', stepRequest);
+  assert.equal(car.position.z, steppedPosition, 'paused wall-clock updates and idempotent replays must not advance motion');
+
+  await play({ action: 'inject', inputAction: 'keyUp', input: { code: 'KeyW' } });
+  await play({ action: 'step', ticks: 10 });
+  assert.equal(car.position.z, steppedPosition);
+  await play({ action: 'inject', inputAction: 'keyDown', input: { code: 'KeyW' } });
+  const released = await play({ action: 'inject', inputAction: 'releaseKeys' });
+  assert.deepEqual(released.controller.heldKeys, []);
+  await play({ action: 'step', ticks: 10 });
+  assert.equal(car.position.z, steppedPosition, 'releaseKeys must dispatch key-up events to clear latched speed');
+
+  const queried = await application.dispatch('three_studio_play', { action: 'query' });
+  assert.equal(queried.controller.active, true);
+  assert.equal(queried.tick, 140);
+  const stopped = await play({ action: 'inject', inputAction: 'keyDown', input: { code: 'Escape' } });
+  assert.equal(stopped.mode, 'author');
+  assert.equal(stopped.controller.active, false);
+  assert.deepEqual(car.position.toArray(), [0, 0, 0]);
+  assert.deepEqual(application.document, authoredDocument, 'transient driving must never alter the canonical document');
+});
+
+test('play keyboard injections reject malformed input and preserve legacy named input recording', async (t) => {
+  const { application } = await applicationFixture(t);
+  let sequence = 0;
+  const inject = (inputAction, input) => application.dispatch('three_studio_play', {
+    sessionId: application.sessionId, projectId: 'project/active', baseRevision: 0,
+    idempotencyKey: `controller-input-${++sequence}`, label: 'Validate controller input', action: 'inject', inputAction, input,
+  });
+  for (const [action, input] of [
+    ['keyDown', {}], ['keyDown', { code: 'KeyW', repeat: 'yes' }],
+    ['keyDown', { code: 'x'.repeat(65) }], ['keyDown', { code: 'Key W' }],
+    ['keyUp', { code: 87 }], ['keyUp', { code: 'KeyW', repeat: true }],
+    ['releaseKeys', { code: 'KeyW' }],
+  ]) await assert.rejects(inject(action, input), rejectsWithCode('invalid_request'));
+  const recorded = await inject('door/open', { doorId: 'entity/door' });
+  assert.deepEqual(recorded.latestInput, { action: 'door/open', input: { doorId: 'entity/door' } });
+  assert.equal(recorded.mode, 'author');
+  assert.equal(recorded.controller.active, false);
+});
+
 test('raw live-bridge dispatch rejects unknown and oversized fields before execution', async (t) => {
   const { application } = await applicationFixture(t);
   const client = await LiveBridgeClient.fromMarker(application.markerPath, { timeoutMs: 1_000 });
@@ -573,7 +673,7 @@ test('rehearsalRun job invokes the fixed sidecar and advertises scene export plu
     environment: { THREE_STUDIO_REHEARSAL_ROOT: repositoryRoot },
   });
   const status = await application.dispatch('three_studio_status', { preset: 'full' });
-  assert.deepEqual(status.capabilities.jobKinds, ['textureBake', 'sceneExport', 'rehearsalRun']);
+  assert.deepEqual(status.capabilities.jobKinds, ['textureBake', 'sceneExport', 'sceneImport', 'rehearsalRun']);
   assert.equal(status.capabilities.rehearsal.configured, true);
 
   const result = await application.dispatch('three_studio_job', {
@@ -2279,7 +2379,7 @@ test('a project switch compile failure preserves the active project and live sce
   assert.equal(status.capabilities.modifierAuthoring.renderEnableFlag, 'authored-only-no-render-parity-claim');
   assert.equal(status.capabilities.implementedOperations.includes('layout.pattern'), true);
   assert.equal(status.capabilities.implementedOperations.includes('scene.clear'), true);
-  assert.deepEqual(status.capabilities.jobKinds, ['textureBake', 'sceneExport']);
+  assert.deepEqual(status.capabilities.jobKinds, ['textureBake', 'sceneExport', 'sceneImport']);
   assert.deepEqual(status.capabilities.projectTemplates, ['blank', 'starter']);
   assert.equal(status.capabilities.implementedOperations.includes('modifier.stack.edit'), true);
   assert.equal(status.capabilities.geometryEditing, true);
@@ -2762,4 +2862,20 @@ test('sceneExport job writes a Three.js-loadable GLB for an authored subtree', a
   assert.equal(exported.job.path.startsWith(path.join(studioRoot, 'artifacts')), true);
   const bytes = await readFile(exported.job.path);
   assert.equal(bytes.readUInt32LE(0), 0x46546C67);
+  const base = {protocolVersion:'three-studio/1',sessionId:application.sessionId,projectId:'project/active',baseRevision:authored.revision};
+  const request = {...base,action:'sceneImport',sourcePath:exported.job.path,
+    expectedFileSha256:createHash('sha256').update(bytes).digest('hex'),sceneId:'scene/imported',idPrefix:'asset/imported',
+    idempotencyKey:'import-triangle-job',label:'Import exported triangle'};
+  const preview = await application.dispatch('three_studio_job',{...request,dryRun:true}).catch(error => {
+    throw new Error(`${error.message}: ${JSON.stringify(error.details)}`, {cause:error});
+  });
+  assert.equal(preview.success,true);assert.equal(preview.revision,authored.revision);assert.ok(preview.candidateToken);
+  const imported = await application.dispatch('three_studio_job',{...request,candidateToken:preview.candidateToken});
+  assert.equal(imported.success,true);assert.equal(imported.revision,authored.revision+1);assert.equal(imported.job.primitives,1);
+  const attached = await application.dispatch('three_studio_apply',{...base,baseRevision:imported.revision,
+    idempotencyKey:'attach-imported-body',label:'Attach known camelCase component',operations:[{op:'entity.component.attach',entityId:'asset/imported/root',component:'rigidBody',value:{enabled:true,bodyType:'dynamic',mass:1000}}]});
+  assert.equal(attached.success,true);
+  const removed = await application.dispatch('three_studio_apply',{...base,baseRevision:attached.revision,
+    idempotencyKey:'remove-imported-body',label:'Remove component',operations:[{op:'entity.component.remove',entityId:'asset/imported/root',component:'rigidBody'}]});
+  assert.equal(removed.success,true);
 });

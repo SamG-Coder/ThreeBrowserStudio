@@ -25,10 +25,14 @@ bounds, references, and resource-usage checks; whole-project interactive documen
 offscreen WebGPU beauty and object-id capture; apply `pixelForecast`; list/inspect/undo/redo history; project
 list/create/open/save; deterministic Action playback and frame scrubbing; a
 queryable Blender compatibility catalog; and a transient Play boundary.
-Script operations/execution, blueprint execution, layout generators beyond the
-implemented patterns, jobs/import/bake/export, diagnostic passes beyond
-beauty/object-id, and behavior simulation remain planned and are absent from
-the current schemas.
+Procedural texture baking, glTF/GLB export, and checksum-guarded local GLB
+scene import are implemented.
+Editable-mesh solidify and Loop/simple subdivision run before UV/material seam
+expansion and preserve corner attributes. Blueprint inspection distinguishes
+runtime execution from shader compilation and forecasts conditional effects.
+General model formats and skeletal animation import remain outside this
+implementation. The precise import subset, geometry bounds, and preview
+capabilities are exposed by live status.
 
 ## Product decision
 
@@ -39,8 +43,10 @@ registrations are compiled runtime products of that document.
 
 The persistent native window shows the latest committed revision. It never
 relaunches for an ordinary edit. Today a model can create a scene, change its
-light, and capture the result while the user watches the same window. Attaching
-and executing game code is a later capability.
+light, and capture the result while the user watches the same window. Bounded
+Play previews authored behavior. Generated asset content and its application
+code belong to the output project; product documentation describes reusable
+authoring operations and their limits.
 
 This is deliberately not a Blender panel clone:
 

@@ -293,6 +293,7 @@ async function main() {
   const presentCompiledLayer = compiled => {
     scene.background = compiled?.background ?? null;
     scene.backgroundNode = compiled?.backgroundNode ?? null;
+    scene.environment = compiled?.environment ?? null;
     scene.fog = compiled?.fog ?? null;
     if (!scene.background && !scene.backgroundNode) renderer.setClearColor(STUDIO_RENDER_STATE.clearColor, 1);
     reviewSession.setAuthoredCamera(compiled?.activeCamera ?? camera);
@@ -493,13 +494,14 @@ async function main() {
     enterReview(options) {
       return reviewSession.enterReview(options);
     },
-    setAppearance({ background = null, backgroundNode = null, fog = null } = {}) {
+    setAppearance({ background = null, backgroundNode = null, environment = null, fog = null } = {}) {
       // Scene colours belong to the scene background path. Keeping the colour
       // there makes WebGPURenderer force the authored clear value for every
       // output target; renderer-only clear state can be superseded by the
       // node-material render path.
       scene.background = background;
       scene.backgroundNode = backgroundNode;
+      scene.environment = environment;
       scene.fog = fog;
       if (!background && !backgroundNode) renderer.setClearColor(STUDIO_RENDER_STATE.clearColor, 1);
     },
@@ -583,6 +585,7 @@ async function main() {
     getApplication: () => application,
     hud: liveFeed,
     controls,
+    viewportLayers,
   });
 
   try {

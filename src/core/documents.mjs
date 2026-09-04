@@ -29,6 +29,7 @@ import {
 } from './material-textures.mjs';
 import { getGraphNode } from '../graphs/catalogs.mjs';
 import { validateGraph } from '../graphs/validator.mjs';
+import { validateEnvironmentSettings } from './environment-settings.mjs';
 
 const PROJECT_KEYS = new Set([
   'kind', 'protocolVersion', 'formatVersion', 'projectId', 'name', 'revision',
@@ -676,6 +677,7 @@ function validateScene(scene, key, project, diagnostics) {
     }
     validateSceneControllerSettings(scene.settings.controller, `${path}.settings.controller`, diagnostics);
     validateScenePhysicsSettings(scene.settings.physics, `${path}.settings.physics`, diagnostics);
+    validateEnvironmentSettings(scene.settings.environment, `${path}.settings.environment`, diagnostics);
   }
   if (!Array.isArray(scene.scriptIds)) issue(diagnostics, 'invalid_scripts', `${path}.scriptIds`, 'scriptIds must be an array');
 

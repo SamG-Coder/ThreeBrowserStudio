@@ -1,4 +1,5 @@
 import { GRAPH_CATALOGS, GRAPH_OUTPUTS, NUMERIC_TYPES, VALUE_TYPES } from './catalogs.mjs';
+import { blueprintReachability } from './blueprint-runtime-support.mjs';
 
 export const GRAPH_LIMITS = Object.freeze({
   maxNodes: 256,
@@ -515,32 +516,6 @@ function findShaderAncestors(startId, incoming) {
   return result;
 }
 
-function blueprintReachableNodes(nodes, edges, definitions) {
-  const reachable = new Set(nodes.filter((node) => definitions.get(node.id)?.tags.includes('event-root')).map((node) => node.id));
-  const outgoingExec = new Map();
-  for (const edge of edges) {
-    const sourceNode = nodes.find((node) => node.id === edge.from.nodeId);
-    const sourceDef = definitions.get(edge.from.nodeId);
-    if (sourceNode && resolvedPortType(sourceDef.outputs[edge.from.port], sourceNode) === 'exec') {
-      if (!outgoingExec.has(edge.from.nodeId)) outgoingExec.set(edge.from.nodeId, []);
-      outgoingExec.get(edge.from.nodeId).push(edge.to.nodeId);
-    }
-  }
-  const pending = [...reachable];
-  while (pending.length) {
-    const id = pending.pop();
-    for (const next of outgoingExec.get(id) ?? []) if (!reachable.has(next)) { reachable.add(next); pending.push(next); }
-  }
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const edge of edges) {
-      if (reachable.has(edge.to.nodeId) && !reachable.has(edge.from.nodeId)) { reachable.add(edge.from.nodeId); changed = true; }
-    }
-  }
-  return reachable;
-}
-
 export function validateGraph(rawGraph, options = {}) {
   const errors = [];
   const warnings = [];
@@ -736,7 +711,7 @@ export function validateGraph(rawGraph, options = {}) {
   if (rawGraph.domain === 'blueprint') {
     const roots = nodes.filter((node) => definitions.get(node.id).tags.includes('event-root'));
     if (!roots.length && nodes.length) errors.push(diagnostic('missing_event_root', 'Blueprint graphs require at least one lifecycle, input, or named event node.', '/nodes'));
-    const reachable = blueprintReachableNodes(nodes, edges, definitions);
+    const { reachable } = blueprintReachability(nodes, edges);
     for (const node of nodes) if (!reachable.has(node.id)) warnings.push(warning('unreachable_node', `Node "${node.id}" is not reachable from an event.`, '/nodes', { nodeId: node.id }));
   } else {
     const used = new Set();

@@ -10,9 +10,9 @@ import {
   computeToolContractHash,
 } from './tool-schemas.mjs';
 
-const INITIAL_SERVER_INSTRUCTIONS = `Studio is an LLM-first WebGPU editor. Start with three_studio_status; the live-refreshed schemas and capability contract are authoritative. Use exact inspection digests before dense mesh, modifier-stack, graph, material, or RTX edits. Play evaluates Action animation only; file-producing jobs remain capability-gated, and rehearsal jobs require machine-local configuration. Never infer support from an earlier Studio session.`;
+const INITIAL_SERVER_INSTRUCTIONS = `Studio is an LLM-first WebGPU editor. Start with three_studio_status; the live-refreshed schemas and capability contract are authoritative. Use exact inspection digests before dense mesh, modifier-stack, graph, material, or RTX edits. Play evaluates Actions, typed controllers, physics, and timeline geometry; arbitrary scripts do not run. File-producing jobs remain capability-gated. Never infer support from an earlier Studio session.`;
 
-export const SERVER_INSTRUCTIONS = `${INITIAL_SERVER_INSTRUCTIONS.padEnd(512, ' ')}Inspect only bounded context. Mutate with exact stable IDs, the latest baseRevision, a unique idempotencyKey, and one coherent label. Carry selection and membership hashes into guarded bulk edits. Groups own transforms; collections are independent organization. Dry-run risky or large changes. Never claim gameplay works while behaviorRuntime is false. Save verified milestones. Never edit project JSON, history, recovery, or session-marker files directly, and never enable trusted-project mode. Units are metres, radians, and seconds.`;
+export const SERVER_INSTRUCTIONS = `${INITIAL_SERVER_INSTRUCTIONS.padEnd(512, ' ')}Inspect only bounded context. Mutate with exact stable IDs, the latest baseRevision, a unique idempotencyKey, and one coherent label. Carry selection and membership hashes into guarded bulk edits. Groups own transforms; collections are independent organization. Dry-run risky or large changes. Check controllerRuntime and logicRuntime for typed gameplay; behaviorRuntime describes arbitrary scripts only. Controller graph changes are runtime-dependent: activate, step, and inspect evidence before claiming behavior. Rehearsal jobs require machine-local configuration. Save verified milestones. Never edit project JSON, history, recovery, or session-marker files directly, and never enable trusted-project mode. Units are metres, radians, and seconds.`;
 
 export const TOOL_DEFINITIONS = Object.freeze({
   three_studio_status: {
@@ -47,7 +47,7 @@ export const TOOL_DEFINITIONS = Object.freeze({
   },
   three_studio_job: {
     title: 'Three Studio Jobs',
-    description: 'Run a capability-gated job: bake one deterministic procedural graph output, export a scene or entity subtree as glTF/GLB, or invoke a configured external rehearsal through its fixed sidecar and repository-relative run spec. No command or shell input is accepted.',
+    description: 'Run a capability-gated job: bake a procedural texture; export a scene/subtree as glTF/GLB; import a checksum-verified local GLB into a new canonical scene with dry-run/promotion; or invoke a configured rehearsal. Import supports bounded rigid triangle geometry, transforms, PBR and embedded RGB/RGBA PNG; inspect status for exact limits. No command or shell input is accepted.',
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   },
   three_studio_project: {
@@ -57,7 +57,7 @@ export const TOOL_DEFINITIONS = Object.freeze({
   },
   three_studio_play: {
     title: 'Three Studio Play State',
-    description: 'Control or query the transient Author/Play boundary: enter, stop, pause, resume, seek/step deterministic Action animation, or record a named input. Scripts, blueprints, physics, and game logic do not execute.',
+    description: 'Control or query the transient Author/Play boundary: enter, stop, pause, resume, seek Action animation, step animation and typed controllers at 60 Hz, or inject bounded keyDown/keyUp/releaseKeys input. Keyboard activation and Escape use the live controller path. Arbitrary behaviour scripts do not execute.',
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   },
 });

@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { lstat, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { importGlbScene, SCENE_IMPORT_LIMITS } from '../core/scene-import.mjs';
 import {
   AtomicProjectStore,
   AuthoringKernel,
@@ -155,6 +156,7 @@ const STATUS_SELECT_PRESETS = Object.freeze({
     'viewport.renderer', 'viewport.cameraId', 'viewport.viewMode',
     'capabilities.geometryRecipes', 'capabilities.geometryEditCommands',
     'capabilities.layoutPatterns', 'capabilities.jobs', 'capabilities.jobKinds',
+    'capabilities.sceneImport',
     'capabilities.materialRecipes', 'capabilities.renderPasses',
     'capabilities.controllerRuntime', 'capabilities.logicRuntime', 'play.controller',
     'capabilities.toolContract.contractVersion', 'capabilities.toolContract.hash',
@@ -199,6 +201,7 @@ const RESOURCE_OPERATIONS = Object.freeze({
 });
 
 const DIRECT_CORE_OPERATIONS = new Set([
+  'entity.component.attach', 'entity.component.remove',
   'scene.create', 'scene.patch', 'scene.delete', 'scene.setActive',
   'scene.settings.patch', 'scene.rtx.patch', 'scene.setActiveCamera',
   'entity.create', 'entity.patch', 'entity.duplicate', 'entity.reparent', 'entity.delete',
@@ -1148,7 +1151,17 @@ function compactEntity(entity, include, { index, compiled, THREE } = {}) {
     output.children = [...entity.children];
     output.subtreeHash = index?.subtreeHash(entity.id);
   }
-  if (include.has('transform')) output.transform = entity.transform;
+  if (include.has('transform')) {
+    output.transform = entity.transform;
+    const object = compiled?.objects?.get(entity.id);
+    if (object?.position && object?.rotation && object?.scale) {
+      // Keep authored TRS canonical while exposing the bounded local Play pose
+      // for exact rig, controller, and animation verification.
+      output.runtimeTransform = Object.fromEntries(['position', 'rotation', 'scale'].map(property => [
+        property, ['x', 'y', 'z'].map(axis => object[property][axis]),
+      ]));
+    }
+  }
   if (include.has('components')) output.components = entity.components;
   if (include.has('references')) output.referencesTo = index?.getReferencesTo(entity.id) ?? [];
   if (include.has('bounds')) {
@@ -1645,7 +1658,7 @@ export class StudioApplication {
       if (key !== this.#logicController?.settings?.activationKey || repeat) return { handled: false, ...this.getControllerStatus() };
       if (!this.#logicController.activate()) return { handled: false, ...this.getControllerStatus() };
       this.#mode = 'play';
-      this.#play = { paused: false, tick: 0, elapsed: 0, latestInput: null };
+      this.#play = { paused: this.#play.paused, tick: 0, elapsed: 0, latestInput: null };
       this.#syncControllerState();
       return { handled: true, action: 'activated', ...this.getControllerStatus() };
     }
@@ -1784,6 +1797,7 @@ export class StudioApplication {
       stagingScene.add(compiled.root);
       stagingScene.background = compiled.background;
       stagingScene.backgroundNode = compiled.backgroundNode;
+      stagingScene.environment = compiled.environment;
       stagingScene.fog = compiled.fog;
       try {
         await this.#viewport.renderer.compileAsync(stagingScene, compiled.activeCamera);
@@ -1796,6 +1810,7 @@ export class StudioApplication {
         compiled.root.removeFromParent();
         stagingScene.background = null;
         stagingScene.backgroundNode = null;
+        stagingScene.environment = null;
         stagingScene.fog = null;
       }
     }
@@ -1863,6 +1878,7 @@ export class StudioApplication {
       } else {
         this.#viewport.scene.background = next.background;
         this.#viewport.scene.backgroundNode = next.backgroundNode;
+        this.#viewport.scene.environment = next.environment;
         this.#viewport.scene.fog = next.fog;
       }
       if (typeof this.#viewport.setAuthoredCamera === 'function') {
@@ -2150,7 +2166,10 @@ export class StudioApplication {
         timelineGeometryMaxSamples: GEOMETRY_MODIFIER_LIMITS.maxOceanTimelineSamples,
         dynamicRtxGeometry: 'excluded-from-static-scene',
         jobs: true,
-        jobKinds: ['textureBake', 'sceneExport', ...(this.#rehearsalClient.configured ? ['rehearsalRun'] : [])],
+        jobKinds: ['textureBake', 'sceneExport', 'sceneImport', ...(this.#rehearsalClient.configured ? ['rehearsalRun'] : [])],
+        sceneImport: { formats:['glb'], destination:'new-scene', checksumRequired:true, dryRun:true,
+          geometry:'rigid-triangles', preserves:['hierarchy','transforms','normals','uv0','vertexColors','pbrMaterials','embedded-rgb-rgba-png'],
+          unsupported:['skins','animations','morphTargets','sparseAccessors','draco','externalUris','jpeg'], limits:SCENE_IMPORT_LIMITS },
         projectTemplates: ['blank', 'starter'],
         rehearsal: {
           configured: this.#rehearsalClient.configured,
@@ -2176,9 +2195,21 @@ export class StudioApplication {
           colorLayers: { storage: true, topologyPropagation: true, directEditing: true, viewportLayer: 'active-only' },
           materialSlots: { storage: true, topologyPropagation: true, directEditing: true },
           sharpEdges: { storage: true, topologyPropagation: true, directEditing: true },
-          edgeCreases: { storage: true, topologyPropagation: true, directEditing: true, viewport: 'storage-editing-only' },
+          edgeCreases: { storage: true, topologyPropagation: true, directEditing: true, viewport: 'live-editable-loop-subdivision' },
           liveGeometryModifiers: 'indexed-mesh-and-seam-safe-editable-lowering',
           liveEditableMeshGeometryModifiers: [...LIVE_EDITABLE_MESH_GEOMETRY_MODIFIERS],
+        },
+        environmentLighting: {
+          modes: ['studio', 'sky'],
+          operation: 'scene.settings.patch',
+          settingsPath: 'environment',
+          optionalFields: ['intensity', 'rotation', 'skyColor', 'groundColor'],
+          intensityRange: [0, 8],
+          rotationRange: [-Math.PI * 2, Math.PI * 2],
+          colorSpace: 'linear-srgb',
+          textureSize: [512, 256],
+          disable: null,
+          backgroundIndependent: true,
         },
         imageTextures: {
           resourceKind: 'dataTexture',
@@ -2313,7 +2344,9 @@ export class StudioApplication {
       case 'three_studio_play': return params.action === 'query'
         ? this.#playTool(params)
         : this.#idempotent(params, () => exclusive(() => this.#playTool(params)));
-      case 'three_studio_job': return this.#idempotent(params, () => exclusive(() => this.#job(params, context)));
+      case 'three_studio_job': return params.dryRun === true
+        ? exclusive(() => this.#job(params, context))
+        : this.#idempotent(params, () => exclusive(() => this.#job(params, context)));
       default: throw new StudioError('method_not_found', `Unknown Studio method ${method}.`);
     }
   }
@@ -2338,8 +2371,9 @@ export class StudioApplication {
   }
 
   async #job(params, context = {}) {
-    this.#assertTarget(params, { requireActiveScene: false });
+    this.#assertTarget(params.action === 'sceneImport' ? { ...params, sceneId: undefined } : params, { requireActiveScene: false });
     if (params.action === 'sceneExport') return this.#exportScene(params);
+    if (params.action === 'sceneImport') return this.#importScene(params, context);
     if (params.action === 'rehearsalRun') {
       if (!this.#rehearsalClient.configured) throw new StudioError('rehearsal_not_configured', 'Rehearsal jobs require THREE_STUDIO_REHEARSAL_ROOT.');
       if (params.baseRevision !== this.#kernel.revision) {
@@ -2416,6 +2450,24 @@ export class StudioApplication {
         range: map.range,
       },
     };
+  }
+
+  async #importScene(params, context) {
+    if (params.baseRevision !== this.#kernel.revision) throw new StudioError('revision_conflict', 'Import base revision is stale.');
+    if (!path.isAbsolute(params.sourcePath) || path.extname(params.sourcePath).toLowerCase() !== '.glb') {
+      throw new StudioError('scene_import_path', 'sceneImport requires an explicit absolute local .glb file path.');
+    }
+    const info = await stat(params.sourcePath);
+    if (!info.isFile() || info.size > SCENE_IMPORT_LIMITS.maxFileBytes) throw new StudioError('scene_import_budget', 'GLB must be a regular file within the reported import budget.');
+    const imported = importGlbScene(await readFile(params.sourcePath), {
+      sceneId:params.sceneId, idPrefix:params.idPrefix, name:params.name ?? path.basename(params.sourcePath, '.glb'),
+      sourceName:path.basename(params.sourcePath), expectedSha256:params.expectedFileSha256,
+    });
+    const result = await this.#apply({ protocolVersion:params.protocolVersion, sessionId:params.sessionId,
+      projectId:params.projectId,baseRevision:params.baseRevision,idempotencyKey:params.idempotencyKey,
+      label:params.label,dryRun:params.dryRun,candidateToken:params.candidateToken,operations:imported.operations },context);
+    return {...result, job:{action:'sceneImport',sceneId:params.sceneId,rootEntityId:imported.rootEntityId,
+      sha256:imported.sha256,...imported.stats,warnings:imported.warnings}};
   }
 
   async #exportScene(params) {
@@ -2886,6 +2938,7 @@ export class StudioApplication {
       mode: this.#mode,
       simulation: 'actions-controller-physics-and-timeline-modifiers',
       ...this.#play,
+      controller: this.getControllerStatus(),
       timeline: scene.settings.timeline,
       actions: this.#compiled?.animationStates() ?? [],
       timelineGeometryModifierIds: this.#compiled?.timelineGeometryModifierIds ?? [],
@@ -3101,12 +3154,14 @@ export class StudioApplication {
       const candidateVisible = candidate.root.visible;
       const previousBackground = scene.background;
       const previousBackgroundNode = scene.backgroundNode;
+      const previousEnvironment = scene.environment;
       const previousFog = scene.fog;
       try {
         if (this.#compiled?.root) this.#compiled.root.visible = false;
         scene.add(candidate.root);
         scene.background = candidate.background;
         scene.backgroundNode = candidate.backgroundNode;
+        scene.environment = candidate.environment;
         scene.fog = candidate.fog;
         previewEvidence = await this.#viewport.capture(undefined, {
           width: params.previewEvidence.width,
@@ -3129,6 +3184,7 @@ export class StudioApplication {
         if (this.#compiled?.root && previousRootVisible !== undefined) this.#compiled.root.visible = previousRootVisible;
         scene.background = previousBackground;
         scene.backgroundNode = previousBackgroundNode;
+        scene.environment = previousEnvironment;
         scene.fog = previousFog;
       }
     }
@@ -3500,6 +3556,7 @@ export class StudioApplication {
     const timeline = scene.settings.timeline;
     const animationState = () => ({
       timeline,
+      controller: this.getControllerStatus(),
       actions: this.#compiled?.animationStates() ?? [],
       timelineGeometryModifierIds: this.#compiled?.timelineGeometryModifierIds ?? [],
       timelineGeometrySampleCount: this.#compiled?.timelineGeometrySampleCount ?? 0,
@@ -3548,11 +3605,12 @@ export class StudioApplication {
       this.#compiled?.audioRuntime?.resume();
     }
     else if (params.action === 'step') {
-      const delta = params.ticks / 60;
-      this.#play.tick += params.ticks;
-      this.#play.elapsed += delta;
-      this.#compiled?.advanceAnimation(delta);
-      this.#compiled?.audioRuntime?.advance(delta);
+      // A large single delta is clamped by the controller's real-time safety
+      // budget. Tick individually so explicit steps simulate exactly the
+      // requested duration, including when wall-clock playback is paused.
+      if (this.#logicController?.active) {
+        for (let tick = 0; tick < params.ticks; tick += 1) this.#advancePlay(1 / 60);
+      } else this.#advancePlay(params.ticks / 60);
     }
     else if (params.action === 'seek') {
       this.#play.elapsed = (params.frame - timeline.frameStart) / timeline.framesPerSecond;
@@ -3560,7 +3618,15 @@ export class StudioApplication {
       this.#compiled?.setAnimationTime(this.#play.elapsed);
       this.#compiled?.audioRuntime?.seek(this.#play.elapsed);
     }
-    else if (params.action === 'inject') this.#play.latestInput = { action: params.inputAction, input: params.input };
+    else if (params.action === 'inject') {
+      if (params.inputAction === 'keyDown') this.controllerKeyDown(params.input.code, { repeat: params.input.repeat === true });
+      else if (params.inputAction === 'keyUp') this.controllerKeyUp(params.input.code);
+      else if (params.inputAction === 'releaseKeys') {
+        for (const code of this.getControllerStatus().heldKeys) this.controllerKeyUp(code);
+        this.releaseControllerKeys();
+      }
+      this.#play.latestInput = { action: params.inputAction, input: params.input };
+    }
     return {
       success: true,
       mode: this.#mode,
@@ -3572,14 +3638,18 @@ export class StudioApplication {
     };
   }
 
-  update(deltaSeconds) {
-    if (this.#disposed || this.#mode !== 'play' || this.#play.paused) return;
-    if (!Number.isFinite(deltaSeconds) || deltaSeconds <= 0) return;
+  #advancePlay(deltaSeconds) {
     this.#play.elapsed += deltaSeconds;
     this.#play.tick = Math.round(this.#play.elapsed * 60);
     this.#compiled?.advanceAnimation(deltaSeconds, { restorePose: this.#logicController?.active !== true });
     this.#compiled?.audioRuntime?.advance(deltaSeconds);
     this.#logicController?.update(deltaSeconds);
+  }
+
+  update(deltaSeconds) {
+    if (this.#disposed || this.#mode !== 'play' || this.#play.paused) return;
+    if (!Number.isFinite(deltaSeconds) || deltaSeconds <= 0) return;
+    this.#advancePlay(deltaSeconds);
   }
 
   #writeMarker(viewportReady, { required = false } = {}) {
@@ -3626,6 +3696,7 @@ export class StudioApplication {
     else {
       if (this.#viewport.scene.background === compiled?.background) this.#viewport.scene.background = null;
       if (this.#viewport.scene.backgroundNode === compiled?.backgroundNode) this.#viewport.scene.backgroundNode = null;
+      if (this.#viewport.scene.environment === compiled?.environment) this.#viewport.scene.environment = null;
       if (this.#viewport.scene.fog === compiled?.fog) this.#viewport.scene.fog = null;
     }
     compiled?.dispose();

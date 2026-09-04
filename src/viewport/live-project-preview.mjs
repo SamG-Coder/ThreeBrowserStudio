@@ -24,6 +24,7 @@ export function createLiveProjectPreview({ THREE, TSL, viewport, getAspect } = {
       staging.add(candidate.root);
       staging.background = candidate.background;
       staging.backgroundNode = candidate.backgroundNode;
+      staging.environment = candidate.environment;
       staging.fog = candidate.fog;
       try {
         await viewport.renderer.compileAsync(staging, candidate.activeCamera);
@@ -36,6 +37,7 @@ export function createLiveProjectPreview({ THREE, TSL, viewport, getAspect } = {
         candidate.root.removeFromParent();
         staging.background = null;
         staging.backgroundNode = null;
+        staging.environment = null;
         staging.fog = null;
       }
     }

@@ -7,6 +7,7 @@ import {
   normalizeGeometryRecipe,
 } from './resource-factories.mjs';
 import { createDataTexture } from './image-texture-resources.mjs';
+import { createProceduralEnvironment } from './procedural-environment.mjs';
 import { applyConstraintStacks, evaluateInstanceStack } from './object-evaluation.mjs';
 import { createAnimationRuntime, validateAnimationResource } from './animation-runtime.mjs';
 import {
@@ -20,23 +21,8 @@ import {
   multiplyTransformMatrices,
   transformPointByMatrix,
 } from '../core/transform-math.mjs';
-import { normalizeEditableMeshRecipe, triangulateEditableMesh } from '../core/editable-mesh.mjs';
+import { EDITABLE_POLYGON_MODIFIERS, evaluateEditableMeshModifierStack } from '../core/editable-mesh-modifiers.mjs';
 import { createAudioRuntime } from '../audio/audio-runtime.mjs';
-
-const EDITABLE_PRESEAM_MODIFIERS = new Set(['smooth', 'simpleDeform', 'displace']);
-
-function editablePreseamRecipe(sourceRecipe) {
-  const mesh = normalizeEditableMeshRecipe(sourceRecipe);
-  const triangulated = triangulateEditableMesh(mesh);
-  return {
-    mesh,
-    indexed: {
-      kind: 'indexedMesh',
-      positions: [...mesh.positions],
-      indices: triangulated.sourceCornerIndices.map(cornerIndex => mesh.cornerVertexIndices[cornerIndex]),
-    },
-  };
-}
 
 function colorFrom(THREE, value, fallback = [0.035, 0.045, 0.06]) {
   const color = new THREE.Color();
@@ -386,7 +372,8 @@ function sceneAppearance(THREE, _TSL, settings = {}) {
   let fog = null;
   if (settings.fog?.mode === 'exp2') fog = new THREE.FogExp2(colorFrom(THREE, settings.fog.color), settings.fog.density ?? 0.01);
   if (settings.fog?.mode === 'linear') fog = new THREE.Fog(colorFrom(THREE, settings.fog.color), settings.fog.near ?? 10, settings.fog.far ?? 1000);
-  return { background, backgroundNode, fog };
+  const environment = createProceduralEnvironment(THREE, settings.environment);
+  return { background, backgroundNode, environment, fog };
 }
 
 /**
@@ -439,36 +426,41 @@ export function compileSceneDocument({ THREE, TSL, project, sceneId = project.ac
     let dynamicSampleCount = 0;
     let value;
     if (plan.hasActiveGeometryModifiers) {
-      const evaluateBeforeSeams = sourceRecipe.kind === 'editableMesh'
-        && plan.geometryModifiers.every(modifier => EDITABLE_PRESEAM_MODIFIERS.has(modifier.type));
-      if (evaluateBeforeSeams) {
-        const preseam = editablePreseamRecipe(sourceRecipe);
-        evaluation = evaluateGeometryModifierStack(preseam.indexed, plan.geometryModifiers, {
-          target,
-          unsupported: 'error',
-          timeSeconds: animationTime,
-        });
-        value = createGeometry(THREE, { recipe: { ...preseam.mesh, positions: evaluation.recipe.positions } });
+      let polygonPrefix = null;
+      let indexedModifiers = plan.geometryModifiers;
+      let indexedSource = resource;
+      if (sourceRecipe.kind === 'editableMesh') {
+        const firstIndexed = plan.geometryModifiers.findIndex(modifier => !EDITABLE_POLYGON_MODIFIERS.has(modifier.type));
+        const prefixLength = firstIndexed < 0 ? plan.geometryModifiers.length : firstIndexed;
+        if (prefixLength > 0) {
+          polygonPrefix = evaluateEditableMeshModifierStack(sourceRecipe, plan.geometryModifiers.slice(0, prefixLength), { target });
+          indexedSource = { recipe: polygonPrefix.recipe };
+          indexedModifiers = plan.geometryModifiers.slice(prefixLength);
+        }
+      }
+      if (polygonPrefix && indexedModifiers.length === 0) {
+        evaluation = polygonPrefix;
+        value = createGeometry(THREE, indexedSource);
       } else {
       let baseGeometry = null;
       try {
-        baseGeometry = createGeometry(THREE, resource);
+        baseGeometry = createGeometry(THREE, indexedSource);
         const authoredMaterialIds = entity.components?.mesh?.materialIds
           ?? (entity.components?.mesh?.materialId ? [entity.components.mesh.materialId] : []);
         const baseRecipe = indexedMeshRecipeFromBufferGeometry(baseGeometry, {
           captureMaterialGroups: authoredMaterialIds.length > 1,
         });
-        const dynamicIndex = plan.geometryModifiers.findIndex(
+        const dynamicIndex = indexedModifiers.findIndex(
           modifier => modifier.type === 'ocean' && (modifier.timelineScale ?? 1) !== 0,
         );
         if (dynamicIndex >= 0) {
           const prefixEvaluation = evaluateGeometryModifierStack(
             baseRecipe,
-            plan.geometryModifiers.slice(0, dynamicIndex),
+            indexedModifiers.slice(0, dynamicIndex),
             { target, unsupported: 'error' },
           );
           dynamicBaseRecipe = prefixEvaluation.recipe;
-          dynamicModifiers = plan.geometryModifiers.slice(dynamicIndex);
+          dynamicModifiers = indexedModifiers.slice(dynamicIndex);
           dynamicSampleCount = dynamicModifiers.reduce((total, modifier) => (
             total + (dynamicBaseRecipe.positions.length / 3) * (modifier.waveCount ?? 16)
           ), 0);
@@ -498,12 +490,18 @@ export function compileSceneDocument({ THREE, TSL, project, sceneId = project.ac
             diagnostics: [...prefixEvaluation.diagnostics, ...dynamicEvaluation.diagnostics],
           };
         } else {
-          evaluation = evaluateGeometryModifierStack(baseRecipe, plan.geometryModifiers, {
+          evaluation = evaluateGeometryModifierStack(baseRecipe, indexedModifiers, {
             target,
             unsupported: 'error',
             timeSeconds: animationTime,
           });
         }
+        if (polygonPrefix) evaluation = {
+          ...evaluation,
+          applied: [...polygonPrefix.applied, ...evaluation.applied],
+          skipped: [...polygonPrefix.skipped, ...evaluation.skipped],
+          diagnostics: [...polygonPrefix.diagnostics, ...evaluation.diagnostics],
+        };
         value = createGeometry(THREE, { recipe: evaluation.recipe });
       } finally {
         baseGeometry?.dispose?.();
@@ -773,6 +771,7 @@ export function compileSceneDocument({ THREE, TSL, project, sceneId = project.ac
     activeCamera,
     background: appearance.background,
     backgroundNode: appearance.backgroundNode,
+    environment: appearance.environment,
     fog: appearance.fog,
     diagnostics,
     animationRuntime,
@@ -827,6 +826,7 @@ export function compileSceneDocument({ THREE, TSL, project, sceneId = project.ac
       objects.clear();
       authoredPose.clear();
       appearance.backgroundNode?.dispose?.();
+      appearance.environment?.dispose?.();
       animationRuntime?.actions.clear();
       animationRuntime?.states.clear();
       animationRuntime = null;

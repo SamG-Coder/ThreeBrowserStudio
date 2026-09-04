@@ -25,9 +25,9 @@ gameplay exist.
 | `three_studio_apply` | One labelled atomic changeset |
 | `three_studio_validate` | Whole-project check after topology / graphs |
 | `three_studio_render` | Offscreen beauty (and optional object-id) |
-| `three_studio_play` | Action enter / seek / step. Not gameplay |
+| `three_studio_play` | Action/timeline playback and typed controller previews; pause / exact step / input / runtime telemetry |
 | `three_studio_history` | list / inspect / undo / redo |
-| `three_studio_job` | Reserved. Always `job_not_implemented` today |
+| `three_studio_job` | Bounded texture bake, scene export and checksum-verified local GLB import; inspect status for supported actions and limits |
 
 There is no tenth tool. There is no “just write the scene JSON” path.
 
@@ -55,6 +55,11 @@ capped; Open on a sphere latitude now keeps a bowl, but the cut still follows
 existing triangles. For wheeled assemblies and animation pivots, read
 [Plainform assembly action plan](./plainform-assembly-action-plan.md): a Design
 root is an envelope, not a rig.
+
+Read [Asset-generation capabilities](./asset-generation-features.md)
+for editable-mesh shells/subdivision, the supported GLB import subset and
+portable provenance. These features have explicit budgets and limits; use the
+live capability contract.
 
 Status and inspect accept bounded dotted field `select` paths, `object` or
 `rows` output, and `ifHash` for compact unchanged polling. Authored brush paths

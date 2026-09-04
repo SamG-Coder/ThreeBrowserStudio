@@ -15,12 +15,14 @@ export function createSceneControllerInput({
   getApplication,
   hud,
   controls,
+  viewportLayers,
 } = {}) {
   let active = false;
   let capture = null;
   let restoreHud = true;
   let restoreCursor = '';
   let restoreControls = false;
+  let restoreGrid = true;
   let disposed = false;
 
   function applyPresentation(status) {
@@ -30,12 +32,17 @@ export function createSceneControllerInput({
       restoreHud = hud?.visible !== false;
       restoreCursor = domElement?.style?.cursor ?? '';
       restoreControls = controls?.enabled === true;
-      if (capture.hideHud) hud?.hide?.();
+      restoreGrid = viewportLayers?.getState?.().gridVisible !== false;
+      if (capture.hideHud) {
+        hud?.hide?.();
+        viewportLayers?.setGridVisible?.(false);
+      }
       if (capture.hideCursor && domElement?.style) domElement.style.cursor = 'none';
       if (capture.pointer) void domElement?.requestPointerLock?.();
       if (controls) controls.enabled = false;
     } else if (!nextActive && active) {
       if (capture?.hideHud && restoreHud) hud?.show?.();
+      if (capture?.hideHud) viewportLayers?.setGridVisible?.(restoreGrid);
       if (capture?.hideCursor && domElement?.style) domElement.style.cursor = restoreCursor;
       if (document?.pointerLockElement === domElement) document?.exitPointerLock?.();
       if (controls) controls.enabled = restoreControls;

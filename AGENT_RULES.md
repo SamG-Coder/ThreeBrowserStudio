@@ -42,7 +42,10 @@ authority. In the current lean slice:
   Web Audio is a silent host stub. A scene controller selects one exact entity;
   Enter (or its authored activation key) starts runtime-only control and the
   globally reserved Escape key stops and restores authored state; and
-- asset import, script authoring/execution, layout modes beyond the live
+- checksum-guarded local GLB import into a new scene is available through
+  `three_studio_job` `sceneImport`, including preview and candidate promotion.
+  Read `status.capabilities.sceneImport` for the exact supported subset;
+  general asset formats, script authoring/execution, layout modes beyond the live
   linear/grid/radial/seeded-scatter patterns, diagnostic passes beyond beauty
   and object-id, and behavior simulation are not available. Scene or subtree
   glTF/GLB export is available only while `status.capabilities.jobKinds`
@@ -121,8 +124,12 @@ Use it only after both status and the current tool schema expose it.
   active UV layer lowers to raster channel 0 and only the active color layer
   lowers to the current viewport; other layers remain canonical and directly
   editable.
-- Edge creases can be stored and edited, but the current viewport subdivision
-  path does not consume crease weights. Do not claim a visible crease effect.
+- Editable-mesh Loop/simple subdivision consumes sharp edges and normalized
+  crease weights before expanding UV/color/material seams. Solidify builds
+  inner/outer surfaces and boundary rims. These topology stages must precede
+  weightedNormal, edgeSplit, and time-dependent Ocean stages. Non-manifold or
+  inconsistently wound topology fails with a diagnostic. See
+  `docs/ai/asset-generation-features.md` for the limits.
 - Reject a direct material map when the assigned material graph outputs the
   same property or a `surface` value that supersedes that slot; sample that
   texture inside the graph with `texture.sample2d` instead. The graph `image`
@@ -159,7 +166,8 @@ Use it only after both status and the current tool schema expose it.
   properties in `params`. Query the Blender inventory and executable graph
   catalog instead of guessing RNA IDs or port names.
 - Procedural texture CPU baking and bounded inline `dataTexture` binding are
-  deterministic. External image-file decoding/import remains unavailable.
+  deterministic. GLB scene import can decode embedded 8-bit RGB/RGBA PNG within
+  the existing inline-texture budgets. Standalone image-file import is unavailable.
 - `three_studio_job` `sceneExport` writes a Three.js-loadable glTF/GLB of the
   active scene or an exact entity subtree. Shader-graph looks export as authored
   PBR factors (and a bound albedo map when present), not compiled TSL.

@@ -17,6 +17,7 @@ test('controller input captures activation and globally reserves Escape while re
   const keyboard = eventTarget();
   const hud = { visible: true, hide() { this.visible = false; }, show() { this.visible = true; } };
   const controls = { enabled: true };
+  const viewportLayers = { state: { gridVisible: true }, getState() { return this.state; }, setGridVisible(value) { this.state.gridVisible = value; } };
   const domElement = { style: { cursor: 'crosshair' }, requestPointerLock() {} };
   let active = false;
   const application = {
@@ -28,7 +29,7 @@ test('controller input captures activation and globally reserves Escape while re
     controllerKeyUp() { return { handled: active, active, capture: { keyboard: true, hideHud: true, hideCursor: true } }; },
     releaseControllerKeys() {},
   };
-  const input = createSceneControllerInput({ keyboard, document: {}, domElement, getApplication: () => application, hud, controls });
+  const input = createSceneControllerInput({ keyboard, document: {}, domElement, getApplication: () => application, hud, controls, viewportLayers });
   const enter = { code: 'Enter', preventDefault() { this.prevented = true; }, stopPropagation() {}, stopImmediatePropagation() {} };
   keyboard.dispatch('keydown', enter);
   assert.equal(input.active, true);
@@ -36,6 +37,7 @@ test('controller input captures activation and globally reserves Escape while re
   assert.equal(hud.visible, false);
   assert.equal(domElement.style.cursor, 'none');
   assert.equal(controls.enabled, false);
+  assert.equal(viewportLayers.state.gridVisible, false);
   const escape = { code: 'Escape', preventDefault() { this.prevented = true; }, stopPropagation() {}, stopImmediatePropagation() {} };
   keyboard.dispatch('keydown', escape);
   assert.equal(input.active, false);
@@ -43,8 +45,18 @@ test('controller input captures activation and globally reserves Escape while re
   assert.equal(hud.visible, true);
   assert.equal(domElement.style.cursor, 'crosshair');
   assert.equal(controls.enabled, true);
+  assert.equal(viewportLayers.state.gridVisible, true);
   input.dispose();
   assert.equal(keyboard.listeners.get('keydown').size, 0);
+});
+
+test('hidden editor grid remains hidden after HUD-free controller capture', () => {
+  const viewportLayers = { state: { gridVisible: false }, getState() { return this.state; }, setGridVisible(value) { this.state.gridVisible = value; } };
+  const input = createSceneControllerInput({ keyboard: eventTarget(), viewportLayers });
+  input.sync({ active: true, capture: { hideHud: true } });
+  input.sync({ active: false });
+  assert.equal(viewportLayers.state.gridVisible, false);
+  input.dispose();
 });
 
 test('controller input exits on Escape key-up when a native host reserves key-down', () => {

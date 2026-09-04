@@ -165,3 +165,65 @@ test('entity subtree export omits siblings and scene roots outside the group', (
   const parsed = JSON.parse(Buffer.from(exported.bytes).toString('utf8'));
   assert.match(parsed.buffers[0].uri, /^data:application\/octet-stream;base64,/);
 });
+
+function glbFloatAttribute(bytes, json, accessorId) {
+  const buffer = Buffer.from(bytes);
+  const accessor = json.accessors[accessorId];
+  assert.equal(accessor.componentType, 5126);
+  const view = json.bufferViews[accessor.bufferView];
+  const components = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4 }[accessor.type];
+  const start = 28 + buffer.readUInt32LE(12) + (view.byteOffset ?? 0) + (accessor.byteOffset ?? 0);
+  return Array.from({ length: accessor.count * components }, (_, index) => buffer.readFloatLE(start + index * 4));
+}
+
+test('GLB exports editable shells and subdivision without opening UV/material seams', () => {
+  const document = triangleProject();
+  document.resources.geometries['geometry/tri'].recipe = {
+    kind: 'editableMesh', positions: [-1,-1,0, 0,-1,0, 0,1,0, -1,1,0, 1,-1,0, 1,1,0],
+    faceOffsets: [0,4,8], cornerVertexIndices: [0,1,2,3, 1,4,5,2],
+    uvLayers: { paint: [0,0,1,0,1,1,0,1, 10,0,11,0,11,1,10,1] }, activeUvLayer: 'paint',
+    colorLayers: { tint: [...Array.from({length:4}, () => [1,0,0,1]).flat(), ...Array.from({length:4}, () => [0,0,1,1]).flat()] },
+    activeColorLayer: 'tint', faceMaterialIndices: [0,1],
+  };
+  document.resources.materials['material/lining'] = { id: 'material/lining', kind: 'material', recipe: { kind: 'physical', baseColor: [0,0,1] } };
+  const body = document.scenes['scene/main'].entities['entity/body'];
+  body.components.mesh = { geometryId: 'geometry/tri', materialIds: ['material/paint','material/lining'] };
+  body.components.modifiers = [
+    { id: 'modifier/shell', type: 'solidify', thickness: 0.2 },
+    { id: 'modifier/subdivision', type: 'subdivision', scheme: 'simple', levels: 1 },
+  ];
+  const snapshot = structuredClone(document);
+  for (const finalNormals of [false, true]) {
+    const candidate = structuredClone(document);
+    if (finalNormals) candidate.scenes['scene/main'].entities['entity/body'].components.modifiers.push({ id: 'modifier/normals', type: 'weightedNormal' });
+    const exported = exportSceneInterchange(candidate, { entityId: 'entity/body', format: 'glb' });
+    const json = readGlbJson(exported.bytes);
+    const primitives = json.meshes[0].primitives;
+    assert.equal(primitives.length, 2);
+    assert.deepEqual(primitives.map(p => json.accessors[p.indices].count), [120,120], '80 triangles total, with no extra UV seam walls');
+    assert.deepEqual(primitives.map(p => json.materials[p.material].extras.studioMaterialId), ['material/paint','material/lining']);
+    const positions = glbFloatAttribute(exported.bytes, json, primitives[0].attributes.POSITION);
+    assert.ok(positions.filter((_, i) => i % 3 === 2).every(z => Math.abs(z) <= 0.100001));
+    assert.ok(positions.some((z, i) => i % 3 === 2 && z > 0.099));
+    assert.ok(positions.some((z, i) => i % 3 === 2 && z < -0.099));
+    const uvs = glbFloatAttribute(exported.bytes, json, primitives[0].attributes.TEXCOORD_0);
+    assert.ok(uvs.includes(11), 'separate paint UV island survives export');
+    const colors = glbFloatAttribute(exported.bytes, json, primitives[0].attributes.COLOR_0);
+    assert.ok(colors.some((v, i) => i % 4 === 0 && v === 1));
+    assert.ok(colors.some((v, i) => i % 4 === 2 && v === 1));
+  }
+  assert.deepEqual(document, snapshot);
+});
+
+test('indexed export propagates material provenance through topology changes', () => {
+  const document = triangleProject();
+  document.resources.geometries['geometry/tri'].recipe = {
+    kind: 'indexedMesh', positions: [0,0,0,1,0,0,1,1,0,0,1,0], indices: [0,1,2,0,2,3], triangleMaterialIndices: [0,1],
+  };
+  document.resources.materials['material/lining'] = { id: 'material/lining', kind: 'material', recipe: { kind: 'physical', baseColor: [0,0,1] } };
+  const body = document.scenes['scene/main'].entities['entity/body'];
+  body.components.mesh = { geometryId: 'geometry/tri', materialIds: ['material/paint','material/lining'] };
+  body.components.modifiers = [{ id: 'modifier/subdivision', type: 'subdivision', scheme: 'simple', levels: 1 }];
+  const json = readGlbJson(exportSceneInterchange(document, { entityId: 'entity/body', format: 'glb' }).bytes);
+  assert.deepEqual(json.meshes[0].primitives.map(p => json.accessors[p.indices].count), [12,12]);
+});
