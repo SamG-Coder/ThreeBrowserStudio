@@ -43,7 +43,7 @@
   },
   "dependencies": {
     "@mlc-ai/web-llm": "0.2.81",
-    "@modelcontextprotocol/server": "2.0.0",
+    "@modelcontextprotocol/server": "2.3.0",
     "acorn": "8.15.0",
     "acorn-walk": "8.3.4",
     "zod": "4.2.1"
